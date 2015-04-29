@@ -54,16 +54,14 @@ class PointCloudObjectDetection {
        const jsk_recognition_msgs::RectArray &);
    
     pcl::PointIndices::Ptr extractPointCloudIndicesFromJSKRect(
-       jsk_recognition_msgs::Rect rect);
+       jsk_recognition_msgs::Rect);
 
-    virtual void euclideanClusteringServiceHandler(
-       pcl::PointCloud<PointT>::Ptr);
-    virtual void euclideanClusteringService(
-       jsk_pcl_ros::EuclideanSegment::Request &,
-       jsk_pcl_ros::EuclideanSegment::Response &);
-
+     virtual void euclideanClusteringServiceHandler(
+        std::vector<sensor_msgs::PointCloud2> &,
+        const sensor_msgs::PointCloud2 &, const float = 0.02f);
 
     pcl::PointCloud<PointT>::Ptr cloud_;
+   sensor_msgs::PointCloud2::ConstPtr sm_cloud_;
    
     ros::NodeHandle pnh_;
     boost::mutex mutex_;
@@ -73,6 +71,9 @@ class PointCloudObjectDetection {
     ros::Publisher pub_cloud_;
     ros::Publisher pub_indices_;
 
+    ros::ServiceClient client_;
+   
+   
     // **use message filters *** 
     int cloud_width;
     int cloud_height;
