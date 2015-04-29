@@ -1,0 +1,4 @@
+float64[] feature
+int64 stride
+---
+float64 weight
