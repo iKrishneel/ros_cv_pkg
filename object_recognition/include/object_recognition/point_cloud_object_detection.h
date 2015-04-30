@@ -73,5 +73,4 @@ class PointCloudObjectDetection {
     pcl::PointIndices::Ptr filter_indices_;
 };
 
-
 #endif  // _POINT_CLOUD_OBJECT_DETECTION_H_

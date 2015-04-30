@@ -57,7 +57,6 @@ void PointCloudObjectDetection::jskRectArrayCb(
        pcl::PointIndices::Ptr pt_indices(new pcl::PointIndices);
        this->extractPointCloudIndicesFromJSKRect(rect, filter_indices_);
     }
-    std::cout << "Filter RECT Size: " << filter_indices_->indices.size() << std::endl;
 }
 
 

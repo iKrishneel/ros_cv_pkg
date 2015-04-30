@@ -124,6 +124,7 @@ add_executable(object_recognition_nodelet
   src/object_recognition_nodelet.cpp
   src/histogram_of_oriented_gradients.cpp
   src/point_cloud_object_detection.cpp
+  src/local_binary_patterns.cpp
   )
 
 ## Add cmake target dependencies of the executable/library

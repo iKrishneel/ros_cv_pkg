@@ -1,0 +1,85 @@
+
+#include <object_recognition/local_binary_patterns.h>
+
+LocalBinaryPatterns::LocalBinaryPatterns() {
+   
+}
+
+template <typename _Tp>
+void LocalBinaryPatterns::localBinaryPatterns(
+    const cv::Mat &_src, cv::Mat &_dst) {
+    cv::Mat src = _src.clone();
+    _dst.create(src.rows, src.cols, CV_8UC1);
+    cv::Mat dst = _dst.clone();
+    dst.setTo(0);
+    for (int i = 1; i < src.rows - 1; i++) {
+        for (int j = 1; j < src.cols - 1; j++) {
+            _Tp center = src.at<_Tp>(i, j);
+            unsigned char code = 0;
+            code |= (src.at<_Tp>(i-1, j-1)   >= center)    << 7;
+            code |= (src.at<_Tp>(i-1, j)     >= center)    << 6;
+            code |= (src.at<_Tp>(i-1, j+1)   >= center)    << 5;
+            code |= (src.at<_Tp>(i, j+1)     >= center)    << 4;
+            code |= (src.at<_Tp>(i+1, j+1)   >= center)    << 3;
+            code |= (src.at<_Tp>(i+1, j)     >= center)    << 2;
+            code |= (src.at<_Tp>(i+1, j-1)   >= center)    << 1;
+            code |= (src.at<_Tp>(i, j-1)     >= center)    << 0;
+            dst.at<unsigned char>(i, j) = code;
+        }
+    }
+}
+
+cv::Mat LocalBinaryPatterns::histogramLBP(
+    const cv::Mat& src, int minVal, int maxVal, bool normed) {
+    cv::Mat result;
+    int histSize = maxVal - minVal + sizeof(char);
+    float range[] = { static_cast<float>(minVal),
+                      static_cast<float>(maxVal + sizeof(char))};
+    const float* histRange = {range};
+    calcHist(
+       &src, 1, 0, cv::Mat(), result, 1, &histSize, &histRange, true, false);
+    if (normed) {
+       normalize(result, result, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+    }
+    return result;
+}
+
+void LocalBinaryPatterns::patchWiseLBP(
+    const cv::Mat &lbpMD, cv::Mat &lbp_histogram,
+    const cv::Size psize, int bin_sz, bool isnorm) {
+    for (int j = 0; j < lbpMD.rows; j++) {
+       for (int i = 0; i < lbpMD.cols; i++) {
+          cv::Rect_<int> rect = cv::Rect_<int>(i, j, psize.width, psize.height);
+          if ((rect.x + rect.width < lbpMD.cols) &&
+              (rect.y + rect.height < lbpMD.rows)) {
+             cv::Mat roi = lbpMD(rect).clone();
+             lbp_histogram.push_back(
+                this->histogramLBP(roi, 0, bin_sz - sizeof(char), isnorm));
+          }
+       }
+    }
+    lbp_histogram = lbp_histogram.reshape(1, 1);
+}
+
+
+cv::Mat LocalBinaryPatterns::computeLBP(
+    const cv::Mat &image, const cv::Size psize, const int bin_sz,
+    bool full_lbp, bool isnorm) {
+    if (image.empty()) {
+       ROS_ERROR("-- EMPTY IMAGE IN LBP");
+       return cv::Mat();
+    }
+    cv::Mat img = image.clone();
+    if (image.type() != CV_8UC1) {
+       cv::cvtColor(img, img, CV_BGR2GRAY);
+    }
+    cv::Mat lbpMD;
+    this->localBinaryPatterns<unsigned char>(img, lbpMD);
+    if (full_lbp) {
+       return lbpMD;
+    } else {
+       cv::Mat lbp_histogram;
+       this->patchWiseLBP(lbpMD, lbp_histogram, psize, bin_sz, isnorm);
+       return lbp_histogram;
+    }
+}
