@@ -27,7 +27,7 @@ ObjectRecognition::ObjectRecognition(const std::string dataset_path) :
     this->nms_client_ = nh_.serviceClient<
        object_recognition::NonMaximumSuppression>("non_maximum_suppression");
     
-    bool isTrain = true;
+    bool isTrain = false;
     if (isTrain) {
        ROS_INFO("%s--Training Classifier%s", GREEN, RESET);
        trainObjectClassifier();
@@ -151,14 +151,14 @@ void ObjectRecognition::objectRecognizer(
               (rect.y + rect.height <= image.rows)) {
              cv::Mat roi = image(rect).clone();
              cv::GaussianBlur(roi, roi, cv::Size(3, 3), 1.0);
-             
              cv::resize(roi, roi, this->swindow_);
-             cv::Mat roi_feature = this->computeHOG(roi);
+             cv::Mat roi_hog = this->computeHOG(roi);
+             cv::Mat roi_lbp = this->computeLBP(
+                 roi, cv::Size(8, 8), 10, false, true);
+             cv::Mat _feature;
+             this->concatenateCVMat(roi_hog, roi_lbp, _feature);
              float response = this->supportVectorMachine_->predict(
-                roi_feature, false);
-
-             // float response = this->objectClassifierPredictor(roi_feature);
-             
+                 _feature, false);
              if (response == 1) {
                 detection_info.insert(std::make_pair(response, rect));
              } else {
