@@ -27,10 +27,11 @@ ObjectRecognition::ObjectRecognition(const std::string dataset_path) :
     this->nms_client_ = nh_.serviceClient<
        object_recognition::NonMaximumSuppression>("non_maximum_suppression");
     
-    bool isTrain = false;
+    bool isTrain = true;
     if (isTrain) {
        ROS_INFO("%s--Training Classifier%s", GREEN, RESET);
        trainObjectClassifier();
+       ROS_INFO("%s--Trained Successfully..%s", BLUE, RESET);
        exit(-1);
     } else {
        ROS_INFO("%s--Loading Trained SVM Classifier%s", GREEN, RESET);
@@ -244,7 +245,7 @@ void ObjectRecognition::trainObjectClassifier() {
     std::vector<cv::Mat> pdataset_img;
     cv::Mat labelMD;
     this->readDataset(pfilename, pdataset_img, labelMD, true, 1);
-
+    
     // reading the negative training image
     std::string nfilename = dataset_path_ + "dataset/negative.txt";
     std::vector<cv::Mat> ndataset_img;
@@ -265,7 +266,7 @@ void ObjectRecognition::trainObjectClassifier() {
     oFile << featureMD << std::endl;
     oFile.close();
     */
-    
+    /*
     // <<<<< Convert and pass the data
     int is_success = 0;
     if (featureMD.rows == labelMD.rows) {
@@ -293,8 +294,9 @@ void ObjectRecognition::trainObjectClassifier() {
        ROS_ERROR("%s--INCORRECT DATA SIZE%s", RED, CLEAR);
     }
     std::cout << "Response: " << is_success << std::endl;
+    */
     // >>>>>>>>>>>
-    /*    
+        
     try {
        this->trainBinaryClassSVM(featureMD, labelMD);
        this->supportVectorMachine_->save(
@@ -302,7 +304,6 @@ void ObjectRecognition::trainObjectClassifier() {
     } catch(std::exception &e) {
        ROS_ERROR("%s--ERROR: %s%s", BOLDRED, e.what(), RESET);
     }
-    */
 }
 
 void ObjectRecognition::readDataset(
@@ -350,11 +351,14 @@ void ObjectRecognition::extractFeatures(
        cv::Mat img = *it;
        cv::resize(img, img, this->swindow_);
        if (img.data) {
-          cv::Mat _feature = this->computeHOG(img);
+          cv::Mat hog_feature = this->computeHOG(img);
+          cv::Mat lbp_feature = this->computeLBP(
+             img, cv::Size(8, 8), 10, false, true);
+          cv::Mat _feature;
+          this->concatenateCVMat(hog_feature, lbp_feature, _feature, true);
           featureMD.push_back(_feature);
           // std::cout << featureMD << std::endl;
        }
-       
        cv::imshow("image", img);
        cv::waitKey(3);
     }
@@ -475,7 +479,7 @@ void ObjectRecognition::configCallback(
 
 
 int main(int argc, char *argv[]) {
-
+   
     ros::init(argc, argv, "object_recognition");
     ROS_INFO("%sRUNNING OBJECT RECOGNITION NODELET%s", BOLDRED, RESET);
     std::string _path = "/home/krishneel/catkin_ws/src/image_annotation_tool/";

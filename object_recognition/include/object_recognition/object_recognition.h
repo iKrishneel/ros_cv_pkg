@@ -3,6 +3,7 @@
 #define _OBJECT_RECOGNITION_H_
 
 #include <object_recognition/histogram_of_oriented_gradients.h>
+#include <object_recognition/local_binary_patterns.h>
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_msgs/RectArray.h>
 #include <jsk_pcl_ros/pcl_conversion_util.h>
@@ -41,7 +42,8 @@
 #define BOLDWHITE   "\033[1m\033[37m"      /* Bold White */
 #define CLEAR "\033[2J"  // clear screen escape code
 
-class ObjectRecognition: public HOGFeatureDescriptor {
+class ObjectRecognition: public HOGFeatureDescriptor,
+                         public LocalBinaryPatterns {
  private:
 
     ros::NodeHandle nh_;

@@ -16,6 +16,8 @@ class LocalBinaryPatterns {
        const cv::Mat &, cv::Mat &, const cv::Size, const int, bool = false);
     virtual cv::Mat histogramLBP(
        const cv::Mat &, int = 0, int = 255, bool = true);
+    virtual void getLBP(
+       const cv::Mat &, cv::Mat &);
    
  public:
     LocalBinaryPatterns();
