@@ -57,8 +57,7 @@ class ObjectRecognition: public HOGFeatureDescriptor,
     ros::ServiceClient trainer_client_;
     ros::ServiceClient predictor_client_;
    
-    cv::Size swindow_;
-    std::string dataset_path_;
+   // cv::Size swindow_;
     boost::shared_ptr<cv::SVM> supportVectorMachine_;
     void concatenateCVMat(
        const cv::Mat &, const cv::Mat &, cv::Mat &, bool = true);
@@ -105,6 +104,12 @@ class ObjectRecognition: public HOGFeatureDescriptor,
     float scale_;
     int stack_size_;
     int incrementor_;
+    int downsize_;
+    std::string model_name_;
+    std::string dataset_path_;
+    int swindow_x;
+    int swindow_y;
+
     dynamic_reconfigure::Server<
        object_recognition::ObjectDetectionConfig>  server;
    

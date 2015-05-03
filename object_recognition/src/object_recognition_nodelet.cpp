@@ -17,8 +17,8 @@
 ObjectRecognition::ObjectRecognition(const std::string dataset_path) :
     it_(nh_),
     dataset_path_(dataset_path),
-    supportVectorMachine_(new cv::SVM),
-    swindow_(64/2, 128/2) {
+    supportVectorMachine_(new cv::SVM)
+    /*swindow_(64/2, 128/2)*/ {
 
     this->trainer_client_ = nh_.serviceClient<
        object_recognition::Trainer>("trainer");
@@ -76,14 +76,16 @@ void ObjectRecognition::imageCb(
     cv::Mat image;
     cv::Size isize = cv_ptr->image.size();
     // control params
-    const int downsize = 2;
-    const float scale = -0.05;
-    const int img_stack = 4;
-    const int incrementor = 8;
+    const int downsize = this->downsize_;
+    const float scale = this->scale_;
+    const int img_stack = this->stack_size_;
+    const int incrementor = this->incrementor_;
+
     cv::resize(cv_ptr->image, image, cv::Size(
                   isize.width/downsize, isize.height/downsize));
     std::vector<cv::Rect_<int> > bb_rects = this->runObjectRecognizer(
-       image, this->swindow_, scale, img_stack, incrementor);
+       image, cv::Size(this->swindow_x, this->swindow_y),
+       scale, img_stack, incrementor);
 
     jsk_recognition_msgs::RectArray jsk_rect_array;
     this->convertCvRectToJSKRectArray(
@@ -115,9 +117,12 @@ std::vector<cv::Rect_<int> >  ObjectRecognition::runObjectRecognizer(
     cv::Size nwsize = wsize;
     int scounter = 0;
     std::multimap<float, cv::Rect_<int> > detection_info;
+    int sw_incrementor = incrementor;
     while (scounter++ < scale_counter) {
-       this->objectRecognizer(image, detection_info, nwsize, incrementor);
+       // std::cout << "New Incrementing Size: " << sw_incrementor << std::endl;
+       this->objectRecognizer(image, detection_info, nwsize, sw_incrementor);
        this->pyramidialScaling(nwsize, scale);
+       sw_incrementor += (sw_incrementor * scale);
     }
 
     cv::Mat dimg = image.clone();
@@ -151,7 +156,7 @@ void ObjectRecognition::objectRecognizer(
               (rect.y + rect.height <= image.rows)) {
              cv::Mat roi = image(rect).clone();
              cv::GaussianBlur(roi, roi, cv::Size(3, 3), 1.0);
-             cv::resize(roi, roi, this->swindow_);
+             cv::resize(roi, roi, cv::Size(this->swindow_x, this->swindow_y));
              cv::Mat roi_hog = this->computeHOG(roi);
              cv::Mat roi_lbp = this->computeLBP(
                  roi, cv::Size(8, 8), 10, false, true);
@@ -349,7 +354,7 @@ void ObjectRecognition::extractFeatures(
     for (std::vector<cv::Mat>::const_iterator it = dataset_img.begin();
          it != dataset_img.end(); it++) {
        cv::Mat img = *it;
-       cv::resize(img, img, this->swindow_);
+       cv::resize(img, img, cv::Size(this->swindow_x, this->swindow_y));
        if (img.data) {
           cv::Mat hog_feature = this->computeHOG(img);
           cv::Mat lbp_feature = this->computeLBP(
@@ -379,7 +384,7 @@ void ObjectRecognition::trainBinaryClassSVM(
     svm_param.p = 1.0;
     svm_param.class_weights = NULL;
     svm_param.term_crit.type = CV_TERMCRIT_ITER | CV_TERMCRIT_EPS;
-    svm_param.term_crit.max_iter = 1e6;
+    svm_param.term_crit.max_iter = 1000;
     svm_param.term_crit.epsilon = 1e-6;
     cv::ParamGrid paramGrid = cv::ParamGrid();
     paramGrid.min_val = 0;
@@ -472,9 +477,14 @@ void ObjectRecognition::configCallback(
     this->scale_ = static_cast<float>(config.scaling_factor);
     this->stack_size_ = static_cast<int>(config.stack_size);
     this->incrementor_ = config.sliding_window_increment;
-    ROS_INFO("Reconfigure Request: ");
-    std::cout << scale_ << "\t" << stack_size_  << std::endl;
-    
+
+    this->model_name_ = config.svm_model_name;
+    this->dataset_path_ = config.dataset_directory;
+      
+      // currently fixed variables
+    this->swindow_x = config.sliding_window_width;
+    this->swindow_y = config.sliding_window_height;
+    this->downsize_ = config.image_downsize;
 }
 
 
