@@ -7,10 +7,19 @@ ImageAnnotationTool::ImageAnnotationTool(const std::string _path) :
     it_(nh_),
     iteration_counter_(0),
     model_save_counter_(0),
-    model_save_path_(_path),
-    templ_path_(_path + "template/template0000.jpg")
-    /*,out_file_((_path + "dataset/train.txt").c_str(), std::ios::out)*/ {
-    this->subscribe();
+    mark_model_(true),
+    segment_template_(true),
+    write_txt_name_("train.txt"),
+    save_folder_name_("dataset"),
+    obj_rect_(cv::Rect_<int>(0, 0, 0, 0)){
+
+    bool is_dir_ok = this->saveDirectoryHandler(
+        _path + this->save_folder_name_, this->model_save_path_);
+    if (is_dir_ok) {
+        this->subscribe();
+    } else {
+        ROS_ERROR("--CANNOT CREATE DIRECTORY..PLEASE CHECK AGAIN");
+    }
     this->image_pub_ = this->it_.advertise(
        "/image_annotation/output/segmentation", 1);
 }
@@ -19,6 +28,10 @@ void ImageAnnotationTool::subscribe() {
     this->image_sub_ = this->it_.subscribe(
        "/camera/rgb/image_rect_color", 1,
        &ImageAnnotationTool::imageCb, this);
+
+    this->screenpt_sub_ = this->nh_.subscribe(
+        "/camera/rgb/image_rect_color/screenrectangle", 1,
+        &ImageAnnotationTool::screenRectangleCb, this);
 }
 
 void ImageAnnotationTool::imageCb(
@@ -30,78 +43,100 @@ void ImageAnnotationTool::imageCb(
        ROS_ERROR("cv_bridge exception: %s", e.what());
        return;
     }
-    // cv::Mat template_img = cv::imread(this->templ_path_);
-    // cv::Mat object_roi = this->cvTemplateMatching(cv_ptr->image, template_img);
-    // this->processFrame(cv_ptr->image, object_roi);
-
-    this->bootStrapNonObjectDataset(cv_ptr->image, cv::Size(64, 128), 4);
-    exit(-1);
-    
+    if ((this->obj_rect_.width > 16 && this->obj_rect_.height > 16) &&
+        segment_template_) {
+        if (this->mark_model_) {
+            this->template_image = cv_ptr->image(this->obj_rect_).clone();
+            this->mark_model_ = false;
+        }
+        if (this->template_image.data) {
+            cv::Mat template_img = this->template_image.clone();
+            cv::Mat object_roi = this->cvTemplateMatching(
+                cv_ptr->image, template_img);
+            this->processFrame(cv_ptr->image, object_roi);
+        }
+    } else {
+        this->bootStrapNonObjectDataset(cv_ptr->image, cv::Size(64, 128), 4);
+    }
     this->image_pub_.publish(cv_ptr->toImageMsg());
-}
+ }
 
 
-cv::Mat ImageAnnotationTool::cvTemplateMatching(
-    const cv::Mat &image,
-    const cv::Mat &template_img,
-    const int match_method) {
-    if (image.empty() || template_img.empty()) {
-       ROS_ERROR("INPUT IMAGE or TEMPLATE IS EMPTY");
-       return cv::Mat();
-    }
-    int result_cols = image.cols - template_img.cols + sizeof(char);
-    int result_rows = image.rows - template_img.rows + sizeof(char);
-    cv::Mat result = cv::Mat(result_rows, result_cols, CV_32FC1);
-    cv::matchTemplate(image, template_img, result, match_method);
-    cv::normalize(result, result, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
-    double min_val;
-    double max_val;
-    cv::Point min_loc;
-    cv::Point max_loc;
-    cv::Point match_loc;
-    cv::minMaxLoc(result, &min_val, &max_val, &min_loc, &max_loc, cv::Mat());
-    match_loc = max_loc;
-    const int boundary_padding = 10;
-    cv::Rect_<int> rect = cv::Rect_<int>(match_loc.x - boundary_padding,
-                                         match_loc.y - boundary_padding,
-                                         template_img.cols + boundary_padding,
-                                         template_img.rows + boundary_padding);
-    if (rect.x + rect.width > image.cols) {
-       rect.width -= ((rect.x + rect.width) - image.cols);
-    }
-    if (rect.y + rect.height > image.rows) {
-       rect.height -= ((rect.y + rect.height) - image.rows);
-    }
-    if (this->iteration_counter_ < 1) {
-       iteration_counter_++;
-       this->constructColorModel(image, rect, true);
-    }
-#ifndef DEBUG
-    cv::Mat img = image.clone();
-    cv::rectangle(img, rect, cv::Scalar(0, 255, 0), 2);
-    cv::imshow("match", img);
-    cv::waitKey(3);
-#endif
-    return image(rect).clone();
-}
+ void ImageAnnotationTool::screenRectangleCb(
+     const geometry_msgs::PolygonStamped::Ptr &pt_msgs) {
+     this->obj_rect_.x = pt_msgs->polygon.points[0].x;
+     this->obj_rect_.y = pt_msgs->polygon.points[0].y;
+     this->obj_rect_.width = pt_msgs->polygon.points[1].x - this->obj_rect_.x;
+     this->obj_rect_.height = pt_msgs->polygon.points[1].y - this->obj_rect_.y;
+ }
 
-void ImageAnnotationTool::processFrame(
-    const cv::Mat &frame,
-    const cv::Mat &image) {
-    if (image.empty()) {
-       ROS_ERROR("Empty Image ROI can not be segmented");
-       return;
-    }
-    cv::Mat shape_prob = this->shapeProbabilityMap(image);
-    cv::Mat color_prob = this->pixelWiseClassification(image);
-    cv::Mat mask = this->segmentationProbabilityMap(color_prob, shape_prob);
-    cv::Mat model;
-    if (mask.data) {
-       cv::Rect_<int> _rect = cv::Rect_<int>(0, 0, image.cols, image.rows);
-       model = this->graphCutSegmentation(image, mask, _rect);
-       // this->constructColorModel(model, cv::Rect_<int>(), false);
-       this->saveImageModel(model, "dataset/mask_dataset/drill_");
-       this->saveImageModel(image, "dataset/roi_dataset/drill_", false);
+
+ cv::Mat ImageAnnotationTool::cvTemplateMatching(
+     const cv::Mat &image,
+     const cv::Mat &template_img,
+     const int match_method) {
+     if (image.empty() || template_img.empty()) {
+        ROS_ERROR("INPUT IMAGE or TEMPLATE IS EMPTY");
+        return cv::Mat();
+     }
+     int result_cols = image.cols - template_img.cols + sizeof(char);
+     int result_rows = image.rows - template_img.rows + sizeof(char);
+     cv::Mat result = cv::Mat(result_rows, result_cols, CV_32FC1);
+     cv::matchTemplate(image, template_img, result, match_method);
+     cv::normalize(result, result, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+     double min_val;
+     double max_val;
+     cv::Point min_loc;
+     cv::Point max_loc;
+     cv::Point match_loc;
+     cv::minMaxLoc(result, &min_val, &max_val, &min_loc, &max_loc, cv::Mat());
+     match_loc = max_loc;
+     const int boundary_padding = 10;
+     cv::Rect_<int> rect = cv::Rect_<int>(match_loc.x - boundary_padding,
+                                          match_loc.y - boundary_padding,
+                                          template_img.cols + boundary_padding,
+                                          template_img.rows + boundary_padding);
+     if (rect.x + rect.width > image.cols) {
+        rect.width -= ((rect.x + rect.width) - image.cols);
+     }
+     if (rect.y + rect.height > image.rows) {
+        rect.height -= ((rect.y + rect.height) - image.rows);
+     }
+     if (this->iteration_counter_ < 1) {
+        iteration_counter_++;
+        this->constructColorModel(image, rect, true);
+     }
+ #ifndef DEBUG
+     cv::Mat img = image.clone();
+     cv::rectangle(img, rect, cv::Scalar(0, 255, 0), 2);
+     cv::imshow("match", img);
+     cv::waitKey(3);
+ #endif
+     return image(rect).clone();
+ }
+
+ void ImageAnnotationTool::processFrame(
+     const cv::Mat &frame,
+     const cv::Mat &image) {
+     if (image.empty()) {
+        ROS_ERROR("Empty Image ROI can not be segmented");
+        return;
+     }
+     cv::Mat shape_prob = this->shapeProbabilityMap(image);
+     cv::Mat color_prob = this->pixelWiseClassification(image);
+     cv::Mat mask = this->segmentationProbabilityMap(color_prob, shape_prob);
+     cv::Mat model;
+     if (mask.data) {
+         std::ofstream outFile (
+             (this->model_save_path_ + "/" + this->write_txt_name_).c_str(),
+             std::ios_base::app);
+        cv::Rect_<int> _rect = cv::Rect_<int>(0, 0, image.cols, image.rows);
+        model = this->graphCutSegmentation(image, mask, _rect);
+        // this->constructColorModel(model, cv::Rect_<int>(), false);
+        // this->saveImageModel(
+       //    model, "dataset/mask_dataset/drill_", outFile);
+       this->saveImageModel(
+           image, this->model_save_path_ + "/img_", outFile, true);
        this->model_save_counter_++;
     }
     cv::imshow("model", model);
@@ -346,30 +381,31 @@ std::string ImageAnnotationTool::convertNumber2String(
 }
 
 void ImageAnnotationTool::saveImageModel(
-    const cv::Mat &image,
-    const std::string &spath,
-    bool ismasked) {
+    const cv::Mat &image, const std::string &spath,
+    std::ofstream &outFile, bool ismasked) {
     if (image.data) {
        std::string _save_counter = this->convertNumber2String(
           this->model_save_counter_);
-       std::string _save_path =
-          model_save_path_ + spath;
+       std::string _save_path;
        std::string write_path;
        if (model_save_counter_ < 10) {
-          _save_path = _save_path + "0000" + _save_counter + ".jpg";
-          write_path = spath + "0000" + _save_counter + ".jpg";
+          _save_path = spath + "00000" + _save_counter + ".jpg";
+          write_path = "00000" + _save_counter + ".jpg";
        } else if (model_save_counter_ < 100) {
-          _save_path = _save_path + "000" + _save_counter + ".jpg";
-          write_path = spath + "000" + _save_counter + ".jpg";
+          _save_path = spath + "0000" + _save_counter + ".jpg";
+          write_path = "0000" + _save_counter + ".jpg";
        } else if (model_save_counter_ < 1000) {
-          _save_path = _save_path + "00" + _save_counter + ".jpg";
-          write_path = spath + "00" + _save_counter + ".jpg";
+          _save_path = spath + "000" + _save_counter + ".jpg";
+          write_path = "000" + _save_counter + ".jpg";
+       } else if (model_save_counter_ < 10000) {
+          _save_path = spath + "00" + _save_counter + ".jpg";
+          write_path = "00" + _save_counter + ".jpg";
        }
        cv::imwrite(_save_path, image);
        if (ismasked) {
-          this->out_file_ << write_path << std::endl;
+          outFile << write_path << std::endl;
        } else {
-          
+           
        }
     }
 }
@@ -399,13 +435,54 @@ void ImageAnnotationTool::bootStrapNonObjectDataset(
     nout_file.close();
 }
 
+bool ImageAnnotationTool::directoryExists(
+    const char* pzPath) {
+    if ( pzPath == NULL) {
+        return false;
+    }
+    DIR *pDir;
+    bool bExists = false;
+    pDir = opendir (pzPath);
+    if (pDir != NULL) {
+        bExists = true;
+        (void) closedir (pDir);
+    }
+    return bExists;
+}
+
+bool ImageAnnotationTool::saveDirectoryHandler(
+    const std::string folder_name, std::string &save_folder) {
+    if (!this->directoryExists(folder_name.c_str())) {
+        boost::filesystem::path dir(folder_name.c_str());
+        try {
+            boost::filesystem::create_directories(dir);
+        } catch(...) {
+            ROS_ERROR("--CANNOT CREATE DIRECTORY..\n");
+        }
+    }
+    save_folder = folder_name + "/" + this->timeToStr("");
+    boost::filesystem::path ndir(save_folder.c_str());
+    return boost::filesystem::create_directories(ndir);
+}
+
+template<class T>
+std::string ImageAnnotationTool::timeToStr(T ros_t) {
+    std::stringstream msg;
+    const boost::posix_time::ptime now=
+    boost::posix_time::second_clock::local_time();
+    boost::posix_time::time_facet *const f =
+        new boost::posix_time::time_facet("%Y-%m-%d-%H-%M-%S");
+    msg.imbue(std::locale(msg.getloc(),f));
+    msg << now;
+    return msg.str();
+}
 
 int main(int argc, char *argv[]) {
 
     ros::init(argc, argv, "image_annotation_tool");
     ROS_INFO("RUNNING IMAGE_ANNOTATION_NODELET");
     std::string _directory =
-       "/home/krishneel/catkin_ws/src/image_annotation_tool/";
+       "/home/krishneel/Desktop/";
     ImageAnnotationTool iATool(_directory);
     ros::spin();
     return 0;
