@@ -1,0 +1,12 @@
+<launch>
+  <group>
+    <include file="$(find openni2_launch)/launch/openni2.launch">
+    </include>
+    <node name="rviz" pkg="rviz" type="rviz"
+	  respawn="false" output="screen">
+    </node>
+  </group>
+  <node pkg="image_annotation_tool" type="image_annotation_tool"
+	name="image_annotation_tool" output="screen">
+  </node>
+</launch>
