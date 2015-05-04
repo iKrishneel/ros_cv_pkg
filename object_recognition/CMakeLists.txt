@@ -68,8 +68,8 @@ generate_dynamic_reconfigure_options(
 add_service_files(
    FILES
    NonMaximumSuppression.srv
-   Trainer.srv
-   Predictor.srv
+   #Trainer.srv
+   #Predictor.srv
  )
 
 ## Generate actions in the 'action' folder
@@ -125,6 +125,7 @@ add_executable(object_recognition_nodelet
   src/histogram_of_oriented_gradients.cpp
   src/point_cloud_object_detection.cpp
   src/local_binary_patterns.cpp
+  src/svm.cpp
   )
 
 ## Add cmake target dependencies of the executable/library

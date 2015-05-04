@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="object_recognition" type="object_recognition_nodelet"
+	name="object_recognition" output="screen">
+  </node>
+</launch>

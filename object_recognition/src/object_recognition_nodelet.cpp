@@ -2,8 +2,6 @@
 #include <object_recognition/point_cloud_object_detection.h>
 #include <object_recognition/object_recognition.h>
 #include <jsk_recognition_msgs/Rect.h>
-#include <object_recognition/Trainer.h>
-#include <object_recognition/Predictor.h>
 #include <object_recognition/NonMaximumSuppression.h>
 
 #include <iostream>
@@ -17,15 +15,10 @@
 ObjectRecognition::ObjectRecognition(const std::string dataset_path) :
     it_(nh_),
     dataset_path_(dataset_path),
-    supportVectorMachine_(new cv::SVM)
-    /*swindow_(64/2, 128/2)*/ {
+    supportVectorMachine_(new cv::SVM) {
 
-    this->trainer_client_ = nh_.serviceClient<
-       object_recognition::Trainer>("trainer");
-    this->predictor_client_ = nh_.serviceClient<
-       object_recognition::Predictor>("predictor");
     this->nms_client_ = nh_.serviceClient<
-       object_recognition::NonMaximumSuppression>("non_maximum_suppression");
+       object_recognition::NonMaximumSuppression>("non_maximum_suppression");    
     
     bool isTrain = false;
     if (isTrain) {
@@ -35,8 +28,14 @@ ObjectRecognition::ObjectRecognition(const std::string dataset_path) :
        exit(-1);
     } else {
        ROS_INFO("%s--Loading Trained SVM Classifier%s", GREEN, RESET);
-       this->supportVectorMachine_->load(
-          (this->dataset_path_ + "dataset/svm.xml").c_str());
+       try{
+           this->model_name_ = "svm.xml";
+           this->supportVectorMachine_->load((this->model_name_).c_str());
+           ROS_INFO("%s--Trained SVM Classifier Loaded Successfully%s", GREEN, RESET);
+       } catch(cv::Exception &e){
+           ROS_ERROR("%s--ERROR LOADING TRAINED CLASSIFIER %s%s", BOLDRED, e.what(), RESET);
+           std::_Exit(EXIT_FAILURE);
+       }
     }
     this->subscribe();
 
@@ -220,30 +219,6 @@ std::vector<cv::Rect_<int> > ObjectRecognition::nonMaximumSuppression(
     return bbox;
 }
 
-float ObjectRecognition::objectClassifierPredictor(
-    cv::Mat &featureMD) {
-    if (featureMD.empty()) {
-       return 0.0f;
-    }
-    object_recognition::Predictor predictor_srv;
-    predictor_srv.request.stride = static_cast<int>(featureMD.cols);
-    for (int j = 0; j < featureMD.rows; j++) {
-       for (int i = 0; i < featureMD.cols; i++) {
-          float feat_val = static_cast<float>(featureMD.at<float>(j, i));
-          if (isnan(feat_val) || feat_val < FLT_MIN) {
-             feat_val == 0.0;
-          }
-          predictor_srv.request.feature.push_back(feat_val);
-       }
-    }
-    if (this->predictor_client_.call(predictor_srv)) {
-       return predictor_srv.response.weight;
-    } else {
-       return 0.0f;
-    }
-}
-
-
 void ObjectRecognition::trainObjectClassifier() {
     // reading the positive training image
     std::string pfilename = dataset_path_ + "dataset/train.txt";
@@ -262,50 +237,11 @@ void ObjectRecognition::trainObjectClassifier() {
     cv::Mat featureMD;
     this->extractFeatures(pdataset_img, featureMD);
     std::cout << featureMD.size() << std::endl;
-
-    /*
-    float data[6] = {0.01, 0.02, 0.01, 0.03, 0.01, 0.4};
-    cv::Mat featureMD = cv::Mat(6, 1, CV_32F, data);
-    cv::Mat labelMD = cv::Mat::ones(6, 1, CV_32F);
-    std::ofstream oFile("/home/krishneel/Desktop/feature.txt", std::ios::out);
-    oFile << featureMD << std::endl;
-    oFile.close();
-    */
-    /*
-    // <<<<< Convert and pass the data
-    int is_success = 0;
-    if (featureMD.rows == labelMD.rows) {
-       object_recognition::Trainer trainer_srv;
-       trainer_srv.request.size = static_cast<int>(
-          featureMD.rows * featureMD.cols);
-       trainer_srv.request.stride = static_cast<int>(featureMD.cols);
-       for (int j = 0; j < featureMD.rows; j++) {
-          for (int i = 0; i < featureMD.cols; i++) {
-             float feat_val = static_cast<float>(featureMD.at<float>(j, i));
-             if (isnan(feat_val) || feat_val < FLT_MIN) {
-                feat_val == 0.0;
-             }
-             trainer_srv.request.features.push_back(feat_val);
-          }
-          trainer_srv.request.labels.push_back(labelMD.at<float>(j, 0));
-       }
-       if (this->trainer_client_.call(trainer_srv)) {
-          is_success = trainer_srv.response.success;
-       } else {
-          ROS_ERROR("Failed to call service add_two_ints");
-          return;
-       }
-    } else {
-       ROS_ERROR("%s--INCORRECT DATA SIZE%s", RED, CLEAR);
-    }
-    std::cout << "Response: " << is_success << std::endl;
-    */
-    // >>>>>>>>>>>
         
     try {
        this->trainBinaryClassSVM(featureMD, labelMD);
        this->supportVectorMachine_->save(
-          (this->dataset_path_ + "dataset/svm.xml").c_str());
+          (this->model_name_).c_str());
     } catch(std::exception &e) {
        ROS_ERROR("%s--ERROR: %s%s", BOLDRED, e.what(), RESET);
     }
@@ -362,7 +298,6 @@ void ObjectRecognition::extractFeatures(
           cv::Mat _feature;
           this->concatenateCVMat(hog_feature, lbp_feature, _feature, true);
           featureMD.push_back(_feature);
-          // std::cout << featureMD << std::endl;
        }
        cv::imshow("image", img);
        cv::waitKey(3);
@@ -371,8 +306,35 @@ void ObjectRecognition::extractFeatures(
 
 void ObjectRecognition::trainBinaryClassSVM(
     const cv::Mat &featureMD, const cv::Mat &labelMD) {
-    std::cout << featureMD.size() << labelMD.size() << std::endl;
     ROS_INFO("%s--TRAINING CLASSIFIER%s", GREEN, RESET);
+
+    svm_parameter param;
+    param.svm_type = C_SVC;
+    param.kernel_type = LINEAR;
+    param.degree = 3;
+    param.gamma = 0;
+    param.coef0 = 0;
+    param.nu = 0.5;
+    param.cache_size = 100;
+    param.C = 1;
+    param.eps = 1e-4;
+    param.p = 0.1;
+    param.shrinking = 1;
+    param.probability = 1;
+    param.nr_weight = 0;
+    param.weight_label = NULL;
+    param.weight = NULL;
+        
+    svm_problem svm_prob_vector = this->convertCvMatToLibSVM(
+        featureMD, labelMD, param);
+    struct svm_model *model = new svm_model;
+    if (svm_check_parameter(&svm_prob_vector, &param)) {
+        std::cout << "ERROR" << std::endl;
+    } else {
+        model = svm_train(&svm_prob_vector, &param);
+    }
+    
+    
     cv::SVMParams svm_param = cv::SVMParams();
     svm_param.svm_type = cv::SVM::NU_SVC;
     svm_param.kernel_type = cv::SVM::RBF;
@@ -485,6 +447,38 @@ void ObjectRecognition::configCallback(
     this->swindow_x = config.sliding_window_width;
     this->swindow_y = config.sliding_window_height;
     this->downsize_ = config.image_downsize;
+}
+
+
+/**
+ * Opencv Mat to libSVM svm_problem wrapper for training
+ */
+struct svm_problem ObjectRecognition::convertCvMatToLibSVM(
+    const cv::Mat &feature_mat, const cv::Mat &label_mat,
+    const svm_parameter &param) {
+    if (feature_mat.rows != label_mat.rows) {
+        std::cout << "--TRAINING SET IS NOT EQUIVALENT.." << std::endl;
+        std::_Exit(EXIT_FAILURE);
+    }
+    svm_problem svm_prob_vector;
+    const int feature_lenght = static_cast<int>(feature_mat.rows);
+    const int feature_dimensions = static_cast<int>(feature_mat.cols);
+    svm_prob_vector.l = feature_lenght;
+    svm_prob_vector.y = new double[feature_lenght];
+    svm_prob_vector.x = new svm_node*[feature_lenght];
+    for (int i = 0; i < feature_lenght; i++) {
+        svm_prob_vector.x[i] = new svm_node[feature_dimensions];
+    }
+    for (int j = 0; j < feature_lenght; j++) {
+        svm_prob_vector.y[j] = static_cast<double>(label_mat.at<float>(j, 0));
+        for (int i = 0; i < feature_dimensions; i++) {
+            svm_prob_vector.x[j][i].index = i + 1;
+            svm_prob_vector.x[j][i].value = static_cast<double>(
+                feature_mat.at<float>(j, i));
+        }
+        svm_prob_vector.x[j][feature_dimensions].index = -1;
+    }
+    return svm_prob_vector;
 }
 
 

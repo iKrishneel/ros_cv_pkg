@@ -4,6 +4,8 @@
 
 #include <object_recognition/histogram_of_oriented_gradients.h>
 #include <object_recognition/local_binary_patterns.h>
+#include <object_recognition/svm.h>
+
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_msgs/RectArray.h>
 #include <jsk_pcl_ros/pcl_conversion_util.h>
@@ -54,8 +56,6 @@ class ObjectRecognition: public HOGFeatureDescriptor,
     ros::Publisher pub_rects_;
    
     ros::ServiceClient nms_client_;
-    ros::ServiceClient trainer_client_;
-    ros::ServiceClient predictor_client_;
    
    // cv::Size swindow_;
     boost::shared_ptr<cv::SVM> supportVectorMachine_;
@@ -83,10 +83,8 @@ class ObjectRecognition: public HOGFeatureDescriptor,
     virtual void pyramidialScaling(
        cv::Size &, const float);
     virtual std::vector<cv::Rect_<int> > nonMaximumSuppression(
-       std::multimap<float, cv::Rect_<int> > &, const float);
-    float objectClassifierPredictor(
-       cv::Mat &);
-    void convertCvRectToJSKRectArray(
+       std::multimap<float, cv::Rect_<int> > &, const float); 
+   void convertCvRectToJSKRectArray(
        const std::vector<cv::Rect_<int> > &,
       jsk_recognition_msgs::RectArray &, const int, const cv::Size);
     void objectBoundingBoxPointCloudIndices(
@@ -99,6 +97,10 @@ class ObjectRecognition: public HOGFeatureDescriptor,
     virtual void configCallback(
         object_recognition::ObjectDetectionConfig &, uint32_t);
 
+    struct svm_problem convertCvMatToLibSVM(
+        const cv::Mat &feature_mat, const cv::Mat &,
+        const svm_parameter &);
+    
  protected:
     boost::mutex mutex_;
     float scale_;
