@@ -2,4 +2,11 @@
   <node pkg="object_recognition" type="object_recognition_nodelet"
 	name="object_recognition" output="screen">
   </node>
+  <node pkg="object_recognition" type="non_maximum_suppression.py"
+	name="non_maximum_suppression" output="screen">
+    <remap from="non_maximum_suppression"
+	   to="non_maximum_suppression" />
+  </node>
+  <node pkg="rqt_reconfigure" type="rqt_reconfigure"
+	name="detector_reconfigure" />
 </launch>

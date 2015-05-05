@@ -14,11 +14,13 @@
 
 ObjectRecognition::ObjectRecognition(const std::string dataset_path) :
     it_(nh_),
-    dataset_path_(dataset_path),
-    supportVectorMachine_(new cv::SVM) {
+    dataset_path_(dataset_path) {
 
     this->nms_client_ = nh_.serviceClient<
-       object_recognition::NonMaximumSuppression>("non_maximum_suppression");    
+       object_recognition::NonMaximumSuppression>("non_maximum_suppression");
+
+    this->swindow_x = 32;
+    this->swindow_y = 64;
     
     bool isTrain = false;
     if (isTrain) {
@@ -26,17 +28,18 @@ ObjectRecognition::ObjectRecognition(const std::string dataset_path) :
        trainObjectClassifier();
        ROS_INFO("%s--Trained Successfully..%s", BLUE, RESET);
        exit(-1);
-    } else {
-       ROS_INFO("%s--Loading Trained SVM Classifier%s", GREEN, RESET);
-       try{
-           this->model_name_ = "svm.xml";
-           this->supportVectorMachine_->load((this->model_name_).c_str());
-           ROS_INFO("%s--Trained SVM Classifier Loaded Successfully%s", GREEN, RESET);
-       } catch(cv::Exception &e){
-           ROS_ERROR("%s--ERROR LOADING TRAINED CLASSIFIER %s%s", BOLDRED, e.what(), RESET);
-           std::_Exit(EXIT_FAILURE);
-       }
     }
+    
+    //try {
+       ROS_INFO("%s--Loading Trained SVM Classifier%s", GREEN, RESET);
+       this->model_name_ = "/home/krishneel/.ros/model";
+       struct svm_model* svm_load = svm_load_model(this->model_name_.c_str());
+       this->svm_model_ = boost::shared_ptr<svm_model>(svm_load);
+       ROS_INFO("%s--Classifier Loaded Successfully%s", GREEN, RESET);
+    // } catch(cv::Exception &e) {
+    //    ROS_ERROR("%s--ERROR: %s%s", BOLDRED, e.what(), RESET);
+    //    std::_Exit(EXIT_FAILURE);
+    // }
     this->subscribe();
 
     this->pub_rects_ = this->nh_.advertise<
@@ -53,10 +56,9 @@ ObjectRecognition::ObjectRecognition(const std::string dataset_path) :
 
 void ObjectRecognition::subscribe() {
     this->image_sub_ = this->it_.subscribe(
-       "/camera/rgb/image_rect_color"
-       /*"/multisense/left/image_rect_color"*/, 1,
+       "/camera/rgb/image_rect_color", 1,
        &ObjectRecognition::imageCb, this);
-
+    
     dynamic_reconfigure::Server<
        object_recognition::ObjectDetectionConfig>::CallbackType f =
        boost::bind(&ObjectRecognition::configCallback, this, _1, _2);
@@ -75,17 +77,27 @@ void ObjectRecognition::imageCb(
     cv::Mat image;
     cv::Size isize = cv_ptr->image.size();
     // control params
-    const int downsize = this->downsize_;
+    const int downsize = 2;
     const float scale = this->scale_;
     const int img_stack = this->stack_size_;
     const int incrementor = this->incrementor_;
 
+    
+    std::clock_t start;
+    double duration;
+    start = std::clock();
+    
     cv::resize(cv_ptr->image, image, cv::Size(
                   isize.width/downsize, isize.height/downsize));
     std::vector<cv::Rect_<int> > bb_rects = this->runObjectRecognizer(
        image, cv::Size(this->swindow_x, this->swindow_y),
        scale, img_stack, incrementor);
 
+    duration = (std::clock() - start) / static_cast<double>(CLOCKS_PER_SEC);
+    std::cout << BLUE << "TIME PASSED: " << duration << RESET << std::endl;
+    
+    
+    
     jsk_recognition_msgs::RectArray jsk_rect_array;
     this->convertCvRectToJSKRectArray(
        bb_rects, jsk_rect_array, downsize, isize);
@@ -130,7 +142,7 @@ std::vector<cv::Rect_<int> >  ObjectRecognition::runObjectRecognizer(
             it = detection_info.begin(); it != detection_info.end(); it++) {
        cv::rectangle(dimg, it->second, cv::Scalar(0, 255, 0), 2);
     }
-    const float nms_threshold = 0.05;
+    const float nms_threshold = 0.01;
     std::vector<cv::Rect_<int> > object_rects = this->nonMaximumSuppression(
        detection_info, nms_threshold);
     cv::Mat bimg = image.clone();
@@ -148,6 +160,14 @@ std::vector<cv::Rect_<int> >  ObjectRecognition::runObjectRecognizer(
 void ObjectRecognition::objectRecognizer(
     const cv::Mat &image, std::multimap<float, cv::Rect_<int> > &detection_info,
     const cv::Size wsize, const int incrementor) {
+
+    bool is_compute_probability = true;
+   
+    bool is_probability_model = svm_check_probability_model(
+       this->svm_model_.get());
+    int svm_type = svm_get_svm_type(this->svm_model_.get());
+    int nr_class = svm_get_nr_class(this->svm_model_.get());
+    double *prob_estimates = new double[nr_class];
     for (int j = 0; j < image.rows; j += incrementor) {
        for (int i = 0; i < image.cols; i += incrementor) {
           cv::Rect_<int> rect = cv::Rect_<int>(i, j, wsize.width, wsize.height);
@@ -157,14 +177,31 @@ void ObjectRecognition::objectRecognizer(
              cv::GaussianBlur(roi, roi, cv::Size(3, 3), 1.0);
              cv::resize(roi, roi, cv::Size(this->swindow_x, this->swindow_y));
              cv::Mat roi_hog = this->computeHOG(roi);
-             cv::Mat roi_lbp = this->computeLBP(
-                 roi, cv::Size(8, 8), 10, false, true);
-             cv::Mat _feature;
-             this->concatenateCVMat(roi_hog, roi_lbp, _feature);
-             float response = this->supportVectorMachine_->predict(
-                 _feature, false);
-             if (response == 1) {
-                detection_info.insert(std::make_pair(response, rect));
+             // cv::Mat roi_lbp = this->computeLBP(
+             //  roi, cv::Size(8, 8), 10, false, true);
+             // cv::Mat _feature;
+             // this->concatenateCVMat(roi_hog, roi_lbp, _feature);
+
+             const int dims = static_cast<int>(roi_hog.cols);
+             svm_node* test_feature = new svm_node[dims];
+             for (int y = 0; y < dims; y++) {
+                test_feature[y].index = y + 1;
+                test_feature[y].value = static_cast<double>(
+                   roi_hog.at<float>(0, y));
+             }
+             test_feature[dims].index = -1;
+
+             float response = 0.0f;
+             if (is_probability_model && is_compute_probability) {
+                response = svm_predict_probability(
+                   this->svm_model_.get(), test_feature, prob_estimates);
+             } else {
+                response = svm_predict(this->svm_model_.get(), test_feature);
+             }
+             
+             if (prob_estimates[0] > 0.5 /*|| response == 1*/) {
+                // detection_info.insert(std::make_pair(response, rect));
+                detection_info.insert(std::make_pair(prob_estimates[0], rect));
              } else {
                 continue;
              }
@@ -200,6 +237,7 @@ std::vector<cv::Rect_<int> > ObjectRecognition::nonMaximumSuppression(
        jsk_rect.width = cv_rect.width;
        jsk_rect.height = cv_rect.height;
        srv_nms.request.rect.push_back(jsk_rect);
+       srv_nms.request.probabilities.push_back(it->first);
     }
     srv_nms.request.threshold = nms_threshold;;
     std::vector<cv::Rect_<int> > bbox;
@@ -223,32 +261,29 @@ void ObjectRecognition::trainObjectClassifier() {
     // reading the positive training image
     std::string pfilename = dataset_path_ + "dataset/train.txt";
     std::vector<cv::Mat> pdataset_img;
+    cv::Mat featureMD;
     cv::Mat labelMD;
-    this->readDataset(pfilename, pdataset_img, labelMD, true, 1);
+    this->readDataset(pfilename, featureMD, labelMD, true, 1);
+    ROS_INFO("Info: Total Object Sample: %d", featureMD.rows);
     
     // reading the negative training image
     std::string nfilename = dataset_path_ + "dataset/negative.txt";
     std::vector<cv::Mat> ndataset_img;
-    this->readDataset(nfilename, ndataset_img, labelMD, true, -1);
+    this->readDataset(nfilename, featureMD, labelMD, true, -1);
+    ROS_INFO("Info: Total Training Features: %d", featureMD.rows);
 
-    pdataset_img.insert(
-       pdataset_img.end(), ndataset_img.begin(), ndataset_img.end());
-       
-    cv::Mat featureMD;
-    this->extractFeatures(pdataset_img, featureMD);
-    std::cout << featureMD.size() << std::endl;
-        
+    // std::cout << featureMD.size() << std::endl;
+
+    
     try {
        this->trainBinaryClassSVM(featureMD, labelMD);
-       this->supportVectorMachine_->save(
-          (this->model_name_).c_str());
     } catch(std::exception &e) {
        ROS_ERROR("%s--ERROR: %s%s", BOLDRED, e.what(), RESET);
     }
 }
 
 void ObjectRecognition::readDataset(
-    std::string filename, std::vector<cv::Mat> &dataset_img, cv::Mat &labelMD,
+    std::string filename, cv::Mat &featureMD, cv::Mat &labelMD,
     bool is_usr_label, const int usr_label) {
     ROS_INFO("%s--READING DATASET IMAGE%s", GREEN, RESET);
     std::ifstream infile;
@@ -274,7 +309,7 @@ void ObjectRecognition::readDataset(
              }
              if (img.data) {
                 labelMD.push_back(label);
-                dataset_img.push_back(img);
+                this->extractFeatures(img, featureMD);
              }
           }
        }
@@ -285,84 +320,66 @@ void ObjectRecognition::readDataset(
  * currently programmed using fixed sized image
  */
 void ObjectRecognition::extractFeatures(
-    const std::vector<cv::Mat> &dataset_img, cv::Mat &featureMD) {
+    cv::Mat &img, cv::Mat &featureMD) {
     ROS_INFO("%s--EXTRACTING IMAGE FEATURES.%s", GREEN, RESET);
-    for (std::vector<cv::Mat>::const_iterator it = dataset_img.begin();
-         it != dataset_img.end(); it++) {
-       cv::Mat img = *it;
+    if (img.data) {
        cv::resize(img, img, cv::Size(this->swindow_x, this->swindow_y));
-       if (img.data) {
-          cv::Mat hog_feature = this->computeHOG(img);
-          cv::Mat lbp_feature = this->computeLBP(
-             img, cv::Size(8, 8), 10, false, true);
-          cv::Mat _feature;
-          this->concatenateCVMat(hog_feature, lbp_feature, _feature, true);
-          featureMD.push_back(_feature);
-       }
-       cv::imshow("image", img);
-       cv::waitKey(3);
+       cv::Mat hog_feature = this->computeHOG(img);
+       // cv::Mat lbp_feature = this->computeLBP(
+       //    img, cv::Size(8, 8), 10, false, true);
+       cv::Mat _feature = hog_feature;
+       // this->concatenateCVMat(hog_feature, lbp_feature, _feature, true);
+       featureMD.push_back(_feature);
     }
+    cv::imshow("image", img);
+    cv::waitKey(3);
 }
 
 void ObjectRecognition::trainBinaryClassSVM(
     const cv::Mat &featureMD, const cv::Mat &labelMD) {
     ROS_INFO("%s--TRAINING CLASSIFIER%s", GREEN, RESET);
-
+    
     svm_parameter param;
-    param.svm_type = C_SVC;
-    param.kernel_type = LINEAR;
+    param.svm_type = NU_SVC;
+    param.kernel_type = RBF;
     param.degree = 3;
     param.gamma = 0;
     param.coef0 = 0;
     param.nu = 0.5;
     param.cache_size = 100;
     param.C = 1;
-    param.eps = 1e-4;
+    param.eps = 1e-3;
     param.p = 0.1;
     param.shrinking = 1;
     param.probability = 1;
     param.nr_weight = 0;
     param.weight_label = NULL;
     param.weight = NULL;
-        
+    
     svm_problem svm_prob_vector = this->convertCvMatToLibSVM(
-        featureMD, labelMD, param);
-    struct svm_model *model = new svm_model;
+        featureMD, labelMD);
+    
+    /*
+    std::ofstream outFile("/home/krishneel/Desktop/feature.txt", std::ios::out);
+    for (int j = 0; j < featureMD.rows; j++) {
+       outFile << svm_prob_vector.y[j] << " ";
+       for (int i = 0; i < featureMD.cols; i++) {
+          outFile << svm_prob_vector.x[j][i].index << ":"
+                  << svm_prob_vector.x[j][i].value << "  ";
+       }outFile << "\n";
+    }
+    exit(-1);
+    */
+    
     if (svm_check_parameter(&svm_prob_vector, &param)) {
         std::cout << "ERROR" << std::endl;
     } else {
+        struct svm_model *model = new svm_model;
         model = svm_train(&svm_prob_vector, &param);
+        // svm_save_model(this->model_name_.c_str(), model);
+        svm_save_model("/home/krishneel/Desktop/svm", model);
+        svm_free_and_destroy_model(&model);
     }
-    
-    
-    cv::SVMParams svm_param = cv::SVMParams();
-    svm_param.svm_type = cv::SVM::NU_SVC;
-    svm_param.kernel_type = cv::SVM::RBF;
-    svm_param.degree = 0.0;
-    svm_param.gamma = 0.90;
-    svm_param.coef0 = 0.50;
-    svm_param.C = 100;
-    svm_param.nu = 0.70;
-    svm_param.p = 1.0;
-    svm_param.class_weights = NULL;
-    svm_param.term_crit.type = CV_TERMCRIT_ITER | CV_TERMCRIT_EPS;
-    svm_param.term_crit.max_iter = 1000;
-    svm_param.term_crit.epsilon = 1e-6;
-    cv::ParamGrid paramGrid = cv::ParamGrid();
-    paramGrid.min_val = 0;
-    paramGrid.max_val = 0;
-    paramGrid.step = 1;
-
-    /*this->supportVectorMachine_->train(
-       featureMD, labelMD, cv::Mat(), cv::Mat(), svm_param);*/
-    this->supportVectorMachine_->train_auto
-       (featureMD, labelMD, cv::Mat(), cv::Mat(), svm_param, 10,
-        paramGrid, cv::SVM::get_default_grid(cv::SVM::GAMMA),
-        cv::SVM::get_default_grid(cv::SVM::P),
-        cv::SVM::get_default_grid(cv::SVM::NU),
-        cv::SVM::get_default_grid(cv::SVM::COEF),
-        cv::SVM::get_default_grid(cv::SVM::DEGREE),
-        true);
 }
 
 void ObjectRecognition::concatenateCVMat(
@@ -391,7 +408,6 @@ void ObjectRecognition::concatenateCVMat(
     }
 }
 
-
 void ObjectRecognition::objectBoundingBoxPointCloudIndices(
     const std::vector<cv::Rect_<int> > &bounding_boxes,
     std::vector<pcl::PointIndices> &cluster_indices,
@@ -416,12 +432,10 @@ void ObjectRecognition::objectBoundingBoxPointCloudIndices(
     }
 }
 
-
 void ObjectRecognition::convertCvRectToJSKRectArray(
       const std::vector<cv::Rect_<int> > &bounding_boxes,
       jsk_recognition_msgs::RectArray &jsk_rects,
-      const int downsize, const cv::Size img_sz)
-   {
+      const int downsize, const cv::Size img_sz) {
       for (std::vector<cv::Rect_<int> >::const_iterator it =
               bounding_boxes.begin(); it != bounding_boxes.end(); it++) {
          jsk_recognition_msgs::Rect j_r;
@@ -431,7 +445,7 @@ void ObjectRecognition::convertCvRectToJSKRectArray(
          j_r.height = it->height * downsize;
          jsk_rects.rects.push_back(j_r);
       }
-   }
+}
 
 void ObjectRecognition::configCallback(
     object_recognition::ObjectDetectionConfig &config, uint32_t level) {
@@ -454,8 +468,7 @@ void ObjectRecognition::configCallback(
  * Opencv Mat to libSVM svm_problem wrapper for training
  */
 struct svm_problem ObjectRecognition::convertCvMatToLibSVM(
-    const cv::Mat &feature_mat, const cv::Mat &label_mat,
-    const svm_parameter &param) {
+    const cv::Mat &feature_mat, const cv::Mat &label_mat) {
     if (feature_mat.rows != label_mat.rows) {
         std::cout << "--TRAINING SET IS NOT EQUIVALENT.." << std::endl;
         std::_Exit(EXIT_FAILURE);
@@ -473,8 +486,11 @@ struct svm_problem ObjectRecognition::convertCvMatToLibSVM(
         svm_prob_vector.y[j] = static_cast<double>(label_mat.at<float>(j, 0));
         for (int i = 0; i < feature_dimensions; i++) {
             svm_prob_vector.x[j][i].index = i + 1;
-            svm_prob_vector.x[j][i].value = static_cast<double>(
-                feature_mat.at<float>(j, i));
+            float val_ = static_cast<double>(feature_mat.at<float>(j, i));
+            if (isnan(val_)) {
+               val_ = 0.0f;
+            }
+            svm_prob_vector.x[j][i].value = val_;
         }
         svm_prob_vector.x[j][feature_dimensions].index = -1;
     }
@@ -488,7 +504,7 @@ int main(int argc, char *argv[]) {
     ROS_INFO("%sRUNNING OBJECT RECOGNITION NODELET%s", BOLDRED, RESET);
     std::string _path = "/home/krishneel/catkin_ws/src/image_annotation_tool/";
     ObjectRecognition recognition(_path);
-    PointCloudObjectDetection pcod;
+    // PointCloudObjectDetection pcod;
     ros::spin();
     return 0;
 }

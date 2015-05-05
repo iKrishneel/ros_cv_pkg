@@ -1,4 +1,5 @@
 jsk_recognition_msgs/Rect[] rect
+float32[] probabilities
 float32 threshold
 ---
 jsk_recognition_msgs/Rect[] bbox

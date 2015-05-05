@@ -57,8 +57,9 @@ class ObjectRecognition: public HOGFeatureDescriptor,
    
     ros::ServiceClient nms_client_;
    
-   // cv::Size swindow_;
     boost::shared_ptr<cv::SVM> supportVectorMachine_;
+    boost::shared_ptr<svm_model> svm_model_;
+   
     void concatenateCVMat(
        const cv::Mat &, const cv::Mat &, cv::Mat &, bool = true);
    
@@ -66,10 +67,10 @@ class ObjectRecognition: public HOGFeatureDescriptor,
     explicit ObjectRecognition(const std::string);
     virtual void trainObjectClassifier();
     virtual void readDataset(
-       std::string, std::vector<cv::Mat> &,
+       std::string, cv::Mat &,
        cv::Mat &, bool = false, const int = 0);
     virtual void extractFeatures(
-       const std::vector<cv::Mat> &, cv::Mat &);
+       cv::Mat &, cv::Mat &);
     virtual void trainBinaryClassSVM(
        const cv::Mat &, const cv::Mat &);
     virtual void imageCb(
@@ -83,8 +84,8 @@ class ObjectRecognition: public HOGFeatureDescriptor,
     virtual void pyramidialScaling(
        cv::Size &, const float);
     virtual std::vector<cv::Rect_<int> > nonMaximumSuppression(
-       std::multimap<float, cv::Rect_<int> > &, const float); 
-   void convertCvRectToJSKRectArray(
+       std::multimap<float, cv::Rect_<int> > &, const float);
+    void convertCvRectToJSKRectArray(
        const std::vector<cv::Rect_<int> > &,
       jsk_recognition_msgs::RectArray &, const int, const cv::Size);
     void objectBoundingBoxPointCloudIndices(
@@ -98,8 +99,7 @@ class ObjectRecognition: public HOGFeatureDescriptor,
         object_recognition::ObjectDetectionConfig &, uint32_t);
 
     struct svm_problem convertCvMatToLibSVM(
-        const cv::Mat &feature_mat, const cv::Mat &,
-        const svm_parameter &);
+        const cv::Mat &feature_mat, const cv::Mat &);
     
  protected:
     boost::mutex mutex_;
