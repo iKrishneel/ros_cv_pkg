@@ -11,7 +11,7 @@ ImageAnnotationTool::ImageAnnotationTool(const std::string _path) :
     segment_template_(true),
     write_txt_name_("train.txt"),
     save_folder_name_("dataset"),
-    obj_rect_(cv::Rect_<int>(0, 0, 0, 0)){
+    obj_rect_(cv::Rect_<int>(0, 0, 0, 0)) {
 
     bool is_dir_ok = this->saveDirectoryHandler(
         _path + this->save_folder_name_, this->model_save_path_);
@@ -26,7 +26,7 @@ ImageAnnotationTool::ImageAnnotationTool(const std::string _path) :
 
 void ImageAnnotationTool::subscribe() {
     this->image_sub_ = this->it_.subscribe(
-       "/camera/rgb/image_rect_color", 1,
+       "input", 1,
        &ImageAnnotationTool::imageCb, this);
 
     this->screenpt_sub_ = this->nh_.subscribe(
@@ -59,19 +59,17 @@ void ImageAnnotationTool::imageCb(
         this->bootStrapNonObjectDataset(cv_ptr->image, cv::Size(64, 128), 4);
     }
     this->image_pub_.publish(cv_ptr->toImageMsg());
- }
+}
 
-
- void ImageAnnotationTool::screenRectangleCb(
+void ImageAnnotationTool::screenRectangleCb(
      const geometry_msgs::PolygonStamped::Ptr &pt_msgs) {
      this->obj_rect_.x = pt_msgs->polygon.points[0].x;
      this->obj_rect_.y = pt_msgs->polygon.points[0].y;
      this->obj_rect_.width = pt_msgs->polygon.points[1].x - this->obj_rect_.x;
      this->obj_rect_.height = pt_msgs->polygon.points[1].y - this->obj_rect_.y;
- }
+}
 
-
- cv::Mat ImageAnnotationTool::cvTemplateMatching(
+cv::Mat ImageAnnotationTool::cvTemplateMatching(
      const cv::Mat &image,
      const cv::Mat &template_img,
      const int match_method) {
@@ -106,16 +104,16 @@ void ImageAnnotationTool::imageCb(
         iteration_counter_++;
         this->constructColorModel(image, rect, true);
      }
- #ifndef DEBUG
+#ifndef DEBUG
      cv::Mat img = image.clone();
      cv::rectangle(img, rect, cv::Scalar(0, 255, 0), 2);
      cv::imshow("match", img);
      cv::waitKey(3);
- #endif
+#endif
      return image(rect).clone();
- }
+}
 
- void ImageAnnotationTool::processFrame(
+void ImageAnnotationTool::processFrame(
      const cv::Mat &frame,
      const cv::Mat &image) {
      if (image.empty()) {
@@ -127,7 +125,7 @@ void ImageAnnotationTool::imageCb(
      cv::Mat mask = this->segmentationProbabilityMap(color_prob, shape_prob);
      cv::Mat model;
      if (mask.data) {
-         std::ofstream outFile (
+        std::ofstream outFile(
              (this->model_save_path_ + "/" + this->write_txt_name_).c_str(),
              std::ios_base::app);
         cv::Rect_<int> _rect = cv::Rect_<int>(0, 0, image.cols, image.rows);
@@ -339,8 +337,6 @@ cv::Mat ImageAnnotationTool::createMaskImage(
     return mask;
 }
 
-
-
 cv::Rect_<int> ImageAnnotationTool::modelResize(
     const cv::Mat &src) {
     if (src.empty()) {
@@ -368,7 +364,6 @@ cv::Rect_<int> ImageAnnotationTool::modelResize(
     }
     return rect;
 }
-
 
 template<typename T>
 std::string ImageAnnotationTool::convertNumber2String(
@@ -437,15 +432,15 @@ void ImageAnnotationTool::bootStrapNonObjectDataset(
 
 bool ImageAnnotationTool::directoryExists(
     const char* pzPath) {
-    if ( pzPath == NULL) {
+    if (pzPath == NULL) {
         return false;
     }
     DIR *pDir;
     bool bExists = false;
-    pDir = opendir (pzPath);
+    pDir = opendir(pzPath);
     if (pDir != NULL) {
         bExists = true;
-        (void) closedir (pDir);
+        (void)closedir(pDir);
     }
     return bExists;
 }
@@ -468,11 +463,11 @@ bool ImageAnnotationTool::saveDirectoryHandler(
 template<class T>
 std::string ImageAnnotationTool::timeToStr(T ros_t) {
     std::stringstream msg;
-    const boost::posix_time::ptime now=
+    const boost::posix_time::ptime now =
     boost::posix_time::second_clock::local_time();
     boost::posix_time::time_facet *const f =
         new boost::posix_time::time_facet("%Y-%m-%d-%H-%M-%S");
-    msg.imbue(std::locale(msg.getloc(),f));
+    msg.imbue(std::locale(msg.getloc(), f));
     msg << now;
     return msg.str();
 }
@@ -481,8 +476,7 @@ int main(int argc, char *argv[]) {
 
     ros::init(argc, argv, "image_annotation_tool");
     ROS_INFO("RUNNING IMAGE_ANNOTATION_NODELET");
-    std::string _directory =
-       "/home/krishneel/Desktop/";
+    std::string _directory = "/home/krishneel/Desktop/";
     ImageAnnotationTool iATool(_directory);
     ros::spin();
     return 0;
