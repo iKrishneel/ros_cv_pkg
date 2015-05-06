@@ -16,23 +16,19 @@ ObjectRecognition::ObjectRecognition() :
     it_(nh_),
     supportVectorMachine_(new cv::SVM) {
 
+    nh_.getParam("trainer_manifest", this->trainer_manifest_filename_);
     this->readTrainingManifestFromDirectory();
+    
     this->nms_client_ = nh_.serviceClient<
        object_recognition::NonMaximumSuppression>("non_maximum_suppression");
-
-    this->run_type_ == "DETECTOR";
-    this->swindow_x = 32;
-    this->swindow_y = 64;
+    
+    nh_.getParam("run_type", this->run_type_);
+    // nh_.getParam("/object_recognition/run_type", this->run_type_);
     
     try {
        ROS_INFO("%s--Loading Trained SVM Classifier%s", GREEN, RESET);
-       this->model_name_ = "drill_hog_lbp_svm.xml";
+       // this->model_name_ = "dataset/drill_hog_lbp_svm.xml";
        this->supportVectorMachine_->load(this->model_name_.c_str());
-
-       //  TODO(): LOAD THE MANIFEST FILE
-       // set window size here
-       // path to positive / negative training files
-       
        ROS_INFO("%s--Classifier Loaded Successfully%s", GREEN, RESET);
     } catch(cv::Exception &e) {
        ROS_ERROR("%s--ERROR: %s%s", BOLDRED, e.what(), RESET);
@@ -86,7 +82,7 @@ void ObjectRecognition::imageCb(
             it = detection_info.begin(); it != detection_info.end(); it++) {
        cv::rectangle(dimg, it->second, cv::Scalar(0, 255, 0), 2);
     }
-    if (this->run_type_.compare("DETECTOR")) {
+    if (this->run_type_.compare("DETECTOR") == 0) {
        const float nms_threshold = 0.01;
        std::vector<cv::Rect_<int> > object_rects = this->nonMaximumSuppression(
           detection_info, nms_threshold);
@@ -101,9 +97,10 @@ void ObjectRecognition::imageCb(
        jsk_rect_array.header = msg->header;
        this->pub_rects_.publish(jsk_rect_array);
        cv::imshow("Final Detection", bimg);
-    } else if (this->run_type_.compare("BOOTSTRAPER")) {
+    } else if (this->run_type_.compare("BOOTSTRAPER") == 0) {
        this->bootstrapFalsePositiveDetection(
-          image, "", "", detection_info);
+          image, this->ndataset_path_, this->nonobject_dataset_filename_,
+          detection_info);
     } else {
        ROS_ERROR("NODELET RUNTYPE IS NOT SET");
        std::_Exit(EXIT_FAILURE);
@@ -146,10 +143,10 @@ void ObjectRecognition::objectRecognizer(
              cv::GaussianBlur(roi, roi, cv::Size(3, 3), 1.0);
              cv::resize(roi, roi, cv::Size(this->swindow_x, this->swindow_y));
              cv::Mat roi_hog = this->computeHOG(roi);
-             cv::Mat roi_lbp = this->computeLBP(
-                roi, cv::Size(8, 8), 10, false, true);
-             cv::Mat _feature;
-             this->concatenateCVMat(roi_hog, roi_lbp, _feature);
+             // cv::Mat roi_lbp = this->computeLBP(
+             //   roi, cv::Size(8, 8), 10, false, true);
+             cv::Mat _feature = roi_hog;
+             // this->concatenateCVMat(roi_hog, roi_lbp, _feature);
              float response = this->supportVectorMachine_->predict(
                 _feature, false);
              if (response == 1) {
@@ -300,16 +297,14 @@ void ObjectRecognition::configCallback(
     this->stack_size_ = static_cast<int>(config.stack_size);
     this->incrementor_ = config.sliding_window_increment;
 
-    this->model_name_ = config.svm_model_name;
-      
+    // this->run_type_ = config.run_type;
+    
+    // this->model_name_ = config.svm_model_name;
+    
       // currently fixed variables
-    this->swindow_x = config.sliding_window_width;
-    this->swindow_y = config.sliding_window_height;
+    // this->swindow_x = config.sliding_window_width;
+    // this->swindow_y = config.sliding_window_height;
     this->downsize_ = config.image_downsize;
-}
-
-void readTrainerManifestFile(std::string manifest_file) {
-   
 }
 
 void ObjectRecognition::bootstrapFalsePositiveDetection(
@@ -324,6 +319,7 @@ void ObjectRecognition::bootstrapFalsePositiveDetection(
     for (std::multimap<float, cv::Rect_<int> >::const_iterator
             it = detection_info.begin(); it != detection_info.end(); it++) {
        cv::Mat roi = frame(it->second).clone();
+       /* -- chnage name to data-time wise */
        std::string sve_pt ="img_" + this->convertNumber2String<int>(icounter++)
           + ".jpg";
        cv::imwrite(save_path + sve_pt, roi);
@@ -344,7 +340,7 @@ std::string ObjectRecognition::convertNumber2String(
 
 void ObjectRecognition::readTrainingManifestFromDirectory() {
     cv::FileStorage fs = cv::FileStorage(
-      this->trainer_manifest_path_, cv::FileStorage::READ);
+       this->trainer_manifest_filename_, cv::FileStorage::READ);
     if (!fs.isOpened()) {
        ROS_ERROR("TRAINER MANIFEST NOT FOUND..");
        std::_Exit(EXIT_FAILURE);
@@ -352,21 +348,27 @@ void ObjectRecognition::readTrainingManifestFromDirectory() {
     cv::FileNode n = fs["TrainerInfo"];
     std::string ttype = n["trainer_type"];
     std::string tpath = n["trainer_path"];
-    this->model_name_ = tpath;
+    this->model_name_ = tpath;  // classifier path
     
-    n = fs["FeatureInfo"];
+    n = fs["FeatureInfo"];  // features used
     int hog = static_cast<int>(n["HOG"]);
     int lbp = static_cast<int>(n["LBP"]);
 
-    n = fs["SlidingWindowInfo"];
-    this->swindow_x = static_cast<int>(n["window_x"]);
-    this->swindow_y = static_cast<int>(n["window_y"]);
-
+    n = fs["SlidingWindowInfo"];  // window size
+    int sw_x = static_cast<int>(n["swindow_x"]);
+    int sw_y = static_cast<int>(n["swindow_y"]);
+    this->swindow_x = sw_x;
+    this->swindow_y = sw_y;
+    
     n = fs["TrainingDatasetDirectoryInfo"];
-    std::string pfile = n["object_dataset"];
-    std::string nfile = n["nonobject_dataset"];
-    this->object_dataset_path_ = pfile;
-    this->nonobject_dataset_path_ = nfile;
+    std::string pfile = n["object_dataset_filename"];
+    std::string nfile = n["nonobject_dataset_filename"];
+    std::string dataset_path = n["dataset_path"];
+    this->object_dataset_filename_ = pfile;  // obj/non dataset
+    this->nonobject_dataset_filename_ = nfile;
+    this->ndataset_path_ = dataset_path;  // name to database/negative
+
+    
 }
 
 

@@ -1,0 +1,19 @@
+<launch>
+  <node pkg="object_recognition" type="object_recognition_nodelet"
+	name="object_recognition" output="screen">
+    <remap from="input" to="/camera/rgb/image_rect_color" />
+    <param name="run_type"  value="DETECTOR" type="str"/>
+    <param name="trainer_manifest"  value="sliding_window_trainer_manifest.xml" type="str"/>
+    <!--<remap from="/object_recognition/run_type" to="run_type" />-->
+    <remap from="run_type" to="/object_recognition/run_type" />
+    <remap from="trainer_manifest" to="/object_recognition/trainer_manifest" />
+    
+  </node>
+  <node pkg="object_recognition" type="non_maximum_suppression.py"
+	name="non_maximum_suppression" output="screen">
+    <remap from="non_maximum_suppression"
+	   to="non_maximum_suppression" />
+  </node>
+  <node pkg="rqt_reconfigure" type="rqt_reconfigure"
+	name="detector_reconfigure" />
+</launch>

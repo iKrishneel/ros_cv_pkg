@@ -99,7 +99,6 @@ class ObjectRecognition: public HOGFeatureDescriptor,
    
     template<typename T>
     std::string convertNumber2String(T);
-   
        
  protected:
     boost::mutex mutex_;
@@ -116,9 +115,10 @@ class ObjectRecognition: public HOGFeatureDescriptor,
        object_recognition::ObjectDetectionConfig>  server;
 
     std::string run_type_;
-    std::string trainer_manifest_path_;
-    std::string object_dataset_path_;
-    std::string nonobject_dataset_path_;
+    std::string trainer_manifest_filename_;
+    std::string object_dataset_filename_;
+    std::string nonobject_dataset_filename_;
+    std::string ndataset_path_;
 };
 
 #endif  // _OBJECT_RECOGNITION_H_
