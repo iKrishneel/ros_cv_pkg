@@ -17,7 +17,7 @@ def non_max_suppression_fast(boxes, probs, overlapThresh):
 	x2 = boxes[:,2]
 	y2 = boxes[:,3]
 	area = (x2 - x1 + 1) * (y2 - y1 + 1)
-	idxs = np.argsort(probs)
+	idxs = np.argsort(y2)
 	while len(idxs) > 0:
 		last = len(idxs) - 1
 		i = idxs[last]

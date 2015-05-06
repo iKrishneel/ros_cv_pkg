@@ -42,7 +42,7 @@ class ImageAnnotationTool {
     bool segment_template_;
     
  public:
-    ImageAnnotationTool(std::string);
+    explicit ImageAnnotationTool(const std::string);
     void imageCb(
        const sensor_msgs::ImageConstPtr&);
     void screenRectangleCb(
@@ -104,6 +104,5 @@ class ImageAnnotationTool {
     void subscribe();
    
 };
-
 
 #endif  // _IMAGE_ANNOTATION_TOOL_H_

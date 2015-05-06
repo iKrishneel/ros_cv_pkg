@@ -14,7 +14,8 @@ ImageAnnotationTool::ImageAnnotationTool(const std::string _path) :
     obj_rect_(cv::Rect_<int>(0, 0, 0, 0)) {
 
     bool is_dir_ok = this->saveDirectoryHandler(
-        _path + this->save_folder_name_, this->model_save_path_);
+       /*_path +*/ this->save_folder_name_, this->model_save_path_);
+    std::cout << "Path: " << this->model_save_path_ << std::endl;
     if (is_dir_ok) {
         this->subscribe();
     } else {
@@ -476,8 +477,8 @@ int main(int argc, char *argv[]) {
 
     ros::init(argc, argv, "image_annotation_tool");
     ROS_INFO("RUNNING IMAGE_ANNOTATION_NODELET");
-    std::string _directory = "/home/krishneel/Desktop/";
-    ImageAnnotationTool iATool(_directory);
+    // std::string _directory = "/home/krishneel/Desktop/";
+    ImageAnnotationTool iATool(""/*_directory*/);
     ros::spin();
     return 0;
 }

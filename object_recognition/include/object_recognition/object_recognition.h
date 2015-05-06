@@ -54,30 +54,25 @@ class ObjectRecognition: public HOGFeatureDescriptor,
     image_transport::Publisher image_pub_;
     ros::Publisher pub_indices_;
     ros::Publisher pub_rects_;
-   
     ros::ServiceClient nms_client_;
    
     boost::shared_ptr<cv::SVM> supportVectorMachine_;
-    boost::shared_ptr<svm_model> svm_model_;
-   
+    
     void concatenateCVMat(
        const cv::Mat &, const cv::Mat &, cv::Mat &, bool = true);
+    void readTrainingManifestFromDirectory();
    
  public:
-    explicit ObjectRecognition(const std::string);
-    virtual void trainObjectClassifier();
-    virtual void readDataset(
-       std::string, cv::Mat &,
-       cv::Mat &, bool = false, const int = 0);
+    ObjectRecognition();
     virtual void extractFeatures(
        cv::Mat &, cv::Mat &);
-    virtual void trainBinaryClassSVM(
-       const cv::Mat &, const cv::Mat &);
     virtual void imageCb(
        const sensor_msgs::ImageConstPtr&);
 
-    virtual std::vector<cv::Rect_<int> > runObjectRecognizer(
+    virtual std::multimap<float, cv::Rect_<int> > runObjectRecognizer(
       const cv::Mat &, const cv::Size, const float, const int, const int);
+
+
     virtual void objectRecognizer(
        const cv::Mat &, std::multimap<float, cv::Rect_<int> > &,
        const cv::Size, const int = 16);
@@ -98,23 +93,32 @@ class ObjectRecognition: public HOGFeatureDescriptor,
     virtual void configCallback(
         object_recognition::ObjectDetectionConfig &, uint32_t);
 
-    struct svm_problem convertCvMatToLibSVM(
-        const cv::Mat &feature_mat, const cv::Mat &);
-    
+    virtual void bootstrapFalsePositiveDetection(
+       const cv::Mat &, std::string, std::string,
+       const std::multimap<float, cv::Rect_<int> > &);
+   
+    template<typename T>
+    std::string convertNumber2String(T);
+   
+       
  protected:
     boost::mutex mutex_;
+   
     float scale_;
     int stack_size_;
     int incrementor_;
     int downsize_;
     std::string model_name_;
-    std::string dataset_path_;
     int swindow_x;
     int swindow_y;
 
     dynamic_reconfigure::Server<
        object_recognition::ObjectDetectionConfig>  server;
-   
+
+    std::string run_type_;
+    std::string trainer_manifest_path_;
+    std::string object_dataset_path_;
+    std::string nonobject_dataset_path_;
 };
 
 #endif  // _OBJECT_RECOGNITION_H_
