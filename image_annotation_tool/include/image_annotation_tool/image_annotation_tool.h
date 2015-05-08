@@ -3,6 +3,9 @@
 #define _IMAGE_ANNOTATION_TOOL_H_
 
 #include <ros/ros.h>
+#include <rosbag/bag.h>
+#include <rosbag/view.h>
+
 #include <image_transport/image_transport.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
@@ -30,24 +33,26 @@ class ImageAnnotationTool {
     cv::Mat fore_histogram_;
     cv::Mat back_histogram_;
     int iteration_counter_;
-    int model_save_counter_;
-    std::string model_save_path_;
-
     cv::Mat template_image;
     bool mark_model_;
     cv::Rect_<int> obj_rect_;
+    
+    // parameter from launch
+    std::string run_type_;
     std::string save_folder_name_;
-    std::string write_txt_name_;
-    
-    bool segment_template_;
-    
+    bool background_mask_;
+    int swindow_x_;
+    int swindow_y_;
+   
+    boost::shared_ptr<rosbag::Bag> dataset_bag_;
+   
  public:
     explicit ImageAnnotationTool(const std::string);
     void imageCb(
        const sensor_msgs::ImageConstPtr&);
     void screenRectangleCb(
         const geometry_msgs::PolygonStamped::Ptr &);
-    void processFrame(
+    cv::Mat processFrame(
        const cv::Mat &,
        const cv::Mat &);
     cv::Mat shapeProbabilityMap(
@@ -84,15 +89,6 @@ class ImageAnnotationTool {
        const cv::Mat &);
     template<typename T>
     std::string convertNumber2String(T);
-    void saveImageModel(
-       const cv::Mat &,
-       const std::string &,
-       std::ofstream &,
-       bool = true);
-    void bootStrapNonObjectDataset(
-       const cv::Mat &,
-       const cv::Size,
-       const int = 16);
 
     bool directoryExists(const char*);
     bool saveDirectoryHandler(

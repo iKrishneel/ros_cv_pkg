@@ -140,9 +140,13 @@ void ObjectRecognition::objectRecognizer(
           if ((rect.x + rect.width <= image.cols) &&
               (rect.y + rect.height <= image.rows)) {
              cv::Mat roi = image(rect).clone();
-             // cv::GaussianBlur(roi, roi, cv::Size(3, 3), 1.0);
+             cv::GaussianBlur(roi, roi, cv::Size(3, 3), 1.0);
              cv::resize(roi, roi, cv::Size(this->swindow_x, this->swindow_y));
              cv::Mat roi_hog = this->computeHOG(roi);
+
+             // check if region is white dominant than dont compute
+             
+             
              // cv::Mat roi_lbp = this->computeLBP(
              //   roi, cv::Size(8, 8), 10, false, true);
              cv::Mat _feature = roi_hog;

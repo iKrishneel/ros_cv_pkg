@@ -2,6 +2,26 @@
   <node pkg="image_annotation_tool" type="image_annotation_tool_node"
 	name="image_annotation_tool" output="screen" >
     <remap from="input" to="/camera/rgb/image_rect_color" />
+
+    <!--OBJ_ANNOTATOR => segments +ve dataset -->
+    <!--ENV_ANNOTATOR => segments -ve dataset by bootstrap the enviroment-->
+    <param name="run_type" value="ENV_ANNOTATOR" type="str" />
+    <remap from="run_type" to="/image_annotation_tool/run_type"/>
+
+    <!--specify the folder name of saving -->
+    <param name="save_folder_name" value="training_dataset" type="str" /> 
+    <remap from="save_folder_name" to="/image_annotation_tool/save_folder_name"/>
+
+    <!--Change to true if you want Object ROI without any background -->
+    <param name="mask_background" value="false" type="bool" /> 
+    <remap from="mask_background" to="/image_annotation_tool/mask_background"/>
+
+    <param name="swindow_x" value="32" type="int" /> 
+    <remap from="swindow_x" to="/image_annotation_tool/swindow_x"/>
+
+    <param name="swindow_y" value="64" type="int" /> 
+    <remap from="swindow_y" to="/image_annotation_tool/swindow_y"/>
+    
   </node>
   <node pkg="image_view2" type="image_view2" name="image_view2">
     <remap from="image" to="/camera/rgb/image_rect_color" />

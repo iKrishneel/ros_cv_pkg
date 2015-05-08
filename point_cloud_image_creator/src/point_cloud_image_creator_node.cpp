@@ -29,7 +29,6 @@ void PointCloudImageCreator::cloudCallback(
     boost::mutex::scoped_lock lock(this->lock_);
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-
     
     cv_bridge::CvImagePtr image_msg(new cv_bridge::CvImage);
     image_msg->header = cloud_msg->header;
@@ -89,8 +88,9 @@ cv::Mat PointCloudImageCreator::projectPointCloudToImagePlane(
     std::vector<cv::Point2f> imagePoints;
     cv::projectPoints(objectPoints, rvec, translationMatrix,
                       cameraMatrix, distortionModel, imagePoints);
-    cv::Mat image = cv::Mat::zeros(
-       camera_info->height, camera_info->width, CV_8UC3);
+    cv::Scalar white = cv::Scalar(255, 255, 255);
+    cv::Mat image = cv::Mat(
+       camera_info->height, camera_info->width, CV_8UC3, white);
     for (int i = 0; i < imagePoints.size(); i++) {
        int x = imagePoints[i].x;
        int y = imagePoints[i].y;

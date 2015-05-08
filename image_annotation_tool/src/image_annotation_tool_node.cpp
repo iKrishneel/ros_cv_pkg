@@ -1,22 +1,34 @@
 
 #include <image_annotation_tool/image_annotation_tool.h>
 
-#define DEBUG
-
 ImageAnnotationTool::ImageAnnotationTool(const std::string _path) :
     it_(nh_),
-    iteration_counter_(0),
-    model_save_counter_(0),
+    dataset_bag_(new rosbag::Bag),
+    background_mask_(false),
     mark_model_(true),
-    segment_template_(true),
-    write_txt_name_("train.txt"),
-    save_folder_name_("dataset"),
+    iteration_counter_(0),
     obj_rect_(cv::Rect_<int>(0, 0, 0, 0)) {
 
+    nh_.getParam("run_type", this->run_type_);
+    nh_.getParam("save_folder_name", this->save_folder_name_);
+    nh_.getParam("mask_background", this->background_mask_);
+    nh_.getParam("swindow_x", this->swindow_x_);
+    nh_.getParam("swindow_y", this->swindow_y_);
+    
+    std::string save_folder;
+    if (this->run_type_.compare("OBJ_ANNOTATOR") == 0) {
+       save_folder = "positive";
+    } else if (this->run_type_.compare("ENV_ANNOTATOR") == 0) {
+       save_folder = "negative";
+    } else {
+       ROS_ERROR("PLEASE SELECT RUN TYPE");
+       std::_Exit(EXIT_FAILURE);
+    }
     bool is_dir_ok = this->saveDirectoryHandler(
-       /*_path +*/ this->save_folder_name_, this->model_save_path_);
-    std::cout << "Path: " << this->model_save_path_ << std::endl;
+       this->save_folder_name_, save_folder);
     if (is_dir_ok) {
+       dataset_bag_->open(save_folder + "/" +
+                          this->timeToStr("") + ".bag", rosbag::bagmode::Write);
         this->subscribe();
     } else {
         ROS_ERROR("--CANNOT CREATE DIRECTORY..PLEASE CHECK AGAIN");
@@ -37,6 +49,9 @@ void ImageAnnotationTool::subscribe() {
 
 void ImageAnnotationTool::imageCb(
     const sensor_msgs::ImageConstPtr& msg) {
+
+    std::cout << "Running..." << run_type_ << std::endl;
+   
     cv_bridge::CvImagePtr cv_ptr;
     try {
        cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::BGR8);
@@ -45,7 +60,7 @@ void ImageAnnotationTool::imageCb(
        return;
     }
     if ((this->obj_rect_.width > 16 && this->obj_rect_.height > 16) &&
-        segment_template_) {
+        this->run_type_.compare("OBJ_ANNOTATOR") == 0) {
         if (this->mark_model_) {
             this->template_image = cv_ptr->image(this->obj_rect_).clone();
             this->mark_model_ = false;
@@ -54,10 +69,50 @@ void ImageAnnotationTool::imageCb(
             cv::Mat template_img = this->template_image.clone();
             cv::Mat object_roi = this->cvTemplateMatching(
                 cv_ptr->image, template_img);
-            this->processFrame(cv_ptr->image, object_roi);
+            if (this->background_mask_) {
+               cv::Mat masked_roi = this->processFrame(
+                  cv_ptr->image, object_roi);
+               if (masked_roi.data) {
+                  cv_bridge::CvImagePtr write_mroi(new cv_bridge::CvImage);
+                  write_mroi->header = msg->header;
+                  write_mroi->encoding = sensor_msgs::image_encodings::BGR8;
+                  write_mroi->image = object_roi.clone();
+                  this->dataset_bag_->write(
+                     "/dataset/background_masked/roi",
+                     ros::Time::now(), write_mroi->toImageMsg());
+               }
+            }
+            if (object_roi.data) {
+               cv_bridge::CvImagePtr write_roi(new cv_bridge::CvImage);
+               write_roi->header = msg->header;
+               write_roi->encoding = sensor_msgs::image_encodings::BGR8;
+               write_roi->image = object_roi.clone();
+               this->dataset_bag_->write(
+                  "/dataset/roi", ros::Time::now(), write_roi->toImageMsg());
+            }
         }
+    } else if (this->run_type_.compare("ENV_ANNOTATOR") == 0) {
+       int incrementer = 8;
+       cv::Mat image = cv_ptr->image.clone();
+       for (int j = 0; j < image.rows; j += incrementer) {
+          for (int i = 0; i < image.cols; i += incrementer) {
+             cv::Rect_<int> rect = cv::Rect_<int>(
+                i, j, this->swindow_x_, this->swindow_y_);
+             if ((rect.x + rect.width < image.cols) &&
+                 (rect.y + rect.height < image.rows)) {
+                cv::Mat env_roi = image(rect).clone();
+                cv_bridge::CvImagePtr write_roi(new cv_bridge::CvImage);
+               write_roi->header = msg->header;
+               write_roi->encoding = sensor_msgs::image_encodings::BGR8;
+               write_roi->image = env_roi.clone();
+               this->dataset_bag_->write(
+                  "/dataset/background/roi",
+                  ros::Time::now(), write_roi->toImageMsg());
+             }
+          }
+       }
     } else {
-        this->bootStrapNonObjectDataset(cv_ptr->image, cv::Size(64, 128), 4);
+       ROS_INFO("-- PLEASE SPECIFY THE DATSET TYPE AND RE-LAUNCH");
     }
     this->image_pub_.publish(cv_ptr->toImageMsg());
 }
@@ -104,7 +159,7 @@ cv::Mat ImageAnnotationTool::cvTemplateMatching(
      if (this->iteration_counter_ < 1) {
         iteration_counter_++;
         this->constructColorModel(image, rect, true);
-     }
+     }     
 #ifndef DEBUG
      cv::Mat img = image.clone();
      cv::rectangle(img, rect, cv::Scalar(0, 255, 0), 2);
@@ -114,36 +169,21 @@ cv::Mat ImageAnnotationTool::cvTemplateMatching(
      return image(rect).clone();
 }
 
-void ImageAnnotationTool::processFrame(
-     const cv::Mat &frame,
-     const cv::Mat &image) {
+cv::Mat ImageAnnotationTool::processFrame(
+    const cv::Mat &frame, const cv::Mat &image) {
      if (image.empty()) {
         ROS_ERROR("Empty Image ROI can not be segmented");
-        return;
+        return cv::Mat();
      }
      cv::Mat shape_prob = this->shapeProbabilityMap(image);
      cv::Mat color_prob = this->pixelWiseClassification(image);
      cv::Mat mask = this->segmentationProbabilityMap(color_prob, shape_prob);
-     cv::Mat model;
      if (mask.data) {
-        std::ofstream outFile(
-             (this->model_save_path_ + "/" + this->write_txt_name_).c_str(),
-             std::ios_base::app);
         cv::Rect_<int> _rect = cv::Rect_<int>(0, 0, image.cols, image.rows);
-        model = this->graphCutSegmentation(image, mask, _rect);
-        // this->constructColorModel(model, cv::Rect_<int>(), false);
-        // this->saveImageModel(
-       //    model, "dataset/mask_dataset/drill_", outFile);
-       this->saveImageModel(
-           image, this->model_save_path_ + "/img_", outFile, true);
-       this->model_save_counter_++;
-    }
-    cv::imshow("model", model);
-    cv::imshow("color", color_prob);
-    cv::imshow("shape", shape_prob);
-    cv::imshow("mask", mask);
-    cv::imshow("input", image);
-    cv::waitKey(3);
+        cv::Mat model = this->graphCutSegmentation(image, mask, _rect);
+        return model;
+     }
+     return cv::Mat();
 }
 
 cv::Mat ImageAnnotationTool::segmentationProbabilityMap(
@@ -330,9 +370,9 @@ cv::Mat ImageAnnotationTool::createMaskImage(
     for (int j = 0; j < obj_mask.rows; j++) {
         for (int i = 0; i < obj_mask.cols; i++) {
            if (obj_mask.at<float>(j, i) <= cv::GC_FGD &&
-               obj_mask.at<float>(j,i) > cv::GC_BGD) {
+               obj_mask.at<float>(j, i) > cv::GC_BGD) {
               mask.at<uchar>(j, i) = cv::GC_PR_FGD;
-            }
+           }
         }
     }
     return mask;
@@ -376,60 +416,6 @@ std::string ImageAnnotationTool::convertNumber2String(
     return frame_num;
 }
 
-void ImageAnnotationTool::saveImageModel(
-    const cv::Mat &image, const std::string &spath,
-    std::ofstream &outFile, bool ismasked) {
-    if (image.data) {
-       std::string _save_counter = this->convertNumber2String(
-          this->model_save_counter_);
-       std::string _save_path;
-       std::string write_path;
-       if (model_save_counter_ < 10) {
-          _save_path = spath + "00000" + _save_counter + ".jpg";
-          write_path = "00000" + _save_counter + ".jpg";
-       } else if (model_save_counter_ < 100) {
-          _save_path = spath + "0000" + _save_counter + ".jpg";
-          write_path = "0000" + _save_counter + ".jpg";
-       } else if (model_save_counter_ < 1000) {
-          _save_path = spath + "000" + _save_counter + ".jpg";
-          write_path = "000" + _save_counter + ".jpg";
-       } else if (model_save_counter_ < 10000) {
-          _save_path = spath + "00" + _save_counter + ".jpg";
-          write_path = "00" + _save_counter + ".jpg";
-       }
-       cv::imwrite(_save_path, image);
-       if (ismasked) {
-          outFile << write_path << std::endl;
-       } else {
-           
-       }
-    }
-}
-
-
-void ImageAnnotationTool::bootStrapNonObjectDataset(
-    const cv::Mat &image, const cv::Size wsize, const int incrementer) {
-    int icounter = 0;
-    std::string _directory =
-       "/home/krishneel/catkin_ws/src/image_annotation_tool/";
-    std::ofstream nout_file(
-       (_directory + "dataset/negative.txt").c_str(), std::ios::out);
-    for (int j = 0; j < image.rows; j += incrementer) {
-       for (int i = 0; i < image.cols; i += incrementer) {
-          cv::Rect_<int> rect = cv::Rect_<int>(i, j, wsize.width, wsize.height);
-          if ((rect.x + rect.width < image.cols) &&
-              (rect.y + rect.height < image.rows)) {
-             cv::Mat roi = image(rect).clone();
-             cv::imwrite(_directory + "dataset/negative/image_" +
-                         this->convertNumber2String(icounter) + ".jpg", roi);
-             nout_file << "dataset/negative/image_"
-                       << this->convertNumber2String(icounter++) <<  ".jpg"
-                       << std::endl;
-          }
-       }
-    }
-    nout_file.close();
-}
 
 bool ImageAnnotationTool::directoryExists(
     const char* pzPath) {
@@ -456,7 +442,7 @@ bool ImageAnnotationTool::saveDirectoryHandler(
             ROS_ERROR("--CANNOT CREATE DIRECTORY..\n");
         }
     }
-    save_folder = folder_name + "/" + this->timeToStr("");
+    save_folder = folder_name + "/" + save_folder;
     boost::filesystem::path ndir(save_folder.c_str());
     return boost::filesystem::create_directories(ndir);
 }
@@ -477,7 +463,6 @@ int main(int argc, char *argv[]) {
 
     ros::init(argc, argv, "image_annotation_tool");
     ROS_INFO("RUNNING IMAGE_ANNOTATION_NODELET");
-    // std::string _directory = "/home/krishneel/Desktop/";
     ImageAnnotationTool iATool(""/*_directory*/);
     ros::spin();
     return 0;
