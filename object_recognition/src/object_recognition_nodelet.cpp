@@ -140,7 +140,7 @@ void ObjectRecognition::objectRecognizer(
           if ((rect.x + rect.width <= image.cols) &&
               (rect.y + rect.height <= image.rows)) {
              cv::Mat roi = image(rect).clone();
-             cv::GaussianBlur(roi, roi, cv::Size(3, 3), 1.0);
+             // cv::GaussianBlur(roi, roi, cv::Size(3, 3), 1.0);
              cv::resize(roi, roi, cv::Size(this->swindow_x, this->swindow_y));
              cv::Mat roi_hog = this->computeHOG(roi);
              // cv::Mat roi_lbp = this->computeLBP(
@@ -377,7 +377,7 @@ int main(int argc, char *argv[]) {
     ros::init(argc, argv, "object_recognition");
     ROS_INFO("%sRUNNING OBJECT RECOGNITION NODELET%s", BOLDRED, RESET);
     ObjectRecognition recognition;
-    // PointCloudObjectDetection pcod;
+    PointCloudObjectDetection pcod;
     ros::spin();
     return 0;
 }
