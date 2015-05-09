@@ -1,6 +1,7 @@
 
 #include <object_recognition/point_cloud_object_detection.h>
 #include <vector>
+#include <iostream>
 
 PointCloudObjectDetection::PointCloudObjectDetection() {
 
@@ -8,17 +9,18 @@ PointCloudObjectDetection::PointCloudObjectDetection() {
     this->subscribe();
     
     this->pub_cloud_ = pnh_.advertise<sensor_msgs::PointCloud2>(
-       "/object_detection/output/cloud", 1);
+       "/pointcloud_indices/output/cloud", 1);
 }
 
 void PointCloudObjectDetection::subscribe() {
    
-    this->sub_rects_ = this->pnh_.subscribe(
-       "/object_detection/output/rects", sizeof(char),
-       &PointCloudObjectDetection::jskRectArrayCb, this);
+    // this->sub_rects_ = this->pnh_.subscribe(
+    //    "/object_detection/output/rects", sizeof(char),
+    //    &PointCloudObjectDetection::jskRectArrayCb, this);
 
     this->sub_cloud_ = this->pnh_.subscribe(
-       "/camera/depth_registered/points", sizeof(char),
+       "/camera/depth_registered/points"
+       /*"/plane_extraction/output_nonplane_cloud"*/, sizeof(char),
        &PointCloudObjectDetection::cloudCallback, this);
 }
 
@@ -33,17 +35,19 @@ void PointCloudObjectDetection::cloudCallback(
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
-    if (!this->filter_indices_->indices.empty()) {
-       pcl::ExtractIndices<PointT>::Ptr eifilter(
-       new pcl::ExtractIndices<PointT>);
-       eifilter->setInputCloud(cloud);
-       eifilter->setIndices(filter_indices_);
-       eifilter->filter(*cloud);
+    std::cout << "Cloud: " << cloud->size() << std::endl;
+    
+    //if (!this->filter_indices_->indices.empty()) {
+       // pcl::ExtractIndices<PointT>::Ptr eifilter(
+       // new pcl::ExtractIndices<PointT>);
+       // eifilter->setInputCloud(cloud);
+       // eifilter->setIndices(filter_indices_);
+       // eifilter->filter(*cloud);
        sensor_msgs::PointCloud2 ros_cloud;
        pcl::toROSMsg(*cloud, ros_cloud);
        ros_cloud.header = cloud_msg->header;
        pub_cloud_.publish(ros_cloud);
-    }
+       //}
 }
 
 void PointCloudObjectDetection::jskRectArrayCb(

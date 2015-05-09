@@ -111,7 +111,6 @@ void ObjectRecognition::imageCb(
     this->image_pub_.publish(cv_ptr->toImageMsg());
 }
 
-
 std::multimap<float, cv::Rect_<int> > ObjectRecognition::runObjectRecognizer(
     const cv::Mat &image, const cv::Size wsize,
     const float scale, const int scale_counter, const int incrementor) {
@@ -142,15 +141,12 @@ void ObjectRecognition::objectRecognizer(
              cv::Mat roi = image(rect).clone();
              cv::GaussianBlur(roi, roi, cv::Size(3, 3), 1.0);
              cv::resize(roi, roi, cv::Size(this->swindow_x, this->swindow_y));
-             cv::Mat roi_hog = this->computeHOG(roi);
-
-             // check if region is white dominant than dont compute
-             
-             
-             // cv::Mat roi_lbp = this->computeLBP(
-             //   roi, cv::Size(8, 8), 10, false, true);
-             cv::Mat _feature = roi_hog;
-             // this->concatenateCVMat(roi_hog, roi_lbp, _feature);
+             cv::Mat hog_feature = this->computeHOG(roi);
+             cv::Mat hsv_feature;
+             this->computeHSHistogram(roi, hsv_feature, 16, 16, true);
+             hsv_feature = hsv_feature.reshape(1, 1);
+             cv::Mat _feature = hog_feature;
+             this->concatenateCVMat(hog_feature, hsv_feature, _feature);
              float response = this->supportVectorMachine_->predict(
                 _feature, false);
              if (response == 1) {
@@ -160,6 +156,29 @@ void ObjectRecognition::objectRecognizer(
              }
           }
        }
+    }
+}
+
+
+/**
+ * color histogram temp placed here
+ */
+void ObjectRecognition::computeHSHistogram(
+    cv::Mat &src, cv::Mat &hist, const int hBin, const int sBin, bool is_norm) {
+    if (src.empty()) {
+       return;
+    }
+    cv::Mat hsv;
+    cv::cvtColor(src, hsv, CV_BGR2HSV);
+    int histSize[] = {hBin, sBin};
+    float h_ranges[] = {0, 180};
+    float s_ranges[] = {0, 256};
+    const float* ranges[] = {h_ranges, s_ranges};
+    int channels[] = {0, 1};
+    cv::calcHist(
+       &hsv, 1, channels, cv::Mat(), hist, 2, histSize, ranges, true, false);
+    if (is_norm) {
+       cv::normalize(hist, hist, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
     }
 }
 
@@ -208,25 +227,6 @@ std::vector<cv::Rect_<int> > ObjectRecognition::nonMaximumSuppression(
        return std::vector<cv::Rect_<int> >();
     }
     return bbox;
-}
-
-/**
- * currently programmed using fixed sized image
- */
-void ObjectRecognition::extractFeatures(
-    cv::Mat &img, cv::Mat &featureMD) {
-    ROS_INFO("%s--EXTRACTING IMAGE FEATURES.%s", GREEN, RESET);
-    if (img.data) {
-       cv::resize(img, img, cv::Size(this->swindow_x, this->swindow_y));
-       cv::Mat hog_feature = this->computeHOG(img);
-       cv::Mat lbp_feature = this->computeLBP(
-          img, cv::Size(8, 8), 10, false, true);
-       cv::Mat _feature = hog_feature;
-       this->concatenateCVMat(hog_feature, lbp_feature, _feature, true);
-       featureMD.push_back(_feature);
-    }
-    cv::imshow("image", img);
-    cv::waitKey(3);
 }
 
 void ObjectRecognition::concatenateCVMat(
@@ -370,11 +370,8 @@ void ObjectRecognition::readTrainingManifestFromDirectory() {
     std::string dataset_path = n["dataset_path"];
     this->object_dataset_filename_ = pfile;  // obj/non dataset
     this->nonobject_dataset_filename_ = nfile;
-    this->ndataset_path_ = dataset_path;  // name to database/negative
-
-    
+    this->ndataset_path_ = dataset_path;  // name to database/negative    
 }
-
 
 int main(int argc, char *argv[]) {
    

@@ -31,7 +31,7 @@ ImageAnnotationTool::ImageAnnotationTool(const std::string _path) :
                           this->timeToStr("") + ".bag", rosbag::bagmode::Write);
         this->subscribe();
     } else {
-        ROS_ERROR("--CANNOT CREATE DIRECTORY..PLEASE CHECK AGAIN");
+       ROS_ERROR("--CANNOT CREATE DIRECTORY..\n%s", save_folder.c_str());
     }
     this->image_pub_ = this->it_.advertise(
        "/image_annotation/output/segmentation", 1);
@@ -111,6 +111,9 @@ void ImageAnnotationTool::imageCb(
              }
           }
        }
+       this->dataset_bag_->close();
+       this->image_sub_.shutdown();
+       ROS_INFO("-- SHUTTING DOWN...");
     } else {
        ROS_INFO("-- PLEASE SPECIFY THE DATSET TYPE AND RE-LAUNCH");
     }
@@ -443,8 +446,12 @@ bool ImageAnnotationTool::saveDirectoryHandler(
         }
     }
     save_folder = folder_name + "/" + save_folder;
-    boost::filesystem::path ndir(save_folder.c_str());
-    return boost::filesystem::create_directories(ndir);
+    if (!this->directoryExists(save_folder.c_str())) {
+       boost::filesystem::path ndir(save_folder.c_str());
+       return boost::filesystem::create_directories(ndir);
+    } else {
+       return true;
+    }
 }
 
 template<class T>

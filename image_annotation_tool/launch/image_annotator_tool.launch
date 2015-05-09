@@ -5,7 +5,7 @@
 
     <!--OBJ_ANNOTATOR => segments +ve dataset -->
     <!--ENV_ANNOTATOR => segments -ve dataset by bootstrap the enviroment-->
-    <param name="run_type" value="ENV_ANNOTATOR" type="str" />
+    <param name="run_type" value="OBJ_ANNOTATOR" type="str" />
     <remap from="run_type" to="/image_annotation_tool/run_type"/>
 
     <!--specify the folder name of saving -->

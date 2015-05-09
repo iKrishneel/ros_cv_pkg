@@ -64,8 +64,6 @@ class ObjectRecognition: public HOGFeatureDescriptor,
    
  public:
     ObjectRecognition();
-    virtual void extractFeatures(
-       cv::Mat &, cv::Mat &);
     virtual void imageCb(
        const sensor_msgs::ImageConstPtr&);
 
@@ -99,7 +97,11 @@ class ObjectRecognition: public HOGFeatureDescriptor,
    
     template<typename T>
     std::string convertNumber2String(T);
-       
+
+    // temp placed here
+    virtual void computeHSHistogram(
+       cv::Mat &, cv::Mat &, const int = 64, const int = 32, bool = true);
+   
  protected:
     boost::mutex mutex_;
    

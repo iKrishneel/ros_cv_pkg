@@ -1,7 +1,7 @@
 <launch>
   <node pkg="object_recognition" type="object_recognition_nodelet"
 	name="object_recognition" output="screen">
-    <remap from="input" to="/output/image" />
+    <remap from="input" to="/camera/rgb/image_rect_color" />
     <param name="run_type"  value="DETECTOR" type="str"/>
     <param name="trainer_manifest"  value="sliding_window_trainer_manifest.xml"
 	   type="str"/>
