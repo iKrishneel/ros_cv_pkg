@@ -223,7 +223,7 @@ std::vector<cv::Rect_<int> > ObjectRecognition::nonMaximumSuppression(
           bbox.push_back(brect);
        }
     } else {
-       ROS_ERROR("Failed to call service add_two_ints");
+       ROS_ERROR("Failed to call NonMaximumSuppression Module");
        return std::vector<cv::Rect_<int> >();
     }
     return bbox;

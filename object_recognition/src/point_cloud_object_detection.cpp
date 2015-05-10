@@ -14,13 +14,12 @@ PointCloudObjectDetection::PointCloudObjectDetection() {
 
 void PointCloudObjectDetection::subscribe() {
    
-    // this->sub_rects_ = this->pnh_.subscribe(
-    //    "/object_detection/output/rects", sizeof(char),
-    //    &PointCloudObjectDetection::jskRectArrayCb, this);
+    this->sub_rects_ = this->pnh_.subscribe(
+        "/object_detection/output/rects", sizeof(char),
+        &PointCloudObjectDetection::jskRectArrayCb, this);
 
     this->sub_cloud_ = this->pnh_.subscribe(
-       "/camera/depth_registered/points"
-       /*"/plane_extraction/output_nonplane_cloud"*/, sizeof(char),
+       "/camera/depth_registered/points", sizeof(char),
        &PointCloudObjectDetection::cloudCallback, this);
 }
 
@@ -37,17 +36,17 @@ void PointCloudObjectDetection::cloudCallback(
 
     std::cout << "Cloud: " << cloud->size() << std::endl;
     
-    //if (!this->filter_indices_->indices.empty()) {
-       // pcl::ExtractIndices<PointT>::Ptr eifilter(
-       // new pcl::ExtractIndices<PointT>);
-       // eifilter->setInputCloud(cloud);
-       // eifilter->setIndices(filter_indices_);
-       // eifilter->filter(*cloud);
+    if (!this->filter_indices_->indices.empty()) {
+       pcl::ExtractIndices<PointT>::Ptr eifilter(
+       new pcl::ExtractIndices<PointT>);
+       eifilter->setInputCloud(cloud);
+       eifilter->setIndices(filter_indices_);
+       eifilter->filter(*cloud);
        sensor_msgs::PointCloud2 ros_cloud;
        pcl::toROSMsg(*cloud, ros_cloud);
        ros_cloud.header = cloud_msg->header;
        pub_cloud_.publish(ros_cloud);
-       //}
+    }
 }
 
 void PointCloudObjectDetection::jskRectArrayCb(
