@@ -1,0 +1,7 @@
+<launch>
+  <node pkg="point_cloud_scene_decomposer" type="point_cloud_scene_decomposer_node"
+	name="point_cloud_scene_decomposer" output="screen">
+    <remap from="input_cloud" to="/camera/depth_registered/points" />
+    <remap from="input_image" to="/camera/rgb/image_rect_color" />
+  </node>
+</launch>
