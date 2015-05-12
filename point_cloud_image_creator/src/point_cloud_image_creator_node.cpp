@@ -5,15 +5,17 @@
 #include <vector>
 
 PointCloudImageCreator::PointCloudImageCreator() {
-
     this->subsribe();
     this->onInit();
 }
 
 void PointCloudImageCreator::onInit() {
-    pub_image_ = pnh_.advertise<sensor_msgs::Image>("output/image", 1);
-    pub_iimage_ = pnh_.advertise<sensor_msgs::Image>("output/interpolated_image", 1);
-    pub_cloud_ = pnh_.advertise<sensor_msgs::PointCloud2>("output/cloud", 1);
+    this->pub_image_ = pnh_.advertise<sensor_msgs::Image>(
+       "output/image", 1);
+    this->pub_iimage_ = pnh_.advertise<sensor_msgs::Image>(
+       "output/interpolated_image", 1);
+    this->pub_cloud_ = pnh_.advertise<sensor_msgs::PointCloud2>(
+       "output/cloud", 1);
 }
 
 void PointCloudImageCreator::subsribe() {
@@ -127,7 +129,11 @@ cv::Mat PointCloudImageCreator::interpolateImage(
        return image;
     }
     cv::Mat iimg = image.clone();
-    const int neigbour = 3;
+    // cv::bilateralFilter(image, iimg, 5, 80, 100);
+    cv::Mat mop_img;
+    this->cvMorphologicalOperations(image, mop_img);
+    
+    const int neigbour = 1;
     for (int j = neigbour; j < mask.rows - neigbour; j++) {
        for (int i = neigbour; i < mask.cols - neigbour; i++) {
           if (mask.at<float>(j, i) == 0) {
@@ -138,9 +144,9 @@ cv::Mat PointCloudImageCreator::interpolateImage(
              for (int y = -neigbour; y < neigbour + 1; y++) {
                 for (int x = -neigbour; x < neigbour + 1; x++) {
                    if (x != i && y != j) {
-                      p0 += image.at<cv::Vec3b>(j + y, i + x)[0];
-                      p1 += image.at<cv::Vec3b>(j + y, i + x)[1];
-                      p2 += image.at<cv::Vec3b>(j + y, i + x)[2];
+                      p0 += mop_img.at<cv::Vec3b>(j + y, i + x)[0];
+                      p1 += mop_img.at<cv::Vec3b>(j + y, i + x)[1];
+                      p2 += mop_img.at<cv::Vec3b>(j + y, i + x)[2];
                       icnt++;
                    }
                 }
@@ -154,6 +160,23 @@ cv::Mat PointCloudImageCreator::interpolateImage(
     // cv::imshow("interpolated image", iimg);
     // cv::waitKey(3);
     return iimg;
+}
+
+void PointCloudImageCreator::cvMorphologicalOperations(
+    const cv::Mat &img, cv::Mat &erosion_dst) {
+    if (img.empty()) {
+       ROS_ERROR("Cannnot perfrom Morphological Operations on empty image....");
+       return;
+    }
+    int erosion_size = 3;
+    int erosion_const = 2;
+    int erosion_type = cv::MORPH_ELLIPSE;
+    cv::Mat element = cv::getStructuringElement(
+       erosion_type,
+       cv::Size(erosion_const * erosion_size + sizeof(char),
+                erosion_const * erosion_size + sizeof(char)),
+       cv::Point(erosion_size, erosion_size));
+    cv::erode(img, erosion_dst, element);
 }
 
 int main(int argc, char *argv[]) {
