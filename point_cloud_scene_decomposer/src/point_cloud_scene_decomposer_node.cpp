@@ -60,18 +60,18 @@ void PointCloudSceneDecomposer::cloudCallback(
         new pcl::PointCloud<pcl::Normal>);
     this->estimatePointCloudNormals(
         pcl_cloud, this->surface_normal, 30, 0.05, false);
-    this->estimatePointCloudNormals(pcl_cloud, this->surface_normal, 40);
+    // this->estimatePointCloudNormals(pcl_cloud, this->surface_normal, 40);
     
-    cv::Mat rgb_img;
-    cv::Mat dep_img;
-    this->pointCloud2RGBDImage(pcl_cloud, rgb_img, dep_img);
+    // cv::Mat rgb_img;
+    // cv::Mat dep_img;
+    // this->pointCloud2RGBDImage(pcl_cloud, rgb_img, dep_img);
     
     cv::Mat depth_edge;
-    this->getDepthEdge(dep_img, depth_edge, true);
+    // this->getDepthEdge(dep_img, depth_edge, true);
     this->viewPointSurfaceNormalOrientation(
        pcl_cloud, this->surface_normal, depth_edge);
-    std::vector<cvPatch<int> > patch_label;
-    this->cvLabelEgdeMap(pcl_cloud, depth_edge, patch_label);
+    // std::vector<cvPatch<int> > patch_label;
+    // this->cvLabelEgdeMap(pcl_cloud, depth_edge, patch_label);
     
     
     /*
@@ -324,13 +324,45 @@ void PointCloudSceneDecomposer::pointCloudLocalGradient(
  * compute the normal orientation with respect to the viewpoint
  */
 void PointCloudSceneDecomposer::viewPointSurfaceNormalOrientation(
-    const pcl::PointCloud<PointT>::Ptr cloud,
+    pcl::PointCloud<PointT>::Ptr cloud,
     const pcl::PointCloud<pcl::Normal>::Ptr cloud_normal,
     cv::Mat &n_edge) {
     if (cloud->empty() || cloud_normal->empty()) {
         ROS_ERROR("ERROR: Point Cloud | Normal vector is empty...");
         return;
     }
+
+    std::cout << "Size: " << cloud->size() << "\t" << cloud_normal->size() << std::endl;
+    
+    pcl::PointCloud<PointT>::Ptr gradient_cloud(new pcl::PointCloud<PointT>);
+    for (int i = 0; i < cloud->size(); i++) {
+       Eigen::Vector3f viewPointVec =
+          cloud->points[i].getVector3fMap();
+       Eigen::Vector3f surfaceNormalVec = Eigen::Vector3f(
+          -cloud_normal->points[i].normal_x,
+          -cloud_normal->points[i].normal_y,
+          -cloud_normal->points[i].normal_z);
+       float cross_norm = static_cast<float>(
+          surfaceNormalVec.cross(viewPointVec).norm());
+       float scalar_prod = static_cast<float>(
+          surfaceNormalVec.dot(viewPointVec));
+       float angle = atan2(cross_norm, scalar_prod);
+       if (angle * (180/CV_PI) >= 0 && angle * (180/CV_PI) <= 180) {
+          cv::Scalar jmap = JetColour(angle/(2*CV_PI), 0, 1);
+          PointT pt;
+          pt.x = cloud->points[i].x;
+          pt.y = cloud->points[i].y;
+          pt.z = cloud->points[i].z;
+          pt.r = jmap.val[0] * 255;
+          pt.g = jmap.val[1] * 255;
+          pt.b = jmap.val[2] * 255;
+          gradient_cloud->push_back(pt);
+       }
+    }
+    cloud->clear();
+    pcl::copyPointCloud<PointT, PointT>(*gradient_cloud, *cloud);
+
+/*    
     cv::Mat normalMap = cv::Mat::zeros(
        cv::Size(cloud->width, cloud->height), CV_8UC3);
     for (int j = 0; j < cloud->height; j++) {
@@ -358,8 +390,8 @@ void PointCloudSceneDecomposer::viewPointSurfaceNormalOrientation(
     }
     this->getRGBEdge(normalMap, n_edge, "cvSOBEL");
     // cv::imshow("ViewPoint Normal Edge", n_edge);
-
     cv::imshow("ViewPoint Normal Map", normalMap);
+*/
 }
 
 /**

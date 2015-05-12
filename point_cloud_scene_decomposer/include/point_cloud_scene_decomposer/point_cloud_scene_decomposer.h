@@ -62,7 +62,7 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
         const pcl::PointCloud<pcl::Normal>::Ptr,
         cv::Mat &);
     void viewPointSurfaceNormalOrientation(
-        const pcl::PointCloud<PointT>::Ptr,
+        pcl::PointCloud<PointT>::Ptr,
         const pcl::PointCloud<pcl::Normal>::Ptr,
         cv::Mat &);
     void extractPointCloudClustersFrom2DMap(

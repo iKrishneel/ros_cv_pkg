@@ -12,6 +12,7 @@ PointCloudImageCreator::PointCloudImageCreator() {
 
 void PointCloudImageCreator::onInit() {
     pub_image_ = pnh_.advertise<sensor_msgs::Image>("output/image", 1);
+    pub_iimage_ = pnh_.advertise<sensor_msgs::Image>("output/interpolated_image", 1);
     pub_cloud_ = pnh_.advertise<sensor_msgs::PointCloud2>("output/cloud", 1);
 }
 
@@ -29,18 +30,28 @@ void PointCloudImageCreator::cloudCallback(
     boost::mutex::scoped_lock lock(this->lock_);
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-    
+
+    cv::Mat mask;
+    cv::Mat img_out = this->projectPointCloudToImagePlane(
+       cloud, this->camera_info_, mask);
+    cv::Mat interpolate_img = this->interpolateImage(img_out, mask);
+
     cv_bridge::CvImagePtr image_msg(new cv_bridge::CvImage);
     image_msg->header = cloud_msg->header;
     image_msg->encoding = sensor_msgs::image_encodings::BGR8;
-    image_msg->image = this->projectPointCloudToImagePlane(
-       cloud, this->camera_info_).clone();
+    image_msg->image = img_out.clone();
+
+    cv_bridge::CvImagePtr iimage_msg(new cv_bridge::CvImage);
+    iimage_msg->header = cloud_msg->header;
+    iimage_msg->encoding = sensor_msgs::image_encodings::BGR8;
+    iimage_msg->image = interpolate_img.clone();
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
 
     pub_image_.publish(image_msg->toImageMsg());
+    pub_iimage_.publish(iimage_msg->toImageMsg());
     pub_cloud_.publish(ros_cloud);
 }
 
@@ -52,7 +63,8 @@ void PointCloudImageCreator::cameraInfoCallback(
 
 cv::Mat PointCloudImageCreator::projectPointCloudToImagePlane(
     const pcl::PointCloud<PointT>::Ptr cloud,
-    const sensor_msgs::CameraInfo::ConstPtr &camera_info) {
+    const sensor_msgs::CameraInfo::ConstPtr &camera_info,
+    cv::Mat &mask) {
     if (cloud->empty()) {
        ROS_ERROR("INPUT CLOUD EMPTY");
        return cv::Mat();
@@ -91,6 +103,8 @@ cv::Mat PointCloudImageCreator::projectPointCloudToImagePlane(
     cv::Scalar white = cv::Scalar(255, 255, 255);
     cv::Mat image = cv::Mat(
        camera_info->height, camera_info->width, CV_8UC3, white);
+    mask = cv::Mat::zeros(
+       camera_info->height, camera_info->width, CV_32F);
     for (int i = 0; i < imagePoints.size(); i++) {
        int x = imagePoints[i].x;
        int y = imagePoints[i].y;
@@ -99,13 +113,48 @@ cv::Mat PointCloudImageCreator::projectPointCloudToImagePlane(
           image.at<cv::Vec3b>(y, x)[2] = cloud->points[i].r;
           image.at<cv::Vec3b>(y, x)[1] = cloud->points[i].g;
           image.at<cv::Vec3b>(y, x)[0] = cloud->points[i].b;
+
+          mask.at<float>(y, x) = 255.0f;
        }
     }
-    // cv::imshow("image", image);
-    // cv::waitKey(3);
+    // cv::imshow("image", mask);
     return image;
 }
 
+cv::Mat PointCloudImageCreator::interpolateImage(
+    const cv::Mat &image, const cv::Mat &mask) {
+    if (image.empty()) {
+       return image;
+    }
+    cv::Mat iimg = image.clone();
+    const int neigbour = 3;
+    for (int j = neigbour; j < mask.rows - neigbour; j++) {
+       for (int i = neigbour; i < mask.cols - neigbour; i++) {
+          if (mask.at<float>(j, i) == 0) {
+             int p0 = 0;
+             int p1 = 0;
+             int p2 = 0;
+             int icnt = 0;
+             for (int y = -neigbour; y < neigbour + 1; y++) {
+                for (int x = -neigbour; x < neigbour + 1; x++) {
+                   if (x != i && y != j) {
+                      p0 += image.at<cv::Vec3b>(j + y, i + x)[0];
+                      p1 += image.at<cv::Vec3b>(j + y, i + x)[1];
+                      p2 += image.at<cv::Vec3b>(j + y, i + x)[2];
+                      icnt++;
+                   }
+                }
+             }
+             iimg.at<cv::Vec3b>(j, i)[0] = p0 / icnt;
+             iimg.at<cv::Vec3b>(j, i)[1] = p1 / icnt;
+             iimg.at<cv::Vec3b>(j, i)[2] = p2 / icnt;
+          }
+       }
+    }
+    // cv::imshow("interpolated image", iimg);
+    // cv::waitKey(3);
+    return iimg;
+}
 
 int main(int argc, char *argv[]) {
 

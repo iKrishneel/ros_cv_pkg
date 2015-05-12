@@ -29,7 +29,8 @@ class PointCloudImageCreator {
        const sensor_msgs::CameraInfo::ConstPtr &);
     cv::Mat projectPointCloudToImagePlane(
        const pcl::PointCloud<PointT>::Ptr,
-       const sensor_msgs::CameraInfo::ConstPtr &);
+       const sensor_msgs::CameraInfo::ConstPtr &, cv::Mat &);
+    cv::Mat interpolateImage(const cv::Mat &, const cv::Mat &);
    
     virtual void onInit();
     virtual void subsribe();
@@ -40,6 +41,7 @@ class PointCloudImageCreator {
     ros::Subscriber sub_cam_info_;
     ros::Subscriber sub_cloud_;
     ros::Publisher pub_image_;
+    ros::Publisher pub_iimage_;
     ros::Publisher pub_cloud_;
 
     sensor_msgs::CameraInfo::ConstPtr camera_info_;
