@@ -65,7 +65,8 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
         const std::vector<cvPatch<int> > &,
         std::vector<pcl::PointCloud<PointT>::Ptr> &,
         std::vector<pcl::PointCloud<pcl::Normal>::Ptr> &,
-        pcl::PointCloud<pcl::PointXYZ>::Ptr);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr,
+        const cv::Size);
 
     void imageCallback(
         const sensor_msgs::Image::ConstPtr &);

@@ -322,7 +322,6 @@ void SceneDecomposerImageProcessor::cvGetLabelImagePatch(
           }
        }
     }
-
 }
 
 /**

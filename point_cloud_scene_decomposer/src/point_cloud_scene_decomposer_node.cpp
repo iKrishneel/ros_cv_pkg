@@ -18,8 +18,8 @@ void PointCloudSceneDecomposer::onInit() {
 void PointCloudSceneDecomposer::subscribe() {
     this->sub_image_ = nh_.subscribe("input_image", 1,
         &PointCloudSceneDecomposer::imageCallback, this);
-    // this->sub_norm_ = nh_.subscribe("input_norm", 1,
-    //    &PointCloudSceneDecomposer::normalCallback, this);
+    this->sub_norm_ = nh_.subscribe("input_norm", 1,
+       &PointCloudSceneDecomposer::normalCallback, this);
     this->sub_cloud_ = nh_.subscribe("input_cloud", 1,
         &PointCloudSceneDecomposer::cloudCallback, this);
 }
@@ -56,9 +56,10 @@ void PointCloudSceneDecomposer::cloudCallback(
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
-    std::cout << cloud->size() << "\t" << normal_->size() << image_.size() << std::endl;
-    if (cloud->empty() || this->image_.empty()) {
-       ROS_ERROR("CANNOT PROCESS EMPTY INSTANCE");
+    std::cout << cloud->size() << "\t" << normal_->size()
+              << image_.size() << std::endl;
+    if (cloud->empty() || this->normal_->empty() || this->image_.empty()) {
+       ROS_ERROR("-- CANNOT PROCESS EMPTY INSTANCE");
        return;
     }
     // cv::Mat rgb_img;
@@ -66,31 +67,30 @@ void PointCloudSceneDecomposer::cloudCallback(
     // this->pointCloud2RGBDImage(cloud, rgb_img, dep_img);
 
     cv::Mat image = this->image_.clone();
-    cv::Mat depth_edge;
-    this->getRGBEdge(image, depth_edge, "cvSOBEL");
-    // this->getDepthEdge(dep_img, depth_edge, true);
-    cv::imshow("depth_edge", depth_edge);
-    
+    cv::Mat edge_map;
+    this->getRGBEdge(image, edge_map, "cvCanny");
+    // this->getDepthEdge(dep_img, edge_map, true);
     
     std::vector<cvPatch<int> > patch_label;
-    this->cvLabelEgdeMap(cloud, depth_edge, patch_label);
+    this->cvLabelEgdeMap(cloud, edge_map, patch_label);
+
     
-    cv::waitKey(3);
-    
-    /*
-    pcl::PointCloud<PointT>::Ptr patch_cloud(
-       new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointT, PointT> (
-       *cloud, *patch_cloud);
+    pcl::PointCloud<PointT>::Ptr patch_cloud(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT> (*cloud, *patch_cloud);
+
     std::vector<pcl::PointCloud<PointT>::Ptr> cloud_clusters;
     std::vector<pcl::PointCloud<pcl::Normal>::Ptr> normal_clusters;
+/*
     pcl::PointCloud<pcl::PointXYZ>::Ptr centroids(
        new pcl::PointCloud<pcl::PointXYZ>);
-    this->extractPointCloudClustersFrom2DMap(
-       patch_cloud, patch_label, cloud_clusters, normal_clusters, centroids);
+    this->extractPointCloudClustersFrom2DMap(patch_cloud, patch_label,
+       cloud_clusters, normal_clusters, centroids, image.size());
+
+    /*
     std::vector<std::vector<int> > neigbour_idx;
     this->pclNearestNeigborSearch(centroids, neigbour_idx, false, 8, 0.05);
 
+    /*
     RegionAdjacencyGraph *rag = new RegionAdjacencyGraph();
     rag->generateRAG(
        cloud_clusters, normal_clusters, centroids, neigbour_idx, 1);
@@ -143,6 +143,7 @@ void PointCloudSceneDecomposer::cloudCallback(
     // this->viewPointSurfaceNormalOrientation(cloud, this->normal_);
     // this->pointCloudLocalGradient(cloud, this->normal_, dep_img);
     //
+    cv::waitKey(3);
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
@@ -343,37 +344,6 @@ void PointCloudSceneDecomposer::viewPointSurfaceNormalOrientation(
     }
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*gradient_cloud, *cloud);
-
-/*    
-    cv::Mat normalMap = cv::Mat::zeros(
-       cv::Size(cloud->width, cloud->height), CV_8UC3);
-    for (int j = 0; j < cloud->height; j++) {
-       for (int i = 0; i < cloud->width; i++) {
-          int vp_index = i + (j * cloud->width);
-          Eigen::Vector3f viewPointVec =
-             cloud->points[vp_index].getVector3fMap();
-          Eigen::Vector3f surfaceNormalVec = Eigen::Vector3f(
-             -cloud_normal->points[vp_index].normal_x,
-             -cloud_normal->points[vp_index].normal_y,
-             -cloud_normal->points[vp_index].normal_z);
-          float cross_norm = static_cast<float>(
-             surfaceNormalVec.cross(viewPointVec).norm());
-          float scalar_prod = static_cast<float>(
-             surfaceNormalVec.dot(viewPointVec));
-          float angle = atan2(cross_norm, scalar_prod);
-          
-          if (angle * (180/CV_PI) >= 0 && angle * (180/CV_PI) <= 180) {
-             cv::Scalar jmap = JetColour(angle/(2*CV_PI), 0, 1);
-             normalMap.at<cv::Vec3b>(j, i)[0] = jmap.val[0] * 255;
-             normalMap.at<cv::Vec3b>(j, i)[1] = jmap.val[1] * 255;
-             normalMap.at<cv::Vec3b>(j, i)[2] = jmap.val[2] * 255;
-          }
-       }
-    }
-    this->getRGBEdge(normalMap, n_edge, "cvSOBEL");
-    // cv::imshow("ViewPoint Normal Edge", n_edge);
-    cv::imshow("ViewPoint Normal Map", normalMap);
-*/
 }
 
 /**
@@ -384,7 +354,8 @@ void PointCloudSceneDecomposer::extractPointCloudClustersFrom2DMap(
     const std::vector<cvPatch<int> > &patch_label,
     std::vector<pcl::PointCloud<PointT>::Ptr> &cloud_clusters,
     std::vector<pcl::PointCloud<pcl::Normal>::Ptr> &normal_clusters,
-    pcl::PointCloud<pcl::PointXYZ>::Ptr centroids) {
+    pcl::PointCloud<pcl::PointXYZ>::Ptr centroids,
+    const cv::Size isize) {
     if (cloud->empty() || patch_label.empty()) {
        ROS_ERROR("ERROR: Point Cloud vector is empty...");
        return;
@@ -408,10 +379,13 @@ void PointCloudSceneDecomposer::extractPointCloudClustersFrom2DMap(
           for (int i = 0; i < rect.width; i++) {
              int label_ = static_cast<int>(
                 labelMD.at<float>(j, i));
-             int index = (i + rect.x) + ((j + rect.y) * cloud->width);
+             int index = (i + rect.x) + ((j + rect.y) * isize.width);
              cluster_indices[label_].push_back(index);
           }
        }
+
+       std::cout << "--DEBUG: " << cluster_indices.size()  << std::endl;
+       
        for (int i = 0; i < cluster_indices.size(); i++) {
           pcl::PointCloud<PointT>::Ptr tmp_cloud(
              new pcl::PointCloud<PointT>);
@@ -420,6 +394,7 @@ void PointCloudSceneDecomposer::extractPointCloudClustersFrom2DMap(
           indices->indices = cluster_indices[i];
           eifilter->setIndices(indices);
           eifilter->filter(*tmp_cloud);
+          /*
           // filter the normal
           pcl::PointCloud<pcl::Normal>::Ptr tmp_normal(
              new pcl::PointCloud<pcl::Normal>);
@@ -437,6 +412,7 @@ void PointCloudSceneDecomposer::extractPointCloudClustersFrom2DMap(
                 normal_clusters.push_back(tmp_normal);
              }
           }
+          */
        }
        cluster_indices.clear();
     }
