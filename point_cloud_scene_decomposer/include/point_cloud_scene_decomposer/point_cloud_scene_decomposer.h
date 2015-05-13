@@ -18,10 +18,6 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     pcl::PointCloud<PointT>::Ptr pcl_cloud__;
     pcl::PointCloud<PointT>::Ptr filter_cloud__;
 
-    //! Variable for distance filter
-    const float MAX_DISTANCE;
-    const float MIN_DISTANCE;
-
     void pclNearestNeigborSearch(
         pcl::PointCloud<pcl::PointXYZ>::Ptr, std::vector<std::vector<int> > &,
         bool isneigbour = true, const int = 8, const double = 0.05);
@@ -35,7 +31,7 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
 
 
  protected:
-    pcl::PointCloud<PointT>::Ptr input_cloud;
+    // pcl::PointCloud<PointT>::Ptr input_cloud;
     pcl::PointCloud<pcl::Normal>::Ptr surface_normal;
 
     void onInit();
@@ -48,9 +44,6 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     PointCloudSceneDecomposer();
     void cloudCallback(
         const sensor_msgs::PointCloud2ConstPtr &);
-    void pclDistanceFilter(
-        const boost::shared_ptr<pcl::PCLPointCloud2>,
-        pcl::PCLPointCloud2 &);
     void estimatePointCloudNormals(
         const pcl::PointCloud<PointT>::Ptr,
         pcl::PointCloud<pcl::Normal>::Ptr,
