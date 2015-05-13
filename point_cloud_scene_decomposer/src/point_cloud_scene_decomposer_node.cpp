@@ -1,9 +1,7 @@
 
 #include <point_cloud_scene_decomposer/point_cloud_scene_decomposer.h>
 
-PointCloudSceneDecomposer::PointCloudSceneDecomposer() :
-    MAX_DISTANCE(2.0f), MIN_DISTANCE(0.0f) {
-
+PointCloudSceneDecomposer::PointCloudSceneDecomposer() {
     this->subscribe();
     this->onInit();
 }
@@ -45,40 +43,33 @@ void PointCloudSceneDecomposer::imageCallback(
 
 void PointCloudSceneDecomposer::cloudCallback(
     const sensor_msgs::PointCloud2ConstPtr &cloud_msg) {
-    boost::shared_ptr<pcl::PCLPointCloud2> cloud(
-        new pcl::PCLPointCloud2);
-    pcl_conversions::toPCL(*cloud_msg, *cloud);
-    pcl::PCLPointCloud2 *cloud_filtered = new pcl::PCLPointCloud2;
-    this->pclDistanceFilter(cloud, *cloud_filtered);
-    pcl::PointCloud<PointT>::Ptr pcl_cloud(
-        new pcl::PointCloud<PointT>);
-    pcl::fromPCLPointCloud2(*cloud_filtered, *pcl_cloud);
-    this->input_cloud = pcl::PointCloud<PointT>::Ptr(
-        new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointT, PointT> (*pcl_cloud, *input_cloud);
+    pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
+    pcl::fromROSMsg(*cloud_msg, *cloud);
+    
     this->surface_normal = pcl::PointCloud<pcl::Normal>::Ptr(
         new pcl::PointCloud<pcl::Normal>);
     this->estimatePointCloudNormals(
-        pcl_cloud, this->surface_normal, 30, 0.05, false);
-    // this->estimatePointCloudNormals(pcl_cloud, this->surface_normal, 40);
+        cloud, this->surface_normal, 30, 0.05, false);
+    // this->estimatePointCloudNormals(cloud, this->surface_normal, 40);
     
     // cv::Mat rgb_img;
     // cv::Mat dep_img;
-    // this->pointCloud2RGBDImage(pcl_cloud, rgb_img, dep_img);
+    // this->pointCloud2RGBDImage(cloud, rgb_img, dep_img);
     
     cv::Mat depth_edge;
     // this->getDepthEdge(dep_img, depth_edge, true);
     this->viewPointSurfaceNormalOrientation(
-       pcl_cloud, this->surface_normal, depth_edge);
+       cloud, this->surface_normal, depth_edge);
     // std::vector<cvPatch<int> > patch_label;
-    // this->cvLabelEgdeMap(pcl_cloud, depth_edge, patch_label);
+    // this->cvLabelEgdeMap(cloud, depth_edge, patch_label);
+
     
     
     /*
     pcl::PointCloud<PointT>::Ptr patch_cloud(
        new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT> (
-       *pcl_cloud, *patch_cloud);
+       *cloud, *patch_cloud);
     std::vector<pcl::PointCloud<PointT>::Ptr> cloud_clusters;
     std::vector<pcl::PointCloud<pcl::Normal>::Ptr> normal_clusters;
     pcl::PointCloud<pcl::PointXYZ>::Ptr centroids(
@@ -98,7 +89,7 @@ void PointCloudSceneDecomposer::cloudCallback(
     // rag->concatenateRegionUsingRAGInfo(
     //    cloud_clusters, normal_clusters, c_clusters);
     free(rag);
-    this->semanticCloudLabel(cloud_clusters, pcl_cloud, labelMD);
+    this->semanticCloudLabel(cloud_clusters, cloud, labelMD);
 
     /*
     // labeling by convex criteria
@@ -109,7 +100,7 @@ void PointCloudSceneDecomposer::cloudCallback(
     for (std::map<int, pcl::PointCloud<PointT>::Ptr>::iterator it =
             c_clusters.begin(); it != c_clusters.end(); it++) {
        pcl::PointCloud<PointT>::Ptr m_cloud((*it).second);
-       m_cloud->header = pcl_cloud->header;
+       m_cloud->header = cloud->header;
        pcl::PointCloud<pcl::Normal>::Ptr s_normal(
           new pcl::PointCloud<pcl::Normal>);
        this->estimatePointCloudNormals(m_cloud, s_normal, 40, 0.05, false);
@@ -134,15 +125,15 @@ void PointCloudSceneDecomposer::cloudCallback(
     labelMD.clear();
     rag->getCloudClusterLabels(labelMD);
     free(rag);
-    this->semanticCloudLabel(cloud_clusters, pcl_cloud, labelMD);
+    this->semanticCloudLabel(cloud_clusters, cloud, labelMD);
     
     /**/
-    // this->viewPointSurfaceNormalOrientation(pcl_cloud, this->surface_normal);
-    // this->pointCloudLocalGradient(pcl_cloud, this->surface_normal, dep_img);
+    // this->viewPointSurfaceNormalOrientation(cloud, this->surface_normal);
+    // this->pointCloudLocalGradient(cloud, this->surface_normal, dep_img);
     //
     
     sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*pcl_cloud, ros_cloud);
+    pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
 }
@@ -151,24 +142,6 @@ void PointCloudSceneDecomposer::cloudCallback(
 // void PointCloudSceneDecomposer::runSceneDecomposer() {
     
 // }
-
-
-/**
- * Function to filter pointcloud data based on the distance data 
- */
-void PointCloudSceneDecomposer::pclDistanceFilter(
-    const boost::shared_ptr<pcl::PCLPointCloud2> cloud,
-    pcl::PCLPointCloud2 &cloud_filtered) {
-
-    pcl::PCLPointCloud2ConstPtr cloudPtr(cloud);
-    pcl::PassThrough<pcl::PCLPointCloud2> pass;
-    pass.setInputCloud(cloudPtr);
-    pass.setFilterFieldName("z");
-    pass.setKeepOrganized(true);
-    pass.setFilterLimits(this->MIN_DISTANCE, this->MAX_DISTANCE);
-    pass.filter(cloud_filtered);
-  }
-
 
 /**
  * Function to compute the point cloud normal
@@ -249,7 +222,7 @@ void PointCloudSceneDecomposer::pointCloud2RGBDImage(
               rgbImage.at<cv::Vec3b>(j, i)[0] = 0.0f;
            } else {
               depthImage.at<uchar>(j, i) = (
-                 distance_ / this->MAX_DISTANCE) * 255;
+                 distance_ / 10.0f) * 255;
               
               rgbImage.at<cv::Vec3b>(j, i)[2] = _cloud->points[index].r;
               rgbImage.at<cv::Vec3b>(j, i)[1] = _cloud->points[index].g;
@@ -331,9 +304,6 @@ void PointCloudSceneDecomposer::viewPointSurfaceNormalOrientation(
         ROS_ERROR("ERROR: Point Cloud | Normal vector is empty...");
         return;
     }
-
-    std::cout << "Size: " << cloud->size() << "\t" << cloud_normal->size() << std::endl;
-    
     pcl::PointCloud<PointT>::Ptr gradient_cloud(new pcl::PointCloud<PointT>);
     for (int i = 0; i < cloud->size(); i++) {
        Eigen::Vector3f viewPointVec =
