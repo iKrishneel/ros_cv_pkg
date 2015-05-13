@@ -1,0 +1,7 @@
+<launch>
+  <node pkg="pcl_filter_utils" type="pcl_filter_utils_node" 
+	name ="pcl_filter_utils" output="screen">
+    <remap from="input" to="/camera/depth_registered/points"/>
+    <remap from="target" to="pcl_filter_utils/output/cloud" />
+  </node>
+</launch>
