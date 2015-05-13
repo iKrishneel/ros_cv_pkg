@@ -9,7 +9,7 @@ find_package(catkin REQUIRED COMPONENTS
   image_transport
   roscpp
   sensor_msgs
- # message_generation
+  message_generation
 )
 
 find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msgs std_srvs geometry_msgs roscpp rospy sensor_msgs visualization_msgs message_filters message_generation jsk_pcl_ros interactive_markers pcl_conversions jsk_topic_tools rviz eigen_conversions dynamic_tf_publisher jsk_interactive_marker jsk_recognition_msgs move_base_msgs rosgraph_msgs topic_tools jsk_topic_tools jsk_ik_server pcl_msgs jsk_footstep_msgs drc_com_common jsk_perception jsk_calibration resized_image_transport smach_msgs pcl_ros nav_msgs tf dynamic_reconfigure roseus)
@@ -47,8 +47,8 @@ find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msg
 ##   * uncomment the generate_messages entry below
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
-#generate_dynamic_reconfigure_options(
-#    cfg/PointCloudFilterUtils.cfg)
+generate_dynamic_reconfigure_options(
+    cfg/PointCloudFilterUtils.cfg)
 
 
 ## Generate messages in the 'msg' folder
@@ -116,7 +116,7 @@ add_executable(pcl_filter_utils_node src/pcl_filter_utils_node.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
-#add_dependencies(pcl_filter_utils_node ${PROJECT_NAME}_gencfg)
+add_dependencies(pcl_filter_utils_node ${PROJECT_NAME}_gencfg)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(pcl_filter_utils_node

@@ -2,8 +2,8 @@
 
 #include <pcl_filter_utils/pcl_filter_utils.h>
 
-PointCloudFilterUtils::PointCloudFilterUtils() :
-    min_distance_(0.0f), max_distance_(1.3f) {
+PointCloudFilterUtils::PointCloudFilterUtils() {
+   
     this->subsribe();
     this->onInit();
 }
@@ -15,12 +15,11 @@ void PointCloudFilterUtils::onInit() {
 void PointCloudFilterUtils::subsribe() {
     this->sub_cloud_ = this->pnh_.subscribe(
         "input", 1, &PointCloudFilterUtils::cloudCallback, this);
-/*
+    
     dynamic_reconfigure::Server<
         pcl_filter_utils::PointCloudFilterUtilsConfig>::CallbackType f =
         boost::bind(&PointCloudFilterUtils::configCallback, this, _1, _2);
     server.setCallback(f);
-*/
 }
 
 void PointCloudFilterUtils::cloudCallback(
@@ -48,15 +47,14 @@ void PointCloudFilterUtils::pclDistanceFilter(
     pass.filter(cloud_filtered);
 }
 
-/*
 void PointCloudFilterUtils::configCallback(
     pcl_filter_utils::PointCloudFilterUtilsConfig &config, uint32_t level) {
 
-    boost::mutex::scoped_lock lock(mutex_);
+    boost::mutex::scoped_lock lock(this->lock_);
     this->min_distance_ = static_cast<float>(config.min_distance);
     this->max_distance_ = static_cast<float>(config.max_distance);
 }
-*/
+
 
 int main(int argc, char *argv[]) {
 

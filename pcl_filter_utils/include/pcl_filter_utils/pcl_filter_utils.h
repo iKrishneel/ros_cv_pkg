@@ -2,8 +2,8 @@
 #ifndef _PCL_FILTER_UTILS_H_
 #define _PCL_FILTER_UTILS_H_
 
-// #include <dynamic_reconfigure/server.h>
-// #include <pcl_filter_utils/PointCloudFilterUtilsConfig.h>
+#include <dynamic_reconfigure/server.h>
+#include <pcl_filter_utils/PointCloudFilterUtilsConfig.h>
 
 #include <ros/ros.h>
 #include <ros/console.h>
@@ -37,8 +37,8 @@ class PointCloudFilterUtils {
     virtual void pclDistanceFilter(
         const boost::shared_ptr<pcl::PCLPointCloud2>,
         pcl::PCLPointCloud2 &);
-    // virtual void configCallback(
-    //     pcl_filter_utils::PointCloudFilterUtilsConfig &, uint32_t);
+    virtual void configCallback(
+       pcl_filter_utils::PointCloudFilterUtilsConfig &, uint32_t);
     
  protected:
     boost::mutex lock_;
@@ -46,8 +46,8 @@ class PointCloudFilterUtils {
     ros::Subscriber sub_cloud_;
     ros::Publisher pub_cloud_;
 
-    // dynamic_reconfigure::Server<
-    //     pcl_filter_utils::PointCloudFilterUtilsConfig>  server;
+    dynamic_reconfigure::Server<
+       pcl_filter_utils::PointCloudFilterUtilsConfig>  server;
     
  private:
     float min_distance_;
