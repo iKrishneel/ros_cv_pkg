@@ -13,6 +13,7 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     ros::Publisher pub_image_;
     ros::Publisher pub_cloud_;
     ros::Subscriber sub_cloud_;
+    ros::Subscriber sub_norm_;
     ros::Subscriber sub_image_;
 
     pcl::PointCloud<PointT>::Ptr pcl_cloud__;
@@ -31,19 +32,20 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
 
 
  protected:
-    // pcl::PointCloud<PointT>::Ptr input_cloud;
-    pcl::PointCloud<pcl::Normal>::Ptr surface_normal;
 
     void onInit();
     void subscribe();
     void unsubscribe();
 
+    pcl::PointCloud<pcl::Normal>::Ptr normal_;
     cv::Mat image_;
     
  public:
     PointCloudSceneDecomposer();
     void cloudCallback(
         const sensor_msgs::PointCloud2ConstPtr &);
+    void normalCallback(
+       const sensor_msgs::PointCloud2ConstPtr &);
     void estimatePointCloudNormals(
         const pcl::PointCloud<PointT>::Ptr,
         pcl::PointCloud<pcl::Normal>::Ptr,
@@ -63,7 +65,8 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
         const std::vector<cvPatch<int> > &,
         std::vector<pcl::PointCloud<PointT>::Ptr> &,
         std::vector<pcl::PointCloud<pcl::Normal>::Ptr> &,
-        pcl::PointCloud<pcl::PointXYZ>::Ptr);
+        pcl::PointCloud<pcl::PointXYZ>::Ptr,
+        const cv::Size);
 
     void imageCallback(
         const sensor_msgs::Image::ConstPtr &);

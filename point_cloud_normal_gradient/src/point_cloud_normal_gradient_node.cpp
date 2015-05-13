@@ -32,7 +32,7 @@ void PointCloudNormalGradients::cloudCallback(
        new pcl::PointCloud<pcl::Normal>);
     this->estimatePointCloudNormals(cloud, normals, 30, 0.05, false);
     this->viewPointSurfaceNormalOrientation(cloud, normals);
-
+    
     // add module if want to see normal on rviz
     
     sensor_msgs::PointCloud2 ros_normal;
