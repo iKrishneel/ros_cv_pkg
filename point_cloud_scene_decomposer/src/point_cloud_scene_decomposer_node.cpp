@@ -1,7 +1,9 @@
 
 #include <point_cloud_scene_decomposer/point_cloud_scene_decomposer.h>
 
-PointCloudSceneDecomposer::PointCloudSceneDecomposer() {
+PointCloudSceneDecomposer::PointCloudSceneDecomposer() :
+    normal_(pcl::PointCloud<pcl::Normal>::Ptr(
+               new pcl::PointCloud<pcl::Normal>)) {
     this->subscribe();
     this->onInit();
 }
@@ -14,56 +16,66 @@ void PointCloudSceneDecomposer::onInit() {
 }
 
 void PointCloudSceneDecomposer::subscribe() {
-    this->sub_image_ = nh_.subscribe( "input_image", 1,
+    this->sub_image_ = nh_.subscribe("input_image", 1,
         &PointCloudSceneDecomposer::imageCallback, this);
-    this->sub_cloud_ = nh_.subscribe( "input_cloud", 1,
+    // this->sub_norm_ = nh_.subscribe("input_norm", 1,
+    //    &PointCloudSceneDecomposer::normalCallback, this);
+    this->sub_cloud_ = nh_.subscribe("input_cloud", 1,
         &PointCloudSceneDecomposer::cloudCallback, this);
 }
 
 void PointCloudSceneDecomposer::unsubscribe() {
     this->sub_cloud_.shutdown();
+    this->sub_norm_.shutdown();
     this->sub_image_.shutdown();
 }
 
-/**
- * Later change to message filters
- */
 void PointCloudSceneDecomposer::imageCallback(
     const sensor_msgs::Image::ConstPtr &image_msg) {
     cv_bridge::CvImagePtr cv_ptr;
     try {
-        cv_ptr = cv_bridge::toCvCopy(image_msg, sensor_msgs::image_encodings::BGR8);
+        cv_ptr = cv_bridge::toCvCopy(
+           image_msg, sensor_msgs::image_encodings::BGR8);
     } catch (cv_bridge::Exception& e) {
         ROS_ERROR("cv_bridge exception: %s", e.what());
         return;
     }
     this->image_ = cv_ptr->image.clone();
+    std::cout << "Image: " << image_.size() << std::endl;
 }
 
+void PointCloudSceneDecomposer::normalCallback(
+    const sensor_msgs::PointCloud2ConstPtr &normal_msg) {
+    this->normal_ = pcl::PointCloud<pcl::Normal>::Ptr(
+       new pcl::PointCloud<pcl::Normal>);
+    pcl::fromROSMsg(*normal_msg, *normal_);
+}
 
 void PointCloudSceneDecomposer::cloudCallback(
     const sensor_msgs::PointCloud2ConstPtr &cloud_msg) {
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-    
-    this->surface_normal = pcl::PointCloud<pcl::Normal>::Ptr(
-        new pcl::PointCloud<pcl::Normal>);
-    this->estimatePointCloudNormals(
-        cloud, this->surface_normal, 30, 0.05, false);
-    // this->estimatePointCloudNormals(cloud, this->surface_normal, 40);
-    
+
+    std::cout << cloud->size() << "\t" << normal_->size() << image_.size() << std::endl;
+    if (cloud->empty() || this->image_.empty()) {
+       ROS_ERROR("CANNOT PROCESS EMPTY INSTANCE");
+       return;
+    }
     // cv::Mat rgb_img;
     // cv::Mat dep_img;
     // this->pointCloud2RGBDImage(cloud, rgb_img, dep_img);
-    
-    cv::Mat depth_edge;
-    // this->getDepthEdge(dep_img, depth_edge, true);
-    this->viewPointSurfaceNormalOrientation(
-       cloud, this->surface_normal, depth_edge);
-    // std::vector<cvPatch<int> > patch_label;
-    // this->cvLabelEgdeMap(cloud, depth_edge, patch_label);
 
+    cv::Mat image = this->image_.clone();
+    cv::Mat depth_edge;
+    this->getRGBEdge(image, depth_edge, "cvSOBEL");
+    // this->getDepthEdge(dep_img, depth_edge, true);
+    cv::imshow("depth_edge", depth_edge);
     
+    
+    std::vector<cvPatch<int> > patch_label;
+    this->cvLabelEgdeMap(cloud, depth_edge, patch_label);
+    
+    cv::waitKey(3);
     
     /*
     pcl::PointCloud<PointT>::Ptr patch_cloud(
@@ -128,8 +140,8 @@ void PointCloudSceneDecomposer::cloudCallback(
     this->semanticCloudLabel(cloud_clusters, cloud, labelMD);
     
     /**/
-    // this->viewPointSurfaceNormalOrientation(cloud, this->surface_normal);
-    // this->pointCloudLocalGradient(cloud, this->surface_normal, dep_img);
+    // this->viewPointSurfaceNormalOrientation(cloud, this->normal_);
+    // this->pointCloudLocalGradient(cloud, this->normal_, dep_img);
     //
     
     sensor_msgs::PointCloud2 ros_cloud;
@@ -385,7 +397,7 @@ void PointCloudSceneDecomposer::extractPointCloudClustersFrom2DMap(
     eifilter->setInputCloud(cloud);
     pcl::ExtractIndices<pcl::Normal>::Ptr n_eifilter(
        new pcl::ExtractIndices<pcl::Normal>);
-    n_eifilter->setInputCloud(this->surface_normal);
+    n_eifilter->setInputCloud(this->normal_);
     
     for (int k = 0; k < patch_label.size(); k++) {
        std::vector<std::vector<int> > cluster_indices(

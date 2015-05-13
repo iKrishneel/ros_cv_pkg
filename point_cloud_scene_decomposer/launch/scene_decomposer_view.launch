@@ -1,0 +1,7 @@
+<launch>
+  <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch" />
+  <include file="$(find point_cloud_scene_decomposer)/launch/organized_multi_plane_segmentation.launch" />
+  <include file="$(find point_cloud_normal_gradient)/launch/point_cloud_normal_gradient.launch"/>
+  <include file="$(find point_cloud_image_creator)/launch/point_cloud_image_creator.launch" />
+  <!---<include file="$(find point_cloud_scene_decomposer)/launch/point_cloud_scene_decomposer.launch" />-->
+</launch>

@@ -11,11 +11,11 @@ PointCloudImageCreator::PointCloudImageCreator() {
 
 void PointCloudImageCreator::onInit() {
     this->pub_image_ = pnh_.advertise<sensor_msgs::Image>(
-       "output/image", 1);
+       "/cloud_image/output/image", 1);
     this->pub_iimage_ = pnh_.advertise<sensor_msgs::Image>(
-       "output/interpolated_image", 1);
+       "/cloud_image/output/interpolated_image", 1);
     this->pub_cloud_ = pnh_.advertise<sensor_msgs::PointCloud2>(
-       "output/cloud", 1);
+       "/cloud_image/output/cloud", 1);
 }
 
 void PointCloudImageCreator::subsribe() {
