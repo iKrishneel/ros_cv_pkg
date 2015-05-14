@@ -54,18 +54,24 @@ void SceneDecomposerImageProcessor:: cvVisualization(
        int prev_x = patch_label[y].rect.x;
        int width = patch_label[y].rect.width;
        int height = patch_label[y].rect.height;
-       for (int j = 0; j < height; j++) {
-          for (int i = 0; i < width; i++) {
-             int lab = static_cast<int>(labelMD.at<float>(j, i));
-             lab += labCounter;  // for unique labeling
-             regionMD.at<cv::Vec3b>(prev_y + j, prev_x + i)[2]
-                = this->color[lab].val[0];
-             regionMD.at<cv::Vec3b>(prev_y + j, prev_x + i)[1]
-                = this->color[lab].val[1];
-             regionMD.at<cv::Vec3b>(prev_y + j, prev_x + i)[0]
-                = this->color[lab].val[2];
-          }
-       }
+       // int k = patch_label[y].k;
+       // if (k < 3) {
+       //     cv::rectangle(
+       //         regionMD, patch_label[y].rect, cv::Scalar(255, 255, 255), CV_FILLED);
+       // } else {
+           for (int j = 0; j < height; j++) {
+               for (int i = 0; i < width; i++) {
+                   int lab = static_cast<int>(labelMD.at<float>(j, i));
+                   lab += labCounter;  // for unique labeling
+                   regionMD.at<cv::Vec3b>(prev_y + j, prev_x + i)[2]
+                       = this->color[lab].val[0];
+                   regionMD.at<cv::Vec3b>(prev_y + j, prev_x + i)[1]
+                       = this->color[lab].val[1];
+                   regionMD.at<cv::Vec3b>(prev_y + j, prev_x + i)[0]
+                       = this->color[lab].val[2];
+               }
+           }
+           // }
        labCounter += patch_label[y].k;
     }
     cv::imshow(wname, regionMD);
@@ -262,7 +268,6 @@ void SceneDecomposerImageProcessor::cvGetLabelImagePatch(
              cv::Mat roi = img(rect);
 
              // check if it is pure background roi
-             std::cout << "ROI TYPE: " << roi.type() << std::endl;
              bool compute_label = false;
              for (int y = 0; y < roi.rows; y++) {
                 for (int x = 0; x < roi.cols; x++) {
@@ -383,7 +388,7 @@ int SceneDecomposerImageProcessor::getTotalClusterSize() {
 }
 
 
-/**
+/** SUB- ORIGINIAL ORGANISED POINT CLOUD
  * function to assign edges to the pixel in foreground in local
  * neigbourhood. The pixels are argumented by the point cloud 
  */
@@ -421,10 +426,11 @@ void SceneDecomposerImageProcessor::edgeBoundaryAssignment(
              labelMD.at<float>(j, i) = labelMD.at<float>(min_idx.y, min_idx.x);
              // ----------------
 */
-             int north = i + ((j - offset_) * cloud->width);
-             int south = i + ((j + offset_) * cloud->width);
-             int east = (i + offset_) + (j * cloud->width);
-             int west = (i - offset_) + (j * cloud->width);
+             int north = i + ((j - offset_) * edgeMap.cols);
+             int south = i + ((j + offset_) * edgeMap.cols);
+             int east = (i + offset_) + (j * edgeMap.cols);
+             int west = (i - offset_) + (j * edgeMap.cols);
+             
              float dist_n = 0.0f;
              float dist_s = 0.0f;
              float dist_e = 0.0f;

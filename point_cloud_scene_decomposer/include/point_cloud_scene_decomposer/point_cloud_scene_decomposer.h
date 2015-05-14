@@ -13,6 +13,7 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     ros::Publisher pub_image_;
     ros::Publisher pub_cloud_;
     ros::Subscriber sub_cloud_;
+    ros::Subscriber sub_cloud_ori_;
     ros::Subscriber sub_norm_;
     ros::Subscriber sub_image_;
 
@@ -38,10 +39,14 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     void unsubscribe();
 
     pcl::PointCloud<pcl::Normal>::Ptr normal_;
+    pcl::PointCloud<PointT>::Ptr orig_cloud_;
     cv::Mat image_;
     
  public:
     PointCloudSceneDecomposer();
+    void origcloudCallback(
+        const sensor_msgs::PointCloud2ConstPtr &);
+    
     void cloudCallback(
         const sensor_msgs::PointCloud2ConstPtr &);
     void normalCallback(

@@ -3,7 +3,9 @@
 
 PointCloudSceneDecomposer::PointCloudSceneDecomposer() :
     normal_(pcl::PointCloud<pcl::Normal>::Ptr(
-               new pcl::PointCloud<pcl::Normal>)) {
+                new pcl::PointCloud<pcl::Normal>)),
+    orig_cloud_(pcl::PointCloud<PointT>::Ptr(
+                        new pcl::PointCloud<PointT>)) {
     this->subscribe();
     this->onInit();
 }
@@ -16,6 +18,10 @@ void PointCloudSceneDecomposer::onInit() {
 }
 
 void PointCloudSceneDecomposer::subscribe() {
+
+    this->sub_cloud_ori_ = nh_.subscribe("/camera/depth_registered/points", 1,
+        &PointCloudSceneDecomposer::origcloudCallback , this);
+    
     this->sub_image_ = nh_.subscribe("input_image", 1,
         &PointCloudSceneDecomposer::imageCallback, this);
     this->sub_norm_ = nh_.subscribe("input_norm", 1,
@@ -29,6 +35,14 @@ void PointCloudSceneDecomposer::unsubscribe() {
     this->sub_norm_.shutdown();
     this->sub_image_.shutdown();
 }
+
+void PointCloudSceneDecomposer::origcloudCallback(
+    const sensor_msgs::PointCloud2ConstPtr &orig_cloud_msg) {
+    this->orig_cloud_ = pcl::PointCloud<PointT>::Ptr(
+        new pcl::PointCloud<PointT>);
+    pcl::fromROSMsg(*orig_cloud_msg, *orig_cloud_);
+}
+
 
 void PointCloudSceneDecomposer::imageCallback(
     const sensor_msgs::Image::ConstPtr &image_msg) {
@@ -74,23 +88,21 @@ void PointCloudSceneDecomposer::cloudCallback(
     std::vector<cvPatch<int> > patch_label;
     this->cvLabelEgdeMap(cloud, edge_map, patch_label);
 
-    
+    /*
     pcl::PointCloud<PointT>::Ptr patch_cloud(new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointT, PointT> (*cloud, *patch_cloud);
+    pcl::copyPointCloud<PointT, PointT> (*orig_cloud_, *patch_cloud);
 
     std::vector<pcl::PointCloud<PointT>::Ptr> cloud_clusters;
     std::vector<pcl::PointCloud<pcl::Normal>::Ptr> normal_clusters;
-/*
+
     pcl::PointCloud<pcl::PointXYZ>::Ptr centroids(
        new pcl::PointCloud<pcl::PointXYZ>);
     this->extractPointCloudClustersFrom2DMap(patch_cloud, patch_label,
        cloud_clusters, normal_clusters, centroids, image.size());
-
-    /*
+    
     std::vector<std::vector<int> > neigbour_idx;
     this->pclNearestNeigborSearch(centroids, neigbour_idx, false, 8, 0.05);
-
-    /*
+    
     RegionAdjacencyGraph *rag = new RegionAdjacencyGraph();
     rag->generateRAG(
        cloud_clusters, normal_clusters, centroids, neigbour_idx, 1);
@@ -104,7 +116,7 @@ void PointCloudSceneDecomposer::cloudCallback(
     this->semanticCloudLabel(cloud_clusters, cloud, labelMD);
 
     /*
-    // labeling by convex criteria
+     // labeling by convex criteria
     normal_clusters.clear();
     cloud_clusters.clear();
     centroids->clear();
@@ -372,9 +384,13 @@ void PointCloudSceneDecomposer::extractPointCloudClustersFrom2DMap(
     
     for (int k = 0; k < patch_label.size(); k++) {
        std::vector<std::vector<int> > cluster_indices(
-          static_cast<int>(100));  // CHANGE TO AUTO-SIZE
+           static_cast<int>(100));  // CHANGE TO AUTO-SIZE
        cv::Mat labelMD = patch_label[k].patch.clone();
        cv::Rect_<int> rect = patch_label[k].rect;
+
+       // std::cout << "--DEBUG: " << cluster_indices.size()  << "\t"
+       //           << patch_label.size() <<std::endl;
+       
        for (int j = 0; j < rect.height; j++) {
           for (int i = 0; i < rect.width; i++) {
              int label_ = static_cast<int>(
@@ -383,18 +399,15 @@ void PointCloudSceneDecomposer::extractPointCloudClustersFrom2DMap(
              cluster_indices[label_].push_back(index);
           }
        }
-
-       std::cout << "--DEBUG: " << cluster_indices.size()  << std::endl;
        
        for (int i = 0; i < cluster_indices.size(); i++) {
-          pcl::PointCloud<PointT>::Ptr tmp_cloud(
+           pcl::PointCloud<PointT>::Ptr tmp_cloud(
              new pcl::PointCloud<PointT>);
           pcl::PointIndices::Ptr indices(
              new pcl::PointIndices());
           indices->indices = cluster_indices[i];
           eifilter->setIndices(indices);
           eifilter->filter(*tmp_cloud);
-          /*
           // filter the normal
           pcl::PointCloud<pcl::Normal>::Ptr tmp_normal(
              new pcl::PointCloud<pcl::Normal>);
@@ -412,7 +425,6 @@ void PointCloudSceneDecomposer::extractPointCloudClustersFrom2DMap(
                 normal_clusters.push_back(tmp_normal);
              }
           }
-          */
        }
        cluster_indices.clear();
     }
