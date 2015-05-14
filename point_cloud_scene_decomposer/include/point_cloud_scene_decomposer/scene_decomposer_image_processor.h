@@ -12,6 +12,7 @@ struct cvPatch {
     T k;  // number of clusters
     cv::Mat patch;  // pixel wise label
     cv::Rect_<T> rect;  // patch info
+    bool is_region;  // mark region
 };
 
 class SceneDecomposerImageProcessor {
@@ -55,12 +56,14 @@ class SceneDecomposerImageProcessor {
     virtual void cvGetLabelImagePatch(
        const pcl::PointCloud<PointT>::Ptr,
        const cv::Mat &,
+       const cv::Mat &,
        std::vector<cvPatch<int> > &);
     virtual int cvLabelImagePatch(
        const cv::Mat &,
        cv::Mat &);
     virtual void cvLabelEgdeMap(
        const pcl::PointCloud<PointT>::Ptr,
+       const cv::Mat &,
        cv::Mat,
        std::vector<cvPatch<int> > &);
     virtual void edgeBoundaryAssignment(
@@ -68,7 +71,7 @@ class SceneDecomposerImageProcessor {
       const cv::Mat &,
       cv::Mat &,
       const cv::Rect_<int>);
-
+   
     void cvVisualization(
        std::vector<cvPatch<int> > &,
        const cv::Size = cv::Size(640, 480),

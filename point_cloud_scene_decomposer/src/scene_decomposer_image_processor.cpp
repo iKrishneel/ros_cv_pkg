@@ -115,8 +115,8 @@ void SceneDecomposerImageProcessor::depthCallback(
 /**
  * processing and publish ros image
  */
-void SceneDecomposerImageProcessor::publishROSImage(cv::Mat &img, cv::Mat &dep) {
-
+void SceneDecomposerImageProcessor::publishROSImage(
+    cv::Mat &img, cv::Mat &dep) {
     cv_bridge::CvImagePtr out_msg(new cv_bridge::CvImage);
     out_msg->header = this->cvImgPtr->header;
     out_msg->encoding = sensor_msgs::image_encodings::BGR8;
@@ -245,6 +245,7 @@ void SceneDecomposerImageProcessor::getRGBEdge(
  */
 void SceneDecomposerImageProcessor::cvGetLabelImagePatch(
     const pcl::PointCloud<PointT>::Ptr cloud,
+    const cv::Mat &src,
     const cv::Mat &img,
     std::vector<cvPatch<int> > &patch_label) {
     if (img.empty() || cloud->empty()) {
@@ -266,57 +267,45 @@ void SceneDecomposerImageProcessor::cvGetLabelImagePatch(
           if (rect.x + rect.width <= img.cols &&
               rect.y + rect.height <= img.rows) {
              cv::Mat roi = img(rect);
+             cv::Mat labelMD;
+             int cluster_count = this->cvLabelImagePatch(roi, labelMD);
 
-             // check if it is pure background roi
-             bool compute_label = false;
-             for (int y = 0; y < roi.rows; y++) {
-                for (int x = 0; x < roi.cols; x++) {
-                   if (static_cast<float>(roi.at<uchar>(y, x)) != 255) {
-                      compute_label = true;
-                      break;
-                   }
+             // --- if work, change this routine to work on vector
+             for (int jj = 0; jj < labelMD.rows; jj++) {
+                for (int ii = 0; ii < labelMD.cols; ii++) {
+                   pLabel.at<float>(j + jj, i + ii) =
+                      labelMD.at<float>(jj, ii) + uniqueLabel;
                 }
              }
+             // ---
              
-             if (compute_label) {
-                cv::Mat labelMD;
-                int cluster_count = this->cvLabelImagePatch(roi, labelMD);
-
-                // --- if work, change this routine to work on vector
-                for (int jj = 0; jj < labelMD.rows; jj++) {
-                   for (int ii = 0; ii < labelMD.cols; ii++) {
-                      pLabel.at<float>(j + jj, i + ii) =
-                         labelMD.at<float>(jj, ii) + uniqueLabel;
-                   }
-                }
-                // ---
+             k_cluster.push_back(cluster_count);
+             this->total_cluster += cluster_count;
              
-                k_cluster.push_back(cluster_count);
-                this->total_cluster += cluster_count;
-             
-                if (isUniqueLabel) {
-                   uniqueLabel = total_cluster;
-                }
-
-             
-                if (cluster_count == sizeof(char)) {
-                   // TODO(divide and reprocess)
-                }
-                /*
-                  cvPatch<int> ptch;
-                  ptch.patch = labelMD.clone();
-                  ptch.rect = rect;
-                  ptch.k = cluster_count;
-                  patch_label.push_back(ptch);
-                */
+             if (isUniqueLabel) {
+                uniqueLabel = total_cluster;
              }
+
+             
+             if (cluster_count == sizeof(char)) {
+                // TODO(divide and reprocess)
+             }
+             /*
+               cvPatch<int> ptch;
+               ptch.patch = labelMD.clone();
+               ptch.rect = rect;
+               ptch.k = cluster_count;
+               patch_label.push_back(ptch);
+             */
           }
        }
     }
     
     // TODO(Remove these lines and add to above for loop)
     int icounter = 0;
-    this->edgeBoundaryAssignment(cloud, img, pLabel, cv::Rect_<int>(0, 0, 0, 0));
+    this->edgeBoundaryAssignment(
+       cloud, img, pLabel, cv::Rect_<int>(0, 0, 0, 0));
+    
     for (int j = 0; j < img.rows; j += cell_size.height) {
        for (int i = 0; i < img.cols; i += cell_size.width) {
           cv::Rect_<int> rect = cv::Rect_<int>(
@@ -324,20 +313,28 @@ void SceneDecomposerImageProcessor::cvGetLabelImagePatch(
           if (rect.x + rect.width <= img.cols &&
               rect.y + rect.height <= img.rows) {
              cv::Mat roi = pLabel(rect).clone();
-             double minVal = 0;
-             double maxVal = 0;
-             cv::minMaxIdx(roi, &minVal, &maxVal);
-             
-             // std::cout << "Min Max Value: " << minVal
-             //           << "\t" << maxVal << "\t"
-             //           << rect << std::endl;
-             
+
+             bool is_region = false;
+             cv::Mat src_roi = src(rect).clone();
+             for (int y = 0; y < src_roi.rows; y++) {
+                for (int x = 0; x < src_roi.cols; x++) {
+                   cv::Vec3b src_roi_pix = src_roi.at<cv::Vec3b>(y, x);
+                   if (src_roi_pix[0] == 255 &&
+                       src_roi_pix[1] == 255 &&
+                       src_roi_pix[2] == 255) {
+                      is_region = false;
+                   } else {
+                      is_region = true;
+                      break;
+                   }
+                }
+             }
+                          
              cvPatch<int> ptch;
              ptch.patch = roi.clone();
              ptch.rect = rect;
              ptch.k = k_cluster[icounter++];
-             // std::cout << "--SIZE: " << ptch.k << std::endl;
-             
+             ptch.is_region = is_region;
              patch_label.push_back(ptch);
           }
        }
@@ -494,6 +491,7 @@ void SceneDecomposerImageProcessor::edgeBoundaryAssignment(
  */
 void SceneDecomposerImageProcessor::cvLabelEgdeMap(
     const pcl::PointCloud<PointT>::Ptr cloud,
+    const cv::Mat &src,
     cv::Mat edgeMap,
     std::vector<cvPatch<int> > &patch_label) {
     if (edgeMap.empty() || cloud->empty()) {
@@ -503,7 +501,7 @@ void SceneDecomposerImageProcessor::cvLabelEgdeMap(
     cv::Mat mop_img;
     this->cvMorphologicalOperations(edgeMap, mop_img);
     cvEdgeThinning(mop_img);
-    this->cvGetLabelImagePatch(cloud, mop_img, patch_label);
+    this->cvGetLabelImagePatch(cloud, src, mop_img, patch_label);
     
     this->cvVisualization(patch_label, edgeMap.size());
     cv::imshow("Thin", mop_img);

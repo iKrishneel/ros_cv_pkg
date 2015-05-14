@@ -79,16 +79,16 @@ void PointCloudSceneDecomposer::cloudCallback(
     // cv::Mat rgb_img;
     // cv::Mat dep_img;
     // this->pointCloud2RGBDImage(cloud, rgb_img, dep_img);
-
+    
     cv::Mat image = this->image_.clone();
     cv::Mat edge_map;
     this->getRGBEdge(image, edge_map, "cvCanny");
     // this->getDepthEdge(dep_img, edge_map, true);
     
     std::vector<cvPatch<int> > patch_label;
-    this->cvLabelEgdeMap(cloud, edge_map, patch_label);
+    this->cvLabelEgdeMap(cloud, image, edge_map, patch_label);
 
-    /*
+   
     pcl::PointCloud<PointT>::Ptr patch_cloud(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT> (*orig_cloud_, *patch_cloud);
 
@@ -99,7 +99,8 @@ void PointCloudSceneDecomposer::cloudCallback(
        new pcl::PointCloud<pcl::PointXYZ>);
     this->extractPointCloudClustersFrom2DMap(patch_cloud, patch_label,
        cloud_clusters, normal_clusters, centroids, image.size());
-    
+
+
     std::vector<std::vector<int> > neigbour_idx;
     this->pclNearestNeigborSearch(centroids, neigbour_idx, false, 8, 0.05);
     
@@ -388,48 +389,45 @@ void PointCloudSceneDecomposer::extractPointCloudClustersFrom2DMap(
        cv::Mat labelMD = patch_label[k].patch.clone();
        cv::Rect_<int> rect = patch_label[k].rect;
 
-       // std::cout << "--DEBUG: " << cluster_indices.size()  << "\t"
-       //           << patch_label.size() <<std::endl;
-       
-       for (int j = 0; j < rect.height; j++) {
-          for (int i = 0; i < rect.width; i++) {
-             int label_ = static_cast<int>(
-                labelMD.at<float>(j, i));
-             int index = (i + rect.x) + ((j + rect.y) * isize.width);
-             cluster_indices[label_].push_back(index);
+       if (patch_label[k].is_region) {
+          for (int j = 0; j < rect.height; j++) {
+             for (int i = 0; i < rect.width; i++) {
+                int label_ = static_cast<int>(
+                   labelMD.at<float>(j, i));
+                int index = (i + rect.x) + ((j + rect.y) * isize.width);
+                cluster_indices[label_].push_back(index);
+             }
           }
-       }
-       
-       for (int i = 0; i < cluster_indices.size(); i++) {
-           pcl::PointCloud<PointT>::Ptr tmp_cloud(
-             new pcl::PointCloud<PointT>);
-          pcl::PointIndices::Ptr indices(
-             new pcl::PointIndices());
-          indices->indices = cluster_indices[i];
-          eifilter->setIndices(indices);
-          eifilter->filter(*tmp_cloud);
-          // filter the normal
-          pcl::PointCloud<pcl::Normal>::Ptr tmp_normal(
-             new pcl::PointCloud<pcl::Normal>);
-          n_eifilter->setIndices(indices);
-          n_eifilter->filter(*tmp_normal);
-          if (tmp_cloud->width > FILTER_SIZE) {
-             Eigen::Vector4f centroid;
-             pcl::compute3DCentroid<PointT, float>(*cloud, *indices, centroid);
-             float ct_x = static_cast<float>(centroid[0]);
-             float ct_y = static_cast<float>(centroid[1]);
-             float ct_z = static_cast<float>(centroid[2]);
-             if (!isnan(ct_x) && !isnan(ct_y) && !isnan(ct_z)) {
-                centroids->push_back(pcl::PointXYZ(ct_x, ct_y, ct_z));
-                cloud_clusters.push_back(tmp_cloud);
-                normal_clusters.push_back(tmp_normal);
+          for (int i = 0; i < cluster_indices.size(); i++) {
+             pcl::PointCloud<PointT>::Ptr tmp_cloud(
+                new pcl::PointCloud<PointT>);
+             pcl::PointIndices::Ptr indices(
+                new pcl::PointIndices());
+             indices->indices = cluster_indices[i];
+             eifilter->setIndices(indices);
+             eifilter->filter(*tmp_cloud);
+             // filter the normal
+             pcl::PointCloud<pcl::Normal>::Ptr tmp_normal(
+                new pcl::PointCloud<pcl::Normal>);
+             n_eifilter->setIndices(indices);
+             n_eifilter->filter(*tmp_normal);
+             if (tmp_cloud->width > FILTER_SIZE) {
+                Eigen::Vector4f centroid;
+                pcl::compute3DCentroid<PointT, float>(
+                   *cloud, *indices, centroid);
+                float ct_x = static_cast<float>(centroid[0]);
+                float ct_y = static_cast<float>(centroid[1]);
+                float ct_z = static_cast<float>(centroid[2]);
+                if (!isnan(ct_x) && !isnan(ct_y) && !isnan(ct_z)) {
+                   centroids->push_back(pcl::PointXYZ(ct_x, ct_y, ct_z));
+                   cloud_clusters.push_back(tmp_cloud);
+                   normal_clusters.push_back(tmp_normal);
+                }
              }
           }
        }
        cluster_indices.clear();
     }
-    // std::cout << "--INFO: Cluster Size: "
-    //           << cloud_clusters.size() << std::endl;
 }
 
 /**
