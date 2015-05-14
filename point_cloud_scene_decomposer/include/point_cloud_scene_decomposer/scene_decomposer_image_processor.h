@@ -7,12 +7,15 @@
 #include <point_cloud_scene_decomposer/connected.h>
 #include <point_cloud_scene_decomposer/contour_thinning.h>
 
+#include <vector>
+
 template<typename T>
 struct cvPatch {
     T k;  // number of clusters
     cv::Mat patch;  // pixel wise label
     cv::Rect_<T> rect;  // patch info
     bool is_region;  // mark region
+    std::vector<cv::Point2i> region;
 };
 
 class SceneDecomposerImageProcessor {

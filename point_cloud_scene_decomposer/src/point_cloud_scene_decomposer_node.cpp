@@ -2,6 +2,7 @@
 #include <point_cloud_scene_decomposer/point_cloud_scene_decomposer.h>
 
 PointCloudSceneDecomposer::PointCloudSceneDecomposer() :
+    max_distance_(1.0f),
     normal_(pcl::PointCloud<pcl::Normal>::Ptr(
                 new pcl::PointCloud<pcl::Normal>)),
     orig_cloud_(pcl::PointCloud<PointT>::Ptr(
@@ -42,7 +43,6 @@ void PointCloudSceneDecomposer::origcloudCallback(
         new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*orig_cloud_msg, *orig_cloud_);
 }
-
 
 void PointCloudSceneDecomposer::imageCallback(
     const sensor_msgs::Image::ConstPtr &image_msg) {
@@ -102,17 +102,14 @@ void PointCloudSceneDecomposer::cloudCallback(
 
 
     std::vector<std::vector<int> > neigbour_idx;
-    this->pclNearestNeigborSearch(centroids, neigbour_idx, false, 8, 0.05);
+    this->pclNearestNeigborSearch(centroids, neigbour_idx, true, 4, 0.06);
     
     RegionAdjacencyGraph *rag = new RegionAdjacencyGraph();
     rag->generateRAG(
-       cloud_clusters, normal_clusters, centroids, neigbour_idx, 1);
-    rag->splitMergeRAG(0.0);
+       cloud_clusters, normal_clusters, centroids, neigbour_idx, 0);
+    rag->splitMergeRAG(0.60);
     std::vector<int> labelMD;
     rag->getCloudClusterLabels(labelMD);
-    // std::map<int, pcl::PointCloud<PointT>::Ptr> c_clusters;
-    // rag->concatenateRegionUsingRAGInfo(
-    //    cloud_clusters, normal_clusters, c_clusters);
     free(rag);
     this->semanticCloudLabel(cloud_clusters, cloud, labelMD);
 
@@ -388,16 +385,34 @@ void PointCloudSceneDecomposer::extractPointCloudClustersFrom2DMap(
            static_cast<int>(100));  // CHANGE TO AUTO-SIZE
        cv::Mat labelMD = patch_label[k].patch.clone();
        cv::Rect_<int> rect = patch_label[k].rect;
-
+       
        if (patch_label[k].is_region) {
-          for (int j = 0; j < rect.height; j++) {
-             for (int i = 0; i < rect.width; i++) {
-                int label_ = static_cast<int>(
-                   labelMD.at<float>(j, i));
-                int index = (i + rect.x) + ((j + rect.y) * isize.width);
+          for (std::vector<cv::Point2i>::const_iterator it =
+                  patch_label[k].region.begin();
+               it != patch_label[k].region.end(); it++) {
+             int x = it->x + rect.x;
+             int y = it->y + rect.y;
+             int label_ = static_cast<int>(labelMD.at<float>(it->y, it->x));
+             int index = (x + (y * isize.width));
+             if (cloud->points[index].z <= this->max_distance_) {
                 cluster_indices[label_].push_back(index);
              }
           }
+
+          /*
+          for (int j = 0; j < rect.height; j++) {
+             for (int i = 0; i < rect.width; i++) {
+                int label_ = static_cast<int>(
+                labelMD.at<float>(j, i));
+                int index = (i + rect.x) + ((j + rect.y) * isize.width);
+                if (cloud->points[index].z <= this->max_distance_) {
+                   cluster_indices[label_].push_back(index);
+                }
+             }
+          }
+          */
+
+          
           for (int i = 0; i < cluster_indices.size(); i++) {
              pcl::PointCloud<PointT>::Ptr tmp_cloud(
                 new pcl::PointCloud<PointT>);

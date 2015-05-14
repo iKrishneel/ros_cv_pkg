@@ -30,8 +30,9 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     void semanticCloudLabel(
         const std::vector<pcl::PointCloud<PointT>::Ptr> &,
         pcl::PointCloud<PointT>::Ptr, const std::vector<int> &);
-
-
+   
+    float max_distance_;
+   
  protected:
 
     void onInit();

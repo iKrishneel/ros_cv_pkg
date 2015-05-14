@@ -4,7 +4,7 @@
 
 
 SceneDecomposerImageProcessor::SceneDecomposerImageProcessor() :
-    isPub(true), cell_size(cv::Size(32, 64)), it_(nh_){
+    isPub(true), cell_size(cv::Size(64, 64)), it_(nh_) {
 
     this->rng = cv::RNG(12345);
     for (int i = 0; i < 1000; i++) {
@@ -314,6 +314,7 @@ void SceneDecomposerImageProcessor::cvGetLabelImagePatch(
               rect.y + rect.height <= img.rows) {
              cv::Mat roi = pLabel(rect).clone();
 
+             std::vector<cv::Point2i> region;
              bool is_region = false;
              cv::Mat src_roi = src(rect).clone();
              for (int y = 0; y < src_roi.rows; y++) {
@@ -322,19 +323,20 @@ void SceneDecomposerImageProcessor::cvGetLabelImagePatch(
                    if (src_roi_pix[0] == 255 &&
                        src_roi_pix[1] == 255 &&
                        src_roi_pix[2] == 255) {
-                      is_region = false;
+                      // is_region = false;
                    } else {
                       is_region = true;
-                      break;
+                      region.push_back(cv::Point2i(x, y));
                    }
                 }
              }
-                          
+             
              cvPatch<int> ptch;
              ptch.patch = roi.clone();
              ptch.rect = rect;
              ptch.k = k_cluster[icounter++];
              ptch.is_region = is_region;
+             ptch.region = region;
              patch_label.push_back(ptch);
           }
        }
