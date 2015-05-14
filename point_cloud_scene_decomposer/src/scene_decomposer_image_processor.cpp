@@ -260,36 +260,51 @@ void SceneDecomposerImageProcessor::cvGetLabelImagePatch(
           if (rect.x + rect.width <= img.cols &&
               rect.y + rect.height <= img.rows) {
              cv::Mat roi = img(rect);
-             cv::Mat labelMD;
-             int cluster_count = this->cvLabelImagePatch(roi, labelMD);
 
-             // --- if work, change this routine to work on vector
-             for (int jj = 0; jj < labelMD.rows; jj++) {
-                for (int ii = 0; ii < labelMD.cols; ii++) {
-                   pLabel.at<float>(j + jj, i + ii) =
-                      labelMD.at<float>(jj, ii) + uniqueLabel;
+             // check if it is pure background roi
+             std::cout << "ROI TYPE: " << roi.type() << std::endl;
+             bool compute_label = false;
+             for (int y = 0; y < roi.rows; y++) {
+                for (int x = 0; x < roi.cols; x++) {
+                   if (static_cast<float>(roi.at<uchar>(y, x)) != 255) {
+                      compute_label = true;
+                      break;
+                   }
                 }
              }
-             // ---
-             k_cluster.push_back(cluster_count);
-             this->total_cluster += cluster_count;
+             
+             if (compute_label) {
+                cv::Mat labelMD;
+                int cluster_count = this->cvLabelImagePatch(roi, labelMD);
+
+                // --- if work, change this routine to work on vector
+                for (int jj = 0; jj < labelMD.rows; jj++) {
+                   for (int ii = 0; ii < labelMD.cols; ii++) {
+                      pLabel.at<float>(j + jj, i + ii) =
+                         labelMD.at<float>(jj, ii) + uniqueLabel;
+                   }
+                }
+                // ---
+             
+                k_cluster.push_back(cluster_count);
+                this->total_cluster += cluster_count;
+             
+                if (isUniqueLabel) {
+                   uniqueLabel = total_cluster;
+                }
 
              
-             if (isUniqueLabel) {
-                uniqueLabel = total_cluster;
+                if (cluster_count == sizeof(char)) {
+                   // TODO(divide and reprocess)
+                }
+                /*
+                  cvPatch<int> ptch;
+                  ptch.patch = labelMD.clone();
+                  ptch.rect = rect;
+                  ptch.k = cluster_count;
+                  patch_label.push_back(ptch);
+                */
              }
-
-             
-             if (cluster_count == sizeof(char)) {
-                // TODO(divide and reprocess)
-             }
-             /*
-             cvPatch<int> ptch;
-             ptch.patch = labelMD.clone();
-             ptch.rect = rect;
-             ptch.k = cluster_count;
-             patch_label.push_back(ptch);
-             */
           }
        }
     }
