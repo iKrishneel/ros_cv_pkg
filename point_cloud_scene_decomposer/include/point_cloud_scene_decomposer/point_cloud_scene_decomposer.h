@@ -24,8 +24,6 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
         pcl::PointCloud<pcl::PointXYZ>::Ptr, std::vector<std::vector<int> > &,
         bool isneigbour = true, const int = 8, const double = 0.05);
 
-    void pointCloud2RGBDImage(
-        pcl::PointCloud<PointT>::Ptr, cv::Mat &, cv::Mat &);
 
     void semanticCloudLabel(
         const std::vector<pcl::PointCloud<PointT>::Ptr> &,
@@ -52,18 +50,8 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
         const sensor_msgs::PointCloud2ConstPtr &);
     void normalCallback(
        const sensor_msgs::PointCloud2ConstPtr &);
-    void estimatePointCloudNormals(
-        const pcl::PointCloud<PointT>::Ptr,
-        pcl::PointCloud<pcl::Normal>::Ptr,
-        const int = 8,
-        const double = 0.03,
-        bool = true);
     void pointCloudLocalGradient(
         const pcl::PointCloud<PointT>::Ptr,
-        const pcl::PointCloud<pcl::Normal>::Ptr,
-        cv::Mat &);
-    void viewPointSurfaceNormalOrientation(
-        pcl::PointCloud<PointT>::Ptr,
         const pcl::PointCloud<pcl::Normal>::Ptr,
         cv::Mat &);
     void extractPointCloudClustersFrom2DMap(
