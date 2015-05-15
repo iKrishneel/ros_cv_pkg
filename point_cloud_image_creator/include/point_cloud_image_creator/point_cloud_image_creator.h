@@ -32,7 +32,7 @@ class PointCloudImageCreator {
        const sensor_msgs::CameraInfo::ConstPtr &, cv::Mat &);
     cv::Mat interpolateImage(const cv::Mat &, const cv::Mat &);
 
-    void cvMorphologicalOperations(const cv::Mat &, cv::Mat &);
+    void cvMorphologicalOperations(const cv::Mat &, cv::Mat &, bool);
     
     virtual void onInit();
     virtual void subsribe();
