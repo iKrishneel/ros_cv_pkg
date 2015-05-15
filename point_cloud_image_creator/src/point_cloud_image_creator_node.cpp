@@ -129,9 +129,8 @@ cv::Mat PointCloudImageCreator::interpolateImage(
        return image;
     }
     cv::Mat iimg = image.clone();
-    // cv::bilateralFilter(image, iimg, 5, 80, 100);
     cv::Mat mop_img;
-    this->cvMorphologicalOperations(image, mop_img);
+    this->cvMorphologicalOperations(image, mop_img, true);
     
     const int neigbour = 1;
     for (int j = neigbour; j < mask.rows - neigbour; j++) {
@@ -157,26 +156,27 @@ cv::Mat PointCloudImageCreator::interpolateImage(
           }
        }
     }
-    // cv::imshow("interpolated image", iimg);
-    // cv::waitKey(3);
     return iimg;
 }
 
 void PointCloudImageCreator::cvMorphologicalOperations(
-    const cv::Mat &img, cv::Mat &erosion_dst) {
+    const cv::Mat &img, cv::Mat &erosion_dst, bool is_errode) {
     if (img.empty()) {
        ROS_ERROR("Cannnot perfrom Morphological Operations on empty image....");
        return;
     }
-    int erosion_size = 3;
-    int erosion_const = 2;
+    int erosion_size = 1;
+    int erosion_const = 1;
     int erosion_type = cv::MORPH_ELLIPSE;
-    cv::Mat element = cv::getStructuringElement(
-       erosion_type,
+    cv::Mat element = cv::getStructuringElement(erosion_type,
        cv::Size(erosion_const * erosion_size + sizeof(char),
                 erosion_const * erosion_size + sizeof(char)),
        cv::Point(erosion_size, erosion_size));
-    cv::erode(img, erosion_dst, element);
+    if (is_errode) {
+       cv::erode(img, erosion_dst, element);
+    } else {
+       cv::dilate(img, erosion_dst, element);
+    }
 }
 
 int main(int argc, char *argv[]) {
