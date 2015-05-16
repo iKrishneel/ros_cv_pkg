@@ -4,7 +4,7 @@
 
 
 SceneDecomposerImageProcessor::SceneDecomposerImageProcessor() :
-    isPub(true), cell_size(cv::Size(64, 64)), it_(nh_) {
+    isPub(true), cell_size(cv::Size(64/2, 64)), it_(nh_) {
 
     this->rng = cv::RNG(12345);
     for (int i = 0; i < 1000; i++) {

@@ -33,7 +33,13 @@ class PointCloudNormalGradients{
        const int = 8,
        const double = 0.03,
        bool = true);
-   
+
+    void localCurvatureBoundary(
+      pcl::PointCloud<PointT>::Ptr,
+      const pcl::PointCloud<pcl::Normal>::Ptr);
+    void pclNearestNeigborSearch(
+       pcl::PointCloud<PointT>::Ptr, std::vector<std::vector<int> > &,
+       bool isneigbour = true, const int = 8, const double = 0.05);
  protected:
     void onInit();
     void subscribe();
@@ -43,6 +49,7 @@ class PointCloudNormalGradients{
     ros::NodeHandle nh_;
     ros::Publisher pub_norm_;
     ros::Publisher pub_cloud_;
+    ros::Publisher pub_norm_xyz_;
     ros::Subscriber sub_cloud_;
    
     template<typename T, typename U, typename V>
