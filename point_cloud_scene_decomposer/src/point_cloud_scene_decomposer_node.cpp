@@ -83,7 +83,7 @@ void PointCloudSceneDecomposer::cloudCallback(
     // this->getDepthEdge(dep_img, edge_map, true);
     
     std::vector<cvPatch<int> > patch_label;
-    this->cvLabelEgdeMap(cloud, image, edge_map, patch_label);
+    this->cvLabelEgdeMap(orig_cloud_, image, edge_map, patch_label);
 
    
     pcl::PointCloud<PointT>::Ptr patch_cloud(new pcl::PointCloud<PointT>);
@@ -99,12 +99,12 @@ void PointCloudSceneDecomposer::cloudCallback(
 
 
     std::vector<std::vector<int> > neigbour_idx;
-    this->pclNearestNeigborSearch(centroids, neigbour_idx, true, 4, 0.06);
+    this->pclNearestNeigborSearch(centroids, neigbour_idx, true, 3, 0.06);
     
     RegionAdjacencyGraph *rag = new RegionAdjacencyGraph();
     rag->generateRAG(
-       cloud_clusters, normal_clusters, centroids, neigbour_idx, 0);
-    rag->splitMergeRAG(0.60);
+       cloud_clusters, normal_clusters, centroids, neigbour_idx, 1);
+    rag->splitMergeRAG(0.10);
     std::vector<int> labelMD;
     rag->getCloudClusterLabels(labelMD);
     free(rag);
