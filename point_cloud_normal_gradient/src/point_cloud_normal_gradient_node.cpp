@@ -48,17 +48,7 @@ void PointCloudNormalGradients::cloudCallback(
     // module to see normal on rviz
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr normal_xyz(
        new pcl::PointCloud<pcl::PointXYZRGBNormal>);
-    normal_xyz->points.resize(cloud->points.size());
-    for (size_t i = 0; i < normal_xyz->points.size(); i++) {
-       pcl::PointXYZRGBNormal p;
-       p.x = cloud->points[i].x;
-       p.y = cloud->points[i].y;
-       p.z = cloud->points[i].z;
-       p.normal_x = normals->points[i].normal_x;
-       p.normal_y = normals->points[i].normal_y;
-       p.normal_z = normals->points[i].normal_z;
-       normal_xyz->points[i] = p;
-    }
+    this->convertToRvizNormalDisplay(cloud, normals, normal_xyz);
     
     sensor_msgs::PointCloud2 ros_normal;
     pcl::toROSMsg(*normals, ros_normal);
@@ -220,6 +210,24 @@ void PointCloudNormalGradients::pclNearestNeigborSearch(
        pointSqDist.clear();
     }
 }
+
+void PointCloudNormalGradients::convertToRvizNormalDisplay(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<pcl::Normal>::Ptr normals,
+    pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr normal_xyz) {
+       normal_xyz->points.resize(cloud->points.size());
+    for (size_t i = 0; i < normal_xyz->points.size(); i++) {
+       pcl::PointXYZRGBNormal p;
+       p.x = cloud->points[i].x;
+       p.y = cloud->points[i].y;
+       p.z = cloud->points[i].z;
+       p.normal_x = normals->points[i].normal_x;
+       p.normal_y = normals->points[i].normal_y;
+       p.normal_z = normals->points[i].normal_z;
+       normal_xyz->points[i] = p;
+    }
+}
+
 
 template<typename T, typename U, typename V>
 cv::Scalar PointCloudNormalGradients::JetColour(T v, U vmin, V vmax) {

@@ -40,6 +40,12 @@ class PointCloudNormalGradients{
     void pclNearestNeigborSearch(
        pcl::PointCloud<PointT>::Ptr, std::vector<std::vector<int> > &,
        bool isneigbour = true, const int = 8, const double = 0.05);
+    void convertToRvizNormalDisplay(
+      const pcl::PointCloud<PointT>::Ptr,
+      const pcl::PointCloud<pcl::Normal>::Ptr,
+      pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr);
+   
+   
  protected:
     void onInit();
     void subscribe();
