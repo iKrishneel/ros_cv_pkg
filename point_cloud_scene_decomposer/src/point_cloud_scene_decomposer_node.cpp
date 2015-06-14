@@ -1,5 +1,6 @@
 
 #include <point_cloud_scene_decomposer/point_cloud_scene_decomposer.h>
+#include <point_cloud_scene_decomposer/ClusterVoxels.h>
 #include <vector>
 
 PointCloudSceneDecomposer::PointCloudSceneDecomposer() :
@@ -8,6 +9,8 @@ PointCloudSceneDecomposer::PointCloudSceneDecomposer() :
                 new pcl::PointCloud<pcl::Normal>)),
     orig_cloud_(pcl::PointCloud<PointT>::Ptr(
                         new pcl::PointCloud<PointT>)) {
+    this->srv_client_ = nh_.serviceClient<
+       point_cloud_scene_decomposer::ClusterVoxels>("cluster_voxels");
     this->subscribe();
     this->onInit();
 }
@@ -326,7 +329,7 @@ void PointCloudSceneDecomposer::pointCloudVoxelClustering(
        return;
     }
     int icounter = 0;
-    const int dimensionality = 10;
+    const int dimensionality = 4;
     cv::Mat cluster_features = cv::Mat(
        static_cast<int>(cloud_clusters.size()), dimensionality, CV_32F);
     for (std::vector<pcl::PointCloud<PointT>::Ptr>::iterator it =
@@ -364,41 +367,66 @@ void PointCloudSceneDecomposer::pointCloudVoxelClustering(
           normal_pt.dot(cloud_pt));
        float angle = atan2(cross_norm, scalar_prod);
 
-       cluster_features.at<float>(icounter, 0) = cloud_pt(0)/cloud_pt(2);
-       cluster_features.at<float>(icounter, 1) = cloud_pt(1)/cloud_pt(2);
-       cluster_features.at<float>(icounter, 2) = 1/cloud_pt(2);
-       cluster_features.at<float>(icounter, 3) = normal_pt(0);
-       cluster_features.at<float>(icounter, 4) = normal_pt(1);
-       cluster_features.at<float>(icounter, 5) = normal_pt(2);
-       cluster_features.at<float>(icounter, 6) = angle;
-       cluster_features.at<float>(icounter, 7) = (*it)->points[index].r/255.0f;
-       cluster_features.at<float>(icounter, 8) = (*it)->points[index].g/255.0f;
-       cluster_features.at<float>(icounter, 9) = (*it)->points[index].b/255.0f;
+       int f_ind = 0;
+       cluster_features.at<float>(icounter, f_ind++) = cloud_pt(0)/cloud_pt(2);
+       cluster_features.at<float>(icounter, f_ind++) = cloud_pt(1)/cloud_pt(2);
+       // cluster_features.at<float>(icounter, ++f_ind) = cloud_pt(2);
+       // cluster_features.at<float>(icounter, ++f_ind) = normal_pt(0);
+       // cluster_features.at<float>(icounter, ++f_ind) = normal_pt(1);
+       // cluster_features.at<float>(icounter, ++f_ind) = normal_pt(2);
+       // cluster_features.at<float>(icounter, ++f_ind) = angle;
+       cluster_features.at<float>(icounter, f_ind++) = (*it)->points[index].r/255.0f;
+       cluster_features.at<float>(icounter, f_ind++) = (*it)->points[index].g/255.0f;
+       cluster_features.at<float>(icounter, f_ind++) = (*it)->points[index].b/255.0f;
        icounter++;
     }
     
-    int cluster_size = 10;
+    int cluster_size = 20;
     cv::Mat labels;
-    int attempts = 20;
+    int attempts = 1000;
     cv::Mat centers;
     cv::TermCriteria criteria = cv::TermCriteria(
-       CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 10000, 0.0001);
+       CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 100000, 0.00001);
 
-    // std::cout << cluster_features << std::endl;
+    std::cout << cluster_features.size() << std::endl;
     // std::cout << std::endl;
-    
-    cv::kmeans(cluster_features, cluster_size, labels, criteria,
-               attempts, cv::KMEANS_PP_CENTERS, centers);
 
-    std::cout << labels << std::endl;
-    std::cout << std::endl;
-    
-    for (int i = 0; i < labels.rows; i++) {
-       labelMD.push_back(static_cast<int>(labels.at<float>(i, 0)));
+    this->clusterVoxels(cluster_features, labelMD);
+    /*
+    if (cluster_size < cluster_features.rows) {
+       cv::kmeans(cluster_features, cluster_size, labels, criteria,
+                  attempts, cv::KMEANS_RANDOM_CENTERS, centers);
     }
-    
+    for (int i = 0; i < labels.rows; i++) {
+       labelMD.push_back(labels.at<int>(i, 0));
+    }
+    */
 }
 
+void PointCloudSceneDecomposer::clusterVoxels(
+    const cv::Mat &voxel_features, std::vector<int> &labelMD) {
+    if (voxel_features.empty()) {
+       ROS_ERROR("--EMPTY FEATURE VECTOR");
+       return;
+    }
+    point_cloud_scene_decomposer::ClusterVoxels srv_cv;
+    for (int j = 0; j < voxel_features.rows; j++) {
+       for (int i = 0; i < voxel_features.cols; i++) {
+          float element = voxel_features.at<float>(j, i);
+          srv_cv.request.features.push_back(element);
+       }
+    }
+    srv_cv.request.stride = static_cast<int>(voxel_features.cols);
+    if (this->srv_client_.call(srv_cv)) {
+       for (int i = 0; i < voxel_features.rows; i++) {
+          int label = srv_cv.response.labels[i];
+          labelMD.push_back(static_cast<int>(label));
+       }
+    } else {
+       ROS_ERROR("Failed to call module for clustering");
+       return;
+    }
+}
 
 int main(int argc, char *argv[]) {
 
