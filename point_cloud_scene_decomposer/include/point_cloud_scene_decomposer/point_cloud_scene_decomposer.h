@@ -64,6 +64,14 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
 
     void imageCallback(
         const sensor_msgs::Image::ConstPtr &);
-    
+
+
+    void pointCloudVoxelClustering(
+       std::vector<pcl::PointCloud<PointT>::Ptr> &,
+       const std::vector<pcl::PointCloud<pcl::Normal>::Ptr> &,
+       const pcl::PointCloud<pcl::PointXYZ>::Ptr,
+       std::vector<int> &);
+   
+   
 };
 #endif  // _POINT_CLOUD_SCENE_DECOMPOSER_H_

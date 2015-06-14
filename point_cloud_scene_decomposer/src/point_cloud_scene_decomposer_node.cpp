@@ -1,5 +1,6 @@
 
 #include <point_cloud_scene_decomposer/point_cloud_scene_decomposer.h>
+#include <vector>
 
 PointCloudSceneDecomposer::PointCloudSceneDecomposer() :
     max_distance_(1.0f),
@@ -97,7 +98,17 @@ void PointCloudSceneDecomposer::cloudCallback(
     this->extractPointCloudClustersFrom2DMap(patch_cloud, patch_label,
        cloud_clusters, normal_clusters, centroids, image.size());
 
-
+    /**
+     * Do Clustering here
+       <x/z, y/z, 1/z, nx, ny, nz, norm_vp, r/255, g/255, b/255>
+     */
+    std::vector<int> labelMD;
+    this->pointCloudVoxelClustering(
+       cloud_clusters, normal_clusters, centroids, labelMD);
+    this->semanticCloudLabel(cloud_clusters, cloud, labelMD);
+    
+    
+    /*
     std::vector<std::vector<int> > neigbour_idx;
     this->pclNearestNeigborSearch(centroids, neigbour_idx, true, 3, 0.06);
     
@@ -109,9 +120,9 @@ void PointCloudSceneDecomposer::cloudCallback(
     rag->getCloudClusterLabels(labelMD);
     free(rag);
     this->semanticCloudLabel(cloud_clusters, cloud, labelMD);
-
+    
     // this->pointCloudLocalGradient(cloud, this->normal_, dep_img);
-    //
+    */
     cv::waitKey(3);
     
     sensor_msgs::PointCloud2 ros_cloud;
@@ -119,6 +130,7 @@ void PointCloudSceneDecomposer::cloudCallback(
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
 }
+
 void PointCloudSceneDecomposer::pclNearestNeigborSearch(
     pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
     std::vector<std::vector<int> > &pointIndices,
@@ -300,10 +312,97 @@ void PointCloudSceneDecomposer::semanticCloudLabel(
 }
 
 
+/**
+ * 
+ */
+void PointCloudSceneDecomposer::pointCloudVoxelClustering(
+    std::vector<pcl::PointCloud<PointT>::Ptr> & cloud_clusters,
+    const std::vector<pcl::PointCloud<pcl::Normal>::Ptr> &normal_clusters,
+    const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_centroids,
+    std::vector<int> &labelMD) {
+    if (cloud_clusters.size() != normal_clusters.size() &&
+        cloud_clusters.size() != cloud_centroids->size()) {
+       ROS_ERROR("--CANNOT CLUSTER VOXEL");
+       return;
+    }
+    int icounter = 0;
+    const int dimensionality = 10;
+    cv::Mat cluster_features = cv::Mat(
+       static_cast<int>(cloud_clusters.size()), dimensionality, CV_32F);
+    for (std::vector<pcl::PointCloud<PointT>::Ptr>::iterator it =
+            cloud_clusters.begin(); it != cloud_clusters.end(); it++) {
+       Eigen::Vector3f cluster_centroid =
+          cloud_centroids->points[icounter].getVector3fMap();
+       // assign centroid to cloud value
+       int index = -1;
+       float distance = FLT_MAX;
+       for (int i = 0; i < (*it)->size(); i++) {
+          Eigen::Vector3f cloud_pt = (*it)->points[i].getVector3fMap();
+          float x_val = pow(cluster_centroid(0) - cloud_pt(0), 2);
+          float y_val = pow(cluster_centroid(1) - cloud_pt(1), 2);
+          float z_val = pow(cluster_centroid(2) - cloud_pt(2), 2);
+          float dist = sqrt(x_val + y_val + z_val);
+          if (dist < distance) {
+             distance = dist;
+             index = i;
+          }
+       }
+       
+       Eigen::Vector3f cloud_pt = (*it)->points[index].getVector3fMap();
+       Eigen::Vector3f normal_pt = Eigen::Vector3f(
+          normal_clusters[icounter]->points[index].normal_x,
+          normal_clusters[icounter]->points[index].normal_y,
+          normal_clusters[icounter]->points[index].normal_z);
+
+       normal_pt(0) = isnan(normal_pt(0)) ? 0 : normal_pt(0);
+       normal_pt(1) = isnan(normal_pt(1)) ? 0 : normal_pt(1);
+       normal_pt(2) = isnan(normal_pt(2)) ? 0 : normal_pt(2);
+       
+       float cross_norm = static_cast<float>(
+          normal_pt.cross(cloud_pt).norm());
+       float scalar_prod = static_cast<float>(
+          normal_pt.dot(cloud_pt));
+       float angle = atan2(cross_norm, scalar_prod);
+
+       cluster_features.at<float>(icounter, 0) = cloud_pt(0)/cloud_pt(2);
+       cluster_features.at<float>(icounter, 1) = cloud_pt(1)/cloud_pt(2);
+       cluster_features.at<float>(icounter, 2) = 1/cloud_pt(2);
+       cluster_features.at<float>(icounter, 3) = normal_pt(0);
+       cluster_features.at<float>(icounter, 4) = normal_pt(1);
+       cluster_features.at<float>(icounter, 5) = normal_pt(2);
+       cluster_features.at<float>(icounter, 6) = angle;
+       cluster_features.at<float>(icounter, 7) = (*it)->points[index].r/255.0f;
+       cluster_features.at<float>(icounter, 8) = (*it)->points[index].g/255.0f;
+       cluster_features.at<float>(icounter, 9) = (*it)->points[index].b/255.0f;
+       icounter++;
+    }
+    
+    int cluster_size = 10;
+    cv::Mat labels;
+    int attempts = 20;
+    cv::Mat centers;
+    cv::TermCriteria criteria = cv::TermCriteria(
+       CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 10000, 0.0001);
+
+    // std::cout << cluster_features << std::endl;
+    // std::cout << std::endl;
+    
+    cv::kmeans(cluster_features, cluster_size, labels, criteria,
+               attempts, cv::KMEANS_PP_CENTERS, centers);
+
+    std::cout << labels << std::endl;
+    std::cout << std::endl;
+    
+    for (int i = 0; i < labels.rows; i++) {
+       labelMD.push_back(static_cast<int>(labels.at<float>(i, 0)));
+    }
+    
+}
+
 
 int main(int argc, char *argv[]) {
 
-    ros::init(argc, argv, "my_pcl_tutorial");
+    ros::init(argc, argv, "point_cloud_scene_decomposer");
     srand(time(NULL));
     PointCloudSceneDecomposer pcsd;
     ros::spin();
