@@ -39,11 +39,11 @@ void PointCloudNormalGradients::cloudCallback(
 
     pcl::PointCloud<PointT>::Ptr norm_grad_cloud(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*cloud, *norm_grad_cloud);
-    // this->viewPointSurfaceNormalOrientation(norm_grad_cloud, normals);
+    this->viewPointSurfaceNormalOrientation(norm_grad_cloud, normals);
 
-    pcl::PointCloud<PointT>::Ptr curvature_cloud(new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointT, PointT>(*cloud, *curvature_cloud);
-    this->localCurvatureBoundary(curvature_cloud, normals);
+    // pcl::PointCloud<PointT>::Ptr curvature_cloud(new pcl::PointCloud<PointT>);
+    // pcl::copyPointCloud<PointT, PointT>(*cloud, *curvature_cloud);
+    // this->localCurvatureBoundary(curvature_cloud, normals);
     
     // module to see normal on rviz
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr normal_xyz(
@@ -55,8 +55,8 @@ void PointCloudNormalGradients::cloudCallback(
     ros_normal.header = cloud_msg->header;
     
     sensor_msgs::PointCloud2 ros_cloud;
-    // pcl::toROSMsg(*norm_grad_cloud, ros_cloud);
-    pcl::toROSMsg(*curvature_cloud, ros_cloud);
+    pcl::toROSMsg(*norm_grad_cloud, ros_cloud);
+    // pcl::toROSMsg(*curvature_cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
 
     sensor_msgs::PointCloud2 ros_normal_xyz_cloud;

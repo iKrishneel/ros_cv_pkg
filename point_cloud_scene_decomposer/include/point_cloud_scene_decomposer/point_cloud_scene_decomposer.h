@@ -16,7 +16,8 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     ros::Subscriber sub_cloud_ori_;
     ros::Subscriber sub_norm_;
     ros::Subscriber sub_image_;
-
+    ros::ServiceClient srv_client_;
+   
     pcl::PointCloud<PointT>::Ptr pcl_cloud__;
     pcl::PointCloud<PointT>::Ptr filter_cloud__;
 
@@ -64,6 +65,17 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
 
     void imageCallback(
         const sensor_msgs::Image::ConstPtr &);
-    
+
+
+    void pointCloudVoxelClustering(
+       std::vector<pcl::PointCloud<PointT>::Ptr> &,
+       const std::vector<pcl::PointCloud<pcl::Normal>::Ptr> &,
+       const pcl::PointCloud<pcl::PointXYZ>::Ptr,
+       std::vector<int> &);
+    void clusterVoxels(
+       const cv::Mat &,
+       std::vector<int> &);
+   
+   
 };
 #endif  // _POINT_CLOUD_SCENE_DECOMPOSER_H_
