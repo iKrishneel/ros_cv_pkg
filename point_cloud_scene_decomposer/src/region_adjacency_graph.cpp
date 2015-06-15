@@ -107,8 +107,8 @@ void RegionAdjacencyGraph::generateRAG(
                       r_histogram, n_histogram, CV_COMP_CORREL));
                 
              } else {
-             distance = 0.0f;
-              }
+                distance = 0.0f;
+             }
              if (r_vd != vd) {
                 bool found = false;
                 EdgeDescriptor e_descriptor;
