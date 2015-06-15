@@ -330,6 +330,8 @@ void PointCloudSceneDecomposer::pointCloudVoxelClustering(
     }
     int icounter = 0;
     const int dimensionality = 4;
+    pcl::PointCloud<pcl::PointXYZ>::Ptr centroids(
+       new pcl::PointCloud<pcl::PointXYZ>);
     cv::Mat cluster_features = cv::Mat(
        static_cast<int>(cloud_clusters.size()), dimensionality, CV_32F);
     for (std::vector<pcl::PointCloud<PointT>::Ptr>::iterator it =
@@ -350,8 +352,12 @@ void PointCloudSceneDecomposer::pointCloudVoxelClustering(
              index = i;
           }
        }
-       
        Eigen::Vector3f cloud_pt = (*it)->points[index].getVector3fMap();
+       centroids->push_back(pcl::PointXYZ(
+                               cloud_pt(0), cloud_pt(1), cloud_pt(2)));
+
+       
+       
        Eigen::Vector3f normal_pt = Eigen::Vector3f(
           normal_clusters[icounter]->points[index].normal_x,
           normal_clusters[icounter]->points[index].normal_y,
@@ -375,11 +381,22 @@ void PointCloudSceneDecomposer::pointCloudVoxelClustering(
        // cluster_features.at<float>(icounter, ++f_ind) = normal_pt(1);
        // cluster_features.at<float>(icounter, ++f_ind) = normal_pt(2);
        // cluster_features.at<float>(icounter, ++f_ind) = angle;
-       cluster_features.at<float>(icounter, f_ind++) = (*it)->points[index].r/255.0f;
-       cluster_features.at<float>(icounter, f_ind++) = (*it)->points[index].g/255.0f;
-       cluster_features.at<float>(icounter, f_ind++) = (*it)->points[index].b/255.0f;
+       cluster_features.at<float>(icounter, f_ind++) =
+          (*it)->points[index].r/255.0f;
+       cluster_features.at<float>(icounter, f_ind++) =
+          (*it)->points[index].g/255.0f;
+       cluster_features.at<float>(icounter, f_ind++) =
+          (*it)->points[index].b/255.0f;
        icounter++;
     }
+
+    
+    std::vector<std::vector<int> > neigbour_index;
+    this->pclNearestNeigborSearch(centroids, neigbour_index, true, 3, 0.05);
+    for (int i = 0; i < neigbour_idx[0].size(); i++) {
+       
+    }
+    
     
     int cluster_size = 20;
     cv::Mat labels;
