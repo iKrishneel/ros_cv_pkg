@@ -355,8 +355,6 @@ void PointCloudSceneDecomposer::pointCloudVoxelClustering(
        Eigen::Vector3f cloud_pt = (*it)->points[index].getVector3fMap();
        centroids->push_back(pcl::PointXYZ(
                                cloud_pt(0), cloud_pt(1), cloud_pt(2)));
-
-       
        
        Eigen::Vector3f normal_pt = Eigen::Vector3f(
           normal_clusters[icounter]->points[index].normal_x,
@@ -372,30 +370,29 @@ void PointCloudSceneDecomposer::pointCloudVoxelClustering(
        float scalar_prod = static_cast<float>(
           normal_pt.dot(cloud_pt));
        float angle = atan2(cross_norm, scalar_prod);
-
+       
+       angle = isnan(angle) ? 0 : angle;
+       
        int f_ind = 0;
        cluster_features.at<float>(icounter, f_ind++) = cloud_pt(0)/cloud_pt(2);
        cluster_features.at<float>(icounter, f_ind++) = cloud_pt(1)/cloud_pt(2);
-       // cluster_features.at<float>(icounter, ++f_ind) = cloud_pt(2);
+       cluster_features.at<float>(icounter, f_ind++) = log(cloud_pt(2));
        // cluster_features.at<float>(icounter, ++f_ind) = normal_pt(0);
        // cluster_features.at<float>(icounter, ++f_ind) = normal_pt(1);
        // cluster_features.at<float>(icounter, ++f_ind) = normal_pt(2);
-       // cluster_features.at<float>(icounter, ++f_ind) = angle;
-       cluster_features.at<float>(icounter, f_ind++) =
-          (*it)->points[index].r/255.0f;
-       cluster_features.at<float>(icounter, f_ind++) =
-          (*it)->points[index].g/255.0f;
-       cluster_features.at<float>(icounter, f_ind++) =
-          (*it)->points[index].b/255.0f;
+       cluster_features.at<float>(icounter, f_ind++) = angle;
+       // cluster_features.at<float>(icounter, f_ind++) =
+       //    (*it)->points[index].r/255.0f;
+       // cluster_features.at<float>(icounter, f_ind++) =
+       //    (*it)->points[index].g/255.0f;
+       // cluster_features.at<float>(icounter, f_ind++) =
+       //    (*it)->points[index].b/255.0f;
        icounter++;
     }
-
     
-    std::vector<std::vector<int> > neigbour_index;
-    this->pclNearestNeigborSearch(centroids, neigbour_index, true, 3, 0.05);
-    for (int i = 0; i < neigbour_idx[0].size(); i++) {
-       
-    }
+    // std::vector<std::vector<int> > neigbour_index;
+    // this->pclNearestNeigborSearch(centroids, neigbour_index, true, 3, 0.05);
+
     
     
     int cluster_size = 20;
@@ -405,7 +402,7 @@ void PointCloudSceneDecomposer::pointCloudVoxelClustering(
     cv::TermCriteria criteria = cv::TermCriteria(
        CV_TERMCRIT_ITER|CV_TERMCRIT_EPS, 100000, 0.00001);
 
-    std::cout << cluster_features.size() << std::endl;
+    // std::cout << cluster_features.size() << std::endl;
     // std::cout << std::endl;
 
     this->clusterVoxels(cluster_features, labelMD);
@@ -453,4 +450,3 @@ int main(int argc, char *argv[]) {
     ros::spin();
     return 0;
 }
-

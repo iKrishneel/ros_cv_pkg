@@ -1,4 +1,7 @@
 <launch>
+  <node pkg="point_cloud_scene_decomposer" type="cluster_voxels.py"
+	name="cluster_voxels" output="screen" >
+    </node>
   <node pkg="point_cloud_scene_decomposer" type="point_cloud_scene_decomposer_node"
 	name="point_cloud_scene_decomposer" output="screen">
     <remap from="input_cloud" to="/cloud_image/output/cloud" />
@@ -7,5 +10,4 @@
     <remap from="input_norm" to="/normal_gradient/output/normal" />
     <!---<remap from="input_image" to="/cloud_image/output/interpolated_image" />-->
   </node>
-  
 </launch>
