@@ -25,7 +25,7 @@ def mean_shift_clustering(features):
     cluster_centers = ms.cluster_centers_
     labels_unique = np.unique(labels)
     n_clusters = len(labels_unique)
-    print("-- # of clusters: %d" % n_clusters)
+    print("-- # of clusters: %d \n" % n_clusters)
     return labels
 
 def cluster_voxel_srv_handler(req):
