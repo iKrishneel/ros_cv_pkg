@@ -119,8 +119,8 @@ void RegionAdjacencyGraph::generateRAG(
                 // std::cout << "Distance " << distance  << "\t";
                 
                 distance = exp(-0.7 * distance) * exp(-0.5 * c_dist);
-
-                std::cout << "Prob: "  << distance << std::endl;
+                
+                // std::cout << "Prob: "  << distance << std::endl;
                 
              } else {
                 distance = 0.0f;
@@ -278,6 +278,7 @@ void RegionAdjacencyGraph::sampleRandomPointsFromCloudCluster(
 void RegionAdjacencyGraph::splitMergeRAG(
     const std::vector<pcl::PointCloud<PointT>::Ptr> &c_clusters,
     const std::vector<pcl::PointCloud<pcl::Normal>::Ptr>  &n_clusters,
+    const int neigbour_size,
     const int _threshold) {
     if (num_vertices(this->graph) == 0) {
        ROS_ERROR("ERROR: Cannot Merge Empty RAG ...");
@@ -285,103 +286,141 @@ void RegionAdjacencyGraph::splitMergeRAG(
     }
     std::vector<pcl::PointCloud<PointT>::Ptr> cloud_clusters;
     cloud_clusters.clear();
-    cloud_clusters.insert(cloud_clusters.end(), c_clusters.begin(), c_clusters.end());
+    cloud_clusters.insert(
+       cloud_clusters.end(), c_clusters.begin(), c_clusters.end());
     std::vector<pcl::PointCloud<pcl::Normal>::Ptr> normal_clusters;
     normal_clusters.clear();
-    normal_clusters.insert(normal_clusters.end(), n_clusters.begin(), n_clusters.end());
+    normal_clusters.insert(
+       normal_clusters.end(), n_clusters.begin(), n_clusters.end());
+
     
     IndexMap index_map = get(boost::vertex_index, this->graph);
     EdgePropertyAccess edge_weights = get(boost::edge_weight, this->graph);
     VertexIterator i, end;
     int label = -1;
+    
     for (tie(i, end) = vertices(this->graph); i != end; i++) {
         if (this->graph[*i].v_label == -1) {
            graph[*i].v_label = ++label;
         }
         AdjacencyIterator ai, a_end;
-        tie(ai, a_end) = adjacent_vertices(*i, this->graph);
+        tie(ai, a_end) = boost::adjacent_vertices(*i, this->graph);
 
-        std::cout << "Root Node: " << *ai << "\t" << *a_end  << std::endl;
+        std::cout << RED << "-- ROOT: " << *i  << RED << RESET << std::endl;
+
         
         for (; ai != a_end; ++ai) {
+        // for (int k = 0; k < neigbour_size; k++) {
+
+           int neigbours_index = static_cast<int>(*ai);
+              
+           std::cout << BLUE << "\t Neigbour Node: " << *ai
+                     << "\t " << neigbours_index
+                     << BLUE << RESET  << std::endl;
+           
            bool found = false;
            EdgeDescriptor e_descriptor;
-           tie(e_descriptor, found) = edge(*i, *ai, this->graph);
+           tie(e_descriptor, found) = boost::edge(
+              *i, neigbours_index, this->graph);
            if (found) {
               EdgeValue edge_val = boost::get(
                  boost::edge_weight, this->graph, e_descriptor);
               float weights_ = edge_val;
               if (weights_ < _threshold) {
-                  remove_edge(e_descriptor, this->graph);
+                 boost::remove_edge(e_descriptor, this->graph);
               } else {
-                  if ((this->graph[*ai].v_label == -1)) { // ||
-                      // (this->graph[*ai].v_label == this->graph[*i].v_label)) {
-                      this->graph[*ai].v_label = this->graph[*i].v_label;
-                  }
-                  
-                      // merge and update the cloud point
-                      pcl::PointCloud<PointT>::Ptr m_cloud(new pcl::PointCloud<PointT>);
-                      pcl::PointCloud<pcl::Normal>::Ptr m_normal(new pcl::PointCloud<pcl::Normal>);
-                      this->mergePointCloud(cloud_clusters[*i], cloud_clusters[*ai],
-                                            normal_clusters[*i], normal_clusters[*ai], m_cloud, m_normal);
+                 if ((this->graph[neigbours_index].v_label == -1) ||
+                    (this->graph[neigbours_index].v_label !=
+                     this->graph[*i].v_label)) {
+                    this->graph[neigbours_index].v_label =
+                       this->graph[*i].v_label;
+                 }
 
-                      // insert to both merged location
-                      cloud_clusters.at(*i) = m_cloud;
-                      normal_clusters.at(*i) = m_normal;
-                      cloud_clusters.at(*ai) = m_cloud;
-                      normal_clusters.at(*ai) = m_normal;
+                 std::cout << GREEN << "updating cloud ... " << GREEN
+                           << RESET << std::endl;
+                 
+                 // merge and update the cloud point
+                 pcl::PointCloud<PointT>::Ptr m_cloud(
+                    new pcl::PointCloud<PointT>);
+                 pcl::PointCloud<pcl::Normal>::Ptr m_normal(
+                    new pcl::PointCloud<pcl::Normal>);
+                 this->mergePointCloud(
+                    cloud_clusters[*i], cloud_clusters[neigbours_index],
+                    normal_clusters[*i], normal_clusters[neigbours_index],
+                    m_cloud, m_normal);
+
+                 std::cout << "CLOUD SIZE: " << m_cloud->size() << std::endl;
+                 
+                 // insert to both merged location
+                 cloud_clusters.at(*i) = m_cloud;
+                 normal_clusters.at(*i) = m_normal;
+                 cloud_clusters.at(neigbours_index) = m_cloud;
+                 normal_clusters.at(neigbours_index) = m_normal;
                       
-                      cv::Mat normal_hist;
-                      cv::Mat color_hist;
-                      this->computeCloudClusterRPYHistogram(m_cloud, m_normal, normal_hist);
-                      this->computeColorHistogram(m_cloud, color_hist);
-                      
-                      // update the edge weight
-                      AdjacencyIterator ni, n_end;
-                      tie(ni, n_end) = adjacent_vertices(*ai, this->graph);
-                      std::cout << "-- End Range: " << *ni << "\t" << *n_end << "\t Interest Node: " << *ai << std::endl;
-                      for (; ni != n_end; ++ni) {
-                          if (*ni != *ai) {
-                              bool is_found = false;
-                              EdgeDescriptor n_edge;
-                              tie(n_edge, is_found) = edge(*ai, *ni, this->graph);
-                              if (is_found) {
-                                  cv::Mat nhist;
-                                  cv::Mat chist;
-                                  this->computeCloudClusterRPYHistogram(c_clusters[*ni], n_clusters[*ni], nhist);
-                                  this->computeColorHistogram(c_clusters[*ni], chist);
-                                  float e_weight = this->getEdgeWeight(normal_hist, nhist, color_hist, chist);
-                                  remove_edge(n_edge, this->graph);
-                                  boost::add_edge(*ai, *ni, EdgeProperty(e_weight), this->graph);
-                              }
-                          }
-                      }
-                      /*
-                      // update the i's neighours
-                      AdjacencyIterator ii, i_end;
-                      tie(ii, i_end) = adjacent_vertices(*i, this->graph);
-                      for (; ii != i_end; ++ii) {
-                          if (*ii != *i) {
-                              bool is_found = false;
-                              EdgeDescriptor i_edge;
-                              tie(i_edge, is_found) = edge(*i, *ii, this->graph);
-                              if (is_found) {
-                                  cv::Mat nhist;
-                                  cv::Mat chist;
-                                  this->computeCloudClusterRPYHistogram(c_clusters[*ii], n_clusters[*ii], nhist);
-                                  this->computeColorHistogram(c_clusters[*ii], chist);
-                                  float e_weight = this->getEdgeWeight(normal_hist, nhist, color_hist, chist);
-                                  remove_edge(i_edge, this->graph);
-                                  boost::add_edge(*i, *ii, EdgeProperty(e_weight), this->graph);
-                              }
-                          }
-                      }
-                      */
-                      // } else if (this->graph[*ai].v_label != this->graph[*i].v_label) {
-                     // this->graph[*ai].v_label = this->graph[*i].v_label;
-                      // remove_edge(e_descriptor, this->graph);
-                     // similar node with different labels
-                      //}
+
+                 cv::Mat normal_hist;
+                 cv::Mat color_hist;
+                 this->computeCloudClusterRPYHistogram(
+                    m_cloud, m_normal, normal_hist);
+                 this->computeColorHistogram(m_cloud, color_hist);
+
+                 std::cout << GREEN << "updating graph... " << *ai << "\t"
+                           << neigbours_index << "\t" << *i
+                           << GREEN << RESET << std::endl;                 
+                 
+                 // get neigbours of ai
+                 AdjacencyIterator ni, n_end;
+                 // tie(ni, n_end) = boost::adjacent_vertices(*ai, this->graph);
+                 tie(ni, n_end) = boost::adjacent_vertices(
+                    neigbours_index, this->graph);
+                 for (; ni != n_end; ++ni) {
+
+                    std::cout << YELLOW <<  "\t\t - N Neigobour: " << *ni
+                              << YELLOW << RESET << std::endl;
+                    
+                 // for (int l = 0; l < neigbour_size; l++) {
+                    bool is_found = false;
+                    EdgeDescriptor n_edge;
+                    tie(n_edge, is_found) = boost::edge(
+                       neigbours_index, *ni, this->graph);
+                    if (is_found && (*ni != *i)) {
+                       boost::add_edge(
+                          *i, *ni, EdgeProperty(0.0f), this->graph);
+                    }
+                    boost::remove_edge(n_edge, this->graph);
+                 }
+                 boost::clear_vertex(neigbours_index, this->graph);
+
+                 
+                 // update the i's neighours
+                 AdjacencyIterator ii, i_end;
+                 tie(ii, i_end) = adjacent_vertices(*i, this->graph);
+                 for (; ii != i_end; ++ii) {
+                    bool is_found = false;
+                    EdgeDescriptor i_edge;
+                    tie(i_edge, is_found) = edge(*i, *ii, this->graph);
+                    if (is_found) {
+                       cv::Mat nhist;
+                       cv::Mat chist;
+                       this->computeCloudClusterRPYHistogram(
+                          c_clusters[*ii], n_clusters[*ii], nhist);
+                       this->computeColorHistogram(c_clusters[*ii], chist);
+                       float e_weight = this->getEdgeWeight(
+                          normal_hist, nhist, color_hist, chist);
+
+                       // std::cout << "weight: " << e_weight << "\t"
+                       //           << *ii << std::endl;
+                                              
+                       remove_edge(i_edge, this->graph);
+                       this->graph[*ii].v_label = -1;
+                       if (e_weight > _threshold) {
+                          boost::add_edge(
+                             *i, *ii, EdgeProperty(e_weight), this->graph);
+                          this->graph[*ii].v_label =
+                             this->graph[*i].v_label;
+                       }
+                    }
+                 }
               }
            }
         }

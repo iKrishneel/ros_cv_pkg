@@ -108,6 +108,7 @@ class RegionAdjacencyGraph {
     virtual void splitMergeRAG(
         const std::vector<pcl::PointCloud<PointT>::Ptr> &,
         const std::vector<pcl::PointCloud<pcl::Normal>::Ptr> &,
+        const int,
         const int = 0.0f);
     virtual void getCloudClusterLabels(
        std::vector<int> &);

@@ -110,17 +110,22 @@ void PointCloudSceneDecomposer::cloudCallback(
        cloud_clusters, normal_clusters, centroids, labelMD);
     this->semanticCloudLabel(cloud_clusters, cloud, labelMD);
     */
-    
+
+    const int neigbour_size = 4;
     std::vector<std::vector<int> > neigbour_idx;
-    this->pclNearestNeigborSearch(centroids, neigbour_idx, true, 4, 0.03);
+    this->pclNearestNeigborSearch(
+       centroids, neigbour_idx, false, neigbour_size, 0.03);
     
     RegionAdjacencyGraph *rag = new RegionAdjacencyGraph();
     rag->generateRAG(
        cloud_clusters, normal_clusters, centroids, neigbour_idx, 0);
 
-    std::cout << YELLOW << "-- SPLIT AND MERGING " << YELLOW << RESET << std::endl;
     
-    rag->splitMergeRAG(cloud_clusters, normal_clusters, 0.50);
+    std::cout << YELLOW << "-- SPLIT AND MERGING "
+              << YELLOW << RESET << std::endl;
+
+    
+    rag->splitMergeRAG(cloud_clusters, normal_clusters, neigbour_size, 0.2);
     std::vector<int> labelMD;
     rag->getCloudClusterLabels(labelMD);
     free(rag);
