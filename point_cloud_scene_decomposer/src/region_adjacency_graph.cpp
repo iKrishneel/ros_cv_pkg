@@ -72,15 +72,15 @@ void RegionAdjacencyGraph::generateRAG(
                    comparision_points_size);
                 // Common Neigbour
                 int commonIndex = -1;
-                   this->getCommonNeigbour(
-                   neigbor_indices[j],
-                   neigbor_indices[n_index]);
+                this->getCommonNeigbour(
+                    neigbor_indices[j],
+                    neigbor_indices[n_index]);
                 if (commonIndex == -1) {
                    // distance = this->getCloudClusterWeightFunction<float>(
                    //    center_point, n1_point, center_normal, n1_normal);
                 } else {
-                   std::vector<Eigen::Vector3f> n2_point;
-                   std::vector<Eigen::Vector3f> n2_normal;
+                    std::vector<Eigen::Vector3f> n2_point;
+                    std::vector<Eigen::Vector3f> n2_normal;
                    this->sampleRandomPointsFromCloudCluster(
                       cloud_clusters[commonIndex],
                       normal_clusters[commonIndex],
@@ -118,7 +118,7 @@ void RegionAdjacencyGraph::generateRAG(
                 
                 // std::cout << "Distance " << distance  << "\t";
                 
-                distance = exp(-1 * distance) * exp(-1 * c_dist);
+                distance = exp(-0.7 * distance) * exp(-0.5 * c_dist);
 
                 std::cout << "Prob: "  << distance << std::endl;
                 
@@ -275,11 +275,21 @@ void RegionAdjacencyGraph::sampleRandomPointsFromCloudCluster(
 /**
  * perform graph spliting, labeling and merging of similar regions
  */
-void RegionAdjacencyGraph::splitMergeRAG(const int _threshold) {
+void RegionAdjacencyGraph::splitMergeRAG(
+    const std::vector<pcl::PointCloud<PointT>::Ptr> &c_clusters,
+    const std::vector<pcl::PointCloud<pcl::Normal>::Ptr>  &n_clusters,
+    const int _threshold) {
     if (num_vertices(this->graph) == 0) {
        ROS_ERROR("ERROR: Cannot Merge Empty RAG ...");
        return;
     }
+    std::vector<pcl::PointCloud<PointT>::Ptr> cloud_clusters;
+    cloud_clusters.clear();
+    cloud_clusters.insert(cloud_clusters.end(), c_clusters.begin(), c_clusters.end());
+    std::vector<pcl::PointCloud<pcl::Normal>::Ptr> normal_clusters;
+    normal_clusters.clear();
+    normal_clusters.insert(normal_clusters.end(), n_clusters.begin(), n_clusters.end());
+    
     IndexMap index_map = get(boost::vertex_index, this->graph);
     EdgePropertyAccess edge_weights = get(boost::edge_weight, this->graph);
     VertexIterator i, end;
@@ -290,6 +300,9 @@ void RegionAdjacencyGraph::splitMergeRAG(const int _threshold) {
         }
         AdjacencyIterator ai, a_end;
         tie(ai, a_end) = adjacent_vertices(*i, this->graph);
+
+        std::cout << "Root Node: " << *ai << "\t" << *a_end  << std::endl;
+        
         for (; ai != a_end; ++ai) {
            bool found = false;
            EdgeDescriptor e_descriptor;
@@ -299,11 +312,76 @@ void RegionAdjacencyGraph::splitMergeRAG(const int _threshold) {
                  boost::edge_weight, this->graph, e_descriptor);
               float weights_ = edge_val;
               if (weights_ < _threshold) {
-                 remove_edge(e_descriptor, this->graph);
+                  remove_edge(e_descriptor, this->graph);
               } else {
-                 if (this->graph[*ai].v_label == -1) {
-                    this->graph[*ai].v_label = this->graph[*i].v_label;
-                 }
+                  if ((this->graph[*ai].v_label == -1)) { // ||
+                      // (this->graph[*ai].v_label == this->graph[*i].v_label)) {
+                      this->graph[*ai].v_label = this->graph[*i].v_label;
+                  }
+                  
+                      // merge and update the cloud point
+                      pcl::PointCloud<PointT>::Ptr m_cloud(new pcl::PointCloud<PointT>);
+                      pcl::PointCloud<pcl::Normal>::Ptr m_normal(new pcl::PointCloud<pcl::Normal>);
+                      this->mergePointCloud(cloud_clusters[*i], cloud_clusters[*ai],
+                                            normal_clusters[*i], normal_clusters[*ai], m_cloud, m_normal);
+
+                      // insert to both merged location
+                      cloud_clusters.at(*i) = m_cloud;
+                      normal_clusters.at(*i) = m_normal;
+                      cloud_clusters.at(*ai) = m_cloud;
+                      normal_clusters.at(*ai) = m_normal;
+                      
+                      cv::Mat normal_hist;
+                      cv::Mat color_hist;
+                      this->computeCloudClusterRPYHistogram(m_cloud, m_normal, normal_hist);
+                      this->computeColorHistogram(m_cloud, color_hist);
+                      
+                      // update the edge weight
+                      AdjacencyIterator ni, n_end;
+                      tie(ni, n_end) = adjacent_vertices(*ai, this->graph);
+                      std::cout << "-- End Range: " << *ni << "\t" << *n_end << "\t Interest Node: " << *ai << std::endl;
+                      for (; ni != n_end; ++ni) {
+                          if (*ni != *ai) {
+                              bool is_found = false;
+                              EdgeDescriptor n_edge;
+                              tie(n_edge, is_found) = edge(*ai, *ni, this->graph);
+                              if (is_found) {
+                                  cv::Mat nhist;
+                                  cv::Mat chist;
+                                  this->computeCloudClusterRPYHistogram(c_clusters[*ni], n_clusters[*ni], nhist);
+                                  this->computeColorHistogram(c_clusters[*ni], chist);
+                                  float e_weight = this->getEdgeWeight(normal_hist, nhist, color_hist, chist);
+                                  remove_edge(n_edge, this->graph);
+                                  boost::add_edge(*ai, *ni, EdgeProperty(e_weight), this->graph);
+                              }
+                          }
+                      }
+                      /*
+                      // update the i's neighours
+                      AdjacencyIterator ii, i_end;
+                      tie(ii, i_end) = adjacent_vertices(*i, this->graph);
+                      for (; ii != i_end; ++ii) {
+                          if (*ii != *i) {
+                              bool is_found = false;
+                              EdgeDescriptor i_edge;
+                              tie(i_edge, is_found) = edge(*i, *ii, this->graph);
+                              if (is_found) {
+                                  cv::Mat nhist;
+                                  cv::Mat chist;
+                                  this->computeCloudClusterRPYHistogram(c_clusters[*ii], n_clusters[*ii], nhist);
+                                  this->computeColorHistogram(c_clusters[*ii], chist);
+                                  float e_weight = this->getEdgeWeight(normal_hist, nhist, color_hist, chist);
+                                  remove_edge(i_edge, this->graph);
+                                  boost::add_edge(*i, *ii, EdgeProperty(e_weight), this->graph);
+                              }
+                          }
+                      }
+                      */
+                      // } else if (this->graph[*ai].v_label != this->graph[*i].v_label) {
+                     // this->graph[*ai].v_label = this->graph[*i].v_label;
+                      // remove_edge(e_descriptor, this->graph);
+                     // similar node with different labels
+                      //}
               }
            }
         }
@@ -315,6 +393,51 @@ void RegionAdjacencyGraph::splitMergeRAG(const int _threshold) {
        std::endl << "--Total Label: " << label << "\n\n";
 #endif  // DEBUG
 }
+
+
+float RegionAdjacencyGraph::getEdgeWeight(
+    const cv::Mat &rpy_1, const cv::Mat &rpy_2,
+    const cv::Mat &color_1, const cv::Mat &color_2) {
+    float rpy_dist = static_cast<float>(
+        cv::compareHist(rpy_1, rpy_2, CV_COMP_BHATTACHARYYA));
+    float color_dist = static_cast<float>(
+        cv::compareHist(color_1, color_2, CV_COMP_BHATTACHARYYA));
+    float prob = exp(-0.7 * rpy_dist) * exp(-0.5 * color_dist);
+    return prob;
+}
+
+
+/**
+ * merging 2 point cloud clusters of same sensor
+ */
+void RegionAdjacencyGraph::mergePointCloud(
+    const pcl::PointCloud<PointT>::Ptr cloud_1,
+    const pcl::PointCloud<PointT>::Ptr cloud_2,
+    const pcl::PointCloud<pcl::Normal>::Ptr normal_1,
+    const pcl::PointCloud<pcl::Normal>::Ptr normal_2,
+    pcl::PointCloud<PointT>::Ptr out_cloud,
+    pcl::PointCloud<pcl::Normal>::Ptr out_normal) {
+    out_cloud->header = cloud_1->header;
+    out_normal->header = normal_1->header;
+    for (int i = 0; i < cloud_1->size(); i++) {
+        PointT pt_ = cloud_1->points[i];
+        pcl::Normal nrm = normal_1->points[i];
+        if (!isnan(pt_.x) && !isnan(pt_.y) && !isnan(pt_.z)) {
+            out_cloud->push_back(pt_);
+            out_normal->push_back(nrm);
+        }
+    }
+    for (int i = 0; i < cloud_2->size(); i++) {
+        PointT pt_ = cloud_2->points[i];
+        pcl::Normal nrm = normal_2->points[i];
+        if (!isnan(pt_.x) && !isnan(pt_.y) && !isnan(pt_.z)) {
+            out_cloud->push_back(pt_);
+            out_normal->push_back(nrm);
+        }
+    }
+}
+
+ 
 
 
 /**
@@ -336,7 +459,6 @@ int RegionAdjacencyGraph::getCommonNeigbour(
     }
     return commonIndex;
 }
-
 
 /**
  * return the cluster labels as a vector of int
@@ -363,78 +485,6 @@ void RegionAdjacencyGraph::printGraph(
     }
 }
 
-/**
- * merging patches using the graph info
- */
-void RegionAdjacencyGraph::concatenateRegionUsingRAGInfo(
-    std::vector<pcl::PointCloud<PointT>::Ptr> &cloud_clusters,
-    std::vector<pcl::PointCloud<pcl::Normal>::Ptr> &normal_clusters,
-    std::map<int, pcl::PointCloud<PointT>::Ptr> &c_clusters) {
-    if (cloud_clusters.empty() || normal_clusters.empty()) {
-       ROS_ERROR("ERROR: Cannot Generate RAG of empty data...");
-       return;
-    }
-    VertexIterator i, end;
-    int icount = 0;
-    for (tie(i, end) = vertices(this->graph); i != end; ++i) {
-        int vertex_label = this->graph[*i].v_label;
-        std::map<int, pcl::PointCloud<PointT>::Ptr>::iterator
-           iter = c_clusters.find(vertex_label);
-        if (iter == c_clusters.end()) {
-           c_clusters.insert(
-              std::map<int, pcl::PointCloud<PointT>::Ptr>::value_type(
-                 vertex_label, cloud_clusters[icount]));
-        } else if (iter != c_clusters.end()) {
-           pcl::PointCloud<PointT>::Ptr m_cloud = (*iter).second;
-           pcl::PointCloud<PointT>::Ptr c_cloud = cloud_clusters[icount];
-           pcl::PointCloud<PointT>::Ptr n_cloud(new pcl::PointCloud<PointT>);
-           this->mergePointCloud(m_cloud, c_cloud, n_cloud);
-           (*iter).second = n_cloud;
-        }
-        icount++;
-    }
-    std::cout << "Map Size: " << c_clusters.size() << std::endl;
-}
-
-
-
-/*template<class T, class U>
-void RegionAdjacencyGraph::mergePointCloud(
-    const T m_cloud,
-    const T c_cloud,
-    T n_cloud) {
-    n_cloud = T(new U);
-    n_cloud->header = m_cloud->header;
-    for (int i = 0; i < m_cloud->size(); i++) {
-       n_cloud->push_back(m_cloud->points[i]);
-    }
-    for (int i = 0; i < c_cloud->size(); i++) {
-       n_cloud->push_back(c_cloud->points[i]);
-    }
-    }*/
-
-
-/**
- * merging 2 point cloud clusters of same sensor
- */
-void RegionAdjacencyGraph::mergePointCloud(
-    const pcl::PointCloud<PointT>::Ptr m_cloud,
-    const pcl::PointCloud<PointT>::Ptr c_cloud,
-    pcl::PointCloud<PointT>::Ptr n_cloud) {
-    n_cloud->header = m_cloud->header;
-    for (int i = 0; i < m_cloud->size(); i++) {
-       PointT pt_ = m_cloud->points[i];
-       if (!isnan(pt_.x) && !isnan(pt_.y) && !isnan(pt_.z)) {
-          n_cloud->push_back(pt_);
-       }
-    }
-    for (int i = 0; i < c_cloud->size(); i++) {
-       PointT pt_ = c_cloud->points[i];
-       if (!isnan(pt_.x) && !isnan(pt_.y) && !isnan(pt_.z)) {
-          n_cloud->push_back(pt_);
-       }
-    }
-}
 
 // ----------------------------------------------------------------
 
@@ -486,6 +536,6 @@ void RegionAdjacencyGraph::computeColorHistogram(
     cv::calcHist(
        &hsv, 1, channels, cv::Mat(), hist, 2, histSize, ranges, true, false);
     if (is_norm) {
-       cv::normalize(hist, hist, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+        cv::normalize(hist, hist, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
     }
 }

@@ -72,13 +72,6 @@ class RegionAdjacencyGraph {
      T getCloudClusterWeightFunction(
         const std::vector<std::vector<Eigen::Vector3f> > &,
         const std::vector<std::vector<Eigen::Vector3f> > &);
-   
-    // template<typename T>
-    //  T getCloudClusterWeightFunction(
-    //     Eigen::Vector3f &,
-    //     Eigen::Vector3f &,
-    //     Eigen::Vector3f &,
-    //     Eigen::Vector3f &);
 
     float getVectorAngle(
       const Eigen::Vector3f &,
@@ -98,9 +91,11 @@ class RegionAdjacencyGraph {
        const int = 16,
        const int = 16,
        bool = true);
-   
-   
-   
+
+    float getEdgeWeight(
+        const cv::Mat &, const cv::Mat &,
+        const cv::Mat &, const cv::Mat &);
+    
  public:
     RegionAdjacencyGraph();
 
@@ -110,31 +105,22 @@ class RegionAdjacencyGraph {
        const pcl::PointCloud<pcl::PointXYZ>::Ptr,
        std::vector<std::vector<int> > &,
        const int = RAG_EDGE_WEIGHT_DISTANCE);
-    virtual void splitMergeRAG(const int = 0.0f);
+    virtual void splitMergeRAG(
+        const std::vector<pcl::PointCloud<PointT>::Ptr> &,
+        const std::vector<pcl::PointCloud<pcl::Normal>::Ptr> &,
+        const int = 0.0f);
     virtual void getCloudClusterLabels(
        std::vector<int> &);
     virtual void printGraph(
        const Graph &);
 
-
-   
-    virtual void concatenateRegionUsingRAGInfo(
-       std::vector<pcl::PointCloud<PointT>::Ptr> &,
-       std::vector<pcl::PointCloud<pcl::Normal>::Ptr> &,
-       std::map<int, pcl::PointCloud<PointT>::Ptr> &);
-
-    // template<class T, class U>
-    // void mergePointCloud(
-    //    const T,
-    //    const T,
-    //    T);
-   
-   
-    void mergePointCloud(
+    virtual void mergePointCloud(
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<PointT>::Ptr,
-       pcl::PointCloud<PointT>::Ptr);
-
+       const pcl::PointCloud<pcl::Normal>::Ptr,
+       const pcl::PointCloud<pcl::Normal>::Ptr,
+       pcl::PointCloud<PointT>::Ptr,
+       pcl::PointCloud<pcl::Normal>::Ptr);
    
     enum {
        RAG_EDGE_WEIGHT_DISTANCE,

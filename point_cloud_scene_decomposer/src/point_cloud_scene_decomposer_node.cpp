@@ -117,7 +117,10 @@ void PointCloudSceneDecomposer::cloudCallback(
     RegionAdjacencyGraph *rag = new RegionAdjacencyGraph();
     rag->generateRAG(
        cloud_clusters, normal_clusters, centroids, neigbour_idx, 0);
-    rag->splitMergeRAG(0.50);
+
+    std::cout << YELLOW << "-- SPLIT AND MERGING " << YELLOW << RESET << std::endl;
+    
+    rag->splitMergeRAG(cloud_clusters, normal_clusters, 0.50);
     std::vector<int> labelMD;
     rag->getCloudClusterLabels(labelMD);
     free(rag);
