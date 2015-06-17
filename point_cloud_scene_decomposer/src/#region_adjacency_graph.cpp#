@@ -11,117 +11,7 @@ RegionAdjacencyGraph::RegionAdjacencyGraph() {
    
 }
 
-/**
- * create the RAG tree from the centroid and its neigboring distances
- */
-void RegionAdjacencyGraph::generateRAG(
-    const std::vector<pcl::PointCloud<PointT>::Ptr> &cloud_clusters,
-    const std::vector<pcl::PointCloud<pcl::Normal>::Ptr>  &normal_clusters,
-    const pcl::PointCloud<pcl::PointXYZ>::Ptr centroids,
-    std::vector<std::vector<int> > &neigbor_indices,
-    const int edge_weight_criteria) {
-    if (cloud_clusters.empty() || normal_clusters.empty() ||
-        centroids->empty() || neigbor_indices.empty()) {
-       ROS_ERROR("ERROR: Cannot Generate RAG of empty data...");
-       return;
-    }
-    const int comparision_points_size = 100;
-    if (cloud_clusters.size() == neigbor_indices.size()) {
-       std::vector<VertexDescriptor> vertex_descriptor;
-       for (int j = 0; j < centroids->size(); j++) {
-          VertexDescriptor v_des = add_vertex(
-             VertexProperty(j, centroids->points[j], -1), this->graph);
-          vertex_descriptor.push_back(v_des);
-       }
-       for (int j = 0; j < neigbor_indices.size(); j++) {
-          VertexDescriptor r_vd = vertex_descriptor[j];
-          // TODO(ADD WEIGHT COMPUTING FUNCTION)
-          std::vector<Eigen::Vector3f> center_point;
-          std::vector<Eigen::Vector3f> center_normal;
-           cv::Mat r_histogram;
-           cv::Mat c_histogram;
-           if (edge_weight_criteria == RAG_EDGE_WEIGHT_CONVEX_CRITERIA) {
-             this->sampleRandomPointsFromCloudCluster(
-                cloud_clusters[j],
-                normal_clusters[j],
-                center_point,
-                center_normal,
-                comparision_points_size);
-             } else if (edge_weight_criteria == RAG_EDGE_WEIGHT_DISTANCE) {
-             this->computeCloudClusterRPYHistogram(
-                cloud_clusters[j],
-                normal_clusters[j],
-                r_histogram);
-             this->computeColorHistogram(cloud_clusters[j], c_histogram);
-          } else {
-              ROS_ERROR("Incorrect Measurement type ==> Setting to Default");
-          }
-          for (int i = 0; i < neigbor_indices[j].size(); i++) {
-             int n_index = neigbor_indices[j][i];
-             VertexDescriptor vd = vertex_descriptor[n_index];
-              // TODO(ADD WEIGHT COMPUTING FUNCTION)
-             float distance = 0.0f;
-             if (edge_weight_criteria == RAG_EDGE_WEIGHT_CONVEX_CRITERIA) {
-                std::vector<Eigen::Vector3f> n1_point;
-                std::vector<Eigen::Vector3f> n1_normal;
-                this->sampleRandomPointsFromCloudCluster(
-                   cloud_clusters[n_index],
-                   normal_clusters[n_index],
-                   n1_point,
-                   n1_normal,
-                   comparision_points_size);
-                // Common Neigbour
-                int commonIndex = -1;
-                   this->getCommonNeigbour(
-                   neigbor_indices[j],
-                   neigbor_indices[n_index]);
-                if (commonIndex == -1) {
-                   // distance = this->getCloudClusterWeightFunction<float>(
-                   //    center_point, n1_point, center_normal, n1_normal);
-                } else {
-                   std::vector<Eigen::Vector3f> n2_point;
-                   std::vector<Eigen::Vector3f> n2_normal;
-                   this->sampleRandomPointsFromCloudCluster(
-                      cloud_clusters[commonIndex],
-                      normal_clusters[commonIndex],
-                      n2_point,
-                      n2_normal,
-                      comparision_points_size);
-                   std::vector<std::vector<Eigen::Vector3f> > _points;
-                   std::vector<std::vector<Eigen::Vector3f> > _normals;
-                   _points.push_back(center_point);
-                   _points.push_back(n1_point);
-                   // _points.push_back(n2_point);
-                   _normals.push_back(center_normal);
-                   _normals.push_back(n1_normal);
-                   // _normals.push_back(n2_normal);
-                   distance = this->getCloudClusterWeightFunction<float>(
-                      _points, _normals);
-                }
-             } else if (edge_weight_criteria == RAG_EDGE_WEIGHT_DISTANCE) {
-                cv::Mat n_histogram;
-                cv::Mat nc_histogram;
-                this->computeCloudClusterRPYHistogram(
-                   cloud_clusters[n_index],
-                   normal_clusters[n_index],
-                   n_histogram);
-                this->computeColorHistogram(
-                   cloud_clusters[n_index], nc_histogram);
-
-                distance = static_cast<float>(
-                   cv::compareHist(
-                      r_histogram, n_histogram, CV_COMP_BHATTACHARYYA));
-
-                float c_dist = static_cast<float>(
-                   cv::compareHist(
-                      c_histogram, nc_histogram, CV_COMP_BHATTACHARYYA));
-                
-                // std::cout << "Distance " << distance  << "\t";
-                
-                distance = exp(-1 * distance) * exp(-1 * c_dist);
-
-                std::cout << "Prob: "  << distance << std::endl;
-                
+ * distance);
              } else {
                 distance = 0.0f;
              }
@@ -460,32 +350,12 @@ void RegionAdjacencyGraph::computeCloudClusterRPYHistogram(
     for (int i = 0; i < _histogram.cols; i++) {
        _histogram.at<float>(0, i) = _vfhs->points[0].histogram[i];
     }
+    float curvature_ = 0.0f;
+    for (int i = 0; i < _normal->size(); i++) {
+       curvature_ += _normal->points[i].curvature;
+    }
+    curvature_ /= static_cast<float>(_normal->size());
     cv::normalize(_histogram, _histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
 }
 
 
-void RegionAdjacencyGraph::computeColorHistogram(
-    const pcl::PointCloud<PointT>::Ptr _cloud,
-    cv::Mat &hist, const int hBin, const int sBin, bool is_norm) {
-    cv::Mat pixels = cv::Mat::zeros(
-       sizeof(char), static_cast<int>(_cloud->size()), CV_8UC3);
-    for (int i = 0; i < _cloud->size(); i++) {
-       cv::Vec3b pix_val;
-       pix_val[0] = _cloud->points[i].b;
-       pix_val[1] = _cloud->points[i].g;
-       pix_val[2] = _cloud->points[i].r;
-       pixels.at<cv::Vec3b>(0, i) = pix_val;
-    }
-    cv::Mat hsv;
-    cv::cvtColor(pixels, hsv, CV_BGR2HSV);
-    int histSize[] = {hBin, sBin};
-    float h_ranges[] = {0, 180};
-    float s_ranges[] = {0, 256};
-    const float* ranges[] = {h_ranges, s_ranges};
-    int channels[] = {0, 1};
-    cv::calcHist(
-       &hsv, 1, channels, cv::Mat(), hist, 2, histSize, ranges, true, false);
-    if (is_norm) {
-       cv::normalize(hist, hist, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
-    }
-}

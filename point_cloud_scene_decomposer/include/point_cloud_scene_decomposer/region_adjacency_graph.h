@@ -92,7 +92,15 @@ class RegionAdjacencyGraph {
         const pcl::PointCloud<PointT>::Ptr,
         const pcl::PointCloud<pcl::Normal>::Ptr,
         cv::Mat &);
-
+    void computeColorHistogram(
+       const pcl::PointCloud<PointT>::Ptr,
+       cv::Mat &,
+       const int = 16,
+       const int = 16,
+       bool = true);
+   
+   
+   
  public:
     RegionAdjacencyGraph();
 

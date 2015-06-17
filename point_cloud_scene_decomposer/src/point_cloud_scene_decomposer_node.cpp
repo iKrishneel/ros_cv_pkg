@@ -104,28 +104,27 @@ void PointCloudSceneDecomposer::cloudCallback(
     /**
      * Do Clustering here
        <x/z, y/z, 1/z, nx, ny, nz, norm_vp, r/255, g/255, b/255>
-     */
+    
     std::vector<int> labelMD;
     this->pointCloudVoxelClustering(
        cloud_clusters, normal_clusters, centroids, labelMD);
     this->semanticCloudLabel(cloud_clusters, cloud, labelMD);
+    */
     
-    
-    /*
     std::vector<std::vector<int> > neigbour_idx;
-    this->pclNearestNeigborSearch(centroids, neigbour_idx, true, 3, 0.06);
+    this->pclNearestNeigborSearch(centroids, neigbour_idx, true, 4, 0.03);
     
     RegionAdjacencyGraph *rag = new RegionAdjacencyGraph();
     rag->generateRAG(
-       cloud_clusters, normal_clusters, centroids, neigbour_idx, 1);
-    rag->splitMergeRAG(0.10);
+       cloud_clusters, normal_clusters, centroids, neigbour_idx, 0);
+    rag->splitMergeRAG(0.50);
     std::vector<int> labelMD;
     rag->getCloudClusterLabels(labelMD);
     free(rag);
     this->semanticCloudLabel(cloud_clusters, cloud, labelMD);
     
     // this->pointCloudLocalGradient(cloud, this->normal_, dep_img);
-    */
+    
     cv::waitKey(3);
     
     sensor_msgs::PointCloud2 ros_cloud;
