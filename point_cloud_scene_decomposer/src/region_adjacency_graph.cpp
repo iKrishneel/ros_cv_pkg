@@ -421,8 +421,8 @@ void RegionAdjacencyGraph::splitMergeRAG(
                     }
                  }
 
-                 this->splitMergeRAG(
-                    cloud_clusters, normal_clusters, neigbour_size, _threshold);
+                 // this->splitMergeRAG(
+                 //    cloud_clusters, normal_clusters, neigbour_size, _threshold);
               }
            }
         }
