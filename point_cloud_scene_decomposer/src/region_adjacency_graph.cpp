@@ -305,12 +305,18 @@ void RegionAdjacencyGraph::splitMergeRAG(
         }
         AdjacencyIterator ai, a_end;
         tie(ai, a_end) = boost::adjacent_vertices(*i, this->graph);
-
+        
         std::cout << RED << "-- ROOT: " << *i  << RED << RESET << std::endl;
 
+        bool vertex_has_neigbor = true;
+        if (ai == a_end) {
+           vertex_has_neigbor = false;
+           std::cout << CYAN << "NOT VERTEX " << CYAN << RESET << std::endl;
+        }
         
-        for (; ai != a_end; ai++) {
-
+        while (vertex_has_neigbor) {
+           // for (; ai != a_end; ai++) {
+           
            int neigbours_index = static_cast<int>(*ai);
               
            std::cout << BLUE << "\t Neigbour Node: " << *ai
@@ -328,9 +334,9 @@ void RegionAdjacencyGraph::splitMergeRAG(
               if (weights_ < _threshold) {
                  boost::remove_edge(e_descriptor, this->graph);
               } else {
-                 if ((this->graph[neigbours_index].v_label == -1) ||
-                     (this->graph[neigbours_index].v_label !=
-                     this->graph[*i].v_label)) {
+                 if ((this->graph[neigbours_index].v_label == -1)) {  // ||
+                    // (this->graph[neigbours_index].v_label !=
+                    //  this->graph[*i].v_label)) {
                     this->graph[neigbours_index].v_label =
                        this->graph[*i].v_label;
                  }
@@ -415,16 +421,22 @@ void RegionAdjacencyGraph::splitMergeRAG(
                        // if (e_weight >= _threshold) {
                          boost::add_edge(
                              *i, *ii, EdgeProperty(e_weight), this->graph);
-                          // this->graph[*ii].v_label =
-                          //   this->graph[*i].v_label;
-                          // }
+                         this->graph[*ii].v_label =
+                            this->graph[*i].v_label;
+                         // }
                     }
                  }
-
-                 // this->splitMergeRAG(
-                 //    cloud_clusters, normal_clusters, neigbour_size, _threshold);
               }
            }
+           //  check if neigbor exits
+           tie(ai, a_end) = boost::adjacent_vertices(*i, this->graph);
+
+           if (ai == a_end) {
+              vertex_has_neigbor = false;
+           } else {
+              // ai++;
+           }
+           
         }
      }
 #ifdef DEBUG
@@ -443,7 +455,7 @@ float RegionAdjacencyGraph::getEdgeWeight(
         cv::compareHist(rpy_1, rpy_2, CV_COMP_BHATTACHARYYA));
     float color_dist = static_cast<float>(
         cv::compareHist(color_1, color_2, CV_COMP_BHATTACHARYYA));
-    float prob = exp(-0.7 * rpy_dist) * exp(-0.5 * color_dist);
+    float prob = exp(-2 * rpy_dist) * exp(-2 * color_dist);
     return prob;
 }
 
@@ -551,7 +563,7 @@ void RegionAdjacencyGraph::computeCloudClusterRPYHistogram(
     for (int i = 0; i < _histogram.cols; i++) {
        _histogram.at<float>(0, i) = _vfhs->points[0].histogram[i];
     }
-    cv::normalize(_histogram, _histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+    // cv::normalize(_histogram, _histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
 }
 
 
@@ -577,6 +589,6 @@ void RegionAdjacencyGraph::computeColorHistogram(
     cv::calcHist(
        &hsv, 1, channels, cv::Mat(), hist, 2, histSize, ranges, true, false);
     if (is_norm) {
-        cv::normalize(hist, hist, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+       cv::normalize(hist, hist, 0, 1, cv::NORM_L2, -1, cv::Mat());
     }
 }
