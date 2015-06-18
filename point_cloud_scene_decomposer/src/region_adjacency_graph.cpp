@@ -309,8 +309,7 @@ void RegionAdjacencyGraph::splitMergeRAG(
         std::cout << RED << "-- ROOT: " << *i  << RED << RESET << std::endl;
 
         
-        for (; ai != a_end; ++ai) {
-        // for (int k = 0; k < neigbour_size; k++) {
+        for (; ai != a_end; ai++) {
 
            int neigbours_index = static_cast<int>(*ai);
               
@@ -373,12 +372,12 @@ void RegionAdjacencyGraph::splitMergeRAG(
                  // tie(ni, n_end) = boost::adjacent_vertices(*ai, this->graph);
                  tie(ni, n_end) = boost::adjacent_vertices(
                     neigbours_index, this->graph);
-                 for (; ni != n_end; ++ni) {
+                 for (; ni != n_end; ni++) {
 
                     std::cout << YELLOW <<  "\t\t - N Neigobour: " << *ni
                               << YELLOW << RESET << std::endl;
+
                     
-                 // for (int l = 0; l < neigbour_size; l++) {
                     bool is_found = false;
                     EdgeDescriptor n_edge;
                     tie(n_edge, is_found) = boost::edge(
@@ -395,7 +394,7 @@ void RegionAdjacencyGraph::splitMergeRAG(
                  // update the i's neighours
                  AdjacencyIterator ii, i_end;
                  tie(ii, i_end) = adjacent_vertices(*i, this->graph);
-                 for (; ii != i_end; ++ii) {
+                 for (; ii != i_end; ii++) {
                     bool is_found = false;
                     EdgeDescriptor i_edge;
                     tie(i_edge, is_found) = edge(*i, *ii, this->graph);
@@ -412,15 +411,18 @@ void RegionAdjacencyGraph::splitMergeRAG(
                        //           << *ii << std::endl;
                                               
                        remove_edge(i_edge, this->graph);
-                       this->graph[*ii].v_label = -1;
-                       if (e_weight > _threshold) {
+                       // this->graph[*ii].v_label = -1;
+                       // if (e_weight >= _threshold) {
                           boost::add_edge(
                              *i, *ii, EdgeProperty(e_weight), this->graph);
-                          this->graph[*ii].v_label =
-                             this->graph[*i].v_label;
-                       }
+                          // this->graph[*ii].v_label =
+                          //   this->graph[*i].v_label;
+                          // }
                     }
                  }
+
+                 this->splitMergeRAG(
+                    cloud_clusters, normal_clusters, neigbour_size, _threshold);
               }
            }
         }

@@ -125,7 +125,7 @@ void PointCloudSceneDecomposer::cloudCallback(
               << YELLOW << RESET << std::endl;
 
     
-    rag->splitMergeRAG(cloud_clusters, normal_clusters, neigbour_size, 0.2);
+    rag->splitMergeRAG(cloud_clusters, normal_clusters, neigbour_size, 0.9);
     std::vector<int> labelMD;
     rag->getCloudClusterLabels(labelMD);
     free(rag);
