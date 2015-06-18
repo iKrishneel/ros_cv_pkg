@@ -299,7 +299,7 @@ void RegionAdjacencyGraph::splitMergeRAG(
     EdgePropertyAccess edge_weights = get(boost::edge_weight, this->graph);
     VertexIterator i, end;
     int label = -1;
-    
+    int test_count = 0;
     for (tie(i, end) = vertices(this->graph); i != end; i++) {
         if (this->graph[*i].v_label == -1) {
            graph[*i].v_label = ++label;
@@ -314,6 +314,8 @@ void RegionAdjacencyGraph::splitMergeRAG(
            vertex_has_neigbor = false;
            std::cout << CYAN << "NOT VERTEX " << CYAN << RESET << std::endl;
         }
+
+        pcl::PointCloud<PointT>::Ptr combing_cloud(new pcl::PointCloud<PointT>);
         
         while (vertex_has_neigbor) {
            // for (; ai != a_end; ai++) {
@@ -355,6 +357,11 @@ void RegionAdjacencyGraph::splitMergeRAG(
                      normal_clusters[*i], normal_clusters[neigbours_index],
                      m_cloud, m_normal);
 
+                 for (int y = 0; y < m_cloud->size(); y++) {
+                    combing_cloud->push_back(m_cloud->points[y]);
+                 }
+
+                 
                  std::cout << "CLOUD SIZE: " << m_cloud->size() << std::endl;
                  
                  // insert to both merged location
@@ -465,6 +472,12 @@ void RegionAdjacencyGraph::splitMergeRAG(
            }
            
         }
+        if (!combing_cloud->empty()) {
+           std::string name = "/home/krishneel/Desktop/test/" +
+              convertNumber2String(test_count++) + ".pcd";
+           pcl::io::savePCDFileASCII(name, *combing_cloud);
+        }
+        
      }
 #ifdef DEBUG
     // this->printGraph(this->graph);
