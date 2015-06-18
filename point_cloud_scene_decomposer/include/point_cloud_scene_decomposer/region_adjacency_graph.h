@@ -129,5 +129,7 @@ class RegionAdjacencyGraph {
        RAG_EDGE_WEIGHT_DISTANCE,
        RAG_EDGE_WEIGHT_CONVEX_CRITERIA
     };
+
+    int total_label;
 };
 #endif  // __DEBRIS_DETECTION_REGION_ADJACENCY_GRAPH_H__

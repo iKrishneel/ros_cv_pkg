@@ -466,6 +466,7 @@ void RegionAdjacencyGraph::splitMergeRAG(
            */         
         }
      }
+    this->total_label = label;
 #ifdef DEBUG
     // this->printGraph(this->graph);
     std::cout << MAGENTA << "\nPRINT INFO. \n --Graph Size: "
@@ -473,6 +474,9 @@ void RegionAdjacencyGraph::splitMergeRAG(
        std::endl << "--Total Label: " << label << "\n\n";
 #endif  // DEBUG
 }
+
+
+
 
 
 float RegionAdjacencyGraph::getEdgeWeight(

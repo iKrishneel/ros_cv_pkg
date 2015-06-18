@@ -75,7 +75,12 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     void clusterVoxels(
        const cv::Mat &,
        std::vector<int> &);
-   
+
+    virtual void objectCloudClusterPostProcessing(
+       std::vector<pcl::PointCloud<PointT>::Ptr> &,
+       std::vector<int> &,
+       const int,
+       const int = 64);
    
 };
 #endif  // _POINT_CLOUD_SCENE_DECOMPOSER_H_
