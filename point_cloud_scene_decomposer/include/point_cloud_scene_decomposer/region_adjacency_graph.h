@@ -95,6 +95,8 @@ class RegionAdjacencyGraph {
     float getEdgeWeight(
         const cv::Mat &, const cv::Mat &,
         const cv::Mat &, const cv::Mat &);
+
+    int comparision_points_size;
     
  public:
     RegionAdjacencyGraph();

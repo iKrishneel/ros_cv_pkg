@@ -7,7 +7,8 @@
 /**
  * constructor 
  */
-RegionAdjacencyGraph::RegionAdjacencyGraph() {
+RegionAdjacencyGraph::RegionAdjacencyGraph() :
+    comparision_points_size(100) {
    
 }
 
@@ -25,7 +26,7 @@ void RegionAdjacencyGraph::generateRAG(
        ROS_ERROR("ERROR: Cannot Generate RAG of empty data...");
        return;
     }
-    const int comparision_points_size = 100;
+    // this->comparision_points_size = 100;
     if (cloud_clusters.size() == neigbor_indices.size()) {
        std::vector<VertexDescriptor> vertex_descriptor;
        for (int j = 0; j < centroids->size(); j++) {
@@ -278,7 +279,7 @@ void RegionAdjacencyGraph::sampleRandomPointsFromCloudCluster(
 void RegionAdjacencyGraph::splitMergeRAG(
     const std::vector<pcl::PointCloud<PointT>::Ptr> &c_clusters,
     const std::vector<pcl::PointCloud<pcl::Normal>::Ptr>  &n_clusters,
-    const int neigbour_size,
+    const int edge_weight_criteria,
     const int _threshold) {
     if (num_vertices(this->graph) == 0) {
        ROS_ERROR("ERROR: Cannot Merge Empty RAG ...");
@@ -343,16 +344,16 @@ void RegionAdjacencyGraph::splitMergeRAG(
 
                  std::cout << GREEN << "updating cloud ... " << GREEN
                            << RESET << std::endl;
-                 
+
                  // merge and update the cloud point
                  pcl::PointCloud<PointT>::Ptr m_cloud(
-                    new pcl::PointCloud<PointT>);
+                     new pcl::PointCloud<PointT>);
                  pcl::PointCloud<pcl::Normal>::Ptr m_normal(
-                    new pcl::PointCloud<pcl::Normal>);
+                     new pcl::PointCloud<pcl::Normal>);
                  this->mergePointCloud(
-                    cloud_clusters[*i], cloud_clusters[neigbours_index],
-                    normal_clusters[*i], normal_clusters[neigbours_index],
-                    m_cloud, m_normal);
+                     cloud_clusters[*i], cloud_clusters[neigbours_index],
+                     normal_clusters[*i], normal_clusters[neigbours_index],
+                     m_cloud, m_normal);
 
                  std::cout << "CLOUD SIZE: " << m_cloud->size() << std::endl;
                  
@@ -361,13 +362,23 @@ void RegionAdjacencyGraph::splitMergeRAG(
                  normal_clusters.at(*i) = m_normal;
                  cloud_clusters.at(neigbours_index) = m_cloud;
                  normal_clusters.at(neigbours_index) = m_normal;
-                      
-
+                 
+                 std::vector<Eigen::Vector3f> center_point;
+                 std::vector<Eigen::Vector3f> center_normal;
                  cv::Mat normal_hist;
                  cv::Mat color_hist;
-                 this->computeCloudClusterRPYHistogram(
-                    m_cloud, m_normal, normal_hist);
-                 this->computeColorHistogram(m_cloud, color_hist);
+                 if (edge_weight_criteria == RAG_EDGE_WEIGHT_CONVEX_CRITERIA) {
+                     this->sampleRandomPointsFromCloudCluster(
+                         cloud_clusters[*i],
+                         normal_clusters[*i],
+                         center_point, center_normal,
+                         this->comparision_points_size);
+                     
+                 } else if (edge_weight_criteria == RAG_EDGE_WEIGHT_DISTANCE) {
+                     this->computeCloudClusterRPYHistogram(
+                         m_cloud, m_normal, normal_hist);
+                     this->computeColorHistogram(m_cloud, color_hist);
+                 }
 
                  std::cout << GREEN << "updating graph... " << *ai << "\t"
                            << neigbours_index << "\t" << *i
@@ -382,7 +393,6 @@ void RegionAdjacencyGraph::splitMergeRAG(
 
                     std::cout << YELLOW <<  "\t\t - N Neigobour: " << *ni
                               << YELLOW << RESET << std::endl;
-
                     
                     bool is_found = false;
                     EdgeDescriptor n_edge;
@@ -405,25 +415,42 @@ void RegionAdjacencyGraph::splitMergeRAG(
                     EdgeDescriptor i_edge;
                     tie(i_edge, is_found) = edge(*i, *ii, this->graph);
                     if (is_found) {
-                       cv::Mat nhist;
-                       cv::Mat chist;
-                       this->computeCloudClusterRPYHistogram(
-                          c_clusters[*ii], n_clusters[*ii], nhist);
-                       this->computeColorHistogram(c_clusters[*ii], chist);
-                       float e_weight = this->getEdgeWeight(
-                          normal_hist, nhist, color_hist, chist);
 
-                       // std::cout << "weight: " << e_weight << "\t"
-                       //           << *ii << std::endl;
-                                              
+                        float e_weight = 0.0f;
+                        if (edge_weight_criteria == RAG_EDGE_WEIGHT_CONVEX_CRITERIA) {
+                            std::vector<Eigen::Vector3f> n1_point;
+                            std::vector<Eigen::Vector3f> n1_normal;
+                            this->sampleRandomPointsFromCloudCluster(
+                                cloud_clusters[*ii],
+                                normal_clusters[*ii],
+                                n1_point, n1_normal,
+                                this->comparision_points_size);
+                            
+                            std::vector<std::vector<Eigen::Vector3f> > _points;
+                            std::vector<std::vector<Eigen::Vector3f> > _normals;
+                            _points.push_back(center_point);
+                            _points.push_back(n1_point);
+                            _normals.push_back(center_normal);
+                            _normals.push_back(n1_normal);
+                            e_weight = this->getCloudClusterWeightFunction<float>(
+                                _points, _normals);
+                            
+                        } else if (edge_weight_criteria == RAG_EDGE_WEIGHT_DISTANCE) {
+                            cv::Mat nhist;
+                            cv::Mat chist;
+                            this->computeCloudClusterRPYHistogram(
+                                c_clusters[*ii], n_clusters[*ii], nhist);
+                            this->computeColorHistogram(c_clusters[*ii], chist);
+                            e_weight = this->getEdgeWeight(
+                                normal_hist, nhist, color_hist, chist);
+                        }
+                       std::cout << "weight: " << e_weight << "\t"
+                                 << *ii << std::endl;
+
+                       
                        remove_edge(i_edge, this->graph);
-                       // this->graph[*ii].v_label = -1;
-                       // if (e_weight >= _threshold) {
-                         boost::add_edge(
+                       boost::add_edge(
                              *i, *ii, EdgeProperty(e_weight), this->graph);
-                         this->graph[*ii].v_label =
-                            this->graph[*i].v_label;
-                         // }
                     }
                  }
               }
@@ -455,7 +482,7 @@ float RegionAdjacencyGraph::getEdgeWeight(
         cv::compareHist(rpy_1, rpy_2, CV_COMP_BHATTACHARYYA));
     float color_dist = static_cast<float>(
         cv::compareHist(color_1, color_2, CV_COMP_BHATTACHARYYA));
-    float prob = exp(-2 * rpy_dist) * exp(-2 * color_dist);
+    float prob = exp(-0.7 * rpy_dist) * exp(-0.5 * color_dist);
     return prob;
 }
 
