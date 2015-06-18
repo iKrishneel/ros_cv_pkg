@@ -315,8 +315,8 @@ void RegionAdjacencyGraph::splitMergeRAG(
            std::cout << CYAN << "NOT VERTEX " << CYAN << RESET << std::endl;
         }
         
-        while (vertex_has_neigbor) {
-           // for (; ai != a_end; ai++) {
+        // while (vertex_has_neigbor) {
+        for (; ai != a_end; ai++) {
            
            int neigbours_index = static_cast<int>(*ai);
               
@@ -341,7 +341,7 @@ void RegionAdjacencyGraph::splitMergeRAG(
                     this->graph[neigbours_index].v_label =
                        this->graph[*i].v_label;
                  }
-
+                 /*
                  std::cout << GREEN << "updating cloud ... " << GREEN
                            << RESET << std::endl;
 
@@ -382,7 +382,7 @@ void RegionAdjacencyGraph::splitMergeRAG(
 
                  std::cout << GREEN << "updating graph... " << *ai << "\t"
                            << neigbours_index << "\t" << *i
-                           << GREEN << RESET << std::endl;                 
+                           << GREEN << RESET << std::endl;
                  
                  // get neigbours of ai
                  AdjacencyIterator ni, n_end;
@@ -415,9 +415,9 @@ void RegionAdjacencyGraph::splitMergeRAG(
                     EdgeDescriptor i_edge;
                     tie(i_edge, is_found) = edge(*i, *ii, this->graph);
                     if (is_found) {
-
                         float e_weight = 0.0f;
-                        if (edge_weight_criteria == RAG_EDGE_WEIGHT_CONVEX_CRITERIA) {
+                        if (edge_weight_criteria ==
+                            RAG_EDGE_WEIGHT_CONVEX_CRITERIA) {
                             std::vector<Eigen::Vector3f> n1_point;
                             std::vector<Eigen::Vector3f> n1_normal;
                             this->sampleRandomPointsFromCloudCluster(
@@ -432,10 +432,11 @@ void RegionAdjacencyGraph::splitMergeRAG(
                             _points.push_back(n1_point);
                             _normals.push_back(center_normal);
                             _normals.push_back(n1_normal);
-                            e_weight = this->getCloudClusterWeightFunction<float>(
-                                _points, _normals);
-                            
-                        } else if (edge_weight_criteria == RAG_EDGE_WEIGHT_DISTANCE) {
+                            e_weight =
+                               this->getCloudClusterWeightFunction<float>(
+                                  _points, _normals);
+                        } else if (edge_weight_criteria ==
+                                   RAG_EDGE_WEIGHT_DISTANCE) {
                             cv::Mat nhist;
                             cv::Mat chist;
                             this->computeCloudClusterRPYHistogram(
@@ -446,24 +447,23 @@ void RegionAdjacencyGraph::splitMergeRAG(
                         }
                        std::cout << "weight: " << e_weight << "\t"
                                  << *ii << std::endl;
-
                        
                        remove_edge(i_edge, this->graph);
                        boost::add_edge(
                              *i, *ii, EdgeProperty(e_weight), this->graph);
                     }
                  }
+                 */
               }
            }
+           /*
            //  check if neigbor exits
            tie(ai, a_end) = boost::adjacent_vertices(*i, this->graph);
 
            if (ai == a_end) {
               vertex_has_neigbor = false;
-           } else {
-              // ai++;
            }
-           
+           */         
         }
      }
 #ifdef DEBUG
