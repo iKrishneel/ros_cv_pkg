@@ -329,7 +329,7 @@ void RegionAdjacencyGraph::splitMergeRAG(
                  boost::remove_edge(e_descriptor, this->graph);
               } else {
                  if ((this->graph[neigbours_index].v_label == -1) ||
-                    (this->graph[neigbours_index].v_label !=
+                     (this->graph[neigbours_index].v_label !=
                      this->graph[*i].v_label)) {
                     this->graph[neigbours_index].v_label =
                        this->graph[*i].v_label;
@@ -413,7 +413,7 @@ void RegionAdjacencyGraph::splitMergeRAG(
                        remove_edge(i_edge, this->graph);
                        // this->graph[*ii].v_label = -1;
                        // if (e_weight >= _threshold) {
-                          boost::add_edge(
+                         boost::add_edge(
                              *i, *ii, EdgeProperty(e_weight), this->graph);
                           // this->graph[*ii].v_label =
                           //   this->graph[*i].v_label;
