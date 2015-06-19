@@ -1,0 +1,7 @@
+<launch>
+  <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer"
+	name="point_cloud_scene_decomposer">
+    <remap from="~input" to="/scene_decomposer/output/cloud_cluster" />
+    <remap from="~target" to="/scene_decomposer/output/indices" />
+  </node>
+</launch>
