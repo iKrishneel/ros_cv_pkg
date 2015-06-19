@@ -7,11 +7,14 @@
 #include <point_cloud_scene_decomposer/scene_decomposer_image_processor.h>
 #include <point_cloud_scene_decomposer/region_adjacency_graph.h>
 
+#include <jsk_recognition_msgs/ClusterPointIndices.h>
+
 class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
  private:
     ros::NodeHandle nh_;
     ros::Publisher pub_image_;
     ros::Publisher pub_cloud_;
+    ros::Publisher pub_indices_;
     ros::Subscriber sub_cloud_;
     ros::Subscriber sub_cloud_ori_;
     ros::Subscriber sub_norm_;
@@ -22,13 +25,22 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     pcl::PointCloud<PointT>::Ptr filter_cloud__;
 
     void pclNearestNeigborSearch(
-        pcl::PointCloud<pcl::PointXYZ>::Ptr, std::vector<std::vector<int> > &,
-        bool isneigbour = true, const int = 8, const double = 0.05);
-
+        pcl::PointCloud<pcl::PointXYZ>::Ptr,
+        std::vector<std::vector<int> > &,
+        bool isneigbour = true,
+        const int = 8,
+        const double = 0.05);
 
     void semanticCloudLabel(
         const std::vector<pcl::PointCloud<PointT>::Ptr> &,
-        pcl::PointCloud<PointT>::Ptr, const std::vector<int> &);
+        pcl::PointCloud<PointT>::Ptr,
+        const std::vector<int> &,
+        std::vector<pcl::PointIndices> &,
+        const int);
+
+    std::vector<pcl_msgs::PointIndices> convertToROSPointIndices(
+       const std::vector<pcl::PointIndices>,
+       const std_msgs::Header&);
    
     float max_distance_;
    

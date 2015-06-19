@@ -466,7 +466,7 @@ void RegionAdjacencyGraph::splitMergeRAG(
            */         
         }
      }
-    this->total_label = label;
+    this->total_label = label + sizeof(char); // change to getter
 #ifdef DEBUG
     // this->printGraph(this->graph);
     std::cout << MAGENTA << "\nPRINT INFO. \n --Graph Size: "

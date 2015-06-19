@@ -20,7 +20,10 @@ PointCloudSceneDecomposer::PointCloudSceneDecomposer() :
 
 void PointCloudSceneDecomposer::onInit() {
     this->pub_cloud_ = nh_.advertise<sensor_msgs::PointCloud2>(
-        "/scene_decomposer/output/cloud", sizeof(char));
+        "/scene_decomposer/output/cloud_cluster", sizeof(char));
+    this->pub_indices_ = nh_.advertise<
+          jsk_recognition_msgs::ClusterPointIndices>(
+             "/scene_decomposer/output/indices", sizeof(char));
     this->pub_image_ = nh_.advertise<sensor_msgs::Image>(
         "/scene_decomposer/output/image", sizeof(char));
 }
@@ -119,9 +122,23 @@ void PointCloudSceneDecomposer::cloudCallback(
     std::vector<int> labelMD;
     rag->getCloudClusterLabels(labelMD);
     free(rag);
-    this->semanticCloudLabel(cloud_clusters, cloud, labelMD);
+
+    // std::cout << "-- POST PROCESSING..." << std::endl;
+    // this->objectCloudClusterPostProcessing(
+    //    cloud_clusters, labelMD, rag->total_label);
+    // std::cout << "-- Done Post Processing.." << std::endl;
+
+    std::vector<pcl::PointIndices> all_indices;
+    this->semanticCloudLabel(
+       cloud_clusters, cloud, labelMD, all_indices, rag->total_label);
     
     cv::waitKey(3);
+
+    jsk_recognition_msgs::ClusterPointIndices ros_indices;
+    ros_indices.cluster_indices = this->convertToROSPointIndices(
+       all_indices, cloud_msg->header);
+    ros_indices.header = cloud_msg->header;
+    this->pub_indices_.publish(ros_indices);
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
@@ -291,8 +308,14 @@ void PointCloudSceneDecomposer::extractPointCloudClustersFrom2DMap(
 void PointCloudSceneDecomposer::semanticCloudLabel(
     const std::vector<pcl::PointCloud<PointT>::Ptr> &cloud_clusters,
     pcl::PointCloud<PointT>::Ptr cloud,
-    const std::vector<int> &labelMD) {
+    const std::vector<int> &labelMD,
+    std::vector<pcl::PointIndices> &all_indices,
+    const int total_label) {
     cloud->clear();
+    all_indices.clear();
+    all_indices.resize(total_label);
+    // std::vector<std::vector<int> > cluster_indices(total_label);
+    int icounter = 0;
     for (int i = 0; i < cloud_clusters.size(); i++) {
        int _idx = labelMD.at(i);
        for (int j = 0; j < cloud_clusters[i]->size(); j++) {
@@ -304,12 +327,14 @@ void PointCloudSceneDecomposer::semanticCloudLabel(
           pt.g = this->color[_idx].val[1];
           pt.b = this->color[_idx].val[2];
           cloud->push_back(pt);
+          all_indices[_idx].indices.push_back(icounter++);
        }
     }
 }
 
-
-
+/**
+ * function to divide 2 voxels of same label but not connected in 3D space
+ */
 void PointCloudSceneDecomposer::objectCloudClusterPostProcessing(
     std::vector<pcl::PointCloud<PointT>::Ptr> &cloud_clusters,
     std::vector<int> &labelMD,
@@ -319,12 +344,24 @@ void PointCloudSceneDecomposer::objectCloudClusterPostProcessing(
        ROS_ERROR("-- CLUSTER LABEL NOT SAME SIAZE");
        return;
     }
+    std::vector<pcl::PointCloud<PointT>::Ptr> m_cloud_clusters(total_label);
+    for (int j = 0; j < m_cloud_clusters.size(); j++) {
+       m_cloud_clusters[j] = pcl::PointCloud<PointT>::Ptr(
+          new pcl::PointCloud<PointT>);
+    }
+    int counter = 0;
+    for (int j = 0; j < cloud_clusters.size(); j++) {
+       int _idx = labelMD.at(counter++);
+       for (int i = 0; i < cloud_clusters[j]->size(); i++) {
+          m_cloud_clusters[_idx]->push_back(cloud_clusters[j]->points[i]);
+       }
+    }
     std::vector<pcl::PointCloud<PointT>::Ptr> c_clusters;
     std::vector<int> c_labels;
     int icounter = 0;
     int last_label = total_label;
     for (std::vector<pcl::PointCloud<PointT>::Ptr>::const_iterator it =
-            cloud_clusters.begin(); it != cloud_clusters.end(); it++) {
+            m_cloud_clusters.begin(); it != m_cloud_clusters.end(); it++) {
        if ((*it)->size() > min_cluster_size) {
           pcl::PointCloud<PointT>::Ptr cloud(
              new pcl::PointCloud<PointT>);
@@ -334,7 +371,7 @@ void PointCloudSceneDecomposer::objectCloudClusterPostProcessing(
           tree->setInputCloud(cloud);
           std::vector<pcl::PointIndices> cluster_indices;
           pcl::EuclideanClusterExtraction<PointT> euclidean_clustering;
-          euclidean_clustering.setClusterTolerance(0.1);
+          euclidean_clustering.setClusterTolerance(0.02);
           euclidean_clustering.setMinClusterSize(min_cluster_size);
           euclidean_clustering.setMaxClusterSize(25000);
           euclidean_clustering.setSearchMethod(tree);
@@ -343,21 +380,23 @@ void PointCloudSceneDecomposer::objectCloudClusterPostProcessing(
           int clabel = labelMD[icounter++];
           if (cluster_indices.size() > sizeof(char)) {
              int ccount = 1;
-             for (std::vector<pcl::PointIndices>::const_iterator it =
-                     cluster_indices.begin(); it != cluster_indices.end();
-                  ++it) {
+             for (std::vector<pcl::PointIndices>::const_iterator it_ind =
+                     cluster_indices.begin(); it_ind != cluster_indices.end();
+                  ++it_ind) {
               pcl::PointCloud<PointT>::Ptr cloud_cluster(
                  new pcl::PointCloud<PointT>);
-              for (std::vector<int>::const_iterator pit = it->indices.begin();
-                   pit != it->indices.end(); ++pit) {
+              for (std::vector<int>::const_iterator pit =
+                      it_ind->indices.begin(); pit != it_ind->indices.end();
+                   ++pit) {
                  cloud_cluster->points.push_back(cloud->points[*pit]);
               }
               cloud_cluster->width = cloud_cluster->points.size();
               cloud_cluster->height = sizeof(char);
               cloud_cluster->is_dense = true;
               c_clusters.push_back(cloud_cluster);
-              if (ccount++ == 1) {
+              if (ccount == 1) {
                  c_labels.push_back(clabel);
+                 ccount++;
               } else {
                  c_labels.push_back(last_label++);
               }
@@ -373,6 +412,21 @@ void PointCloudSceneDecomposer::objectCloudClusterPostProcessing(
     cloud_clusters.insert(
        cloud_clusters.end(), c_clusters.begin(), c_clusters.end());
     labelMD.insert(labelMD.end(), c_labels.begin(), c_labels.end());
+}
+
+
+std::vector<pcl_msgs::PointIndices>
+PointCloudSceneDecomposer::convertToROSPointIndices(
+    const std::vector<pcl::PointIndices> cluster_indices,
+    const std_msgs::Header& header) {
+    std::vector<pcl_msgs::PointIndices> ret;
+    for (size_t i = 0; i < cluster_indices.size(); i++) {
+       pcl_msgs::PointIndices ros_msg;
+       ros_msg.header = header;
+       ros_msg.indices = cluster_indices[i].indices;
+       ret.push_back(ros_msg);
+    }
+    return ret;
 }
 
 
