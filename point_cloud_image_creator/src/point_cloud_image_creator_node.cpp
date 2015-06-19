@@ -129,8 +129,10 @@ cv::Mat PointCloudImageCreator::interpolateImage(
        return image;
     }
     cv::Mat iimg = image.clone();
+    cv::Mat mop_imgg;
     cv::Mat mop_img;
-    this->cvMorphologicalOperations(image, mop_img, true);
+    this->cvMorphologicalOperations(image, mop_imgg, false);
+    this->cvMorphologicalOperations(mop_imgg, mop_img, false);
     
     const int neigbour = 1;
     for (int j = neigbour; j < mask.rows - neigbour; j++) {
@@ -165,8 +167,8 @@ void PointCloudImageCreator::cvMorphologicalOperations(
        ROS_ERROR("Cannnot perfrom Morphological Operations on empty image....");
        return;
     }
-    int erosion_size = 1;
-    int erosion_const = 1;
+    int erosion_size = 5;
+    int erosion_const = 5;
     int erosion_type = cv::MORPH_ELLIPSE;
     cv::Mat element = cv::getStructuringElement(erosion_type,
        cv::Size(erosion_const * erosion_size + sizeof(char),

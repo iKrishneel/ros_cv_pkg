@@ -4,5 +4,5 @@
   <include file="$(find point_cloud_normal_gradient)/launch/point_cloud_normal_gradient.launch"/>
   <include file="$(find point_cloud_image_creator)/launch/point_cloud_image_creator.launch" />
   <!---<include file="$(find point_cloud_scene_decomposer)/launch/point_cloud_scene_decomposer.launch" />-->
-  <!---<include file="$(find point_cloud_scene_decomposer)/launch/cluster_point_indices_decomposer.launch" />-->
+  <include file="$(find point_cloud_scene_decomposer)/launch/cluster_point_indices_decomposer.launch" />
 </launch>
