@@ -259,7 +259,7 @@ void PointCloudSceneDecomposer::extractPointCloudClustersFrom2DMap(
        std::vector<std::vector<int> > cluster_indices(
            static_cast<int>(100));  // CHANGE TO AUTO-SIZE
        cv::Mat labelMD = patch_label[k].patch.clone();
-       cv::Rect_<int> rect = patch_label[k].rect;       
+       cv::Rect_<int> rect = patch_label[k].rect;
        if (patch_label[k].is_region) {
           for (std::vector<cv::Point2i>::const_iterator it =
                   patch_label[k].region.begin();
@@ -304,7 +304,6 @@ void PointCloudSceneDecomposer::extractPointCloudClustersFrom2DMap(
     }
 }
 
-
 void PointCloudSceneDecomposer::semanticCloudLabel(
     const std::vector<pcl::PointCloud<PointT>::Ptr> &cloud_clusters,
     pcl::PointCloud<PointT>::Ptr cloud,
@@ -314,7 +313,6 @@ void PointCloudSceneDecomposer::semanticCloudLabel(
     cloud->clear();
     all_indices.clear();
     all_indices.resize(total_label);
-    // std::vector<std::vector<int> > cluster_indices(total_label);
     int icounter = 0;
     for (int i = 0; i < cloud_clusters.size(); i++) {
        int _idx = labelMD.at(i);

@@ -189,7 +189,7 @@ void SceneDecomposerImageProcessor::cvMorphologicalOperations(
        ROS_ERROR("Cannnot perfrom Morphological Operations on empty image....");
        return;
     }
-    int erosion_size = 4;
+    int erosion_size = 3;
     int erosion_const = 2;
     int erosion_type = cv::MORPH_ELLIPSE;
     cv::Mat element = cv::getStructuringElement(
@@ -503,9 +503,15 @@ void SceneDecomposerImageProcessor::cvLabelEgdeMap(
     cv::Mat mop_img;
     this->cvMorphologicalOperations(edgeMap, mop_img);
     cvEdgeThinning(mop_img);
+    // not morphological operation
+    // this->cvGetLabelImagePatch(cloud, src, edgeMap, patch_label);
     this->cvGetLabelImagePatch(cloud, src, mop_img, patch_label);
     
     this->cvVisualization(patch_label, edgeMap.size());
     cv::imshow("Thin", mop_img);
     // std::cout << "Total Size: " << this->total_cluster << std::endl;
 }
+
+/**
+ * if not use morphological operation than use contour smoothing
+ */
