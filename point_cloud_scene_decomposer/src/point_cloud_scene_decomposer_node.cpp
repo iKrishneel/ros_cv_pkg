@@ -110,12 +110,12 @@ void PointCloudSceneDecomposer::cloudCallback(
     this->pclNearestNeigborSearch(
        centroids, neigbour_idx, true, neigbour_size, 0.03);
     RegionAdjacencyGraph *rag = new RegionAdjacencyGraph();
-    const int edge_weight_criteria = rag->RAG_EDGE_WEIGHT_CONVEX_CRITERIA;
-    // const int edge_weight_criteria = rag->RAG_EDGE_WEIGHT_DISTANCE;
+    // const int edge_weight_criteria = rag->RAG_EDGE_WEIGHT_CONVEX_CRITERIA;
+    const int edge_weight_criteria = rag->RAG_EDGE_WEIGHT_DISTANCE;
     rag->generateRAG(cloud_clusters, normal_clusters,
                      centroids, neigbour_idx, edge_weight_criteria);
     rag->splitMergeRAG(cloud_clusters, normal_clusters,
-                       edge_weight_criteria, 0.20);
+                       edge_weight_criteria, 0.50);
     std::vector<int> labelMD;
     rag->getCloudClusterLabels(labelMD);
     free(rag);
