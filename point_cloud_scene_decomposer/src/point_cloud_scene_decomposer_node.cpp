@@ -123,14 +123,14 @@ void PointCloudSceneDecomposer::cloudCallback(
     rag->getCloudClusterLabels(labelMD);
     free(rag);
 
-    // std::cout << "-- POST PROCESSING..." << std::endl;
-    // this->objectCloudClusterPostProcessing(
-    //    cloud_clusters, labelMD, rag->total_label);
-    // std::cout << "-- Done Post Processing.." << std::endl;
-
     std::vector<pcl::PointIndices> all_indices;
     this->semanticCloudLabel(
        cloud_clusters, cloud, labelMD, all_indices, rag->total_label);
+
+    this->objectCloudClusterPostProcessing(cloud, all_indices);
+
+    std::cout << YELLOW  << "-- NUMBER OF BOUNDING BOXES: "
+              << all_indices.size() << YELLOW  << RESET << std::endl;
     
     cv::waitKey(3);
 
@@ -174,64 +174,6 @@ void PointCloudSceneDecomposer::pclNearestNeigborSearch(
        pointIdx.clear();
        pointSqDist.clear();
     }
-}
-
-
-/**
- * compute the locate point gradient orientation
- */
-void PointCloudSceneDecomposer::pointCloudLocalGradient(
-    const pcl::PointCloud<PointT>::Ptr cloud,
-    const pcl::PointCloud<pcl::Normal>::Ptr cloud_normal,
-    cv::Mat &depth_img) {
-    if (cloud->empty() || cloud_normal->empty() || depth_img.empty()) {
-        ROS_ERROR("ERROR: Point Cloud Empty...");
-        return;
-    }
-    if (cloud->width != depth_img.cols ||
-        cloud_normal->width != depth_img.cols) {
-        ROS_ERROR("ERROR: Incorrect size...");
-        return;
-    }
-    const int start_pt = 1;
-    cv::Mat normalMap = cv::Mat::zeros(depth_img.size(), CV_8UC3);
-    cv::Mat localGradient = cv::Mat::zeros(depth_img.size(), CV_32F);
-    for (int j = start_pt; j < depth_img.rows - start_pt; j++) {
-       for (int i = start_pt; i < depth_img.cols - start_pt; i++) {
-          int pt_index = i + (j * depth_img.cols);
-          Eigen::Vector3f centerPointVec = Eigen::Vector3f(
-             cloud_normal->points[pt_index].normal_x,
-             cloud_normal->points[pt_index].normal_y,
-             cloud_normal->points[pt_index].normal_z);
-          int icounter = 0;
-          float scalarProduct = 0.0f;
-          for (int y = -start_pt; y <= start_pt; y++) {
-             for (int x = -start_pt; x <= start_pt; x++) {
-                if (x != 0 && y != 0) {
-                   int n_index = (i + x) + ((j + y) * depth_img.cols);
-                   Eigen::Vector3f neigbourPointVec = Eigen::Vector3f(
-                      cloud_normal->points[n_index].normal_x,
-                      cloud_normal->points[n_index].normal_y,
-                      cloud_normal->points[n_index].normal_z);
-                   scalarProduct += (neigbourPointVec.dot(centerPointVec) /
-                                     (neigbourPointVec.norm() *
-                                      centerPointVec.norm()));
-                   ++icounter;
-                }
-             }
-          }
-          scalarProduct /= static_cast<float>(icounter);
-          localGradient.at<float>(j, i) = static_cast<float>(scalarProduct);
-          
-          scalarProduct = 1 - scalarProduct;
-          cv::Scalar jmap = JetColour<float, float, float>(
-             scalarProduct, 0, 1);
-          normalMap.at<cv::Vec3b>(j, i)[0] = jmap.val[0] * 255;
-          normalMap.at<cv::Vec3b>(j, i)[1] = jmap.val[1] * 255;
-          normalMap.at<cv::Vec3b>(j, i)[2] = jmap.val[2] * 255;
-       }
-    }
-    cv::imshow("Local Gradient", normalMap);
 }
 
 void PointCloudSceneDecomposer::extractPointCloudClustersFrom2DMap(
@@ -334,84 +276,43 @@ void PointCloudSceneDecomposer::semanticCloudLabel(
  * function to divide 2 voxels of same label but not connected in 3D space
  */
 void PointCloudSceneDecomposer::objectCloudClusterPostProcessing(
-    std::vector<pcl::PointCloud<PointT>::Ptr> &cloud_clusters,
-    std::vector<int> &labelMD,
-    const int total_label,
+    pcl::PointCloud<PointT>::Ptr in_cloud,
+    std::vector<pcl::PointIndices> &all_indices,
     const int min_cluster_size) {
-    if (cloud_clusters.size() != labelMD.size()) {
-       ROS_ERROR("-- CLUSTER LABEL NOT SAME SIAZE");
+    if (in_cloud->empty()) {
+       ROS_ERROR("-- NOT CLUSTER TO PROCESS");
        return;
     }
-    std::vector<pcl::PointCloud<PointT>::Ptr> m_cloud_clusters(total_label);
-    for (int j = 0; j < m_cloud_clusters.size(); j++) {
-       m_cloud_clusters[j] = pcl::PointCloud<PointT>::Ptr(
-          new pcl::PointCloud<PointT>);
-    }
-    int counter = 0;
-    for (int j = 0; j < cloud_clusters.size(); j++) {
-       int _idx = labelMD.at(counter++);
-       for (int i = 0; i < cloud_clusters[j]->size(); i++) {
-          m_cloud_clusters[_idx]->push_back(cloud_clusters[j]->points[i]);
-       }
-    }
-    std::vector<pcl::PointCloud<PointT>::Ptr> c_clusters;
-    std::vector<int> c_labels;
-    int icounter = 0;
-    int last_label = total_label;
-    for (std::vector<pcl::PointCloud<PointT>::Ptr>::const_iterator it =
-            m_cloud_clusters.begin(); it != m_cloud_clusters.end(); it++) {
-       if ((*it)->size() > min_cluster_size) {
-          pcl::PointCloud<PointT>::Ptr cloud(
-             new pcl::PointCloud<PointT>);
-          pcl::copyPointCloud<PointT, PointT>(*(*it), *cloud);
-          pcl::search::KdTree<PointT>::Ptr tree(
-             new pcl::search::KdTree<PointT>);
-          tree->setInputCloud(cloud);
-          std::vector<pcl::PointIndices> cluster_indices;
-          pcl::EuclideanClusterExtraction<PointT> euclidean_clustering;
-          euclidean_clustering.setClusterTolerance(0.02);
-          euclidean_clustering.setMinClusterSize(min_cluster_size);
-          euclidean_clustering.setMaxClusterSize(25000);
-          euclidean_clustering.setSearchMethod(tree);
-          euclidean_clustering.setInputCloud(cloud);
-          euclidean_clustering.extract(cluster_indices);
-          int clabel = labelMD[icounter++];
-          if (cluster_indices.size() > sizeof(char)) {
-             int ccount = 1;
-             for (std::vector<pcl::PointIndices>::const_iterator it_ind =
-                     cluster_indices.begin(); it_ind != cluster_indices.end();
-                  ++it_ind) {
-              pcl::PointCloud<PointT>::Ptr cloud_cluster(
-                 new pcl::PointCloud<PointT>);
-              for (std::vector<int>::const_iterator pit =
-                      it_ind->indices.begin(); pit != it_ind->indices.end();
-                   ++pit) {
-                 cloud_cluster->points.push_back(cloud->points[*pit]);
-              }
-              cloud_cluster->width = cloud_cluster->points.size();
-              cloud_cluster->height = sizeof(char);
-              cloud_cluster->is_dense = true;
-              c_clusters.push_back(cloud_cluster);
-              if (ccount == 1) {
-                 c_labels.push_back(clabel);
-                 ccount++;
-              } else {
-                 c_labels.push_back(last_label++);
-              }
-             }
-          } else if (cluster_indices.size() == sizeof(char)) {
-             c_clusters.push_back(cloud);
-             c_labels.push_back(clabel);
-          }
-       }
-    }
-    cloud_clusters.clear();
-    labelMD.clear();
-    cloud_clusters.insert(
-       cloud_clusters.end(), c_clusters.begin(), c_clusters.end());
-    labelMD.insert(labelMD.end(), c_labels.begin(), c_labels.end());
-}
+    std::vector<pcl::PointIndices> clustered_indices;
+    clustered_indices.clear();
+    
+    pcl::search::KdTree<PointT>::Ptr tree(
+       new pcl::search::KdTree<PointT>);
+    tree->setInputCloud(in_cloud);
 
+    for (std::vector<pcl::PointIndices>::iterator it =
+            all_indices.begin(); it != all_indices.end(); it++) {
+       pcl::PointIndices::Ptr indices(new pcl::PointIndices());
+       indices->indices = it->indices;
+       std::vector<pcl::PointIndices> cluster_indices;
+       pcl::EuclideanClusterExtraction<PointT> euclidean_clustering;
+       euclidean_clustering.setClusterTolerance(0.02);
+       euclidean_clustering.setMinClusterSize(min_cluster_size);
+       euclidean_clustering.setMaxClusterSize(25000);
+       euclidean_clustering.setSearchMethod(tree);
+       euclidean_clustering.setInputCloud(in_cloud);
+       euclidean_clustering.setIndices(indices);
+       euclidean_clustering.extract(cluster_indices);
+
+       clustered_indices.insert(clustered_indices.end(),
+                                cluster_indices.begin(),
+                                cluster_indices.end());
+    }
+    all_indices.clear();
+    all_indices.insert(all_indices.end(),
+                       clustered_indices.begin(),
+                       clustered_indices.end());
+}
 
 std::vector<pcl_msgs::PointIndices>
 PointCloudSceneDecomposer::convertToROSPointIndices(
@@ -426,7 +327,6 @@ PointCloudSceneDecomposer::convertToROSPointIndices(
     }
     return ret;
 }
-
 
 int main(int argc, char *argv[]) {
 
