@@ -17,7 +17,7 @@
   <arg name="HANDLE_ESTIMATOR" default="false" />
   <arg name="MACHINE" default="localhost"/>
   <arg name="GDB" default="false" />
-  <arg name="SAVE_SELECTED_CLOUD" default="false" />
+  <arg name="SAVE_SELECTED_CLOUD" default="true" />
   <machine name="localhost" address="localhost" />
   <group if="$(arg LAUNCH_MANAGER)">
     <node pkg="nodelet" type="nodelet" name="$(arg MANAGER)"

@@ -63,10 +63,6 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
         const sensor_msgs::PointCloud2ConstPtr &);
     void normalCallback(
        const sensor_msgs::PointCloud2ConstPtr &);
-    void pointCloudLocalGradient(
-        const pcl::PointCloud<PointT>::Ptr,
-        const pcl::PointCloud<pcl::Normal>::Ptr,
-        cv::Mat &);
     void extractPointCloudClustersFrom2DMap(
         const pcl::PointCloud<PointT>::Ptr,
         const std::vector<cvPatch<int> > &,
@@ -89,9 +85,8 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
        std::vector<int> &);
 
     virtual void objectCloudClusterPostProcessing(
-       std::vector<pcl::PointCloud<PointT>::Ptr> &,
-       std::vector<int> &,
-       const int,
+       pcl::PointCloud<PointT>::Ptr,
+       std::vector<pcl::PointIndices> &,
        const int = 64);
    
 };
