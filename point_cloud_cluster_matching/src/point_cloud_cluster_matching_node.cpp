@@ -2,21 +2,28 @@
 #include <point_cloud_cluster_matching/point_cloud_cluster_matching.h>
 
 PointCloudClusterMatching::PointCloudClusterMatching() {
-   
+    this->subscribe();
+    this->onInit();
 }
 
 void PointCloudClusterMatching::onInit() {
-    this->subscribe();
 
+    this->pub_cloud_ = pnh_.advertise<sensor_msgs::PointCloud2>(
+       "/model/output/cloud_cluster", sizeof(char));
+    
     this->pub_signal_ = pnh_.advertise<std_msgs::Bool>(
        "/point_cloud_cluster_matching/output/signal", sizeof(char));
 }
 
 void PointCloudClusterMatching::subscribe() {
 
-    this->sub_signal_ = this->pnh_.subscribe(
-       "input_signal", sizeof(char),
-       &PointCloudClusterMatching::signalCallback, this);
+    // this->sub_signal_ = this->pnh_.subscribe(
+    //    "input_signal", sizeof(char),
+    //    &PointCloudClusterMatching::signalCallback, this);
+    this->sub_cloud_ = this->pnh_.subscribe(
+      "input_cloud", sizeof(char),
+      &PointCloudClusterMatching::cloudCallback, this);
+   
 }
 
 void PointCloudClusterMatching::unsubscribe() {
@@ -87,19 +94,47 @@ void PointCloudClusterMatching::cloudCallback(
     const sensor_msgs::PointCloud2ConstPtr &cloud_msg) {
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-    if (cloud->empty() || this->prev_cloud_clusters.empty()) {
-       ROS_ERROR("-- EMPTY CLOUD CANNOT BE PROCESSED.");
+    // if (cloud->empty() || this->prev_cloud_clusters.empty()) {
+    //    ROS_ERROR("-- EMPTY CLOUD CANNOT BE PROCESSED.");
+    //    return;
+    // }
+    pcl::PointCloud<PointT>::Ptr model_cloud(
+       new pcl::PointCloud<PointT>);
+    if (pcl::io::loadPCDFile<PointT> (
+           "/home/krishneel/Desktop/Program/pcl_recognition/build/milk.pcd",
+           *model_cloud) == -1) {
+       ROS_ERROR("Couldn't read file test_pcd.pcd \n");
        return;
     }
-    pcl::PointCloud<PointT>::Ptr manipulated_cluster(
-       new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointT, PointT>(*this->prev_cloud_clusters[
-                                           this->manipulated_cluster_index_],
-                                        *manipulated_cluster);
+    pcl::PointCloud<PointT>::Ptr scene_cloud(new pcl::PointCloud<PointT>);
+    if (pcl::io::loadPCDFile<PointT> (
+           "/home/krishneel/Desktop/Program/pcl_recognition/build/milk_cartoon_all_small_clorox.pcd",
+           *scene_cloud) == -1) {
+       ROS_ERROR("Couldn't read file test_pcd.pcd \n");
+       return;
+    }
+    
+    // pcl::PointCloud<PointT>::Ptr manipulated_cluster(
+    //    new pcl::PointCloud<PointT>);
+    // pcl::copyPointCloud<PointT, PointT>(*this->prev_cloud_clusters[
+    //                                        this->manipulated_cluster_index_],
+    //                                     *manipulated_cluster);
+    // AffineTrans rototranslations;
+    // std::vector<pcl::Correspondences> clustered_corrs;
+    // this->extractFeaturesAndMatchCloudPoints(
+    //    manipulated_cluster, cloud, rototranslations, clustered_corrs);
+
     AffineTrans rototranslations;
     std::vector<pcl::Correspondences> clustered_corrs;
     this->extractFeaturesAndMatchCloudPoints(
-       manipulated_cluster, cloud, rototranslations, clustered_corrs);
+       model_cloud, scene_cloud, rototranslations, clustered_corrs);
+    
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*scene_cloud, ros_cloud);
+    ros_cloud.header = cloud_msg->header;
+    this->pub_cloud_.publish(ros_cloud);
+   
+    
 }
 
 void PointCloudClusterMatching::objectCloudClusters(
@@ -137,6 +172,7 @@ void PointCloudClusterMatching::extractFeaturesAndMatchCloudPoints(
     this->pointCloudNormal(model_cloud, model_normals);
     this->pointCloudNormal(scene_cloud, scene_normals);
 
+    
     // extract cloud keypoints
     const float search_radius = 0.01f;
     pcl::PointCloud<PointT>::Ptr model_keypoints(
@@ -146,6 +182,7 @@ void PointCloudClusterMatching::extractFeaturesAndMatchCloudPoints(
     this->getCloudClusterKeyPoints(model_cloud, model_keypoints, search_radius);
     this->getCloudClusterKeyPoints(scene_cloud, scene_keypoints, search_radius);
 
+    
     // extract keypoint descriptors
     const float descr_search_radius = 0.02f;
     pcl::PointCloud<DescriptorType>::Ptr model_descriptors;
@@ -155,6 +192,7 @@ void PointCloudClusterMatching::extractFeaturesAndMatchCloudPoints(
     this->computeDescriptors(scene_cloud, scene_keypoints, scene_normals,
                              scene_descriptors, descr_search_radius);
 
+    /*
     // model - scene correspondance
     const float matching_threshold = 0.25f;
     pcl::CorrespondencesPtr model_scene_corrs(new pcl::Correspondences());
@@ -170,6 +208,7 @@ void PointCloudClusterMatching::extractFeaturesAndMatchCloudPoints(
        scene_cloud, scene_normals, scene_keypoints,
        model_scene_corrs, rototranslations, clustered_corrs,
        rf_radius, hough_bin_size, hough_threshold);
+    */
 }
 
 void PointCloudClusterMatching::pointCloudNormal(
@@ -203,11 +242,12 @@ void PointCloudClusterMatching::computeDescriptors(
     const pcl::PointCloud<pcl::Normal>::Ptr cloud_normals,
     pcl::PointCloud<DescriptorType>::Ptr cloud_descriptor,
     const float search_radius) {
-    pcl::SHOTEstimationOMP<PointT, pcl::Normal, DescriptorType> descriptr_est;
-    descriptr_est.setRadiusSearch(search_radius);
-    descriptr_est.setInputNormals(cloud_normals);
-    descriptr_est.setSearchSurface(cloud);
-    descriptr_est.compute(*cloud_descriptor);
+    pcl::SHOTEstimationOMP<PointT, pcl::Normal, DescriptorType>::Ptr
+       descriptr_est (new pcl::SHOTEstimationOMP<PointT, pcl::Normal, DescriptorType>);
+    descriptr_est->setRadiusSearch(search_radius);
+    descriptr_est->setInputNormals(cloud_normals);
+    descriptr_est->setSearchSurface(cloud);
+    descriptr_est->compute(*cloud_descriptor);
 }
 
 void PointCloudClusterMatching::modelSceneCorrespondences(

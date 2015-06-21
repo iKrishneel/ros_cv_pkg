@@ -57,6 +57,7 @@ class PointCloudClusterMatching {
     ros::Subscriber sub_manip_cluster_;
     ros::Subscriber sub_grip_end_pose_;
     ros::Publisher pub_signal_;
+    ros::Publisher pub_cloud_;
 
     int manipulated_cluster_index_;
     geometry_msgs::Pose gripper_pose_;
