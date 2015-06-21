@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="point_cloud_cluster_matching" type="point_cloud_cluster_matching_node"
+	name="point_cloud_cluster_matching" output="screen">
+  </node>
+</launch>
