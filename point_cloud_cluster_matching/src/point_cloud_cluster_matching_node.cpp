@@ -20,6 +20,15 @@ void PointCloudClusterMatching::subscribe() {
     // this->sub_signal_ = this->pnh_.subscribe(
     //    "input_signal", sizeof(char),
     //    &PointCloudClusterMatching::signalCallback, this);
+    this->sub_indices_ = this->pnh_.subscribe(
+       "input_indices", sizeof(char),
+       &PointCloudClusterMatching::indicesCallback, this);
+    this->sub_cloud_prev_ = this->pnh_.subscribe(
+      "input_cloud_prev", sizeof(char),
+      &PointCloudClusterMatching::cloudPrevCallback, this);
+    this->sub_cam_info_ = this->pnh_.subscribe(
+      "input_info", sizeof(char),
+      &PointCloudClusterMatching::cameraInfoCallback, this);
     this->sub_cloud_ = this->pnh_.subscribe(
       "input_cloud", sizeof(char),
       &PointCloudClusterMatching::cloudCallback, this);
@@ -52,6 +61,9 @@ void PointCloudClusterMatching::signalCallback(
        this->sub_cloud_ = this->pnh_.subscribe(
           "input_cloud", sizeof(char),
           &PointCloudClusterMatching::cloudCallback, this);
+       this->sub_cam_info_ = this->pnh_.subscribe(
+          "input_info", sizeof(char),
+          &PointCloudClusterMatching::cameraInfoCallback, this);
     } else {
        std_msgs::Bool next_step;
        next_step.data = false;
@@ -67,6 +79,12 @@ void PointCloudClusterMatching::gripperEndPoseCallback(
 void PointCloudClusterMatching::manipulatedClusterCallback(
     const std_msgs::Int16 &manip_cluster_index_msg) {
     this->manipulated_cluster_index_ = manip_cluster_index_msg.data;
+}
+
+void PointCloudClusterMatching::cameraInfoCallback(
+    const sensor_msgs::CameraInfo::ConstPtr &info_msg) {
+    boost::mutex::scoped_lock lock(this->lock_);
+    camera_info_ = info_msg;
 }
 
 void PointCloudClusterMatching::indicesCallback(
@@ -94,48 +112,31 @@ void PointCloudClusterMatching::cloudCallback(
     const sensor_msgs::PointCloud2ConstPtr &cloud_msg) {
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-    // if (cloud->empty() || this->prev_cloud_clusters.empty()) {
-    //    ROS_ERROR("-- EMPTY CLOUD CANNOT BE PROCESSED.");
-    //    return;
-    // }
-    pcl::PointCloud<PointT>::Ptr model_cloud(
-       new pcl::PointCloud<PointT>);
-    if (pcl::io::loadPCDFile<PointT> (
-           "/home/krishneel/Desktop/Program/pcl_recognition/build/milk.pcd",
-           *model_cloud) == -1) {
-       ROS_ERROR("Couldn't read file test_pcd.pcd \n");
+    if (cloud->empty() || this->prev_cloud_clusters.empty()) {
+       ROS_ERROR("-- EMPTY CLOUD CANNOT BE PROCESSED.");
        return;
     }
-    pcl::PointCloud<PointT>::Ptr scene_cloud(new pcl::PointCloud<PointT>);
-    if (pcl::io::loadPCDFile<PointT> (
-           "/home/krishneel/Desktop/Program/pcl_recognition/build/milk_cartoon_all_small_clorox.pcd",
-           *scene_cloud) == -1) {
-       ROS_ERROR("Couldn't read file test_pcd.pcd \n");
-       return;
-    }
-    
-    // pcl::PointCloud<PointT>::Ptr manipulated_cluster(
-    //    new pcl::PointCloud<PointT>);
-    // pcl::copyPointCloud<PointT, PointT>(*this->prev_cloud_clusters[
-    //                                        this->manipulated_cluster_index_],
-    //                                     *manipulated_cluster);
-    // AffineTrans rototranslations;
-    // std::vector<pcl::Correspondences> clustered_corrs;
-    // this->extractFeaturesAndMatchCloudPoints(
-    //    manipulated_cluster, cloud, rototranslations, clustered_corrs);
-
-    AffineTrans rototranslations;
-    std::vector<pcl::Correspondences> clustered_corrs;
-    this->extractFeaturesAndMatchCloudPoints(
-       model_cloud, scene_cloud, rototranslations, clustered_corrs);
-    
-    sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*scene_cloud, ros_cloud);
-    ros_cloud.header = cloud_msg->header;
-    this->pub_cloud_.publish(ros_cloud);
-   
     
 }
+
+void PointCloudClusterMatching::createImageFromObjectClusters(
+    const std::vector<pcl::PointCloud<PointT>::Ptr> &cloud_clusters,
+    const sensor_msgs::CameraInfo::ConstPtr camera_info,
+    std::vector<cv::Mat> &image_patches) {
+    image_patches.clear();
+    for (std::vector<pcl::PointCloud<PointT>::Ptr>::const_iterator it =
+            cloud_clusters.begin(); it != cloud_clusters.end(); it++) {
+       if (!(*it)->empty()) {
+          cv::Mat mask;
+          cv::Mat img_out = this->projectPointCloudToImagePlane(
+             *it, camera_info, mask);
+          cv::Mat interpolate_img = this->interpolateImage(img_out, mask);
+          
+       }
+    }
+}
+
+
 
 void PointCloudClusterMatching::objectCloudClusters(
     const pcl::PointCloud<PointT>::Ptr cloud,
@@ -154,6 +155,25 @@ void PointCloudClusterMatching::objectCloudClusters(
        cloud_clusters.push_back(c_cloud);
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 void PointCloudClusterMatching::extractFeaturesAndMatchCloudPoints(
     const pcl::PointCloud<PointT>::Ptr model_cloud,

@@ -30,7 +30,8 @@ void PointCloudSceneDecomposer::onInit() {
 
 void PointCloudSceneDecomposer::subscribe() {
 
-    this->sub_cloud_ori_ = nh_.subscribe("/camera/depth_registered/points", 1,
+    this->sub_cloud_ori_ = nh_.subscribe(
+       "/openni_c2/depth_registered/points", 1,
         &PointCloudSceneDecomposer::origcloudCallback , this);
     
     this->sub_image_ = nh_.subscribe("input_image", 1,
@@ -81,8 +82,9 @@ void PointCloudSceneDecomposer::cloudCallback(
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
     std::cout << cloud->size() << "\t" << normal_->size()
-              << image_.size() << std::endl;
-    if (cloud->empty() || this->normal_->empty() || this->image_.empty()) {
+              << "\t" <<  orig_cloud_->size() << image_.size() << std::endl;
+    if (cloud->empty() || this->normal_->empty() ||
+        this->image_.empty() || this->orig_cloud_->empty()) {
        ROS_ERROR("-- CANNOT PROCESS EMPTY INSTANCE");
        return;
     }

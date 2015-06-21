@@ -16,6 +16,8 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <cv_bridge/cv_bridge.h>
 
+#include <opencv2/opencv.hpp>
+
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -32,6 +34,7 @@
 #include <pcl/common/transforms.h>
 #include <pcl/filters/extract_indices.h>
 
+#include <point_cloud_cluster_matching/point_cloud_image_creator.h>
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <std_msgs/Bool.h>
 #include <std_msgs/Int16.h>
@@ -39,7 +42,7 @@
 
 #include <vector>
 
-class PointCloudClusterMatching {
+class PointCloudClusterMatching: public PointCloudImageCreator {
 
  private:
     typedef pcl::PointXYZRGB PointT;
@@ -54,6 +57,7 @@ class PointCloudClusterMatching {
     ros::Subscriber sub_cloud_prev_;
     ros::Subscriber sub_indices_;
     ros::Subscriber sub_signal_;
+    ros::Subscriber sub_cam_info_;
     ros::Subscriber sub_manip_cluster_;
     ros::Subscriber sub_grip_end_pose_;
     ros::Publisher pub_signal_;
@@ -63,7 +67,7 @@ class PointCloudClusterMatching {
     geometry_msgs::Pose gripper_pose_;
     std::vector<pcl::PointIndices> all_indices;
     std::vector<pcl::PointCloud<PointT>::Ptr> prev_cloud_clusters;
-   
+    sensor_msgs::CameraInfo::ConstPtr camera_info_;
    
  public:
     PointCloudClusterMatching();
@@ -79,6 +83,14 @@ class PointCloudClusterMatching {
       const std_msgs::Int16 &);
     virtual void gripperEndPoseCallback(
        const geometry_msgs::Pose &);
+    virtual void cameraInfoCallback(
+       const sensor_msgs::CameraInfo::ConstPtr &);
+
+    virtual void createImageFromObjectClusters(
+       const std::vector<pcl::PointCloud<PointT>::Ptr> &,
+       const sensor_msgs::CameraInfo::ConstPtr,
+       std::vector<cv::Mat> &);
+   
    
     virtual void extractFeaturesAndMatchCloudPoints(
        const pcl::PointCloud<PointT>::Ptr,
