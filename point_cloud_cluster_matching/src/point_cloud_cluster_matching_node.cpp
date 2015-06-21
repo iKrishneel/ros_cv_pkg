@@ -1,5 +1,6 @@
 
 #include <point_cloud_cluster_matching/point_cloud_cluster_matching.h>
+#include <vector>
 
 PointCloudClusterMatching::PointCloudClusterMatching() {
     this->subscribe();
@@ -24,11 +25,17 @@ void PointCloudClusterMatching::subscribe() {
        "input_indices", sizeof(char),
        &PointCloudClusterMatching::indicesCallback, this);
     this->sub_cloud_prev_ = this->pnh_.subscribe(
-      "input_cloud_prev", sizeof(char),
-      &PointCloudClusterMatching::cloudPrevCallback, this);
+       "input_cloud_prev", sizeof(char),
+       &PointCloudClusterMatching::cloudPrevCallback, this);
+    this->sub_image_ = pnh_.subscribe(
+       "input_image", sizeof(char),
+       &PointCloudClusterMatching::imageCallback, this);
+    this->sub_image_prev_ = pnh_.subscribe(
+       "input_image_prev", sizeof(char),
+       &PointCloudClusterMatching::imagePrevCallback, this);
     this->sub_cam_info_ = this->pnh_.subscribe(
-      "input_info", sizeof(char),
-      &PointCloudClusterMatching::cameraInfoCallback, this);
+       "input_info", sizeof(char),
+       &PointCloudClusterMatching::cameraInfoCallback, this);
     this->sub_cloud_ = this->pnh_.subscribe(
       "input_cloud", sizeof(char),
       &PointCloudClusterMatching::cloudCallback, this);
@@ -58,12 +65,18 @@ void PointCloudClusterMatching::signalCallback(
        this->sub_cloud_prev_ = this->pnh_.subscribe(
           "input_cloud_prev", sizeof(char),
           &PointCloudClusterMatching::cloudPrevCallback, this);
-       this->sub_cloud_ = this->pnh_.subscribe(
-          "input_cloud", sizeof(char),
-          &PointCloudClusterMatching::cloudCallback, this);
+       this->sub_image_ = pnh_.subscribe(
+          "input_image", sizeof(char),
+          &PointCloudClusterMatching::imageCallback, this);
+       this->sub_image_prev_ = pnh_.subscribe(
+          "input_image_prev", sizeof(char),
+          &PointCloudClusterMatching::imagePrevCallback, this);
        this->sub_cam_info_ = this->pnh_.subscribe(
           "input_info", sizeof(char),
           &PointCloudClusterMatching::cameraInfoCallback, this);
+       this->sub_cloud_ = this->pnh_.subscribe(
+          "input_cloud", sizeof(char),
+          &PointCloudClusterMatching::cloudCallback, this);
     } else {
        std_msgs::Bool next_step;
        next_step.data = false;
@@ -80,6 +93,33 @@ void PointCloudClusterMatching::manipulatedClusterCallback(
     const std_msgs::Int16 &manip_cluster_index_msg) {
     this->manipulated_cluster_index_ = manip_cluster_index_msg.data;
 }
+
+void PointCloudClusterMatching::imageCallback(
+    const sensor_msgs::Image::ConstPtr &image_msg) {
+    cv_bridge::CvImagePtr cv_ptr;
+    try {
+        cv_ptr = cv_bridge::toCvCopy(
+           image_msg, sensor_msgs::image_encodings::BGR8);
+    } catch (cv_bridge::Exception& e) {
+        ROS_ERROR("cv_bridge exception: %s", e.what());
+        return;
+    }
+    this->image_ = cv_ptr->image.clone();
+}
+
+void PointCloudClusterMatching::imagePrevCallback(
+    const sensor_msgs::Image::ConstPtr &image_msg) {
+    cv_bridge::CvImagePtr cv_ptr;
+    try {
+        cv_ptr = cv_bridge::toCvCopy(
+           image_msg, sensor_msgs::image_encodings::BGR8);
+    } catch (cv_bridge::Exception& e) {
+        ROS_ERROR("cv_bridge exception: %s", e.what());
+        return;
+    }
+    this->image_prev_ = cv_ptr->image.clone();
+}
+
 
 void PointCloudClusterMatching::cameraInfoCallback(
     const sensor_msgs::CameraInfo::ConstPtr &info_msg) {
@@ -116,27 +156,35 @@ void PointCloudClusterMatching::cloudCallback(
        ROS_ERROR("-- EMPTY CLOUD CANNOT BE PROCESSED.");
        return;
     }
+    std::vector<cv::Mat> image_patches;
+    std::vector<cv::Rect_<int> > regions;
+    this->createImageFromObjectClusters(this->prev_cloud_clusters,
+                                        this->camera_info_, this->image_prev_,
+                                        image_patches, regions);
     
-}
-
-void PointCloudClusterMatching::createImageFromObjectClusters(
-    const std::vector<pcl::PointCloud<PointT>::Ptr> &cloud_clusters,
-    const sensor_msgs::CameraInfo::ConstPtr camera_info,
-    std::vector<cv::Mat> &image_patches) {
-    image_patches.clear();
-    for (std::vector<pcl::PointCloud<PointT>::Ptr>::const_iterator it =
-            cloud_clusters.begin(); it != cloud_clusters.end(); it++) {
-       if (!(*it)->empty()) {
-          cv::Mat mask;
-          cv::Mat img_out = this->projectPointCloudToImagePlane(
-             *it, camera_info, mask);
-          cv::Mat interpolate_img = this->interpolateImage(img_out, mask);
-          
+    std::vector<cv::KeyPoint> scene_keypoints;
+    cv::Mat scene_descriptors;
+    if (this->image_.data) {
+       this->extractKeyPointsAndDescriptors(
+          this->image_, scene_descriptors, scene_keypoints);
+       for (int i = 0; i < image_patches.size(); i++) {
+          cv::imshow("patches", image_patches[i]);
+          std::vector<cv::KeyPoint> model_keypoints;
+          cv::Mat model_descriptors;
+          this->extractKeyPointsAndDescriptors(
+             image_patches[i], model_descriptors, model_keypoints);
+          cv::Rect_<int> rect;
+          if (!model_keypoints.empty()) {
+             this->computeFeatureMatch(
+                image_patches[i], this->image_, model_descriptors,
+                scene_descriptors, model_keypoints, scene_keypoints, rect);
+          }
+          cv::waitKey(3);
        }
+    } else {
+       ROS_ERROR("-- EMPTY INPUT IMAGE");
     }
 }
-
-
 
 void PointCloudClusterMatching::objectCloudClusters(
     const pcl::PointCloud<PointT>::Ptr cloud,
@@ -156,187 +204,239 @@ void PointCloudClusterMatching::objectCloudClusters(
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-void PointCloudClusterMatching::extractFeaturesAndMatchCloudPoints(
-    const pcl::PointCloud<PointT>::Ptr model_cloud,
-    const pcl::PointCloud<PointT>::Ptr scene_cloud,
-    AffineTrans &rototranslations,
-    std::vector<pcl::Correspondences> &clustered_corrs) {
-    if (model_cloud->empty() || scene_cloud->empty()) {
-       ROS_ERROR("-- EMPTY CLOUD CANNOT BE MATCHED");
-       return;
-    }
-    // extract cloud normals
-    pcl::PointCloud<pcl::Normal>::Ptr model_normals(
-       new pcl::PointCloud<pcl::Normal>);
-    pcl::PointCloud<pcl::Normal>::Ptr scene_normals(
-       new pcl::PointCloud<pcl::Normal>);
-    this->pointCloudNormal(model_cloud, model_normals);
-    this->pointCloudNormal(scene_cloud, scene_normals);
-
-    
-    // extract cloud keypoints
-    const float search_radius = 0.01f;
-    pcl::PointCloud<PointT>::Ptr model_keypoints(
-       new pcl::PointCloud<PointT>);
-    pcl::PointCloud<PointT>::Ptr scene_keypoints(
-       new pcl::PointCloud<PointT>);
-    this->getCloudClusterKeyPoints(model_cloud, model_keypoints, search_radius);
-    this->getCloudClusterKeyPoints(scene_cloud, scene_keypoints, search_radius);
-
-    
-    // extract keypoint descriptors
-    const float descr_search_radius = 0.02f;
-    pcl::PointCloud<DescriptorType>::Ptr model_descriptors;
-    pcl::PointCloud<DescriptorType>::Ptr scene_descriptors;
-    this->computeDescriptors(model_cloud, model_keypoints, model_normals,
-                             model_descriptors, descr_search_radius);
-    this->computeDescriptors(scene_cloud, scene_keypoints, scene_normals,
-                             scene_descriptors, descr_search_radius);
-
-    /*
-    // model - scene correspondance
-    const float matching_threshold = 0.25f;
-    pcl::CorrespondencesPtr model_scene_corrs(new pcl::Correspondences());
-    this->modelSceneCorrespondences(model_descriptors, scene_descriptors,
-                                    model_scene_corrs, matching_threshold);
-
-    // clustering
-    const float rf_radius = 0.015f;
-    const float hough_bin_size = 0.01f;
-    const float hough_threshold = 5.0f;
-    this->HoughCorrespondanceClustering(
-       model_cloud, model_normals, model_keypoints,
-       scene_cloud, scene_normals, scene_keypoints,
-       model_scene_corrs, rototranslations, clustered_corrs,
-       rf_radius, hough_bin_size, hough_threshold);
-    */
-}
-
-void PointCloudClusterMatching::pointCloudNormal(
-    const pcl::PointCloud<PointT>::Ptr cloud,
-    pcl::PointCloud<pcl::Normal>::Ptr normals) {
-    if (cloud->empty()) {
-       ROS_ERROR("-- EMPTY CLOUD");
-       return;
-    }
-    pcl::NormalEstimationOMP<PointT, pcl::Normal> norm_est;
-    norm_est.setKSearch(10);
-    norm_est.setInputCloud(cloud);
-    norm_est.compute(*normals);
-}
-
-void PointCloudClusterMatching::getCloudClusterKeyPoints(
-    const pcl::PointCloud<PointT>::Ptr cloud,
-    pcl::PointCloud<PointT>::Ptr cloud_keypoints,
-    const float search_radius) {
-    pcl::PointCloud<int> sampled_indices;
-    pcl::UniformSampling<PointT> uniform_sampling;
-    uniform_sampling.setInputCloud(cloud);
-    uniform_sampling.setRadiusSearch(search_radius);
-    uniform_sampling.compute(sampled_indices);
-    pcl::copyPointCloud(*cloud, sampled_indices.points, *cloud_keypoints);
-}
-
-void PointCloudClusterMatching::computeDescriptors(
-    const pcl::PointCloud<PointT>::Ptr cloud,
-    const pcl::PointCloud<PointT>::Ptr cloud_keypoints,
-    const pcl::PointCloud<pcl::Normal>::Ptr cloud_normals,
-    pcl::PointCloud<DescriptorType>::Ptr cloud_descriptor,
-    const float search_radius) {
-    pcl::SHOTEstimationOMP<PointT, pcl::Normal, DescriptorType>::Ptr
-       descriptr_est (new pcl::SHOTEstimationOMP<PointT, pcl::Normal, DescriptorType>);
-    descriptr_est->setRadiusSearch(search_radius);
-    descriptr_est->setInputNormals(cloud_normals);
-    descriptr_est->setSearchSurface(cloud);
-    descriptr_est->compute(*cloud_descriptor);
-}
-
-void PointCloudClusterMatching::modelSceneCorrespondences(
-    pcl::PointCloud<DescriptorType>::Ptr model_descriptors,
-    pcl::PointCloud<DescriptorType>::Ptr scene_descriptors,
-    pcl::CorrespondencesPtr model_scene_corrs,
-    const float threshold) {
-   // pcl::CorrespondencesPtr model_scene_corrs(new pcl::Correspondences());
-    pcl::KdTreeFLANN<DescriptorType> match_search;
-    match_search.setInputCloud(model_descriptors);
-    for (int i = 0; i < scene_descriptors->size(); i++) {
-       std::vector<int> neigh_indices(1);
-       std::vector<float> neigh_sqr_dists(1);
-       if (!isnan(scene_descriptors->at(i).descriptor[0])) {
-          int found_neighs = match_search.nearestKSearch(
-             scene_descriptors->at(i), 1, neigh_indices, neigh_sqr_dists);
-          if (found_neighs == 1 && neigh_sqr_dists[0] < threshold) {
-             pcl::Correspondence corr(neigh_indices[0], i, neigh_sqr_dists[0]);
-             model_scene_corrs->push_back(corr);
+void PointCloudClusterMatching::createImageFromObjectClusters(
+    const std::vector<pcl::PointCloud<PointT>::Ptr> &cloud_clusters,
+    const sensor_msgs::CameraInfo::ConstPtr camera_info,
+    const cv::Mat &prev_image,
+    std::vector<cv::Mat> &image_patches,
+    std::vector<cv::Rect_<int> > &regions) {
+    image_patches.clear();
+    const int min_size = 20;
+    for (std::vector<pcl::PointCloud<PointT>::Ptr>::const_iterator it =
+            cloud_clusters.begin(); it != cloud_clusters.end(); it++) {
+       if (!(*it)->empty()) {
+          cv::Mat mask;
+          cv::Mat img_out = this->projectPointCloudToImagePlane(
+             *it, camera_info, mask);
+          cv::Mat interpolate_img = this->interpolateImage(img_out, mask);
+          cv::Rect_<int> rect;
+          this->getObjectRegionMask(interpolate_img, rect);
+          if (rect.width > min_size && rect.height > min_size) {
+             cv::Mat roi = prev_image(rect).clone();
+             image_patches.push_back(roi);
           }
+          cv::imshow("image", interpolate_img);
+          cv::waitKey(3);
        }
     }
 }
 
-void PointCloudClusterMatching::HoughCorrespondanceClustering(
-    const pcl::PointCloud<PointT>::Ptr model,
-    const pcl::PointCloud<pcl::Normal>::Ptr model_normals,
-    const pcl::PointCloud<PointT>::Ptr model_keypoints,
-    const pcl::PointCloud<PointT>::Ptr scene,
-    const pcl::PointCloud<pcl::Normal>::Ptr scene_normals,
-    const pcl::PointCloud<PointT>::Ptr scene_keypoints,
-    pcl::CorrespondencesPtr model_scene_corrs,
-    AffineTrans &rototranslations,
-    std::vector<pcl::Correspondences> &clustered_corrs,
-    const float search_radius,
-    const float hough_bin_size,
-    const float hough_threshold) {
-    pcl::PointCloud<pcl::ReferenceFrame>::Ptr model_rf(
-       new pcl::PointCloud<pcl::ReferenceFrame>());
-    pcl::PointCloud<pcl::ReferenceFrame>::Ptr scene_rf(
-       new pcl::PointCloud<pcl::ReferenceFrame>());
-    pcl::BOARDLocalReferenceFrameEstimation<
-       PointT, pcl::Normal, pcl::ReferenceFrame> rf_est;
-    rf_est.setFindHoles(true);
-    rf_est.setRadiusSearch(search_radius);
-    rf_est.setInputCloud(model_keypoints);
-    rf_est.setInputNormals(model_normals);
-    rf_est.setSearchSurface(model);
-    rf_est.compute(*model_rf);
-    
-    rf_est.setInputCloud(scene_keypoints);
-    rf_est.setInputNormals(scene_normals);
-    rf_est.setSearchSurface(scene);
-    rf_est.compute(*scene_rf);
-
-    pcl::Hough3DGrouping<
-       PointT, PointT, pcl::ReferenceFrame, pcl::ReferenceFrame> clusterer;
-    clusterer.setHoughBinSize(hough_bin_size);
-    clusterer.setHoughThreshold(hough_threshold);
-    clusterer.setUseInterpolation(true);
-    clusterer.setUseDistanceWeight(false);
-
-    clusterer.setInputCloud(model_keypoints);
-    clusterer.setInputRf(model_rf);
-    clusterer.setSceneCloud(scene_keypoints);
-    clusterer.setSceneRf(scene_rf);
-    clusterer.setModelSceneCorrespondences(model_scene_corrs);
-    clusterer.recognize(rototranslations, clustered_corrs);
+void PointCloudClusterMatching::getObjectRegionMask(
+    cv::Mat &image, cv::Rect_<int> &rect) {
+    if (image.empty()) {
+       ROS_ERROR("-- CONTOUR OF EMPTY IMAGE");
+       return;
+    }
+    if (image.type() != CV_8U) {
+       cv::cvtColor(image, image, CV_BGR2GRAY);
+    }
+    cv::threshold(image, image, 10, 255, CV_THRESH_BINARY | CV_THRESH_OTSU);
+    cv::Mat cols;
+    cv::Mat rows;
+    int min_x = 640;
+    int max_x = 0;
+    int min_y = 640;
+    int max_y = 0;
+    const int downsize = 2;
+    cv::resize(image, image, cv::Size(image.cols/downsize,
+                                      image.rows/downsize));
+    for (int j = 0; j < image.rows; j++) {
+       for (int i = 0; i < image.cols; i++) {
+          if (static_cast<int>(image.at<uchar>(j, i)) ==  0) {
+             if (i < min_x) {
+                min_x = i;
+             }
+             if (j < min_y) {
+                min_y = j;
+             }
+             if (i > max_x) {
+                max_x = i;
+             }
+             if (j > max_y) {
+                max_y = j;
+             }
+          }
+       }
+    }
+    const int padding = 8;
+    min_x *= downsize;
+    min_y *= downsize;
+    max_y *= downsize;
+    max_x *= downsize;
+    rect = cv::Rect_<int>(static_cast<int>(min_x - padding),
+                          static_cast<int>(min_y - padding),
+                          static_cast<int>(max_x + padding - min_x),
+                          static_cast<int>(max_y + padding - min_y));
+    cv::resize(image, image, cv::Size(
+                  image.cols * downsize, image.rows * downsize));
+    cv::cvtColor(image, image, CV_GRAY2BGR);
+    cv::rectangle(image, rect, cv::Scalar(0, 255, 0), 2);
 }
+
+void PointCloudClusterMatching::extractKeyPointsAndDescriptors(
+    const cv::Mat &image, cv::Mat &descriptor,
+    std::vector<cv::KeyPoint> &keypoints) {
+    cv::Ptr<cv::FeatureDetector> detector = cv::FeatureDetector::create("GFTT");
+    detector->detect(image, keypoints);
+    cv::SurfDescriptorExtractor extractor;
+    extractor.compute(image, keypoints, descriptor);
+}
+
+void PointCloudClusterMatching::computeFeatureMatch(
+    const cv::Mat &img_object, const cv::Mat img_scene,
+    const cv::Mat &descriptors_object, const cv::Mat &descriptors_scene,
+    const std::vector<cv::KeyPoint> &keypoints_object,
+    const std::vector<cv::KeyPoint> &keypoints_scene,
+    cv::Rect_<int> &rect) {
+    cv::BFMatcher matcher;
+    std::vector<cv::DMatch> matches;
+    matcher.match(descriptors_object, descriptors_scene, matches);
+    std::vector<cv::DMatch> good_matches;
+    good_matches = matches;
+    
+    if (good_matches.size() > 3) {
+       cv::Mat img_matches;
+       cv::drawMatches(
+          img_object, keypoints_object, img_scene, keypoints_scene,
+          good_matches, img_matches, cv::Scalar::all(-1), cv::Scalar::all(-1),
+          std::vector<char>(), cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
+       std::vector<cv::Point2f> obj;
+       std::vector<cv::Point2f> scene;
+       for (int i = 0; i < good_matches.size(); i++) {
+            obj.push_back(keypoints_object[ good_matches[i].queryIdx ].pt);
+            scene.push_back(keypoints_scene[ good_matches[i].trainIdx ].pt);
+        }
+       cv::Mat H = cv::findHomography(obj, scene, CV_RANSAC);
+       std::vector<cv::Point2f> obj_corners(4);
+       obj_corners[0] = cv::Point(0, 0);
+       obj_corners[1] = cv::Point(img_object.cols, 0);
+       obj_corners[2] = cv::Point(img_object.cols, img_object.rows);
+       obj_corners[3] = cv::Point(0, img_object.rows);
+       std::vector<cv::Point2f> scene_corners(4);
+       cv::perspectiveTransform(obj_corners, scene_corners, H);
+
+       const int PADDING = 8;
+       rect = this->detectMatchROI(
+          img_scene, scene_corners[0], scene_corners[1],
+          scene_corners[2], scene_corners[3]);
+       rect.x -= PADDING;
+       rect.y -= PADDING;
+       rect.width += PADDING * 2;
+       rect.height += PADDING * 2;
+       if (rect.x < 0) {
+          rect.x = 0;
+       }
+       if (rect.y < 0) {
+          rect.y = 0;
+       }
+       if (rect.x + rect.width > img_scene.cols) {
+          rect.width -= ((rect.x + rect.width) - img_scene.cols);
+       }
+       if (rect.y + rect.height > img_scene.rows) {
+          rect.height -= ((rect.y + rect.height) - img_scene.rows);
+       }
+       cv::Scalar color = cv::Scalar(0, 255, 0);
+       cv::line(img_matches, scene_corners[0] + cv::Point2f(img_object.cols, 0),
+                scene_corners[1] + cv::Point2f(img_object.cols, 0), color, 4);
+       cv::line(img_matches, scene_corners[1] + cv::Point2f(img_object.cols, 0),
+            scene_corners[2] + cv::Point2f(img_object.cols, 0), color, 4);
+       cv::line(img_matches, scene_corners[2] + cv::Point2f(img_object.cols, 0),
+            scene_corners[3] + cv::Point2f(img_object.cols, 0), color, 4);
+       cv::line(img_matches, scene_corners[3] + cv::Point2f(img_object.cols, 0),
+            scene_corners[0] + cv::Point2f(img_object.cols, 0), color, 4);
+       cv::Mat temp = img_scene.clone();
+       cv::imshow("Good Matches & Object detection", img_matches);
+       cv::rectangle(temp, rect, cv::Scalar(255, 0, 255), 2);
+       imshow("scene", temp);
+    }
+}
+
+
+cv::Rect_<int> PointCloudClusterMatching::detectMatchROI(
+    const cv::Mat &image, cv::Point2f &corner_top_left,
+    cv::Point2f &corner_top_right, cv::Point2f &corner_bottom_right,
+    cv::Point2f &corner_bottom_left) {
+    
+    if (corner_top_left.x < 0) {
+        corner_top_left.x = 0;
+    }
+    if (corner_top_left.y < 0) {
+        corner_top_left.y = 0;
+    }
+    if (corner_top_left.x < 0 && corner_bottom_left.x < 0) {
+        corner_top_left.x = 0;
+        corner_bottom_left. x = 0;
+    }
+    if (corner_top_left.y < 0 && corner_top_right.y < 0) {
+        corner_top_left.y = 0;
+        corner_top_right.y = 0;
+    }
+    if (corner_top_right.y < 0) {
+        corner_top_right.y = 0;
+    }
+    if (corner_top_right.x > image.cols) {
+        corner_top_right.x = image.cols;
+    }
+    if (corner_top_right.x > image.cols && corner_bottom_right.x > image.cols) {
+        corner_top_right.x = image.cols;
+        corner_bottom_right.x = image.cols;
+    }
+    if (corner_bottom_right.y > image.rows) {
+        corner_bottom_right.y = image.rows;
+    }
+    if (corner_bottom_right.y > image.rows &&
+        corner_bottom_left.y > image.rows) {
+        corner_bottom_right.y = image.rows;
+        corner_bottom_left.y = image.rows;
+    }
+    if (corner_bottom_left.x < 0) {
+        corner_bottom_left.x = 0;
+    }
+    if (corner_bottom_left.y > image.rows) {
+        corner_bottom_left.y = image.rows;
+    }
+    int y_coord_top = std::min(corner_top_left.y, corner_top_right.y);
+    int y_coord_bot = std::min(corner_bottom_left.y, corner_bottom_right.y);
+    int hei_t = std::max(corner_top_left.y, corner_top_right.y);
+    int hei_b = std::max(corner_bottom_left.y, corner_bottom_right.y);
+    int top_left_y = std::min(y_coord_bot, y_coord_top);
+    int height_l = std::max(hei_b, hei_t);
+    int height = std::abs(top_left_y - height_l);
+    int x_coord_top = std::min(corner_top_left.x, corner_top_right.x);
+    int x_coord_bot = std::min(corner_bottom_right.x, corner_bottom_left.x);
+    int wid_t = std::max(corner_top_left.x, corner_top_right.x);
+    int wid_b = std::max(corner_bottom_right.x, corner_bottom_left.x);
+    int top_left_x = std::min(x_coord_bot, x_coord_top);
+    int width_l = std::max(wid_b, wid_t);
+    int width = std::abs(top_left_x - width_l);
+    if ((width + top_left_x) > image.cols) {
+        width = (width + top_left_x) - image.cols;
+    }
+    if ((height + top_left_y) > image.rows) {
+        height = (height + top_left_y) - image.rows;
+    }
+    if (top_left_x < 0) {
+        top_left_x = 0;
+    }
+    if (top_left_y < 0) {
+        top_left_y = 0;
+    }
+    cv::Rect_<int> rect = cv::Rect_<int>(top_left_x, top_left_y, width, height);
+    return rect;
+}
+
+
+
 
 int main(int argc, char *argv[]) {
 

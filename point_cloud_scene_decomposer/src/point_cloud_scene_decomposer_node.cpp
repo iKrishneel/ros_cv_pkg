@@ -31,7 +31,7 @@ void PointCloudSceneDecomposer::onInit() {
 void PointCloudSceneDecomposer::subscribe() {
 
     this->sub_cloud_ori_ = nh_.subscribe(
-       "/openni_c2/depth_registered/points", 1,
+       "/camera/depth_registered/points", 1,
         &PointCloudSceneDecomposer::origcloudCallback , this);
     
     this->sub_image_ = nh_.subscribe("input_image", 1,

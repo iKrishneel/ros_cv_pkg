@@ -2,5 +2,10 @@
   <node pkg="point_cloud_cluster_matching" type="point_cloud_cluster_matching_node"
 	name="point_cloud_cluster_matching" output="screen">
     <remap from="input_cloud" to="/camera/depth_registered/points" />
+    <remap from="input_indices" to="/scene_decomposer/output/indices" />
+    <remap from="input_cloud_prev" to="/scene_decomposer/output/cloud_cluster" />
+    <remap from="input_info" to="/camera/depth_registered/camera_info" />
+    <remap from="input_image" to="/camera/rgb/image_rect_color" />
+    <remap from="input_image_prev" to="/camera/rgb/image_rect_color" />
   </node>
 </launch>

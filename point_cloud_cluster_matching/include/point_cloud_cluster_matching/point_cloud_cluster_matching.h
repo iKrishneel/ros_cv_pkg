@@ -7,16 +7,20 @@
 #include <ros/ros.h>
 #include <ros/console.h>
 
-#include <opencv2/opencv.hpp>
-#include <boost/thread/mutex.hpp>
-
 #include <image_geometry/pinhole_camera_model.h>
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/image_encodings.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <cv_bridge/cv_bridge.h>
 
+#include <opencv2/core/core.hpp>
+#include <opencv2/features2d/features2d.hpp>
+#include <opencv2/nonfree/features2d.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/nonfree/nonfree.hpp>
 #include <opencv2/opencv.hpp>
+
+#include <boost/thread/mutex.hpp>
 
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
@@ -58,11 +62,15 @@ class PointCloudClusterMatching: public PointCloudImageCreator {
     ros::Subscriber sub_indices_;
     ros::Subscriber sub_signal_;
     ros::Subscriber sub_cam_info_;
+    ros::Subscriber sub_image_;
+    ros::Subscriber sub_image_prev_;
     ros::Subscriber sub_manip_cluster_;
     ros::Subscriber sub_grip_end_pose_;
     ros::Publisher pub_signal_;
     ros::Publisher pub_cloud_;
 
+    cv::Mat image_;
+    cv::Mat image_prev_;
     int manipulated_cluster_index_;
     geometry_msgs::Pose gripper_pose_;
     std::vector<pcl::PointIndices> all_indices;
@@ -85,55 +93,36 @@ class PointCloudClusterMatching: public PointCloudImageCreator {
        const geometry_msgs::Pose &);
     virtual void cameraInfoCallback(
        const sensor_msgs::CameraInfo::ConstPtr &);
-
-    virtual void createImageFromObjectClusters(
-       const std::vector<pcl::PointCloud<PointT>::Ptr> &,
-       const sensor_msgs::CameraInfo::ConstPtr,
-       std::vector<cv::Mat> &);
+    virtual void imageCallback(
+       const sensor_msgs::Image::ConstPtr &);
+    virtual void imagePrevCallback(
+       const sensor_msgs::Image::ConstPtr &);
    
-   
-    virtual void extractFeaturesAndMatchCloudPoints(
-       const pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<PointT>::Ptr,
-       AffineTrans &,
-       std::vector<pcl::Correspondences> &);
     virtual void objectCloudClusters(
        const pcl::PointCloud<PointT>::Ptr,
        const std::vector<pcl::PointIndices> &,
        std::vector<pcl::PointCloud<PointT>::Ptr> &);
-   
-    virtual void pointCloudNormal(
-       const pcl::PointCloud<PointT>::Ptr,
-       pcl::PointCloud<pcl::Normal>::Ptr);
-    virtual void getCloudClusterKeyPoints(
-       const pcl::PointCloud<PointT>::Ptr,
-       pcl::PointCloud<PointT>::Ptr,
-       const float);
-    virtual void computeDescriptors(
-       const pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<pcl::Normal>::Ptr,
-       pcl::PointCloud<DescriptorType>::Ptr,
-       const float);
-    virtual void modelSceneCorrespondences(
-       pcl::PointCloud<DescriptorType>::Ptr,
-       pcl::PointCloud<DescriptorType>::Ptr,
-       pcl::CorrespondencesPtr,
-       const float);
-    virtual void HoughCorrespondanceClustering(
-       const pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<pcl::Normal>::Ptr,
-       const pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<pcl::Normal>::Ptr,
-       const pcl::PointCloud<PointT>::Ptr,
-       pcl::CorrespondencesPtr,
-       AffineTrans &,
-       std::vector<pcl::Correspondences> &,
-       const float,
-       const float,
-       const float);
-   
+    virtual void createImageFromObjectClusters(
+       const std::vector<pcl::PointCloud<PointT>::Ptr> &,
+       const sensor_msgs::CameraInfo::ConstPtr,
+       const cv::Mat &,
+       std::vector<cv::Mat> &,
+       std::vector<cv::Rect_<int> > &);
+    virtual void getObjectRegionMask(
+       cv::Mat &, cv::Rect_<int> &);
+    virtual void  extractKeyPointsAndDescriptors(
+      const cv::Mat &image,
+      cv::Mat &descriptor,
+      std::vector<cv::KeyPoint> &keypoints);
+    virtual void computeFeatureMatch(
+       const cv::Mat &model, const cv::Mat,
+       const cv::Mat &model_descriptors, const cv::Mat &,
+       const std::vector<cv::KeyPoint> &,
+       const std::vector<cv::KeyPoint> &scene_keypoints,
+       cv::Rect_<int> &);
+    cv::Rect_<int> detectMatchROI(
+       const cv::Mat &, cv::Point2f &, cv::Point2f &,
+       cv::Point2f &, cv::Point2f &);
    
  protected:
     void onInit();
