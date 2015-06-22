@@ -5,7 +5,9 @@
     <remap from="input_indices" to="/scene_decomposer/output/indices" />
     <remap from="input_cloud_prev" to="/scene_decomposer/output/cloud_cluster" />
     <remap from="input_info" to="/camera/depth_registered/camera_info" />
-    <remap from="input_image" to="/camera/rgb/image_rect_color" />
+    <remap from="input_image" to="/camera/depth/image_rect" />
     <remap from="input_image_prev" to="/camera/rgb/image_rect_color" />
+    <remap from="input_norm_grad" to="/cloud_image/output/interpolated_image" />
   </node>
+
 </launch>

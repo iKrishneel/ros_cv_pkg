@@ -19,6 +19,8 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/nonfree/nonfree.hpp>
 #include <opencv2/opencv.hpp>
+#include <opencv2/video/video.hpp>
+#include <opencv2/video/background_segm.hpp>
 
 #include <boost/thread/mutex.hpp>
 
@@ -37,6 +39,9 @@
 #include <pcl/kdtree/impl/kdtree_flann.hpp>
 #include <pcl/common/transforms.h>
 #include <pcl/filters/extract_indices.h>
+#include <pcl/segmentation/segment_differences.h>
+#include <pcl/octree/octree.h>
+#include <pcl/surface/concave_hull.h>
 
 #include <point_cloud_cluster_matching/point_cloud_image_creator.h>
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
@@ -60,22 +65,32 @@ class PointCloudClusterMatching: public PointCloudImageCreator {
     ros::Subscriber sub_cloud_;
     ros::Subscriber sub_cloud_prev_;
     ros::Subscriber sub_indices_;
+
     ros::Subscriber sub_signal_;
+   
     ros::Subscriber sub_cam_info_;
     ros::Subscriber sub_image_;
     ros::Subscriber sub_image_prev_;
+    ros::Subscriber sub_normal_grad_;
+   
     ros::Subscriber sub_manip_cluster_;
     ros::Subscriber sub_grip_end_pose_;
+
     ros::Publisher pub_signal_;
     ros::Publisher pub_cloud_;
-
+    ros::Publisher pub_indices_;
+   
     cv::Mat image_;
     cv::Mat image_prev_;
+    cv::Mat image_mask_;
+    cv::Mat image_mask_prev_;
     int manipulated_cluster_index_;
     geometry_msgs::Pose gripper_pose_;
     std::vector<pcl::PointIndices> all_indices;
     std::vector<pcl::PointCloud<PointT>::Ptr> prev_cloud_clusters;
     sensor_msgs::CameraInfo::ConstPtr camera_info_;
+
+    int depth_counter;
    
  public:
     PointCloudClusterMatching();
@@ -97,6 +112,27 @@ class PointCloudClusterMatching: public PointCloudImageCreator {
        const sensor_msgs::Image::ConstPtr &);
     virtual void imagePrevCallback(
        const sensor_msgs::Image::ConstPtr &);
+    virtual void imageMaskCallback(
+       const sensor_msgs::Image::ConstPtr &);
+
+
+    void getManipulatedObjectClusters(
+       const cv::Mat &,
+       std::vector<cv::Rect_<int> > &);
+    void projectMaskImageRegionToPointCloud(
+       const pcl::PointCloud<PointT>::Ptr,
+       const cv::Mat &,
+       pcl::PointIndices::Ptr);
+   
+    void extractObjectROIIndices(
+       cv::Rect_<int> &,
+       pcl::PointIndices::Ptr,
+       const cv::Size);
+   
+
+
+
+
    
     virtual void objectCloudClusters(
        const pcl::PointCloud<PointT>::Ptr,

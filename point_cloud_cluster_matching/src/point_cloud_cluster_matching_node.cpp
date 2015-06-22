@@ -3,6 +3,8 @@
 #include <vector>
 
 PointCloudClusterMatching::PointCloudClusterMatching() {
+
+    depth_counter = 0;
     this->subscribe();
     this->onInit();
 }
@@ -10,10 +12,10 @@ PointCloudClusterMatching::PointCloudClusterMatching() {
 void PointCloudClusterMatching::onInit() {
 
     this->pub_cloud_ = pnh_.advertise<sensor_msgs::PointCloud2>(
-       "/model/output/cloud_cluster", sizeof(char));
+       "/manipulated_cluster/output/cloud_cluster", sizeof(char));
     
     this->pub_signal_ = pnh_.advertise<std_msgs::Bool>(
-       "/point_cloud_cluster_matching/output/signal", sizeof(char));
+       "/manipulated_cluster/output/signal", sizeof(char));
 }
 
 void PointCloudClusterMatching::subscribe() {
@@ -21,21 +23,25 @@ void PointCloudClusterMatching::subscribe() {
     // this->sub_signal_ = this->pnh_.subscribe(
     //    "input_signal", sizeof(char),
     //    &PointCloudClusterMatching::signalCallback, this);
-    this->sub_indices_ = this->pnh_.subscribe(
-       "input_indices", sizeof(char),
-       &PointCloudClusterMatching::indicesCallback, this);
-    this->sub_cloud_prev_ = this->pnh_.subscribe(
-       "input_cloud_prev", sizeof(char),
-       &PointCloudClusterMatching::cloudPrevCallback, this);
+    // this->sub_indices_ = this->pnh_.subscribe(
+    //     "input_indices", sizeof(char),
+    //     &PointCloudClusterMatching::indicesCallback, this);
+    // this->sub_cloud_prev_ = this->pnh_.subscribe(
+    //    "input_cloud_prev", sizeof(char),
+    //    &PointCloudClusterMatching::cloudPrevCallback, this);
     this->sub_image_ = pnh_.subscribe(
        "input_image", sizeof(char),
-       &PointCloudClusterMatching::imageCallback, this);
-    this->sub_image_prev_ = pnh_.subscribe(
-       "input_image_prev", sizeof(char),
-       &PointCloudClusterMatching::imagePrevCallback, this);
-    this->sub_cam_info_ = this->pnh_.subscribe(
-       "input_info", sizeof(char),
-       &PointCloudClusterMatching::cameraInfoCallback, this);
+      &PointCloudClusterMatching::imageCallback, this);
+    this->sub_normal_grad_ = pnh_.subscribe(
+       "input_norm_grad", sizeof(char),
+       &PointCloudClusterMatching::imageMaskCallback, this);
+    
+    // this->sub_image_prev_ = pnh_.subscribe(
+    //    "input_image_prev", sizeof(char),
+    //    &PointCloudClusterMatching::imagePrevCallback, this);
+    // this->sub_cam_info_ = this->pnh_.subscribe(
+    //    "input_info", sizeof(char),
+    //    &PointCloudClusterMatching::cameraInfoCallback, this);
     this->sub_cloud_ = this->pnh_.subscribe(
       "input_cloud", sizeof(char),
       &PointCloudClusterMatching::cloudCallback, this);
@@ -99,12 +105,13 @@ void PointCloudClusterMatching::imageCallback(
     cv_bridge::CvImagePtr cv_ptr;
     try {
         cv_ptr = cv_bridge::toCvCopy(
-           image_msg, sensor_msgs::image_encodings::BGR8);
+           image_msg, sensor_msgs::image_encodings::TYPE_32FC1);
     } catch (cv_bridge::Exception& e) {
         ROS_ERROR("cv_bridge exception: %s", e.what());
         return;
     }
     this->image_ = cv_ptr->image.clone();
+    cv::imshow("Depth", cv_ptr->image);
 }
 
 void PointCloudClusterMatching::imagePrevCallback(
@@ -120,6 +127,21 @@ void PointCloudClusterMatching::imagePrevCallback(
     this->image_prev_ = cv_ptr->image.clone();
 }
 
+void PointCloudClusterMatching::imageMaskCallback(
+    const sensor_msgs::Image::ConstPtr &image_msg) {
+    cv_bridge::CvImagePtr cv_ptr;
+    try {
+       cv_ptr = cv_bridge::toCvCopy(
+          image_msg, sensor_msgs::image_encodings::BGR8);
+    } catch (cv_bridge::Exception& e) {
+       ROS_ERROR("cv_bridge exception: %s", e.what());
+       return;
+    }
+    cv::Mat tmp = cv_ptr->image.clone();
+    cv::cvtColor(tmp, tmp, CV_BGR2GRAY);
+    cv::threshold(
+       tmp, this->image_mask_, 0, 255, CV_THRESH_BINARY | CV_THRESH_OTSU);
+}
 
 void PointCloudClusterMatching::cameraInfoCallback(
     const sensor_msgs::CameraInfo::ConstPtr &info_msg) {
@@ -152,39 +174,169 @@ void PointCloudClusterMatching::cloudCallback(
     const sensor_msgs::PointCloud2ConstPtr &cloud_msg) {
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-    if (cloud->empty() || this->prev_cloud_clusters.empty()) {
+
+    if (cloud->empty() /*|| prev_cloud_clusters.empty() */ || image_.empty() ||
+          image_mask_.empty()) {
        ROS_ERROR("-- EMPTY CLOUD CANNOT BE PROCESSED.");
        return;
     }
-    std::vector<cv::Mat> image_patches;
-    std::vector<cv::Rect_<int> > regions;
-    this->createImageFromObjectClusters(this->prev_cloud_clusters,
-                                        this->camera_info_, this->image_prev_,
-                                        image_patches, regions);
-    
-    std::vector<cv::KeyPoint> scene_keypoints;
-    cv::Mat scene_descriptors;
-    if (this->image_.data) {
-       this->extractKeyPointsAndDescriptors(
-          this->image_, scene_descriptors, scene_keypoints);
-       for (int i = 0; i < image_patches.size(); i++) {
-          cv::imshow("patches", image_patches[i]);
-          std::vector<cv::KeyPoint> model_keypoints;
-          cv::Mat model_descriptors;
-          this->extractKeyPointsAndDescriptors(
-             image_patches[i], model_descriptors, model_keypoints);
-          cv::Rect_<int> rect;
-          if (!model_keypoints.empty()) {
-             this->computeFeatureMatch(
-                image_patches[i], this->image_, model_descriptors,
-                scene_descriptors, model_keypoints, scene_keypoints, rect);
+    const float MAX_DIST = 1.0f;
+    const float MIN_DIST = 0.6f;
+    for (int j = 0; j < this->image_.rows; j++) {
+       for (int i = 0; i < this->image_.cols; i++) {
+          if (this->image_.at<float>(j, i) > MAX_DIST ||
+              this->image_.at<float>(j, i) < MIN_DIST) {
+             this->image_.at<float>(j, i) = 0.0f;
           }
-          cv::waitKey(3);
+          if (static_cast<int>(
+                 this->image_mask_.at<uchar>(j, i)) != 0) {
+             this->image_.at<float>(j, i) = 0.0f;
+          }
        }
-    } else {
-       ROS_ERROR("-- EMPTY INPUT IMAGE");
+    }
+    if (depth_counter == 0) {
+       this->image_prev_ = image_.clone();
+    }
+    
+    cv::Mat fgMaskMOG2;
+    cv::absdiff(image_, image_prev_, fgMaskMOG2);
+
+    pcl::PointIndices::Ptr filtered_indices(new pcl::PointIndices);
+    cv::Mat mask_img = cv::Mat::zeros(fgMaskMOG2.size(), CV_8U);
+    for (int j = 0; j < fgMaskMOG2.rows; j++) {
+       for (int i = 0; i < fgMaskMOG2.cols; i++) {
+          int index = i + (j * fgMaskMOG2.cols);
+          if (fgMaskMOG2.at<float>(j, i) != 0.0f) {
+             mask_img.at<uchar>(j, i) = 255;
+             filtered_indices->indices.push_back(index);
+          }
+       }
+    }
+
+    if (depth_counter == 0) {
+       this->image_mask_prev_ = mask_img.clone();
+       depth_counter++;
+    }
+    cv::bitwise_xor(mask_img, image_mask_prev_, mask_img);
+
+    
+    
+    if (!filtered_indices->indices.empty()) {
+       pcl::ExtractIndices<PointT>::Ptr eifilter(
+       new pcl::ExtractIndices<PointT>);
+       eifilter->setInputCloud(cloud);
+       eifilter->setIndices(filtered_indices);
+       eifilter->filter(*cloud);
+       sensor_msgs::PointCloud2 ros_cloud;
+       pcl::toROSMsg(*cloud, ros_cloud);
+       ros_cloud.header = cloud_msg->header;
+       pub_cloud_.publish(ros_cloud);
+    }
+
+    cv::imshow("previous", image_prev_);
+    cv::imshow("current", image_);
+    cv::imshow("BS", fgMaskMOG2);
+    cv::imshow("mask", mask_img);
+    cv::waitKey(3);
+}
+
+void PointCloudClusterMatching::getManipulatedObjectClusters(
+    const cv::Mat &mask_img,
+    std::vector<cv::Rect_<int> > &cluster_rects) {
+    if (mask_img.empty()) {
+       ROS_ERROR("--NO REGION IN EMPTY MASK");
+       return;
+    }
+    cv::Mat canny_output;
+    std::vector<std::vector<cv::Point> > contours;
+    std::vector<cv::Vec4i> hierarchy;
+    cv::Canny(mask_img, canny_output, 50, 150, 3);
+    findContours(canny_output, contours, hierarchy,
+                 CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, cv::Point(0, 0));
+    const double MIN_AREA = 20;
+    for (int i = 0; i < contours.size(); i++) {
+       double area = cv::contourArea(contours[i]);
+       if (area > MIN_AREA) {
+          cv::Rect_<int> rect = cv::boundingRect(contours[i]);
+          cluster_rects.push_back(rect);
+       }
     }
 }
+
+
+void PointCloudClusterMatching::projectMaskImageRegionToPointCloud(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const cv::Mat &mask_img,
+    pcl::PointIndices::Ptr filtered_indices) {
+    // if (cloud->empty() || cluster_rects.empty()) {
+    //    ROS_ERROR("-- NO REGION MASKED");
+    //    return;
+    // }
+    for (int j = 0; j < mask_img.rows; j++) {
+       for (int i = 0; i < mask_img.cols; i++) {
+          int index = i + (j * mask_img.cols);
+       }
+    }
+
+    /*
+    for (int k = 0; k < cluster_rects.size(); k++) {
+       cv::Rect_<int> rect = cluster_rects[k];
+       this->extractObjectROIIndices(
+          rect, filtered_indices, this->image_.size());
+
+    }
+    */
+}
+
+
+void PointCloudClusterMatching::extractObjectROIIndices(
+    cv::Rect_<int>  &rect,
+    pcl::PointIndices::Ptr cluster_indices,
+    const cv::Size image_size) {
+    if (rect.x < 0) {
+       rect.x = 0;
+    }
+    if (rect.y < 0) {
+       rect.y = 0;
+    }
+    if (rect.x + rect.width > image_size.width) {
+       rect.width -= ((rect.x + rect.width) - image_size.width);
+    }
+    if (rect.y + rect.height > image_size.height) {
+       rect.height -= ((rect.y + rect.height) - image_size.height);
+    }
+    for (int j = rect.y; j < (rect.y + rect.height); j++) {
+       for (int i = rect.x; i < (rect.x + rect.width); i++) {
+          int index = i + (j * image_size.width);
+          cluster_indices->indices.push_back(index);
+       }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 void PointCloudClusterMatching::objectCloudClusters(
     const pcl::PointCloud<PointT>::Ptr cloud,
@@ -286,9 +438,11 @@ void PointCloudClusterMatching::getObjectRegionMask(
 void PointCloudClusterMatching::extractKeyPointsAndDescriptors(
     const cv::Mat &image, cv::Mat &descriptor,
     std::vector<cv::KeyPoint> &keypoints) {
-    cv::Ptr<cv::FeatureDetector> detector = cv::FeatureDetector::create("GFTT");
+    cv::Ptr<cv::FeatureDetector> detector =
+       cv::FeatureDetector::create("SIFT");
     detector->detect(image, keypoints);
-    cv::SurfDescriptorExtractor extractor;
+    // cv::SurfDescriptorExtractor extractor;
+    cv::SiftDescriptorExtractor extractor;
     extractor.compute(image, keypoints, descriptor);
 }
 
@@ -301,8 +455,40 @@ void PointCloudClusterMatching::computeFeatureMatch(
     cv::BFMatcher matcher;
     std::vector<cv::DMatch> matches;
     matcher.match(descriptors_object, descriptors_scene, matches);
+
+    double max_dist = 0; double min_dist = 100;
+    for (int i = 0; i < descriptors_object.rows; i++) {
+       double dist = matches[i].distance;
+       if (dist < min_dist) min_dist = dist;
+       if (dist > max_dist) max_dist = dist;
+    }
+
+    std::cout << "Min Max distance: " << min_dist
+              << "\t" << max_dist << std::endl;
+    
     std::vector<cv::DMatch> good_matches;
-    good_matches = matches;
+    // good_matches = matches;
+
+
+    const int SHIFT_DISTANCE = 10;
+    // for (int i = 0; i < descriptors_object.rows; i++) {
+       
+    //    if (matches[i].distance < 2 * min_dist) {
+    //       good_matches.push_back(matches[i]);
+    //    }
+    // }
+
+    
+    for (int i = 0; i < matches.size(); i++) {
+       cv::Point obj_pt = keypoints_object[matches[i].queryIdx].pt;
+       cv::Point sce_pt = keypoints_scene[matches[i].trainIdx].pt;
+       double dist = cv::norm(cv::Mat(obj_pt), cv::Mat(sce_pt));
+
+       if (dist > 20) {
+          good_matches.push_back(matches[i]);
+       }
+    }
+
     
     if (good_matches.size() > 3) {
        cv::Mat img_matches;
@@ -313,8 +499,8 @@ void PointCloudClusterMatching::computeFeatureMatch(
        std::vector<cv::Point2f> obj;
        std::vector<cv::Point2f> scene;
        for (int i = 0; i < good_matches.size(); i++) {
-            obj.push_back(keypoints_object[ good_matches[i].queryIdx ].pt);
-            scene.push_back(keypoints_scene[ good_matches[i].trainIdx ].pt);
+            obj.push_back(keypoints_object[good_matches[i].queryIdx].pt);
+            scene.push_back(keypoints_scene[good_matches[i].trainIdx].pt);
         }
        cv::Mat H = cv::findHomography(obj, scene, CV_RANSAC);
        std::vector<cv::Point2f> obj_corners(4);
