@@ -103,7 +103,7 @@ void PointCloudSceneDecomposer::cloudCallback(
 
     if (this->start_signal_ ||
         ((this->processing_counter_ == this->signal_.counter) &&
-         (this->signal_.command == 100))) {
+         (this->signal_.command == 1))) {
        cv::Mat image = this->image_.clone();
        cv::Mat edge_map;
        this->getRGBEdge(image, edge_map, "cvCanny");
@@ -183,17 +183,17 @@ void PointCloudSceneDecomposer::cloudCallback(
           this->publishing_cloud.header = cloud_msg->header;
           this->pub_indices_.publish(this->publishing_indices);
           this->pub_cloud_.publish(this->publishing_cloud);
-          
+          image_msg->header = cloud_msg->header;
           this->pub_image_.publish(image_msg->toImageMsg());
        }
     }
     point_cloud_scene_decomposer::signal pub_sig;
-    pub_sig.header = this->signal_.header;
-    pub_sig.command = 010;
-    pub_sig.counter = this->processing_counter_;
+    pub_sig.header = cloud_msg->header;
+    pub_sig.command = 2;
+    pub_sig.counter = this->processing_counter_ - 1;
     this->pub_signal_.publish(pub_sig);
 
-    std::cout << "Processing Counter: " << processing_counter_
+    std::cout << "Processing Counter: " << pub_sig.command
               << "\t Signal: " << pub_sig.counter << std::endl;
 }
 

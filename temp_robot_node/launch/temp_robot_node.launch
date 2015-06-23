@@ -1,0 +1,6 @@
+<launch>
+  <node pkg="temp_robot_node" type="temp_robot_node" name="temp_robot_node"
+	output="screen" >
+    <remap from="input_signal" to="/scene_decomposer/output/signal" />
+  </node>
+  </launch>

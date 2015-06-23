@@ -3,7 +3,7 @@
 #include <vector>
 
 PointCloudClusterMatching::PointCloudClusterMatching() :
-    processing_counter_(1),
+    processing_counter_(0),
     depth_counter(0) {
     this->subscribe();
     this->onInit();
@@ -171,15 +171,8 @@ void PointCloudClusterMatching::cloudCallback(
        ROS_ERROR("-- EMPTY CLOUD CANNOT BE PROCESSED.");
        return;
     }
-    ROS_INFO("-- PROCESSING.");
-    // if (depth_counter == 0) {
-    //    this->image_prev_ = image_.clone();
-    //    this->image_mask_prev_ = image_mask_.clone();
-    //    depth_counter++;
-    // }
-    std::cout << "Counter: " << signal_.counter << "\t"
-              << processing_counter_   << std::endl;
-    if (this->signal_.command == 001 &&
+    
+    if (this->signal_.command == 3 &&
         this->signal_.counter == this->processing_counter_) {
        cv::Mat matte_image = cv::Mat::zeros(image_mask_.size(), CV_8U);
        for (int j = 0; j < image_mask_.rows; j++) {
@@ -236,15 +229,18 @@ void PointCloudClusterMatching::cloudCallback(
        if (this->processing_counter_ != 0) {
           this->publishing_cloud.header = cloud_msg->header;
           this->pub_cloud_.publish(publishing_cloud);
+       } else {
+          ROS_WARN("-- NOT PROCESSING");
        }
     }
     point_cloud_scene_decomposer::signal pub_sig;
-    pub_sig.header = this->signal_.header;
-    pub_sig.command = 100;
-    pub_sig.counter = this->processing_counter_ - 1;
+    pub_sig.header = cloud_msg->header;
+    pub_sig.command = 1;
+    pub_sig.counter = this->processing_counter_;
     this->pub_signal_.publish(pub_sig);
 
-    // ros::Duration(10).sleep();
+    std::cout << "Counter: " << pub_sig.command << "\t"
+              << pub_sig.counter   << std::endl;
 }
 
 void PointCloudClusterMatching::contourSmoothing(
