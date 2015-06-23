@@ -32,10 +32,13 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
 
     bool start_signal_;
     int processing_counter_;
+    point_cloud_scene_decomposer::signal signal_;
+    
    
     //  variables to publish while not processing
     jsk_recognition_msgs::ClusterPointIndices publishing_indices;
     sensor_msgs::PointCloud2 publishing_cloud;
+    cv_bridge::CvImagePtr image_msg;
    
     void pclNearestNeigborSearch(
         pcl::PointCloud<pcl::PointXYZ>::Ptr,

@@ -96,6 +96,7 @@ class PointCloudClusterMatching: public PointCloudImageCreator {
     int processing_counter_;
 
     sensor_msgs::PointCloud2 publishing_cloud;
+    point_cloud_scene_decomposer::signal signal_;
    
  public:
     PointCloudClusterMatching();

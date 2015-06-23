@@ -34,23 +34,18 @@ void PointCloudSceneDecomposer::onInit() {
 
 void PointCloudSceneDecomposer::subscribe() {
 
-   // if (this->start_signal_) {
-   //     std::cout << "RUNNNING CONSTRUCTOR" << std::endl;
-   //     this->sub_cloud_ori_ = nh_.subscribe(
-   //        "/camera/depth_registered/points", 1,
-   //        &PointCloudSceneDecomposer::origcloudCallback, this);
-   //     this->sub_image_ = nh_.subscribe(
-   //        "input_image", 1, &PointCloudSceneDecomposer::imageCallback, this);
-   //     this->sub_norm_ = nh_.subscribe(
-   //        "input_norm", 1, &PointCloudSceneDecomposer::normalCallback, this);
-   //     this->sub_cloud_ = nh_.subscribe(
-   //        "input_cloud", 1, &PointCloudSceneDecomposer::cloudCallback, this);
-   //  } else {
-       this->sub_signal_ = this->nh_.subscribe(
-          "input_signal", sizeof(char),
-          &PointCloudSceneDecomposer::signalCallback, this);
-       //}
-    
+    this->sub_signal_ = nh_.subscribe(
+       "input_signal", 1, &PointCloudSceneDecomposer::signalCallback, this);
+    this->sub_cloud_ori_ = nh_.subscribe(
+       "input_orig_cloud", 1,
+       &PointCloudSceneDecomposer::origcloudCallback, this);
+    this->sub_image_ = nh_.subscribe(
+       "input_image", 1, &PointCloudSceneDecomposer::imageCallback, this);
+    this->sub_norm_ = nh_.subscribe(
+       "input_norm", 1, &PointCloudSceneDecomposer::normalCallback, this);
+    this->sub_cloud_ = nh_.subscribe(
+       "input_cloud", 1, &PointCloudSceneDecomposer::cloudCallback, this);
+   
 }
 
 void PointCloudSceneDecomposer::unsubscribe() {
@@ -61,34 +56,7 @@ void PointCloudSceneDecomposer::unsubscribe() {
 
 void PointCloudSceneDecomposer::signalCallback(
     const point_cloud_scene_decomposer::signal &signal_msg) {
-    std::cout << "SIGNAL CALL BACK" << std::endl;
-    if (this->start_signal_ ||
-    ((this->processing_counter_ == signal_msg.counter) &&
-     (signal_msg.command == 100))) {
-       this->sub_cloud_ori_ = nh_.subscribe(
-          "/camera/depth_registered/points", 1,
-          &PointCloudSceneDecomposer::origcloudCallback, this);
-       this->sub_image_ = nh_.subscribe(
-          "input_image", 1, &PointCloudSceneDecomposer::imageCallback, this);
-       this->sub_norm_ = nh_.subscribe(
-          "input_norm", 1, &PointCloudSceneDecomposer::normalCallback, this);
-       this->sub_cloud_ = nh_.subscribe(
-          "input_cloud", 1, &PointCloudSceneDecomposer::cloudCallback, this);
-       this->processing_counter_++;
-    } else {
-       ROS_WARN("-- PUBLISHING OLD DATA.");
-       if (this->processing_counter_ != 0) {
-          this->publishing_indices.header = signal_msg.header;
-          this->publishing_cloud.header = signal_msg.header;
-          this->pub_indices_.publish(this->publishing_indices);
-          this->pub_cloud_.publish(this->publishing_cloud);
-       }
-    }
-    point_cloud_scene_decomposer::signal pub_sig;
-    pub_sig.header = signal_msg.header;
-    pub_sig.command = 010;
-    pub_sig.counter = this->processing_counter_;
-    this->pub_signal_.publish(pub_sig);
+    this->signal_ = signal_msg;
 }
 
 void PointCloudSceneDecomposer::origcloudCallback(
@@ -110,7 +78,7 @@ void PointCloudSceneDecomposer::imageCallback(
     }
     this->image_ = cv_ptr->image.clone();
     std::cout << "Image: " << image_.size() << std::endl;
-    this->pub_image_.publish(cv_ptr->toImageMsg());
+    // this->pub_image_.publish(cv_ptr->toImageMsg());
 }
 
 void PointCloudSceneDecomposer::normalCallback(
@@ -132,71 +100,101 @@ void PointCloudSceneDecomposer::cloudCallback(
        ROS_ERROR("-- CANNOT PROCESS EMPTY INSTANCE");
        return;
     }
-        
-    cv::Mat image = this->image_.clone();
-    cv::Mat edge_map;
-    this->getRGBEdge(image, edge_map, "cvCanny");
-    // this->getDepthEdge(dep_img, edge_map, true);
+
+    if (this->start_signal_ ||
+        ((this->processing_counter_ == this->signal_.counter) &&
+         (this->signal_.command == 100))) {
+       cv::Mat image = this->image_.clone();
+       cv::Mat edge_map;
+       this->getRGBEdge(image, edge_map, "cvCanny");
+       // this->getDepthEdge(dep_img, edge_map, true);
     
-    std::vector<cvPatch<int> > patch_label;
-    this->cvLabelEgdeMap(orig_cloud_, image, edge_map, patch_label);
+       std::vector<cvPatch<int> > patch_label;
+       this->cvLabelEgdeMap(orig_cloud_, image, edge_map, patch_label);
 
    
-    pcl::PointCloud<PointT>::Ptr patch_cloud(new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointT, PointT> (*orig_cloud_, *patch_cloud);
+       pcl::PointCloud<PointT>::Ptr patch_cloud(new pcl::PointCloud<PointT>);
+       pcl::copyPointCloud<PointT, PointT> (*orig_cloud_, *patch_cloud);
 
-    std::vector<pcl::PointCloud<PointT>::Ptr> cloud_clusters;
-    std::vector<pcl::PointCloud<pcl::Normal>::Ptr> normal_clusters;
+       std::vector<pcl::PointCloud<PointT>::Ptr> cloud_clusters;
+       std::vector<pcl::PointCloud<pcl::Normal>::Ptr> normal_clusters;
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr centroids(
-       new pcl::PointCloud<pcl::PointXYZ>);
-    this->extractPointCloudClustersFrom2DMap(patch_cloud, patch_label,
-       cloud_clusters, normal_clusters, centroids, image.size());
+       pcl::PointCloud<pcl::PointXYZ>::Ptr centroids(
+          new pcl::PointCloud<pcl::PointXYZ>);
+       this->extractPointCloudClustersFrom2DMap(
+          patch_cloud, patch_label, cloud_clusters,
+          normal_clusters, centroids, image.size());
 
 
-    const int neigbour_size = 4; /*5*/
-    std::vector<std::vector<int> > neigbour_idx;
-    this->pclNearestNeigborSearch(
-       centroids, neigbour_idx, true, neigbour_size, 0.03);
-    RegionAdjacencyGraph *rag = new RegionAdjacencyGraph();
-    // const int edge_weight_criteria = rag->RAG_EDGE_WEIGHT_CONVEX_CRITERIA;
-    const int edge_weight_criteria = rag->RAG_EDGE_WEIGHT_DISTANCE;
-    rag->generateRAG(cloud_clusters, normal_clusters,
-                     centroids, neigbour_idx, edge_weight_criteria);
-    rag->splitMergeRAG(cloud_clusters, normal_clusters,
-                       edge_weight_criteria, 0.50);
-    std::vector<int> labelMD;
-    rag->getCloudClusterLabels(labelMD);
-    free(rag);
+       const int neigbour_size = 4; /*5*/
+       std::vector<std::vector<int> > neigbour_idx;
+       this->pclNearestNeigborSearch(
+          centroids, neigbour_idx, true, neigbour_size, 0.03);
+       RegionAdjacencyGraph *rag = new RegionAdjacencyGraph();
+       // const int edge_weight_criteria = rag->RAG_EDGE_WEIGHT_CONVEX_CRITERIA;
+       const int edge_weight_criteria = rag->RAG_EDGE_WEIGHT_DISTANCE;
+       rag->generateRAG(cloud_clusters, normal_clusters,
+                        centroids, neigbour_idx, edge_weight_criteria);
+       rag->splitMergeRAG(cloud_clusters, normal_clusters,
+                          edge_weight_criteria, 0.50);
+       std::vector<int> labelMD;
+       rag->getCloudClusterLabels(labelMD);
+       free(rag);
 
-    std::vector<pcl::PointIndices> all_indices;
-    this->semanticCloudLabel(
-       cloud_clusters, cloud, labelMD, all_indices, rag->total_label);
+       std::vector<pcl::PointIndices> all_indices;
+       this->semanticCloudLabel(
+          cloud_clusters, cloud, labelMD, all_indices, rag->total_label);
 
-    this->objectCloudClusterPostProcessing(cloud, all_indices);
+       this->objectCloudClusterPostProcessing(cloud, all_indices);
 
-    std::cout << YELLOW  << "-- NUMBER OF BOUNDING BOXES: "
-              << all_indices.size() << YELLOW  << RESET << std::endl;
+       std::cout << YELLOW  << "-- NUMBER OF BOUNDING BOXES: "
+                 << all_indices.size() << YELLOW  << RESET << std::endl;
     
-    cv::waitKey(3);
+       cv::waitKey(3);
 
-    jsk_recognition_msgs::ClusterPointIndices ros_indices;
-    ros_indices.cluster_indices = this->convertToROSPointIndices(
-       all_indices, cloud_msg->header);
-    ros_indices.header = cloud_msg->header;
+       jsk_recognition_msgs::ClusterPointIndices ros_indices;
+       ros_indices.cluster_indices = this->convertToROSPointIndices(
+          all_indices, cloud_msg->header);
+       ros_indices.header = cloud_msg->header;
     
-    sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*cloud, ros_cloud);
-    ros_cloud.header = cloud_msg->header;
+       sensor_msgs::PointCloud2 ros_cloud;
+       pcl::toROSMsg(*cloud, ros_cloud);
+       ros_cloud.header = cloud_msg->header;
     
-    this->start_signal_ = false;  // turn off start up signal
-    this->publishing_indices.cluster_indices.clear();
-    this->publishing_cloud.data.clear();
-    this->publishing_indices = ros_indices;
-    this->publishing_cloud = ros_cloud;
-    
-    this->pub_indices_.publish(ros_indices);
-    this->pub_cloud_.publish(ros_cloud);
+       this->start_signal_ = false;  // turn off start up signal
+       this->processing_counter_++;
+       this->publishing_indices.cluster_indices.clear();
+       this->publishing_cloud.data.clear();
+       this->publishing_indices = ros_indices;
+       this->publishing_cloud = ros_cloud;
+
+       image_msg = cv_bridge::CvImagePtr(new cv_bridge::CvImage);
+       image_msg->header = cloud_msg->header;
+       image_msg->encoding = sensor_msgs::image_encodings::BGR8;
+       image_msg->image = this->image_.clone();
+       this->pub_image_.publish(image_msg->toImageMsg());
+       
+       this->pub_indices_.publish(ros_indices);
+       this->pub_cloud_.publish(ros_cloud);
+    } else {
+       ROS_WARN("-- PUBLISHING OLD DATA.");
+       if (this->processing_counter_ != 0) {
+          this->publishing_indices.header = cloud_msg->header;
+          this->publishing_cloud.header = cloud_msg->header;
+          this->pub_indices_.publish(this->publishing_indices);
+          this->pub_cloud_.publish(this->publishing_cloud);
+          
+          this->pub_image_.publish(image_msg->toImageMsg());
+       }
+    }
+    point_cloud_scene_decomposer::signal pub_sig;
+    pub_sig.header = this->signal_.header;
+    pub_sig.command = 010;
+    pub_sig.counter = this->processing_counter_;
+    this->pub_signal_.publish(pub_sig);
+
+    std::cout << "Processing Counter: " << processing_counter_
+              << "\t Signal: " << pub_sig.counter << std::endl;
 }
 
 
