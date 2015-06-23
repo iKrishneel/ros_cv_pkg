@@ -84,6 +84,7 @@ class PointCloudClusterMatching: public PointCloudImageCreator {
     cv::Mat image_prev_;
     cv::Mat image_mask_;
     cv::Mat image_mask_prev_;
+   
     int manipulated_cluster_index_;
     geometry_msgs::Pose gripper_pose_;
     std::vector<pcl::PointIndices> all_indices;
@@ -116,19 +117,15 @@ class PointCloudClusterMatching: public PointCloudImageCreator {
        const sensor_msgs::Image::ConstPtr &);
 
 
-    void getManipulatedObjectClusters(
-       const cv::Mat &,
-       std::vector<cv::Rect_<int> > &);
-    void projectMaskImageRegionToPointCloud(
-       const pcl::PointCloud<PointT>::Ptr,
-       const cv::Mat &,
-       pcl::PointIndices::Ptr);
+    void contourSmoothing(
+       cv::Mat &);
    
     void extractObjectROIIndices(
        cv::Rect_<int> &,
        pcl::PointIndices::Ptr,
        const cv::Size);
-   
+    void cvMorphologicalOperations(
+       const cv::Mat &, cv::Mat &, bool, int);
 
 
 

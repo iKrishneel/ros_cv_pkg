@@ -180,47 +180,41 @@ void PointCloudClusterMatching::cloudCallback(
        ROS_ERROR("-- EMPTY CLOUD CANNOT BE PROCESSED.");
        return;
     }
-    const float MAX_DIST = 1.0f;
-    const float MIN_DIST = 0.6f;
-    for (int j = 0; j < this->image_.rows; j++) {
-       for (int i = 0; i < this->image_.cols; i++) {
-          if (this->image_.at<float>(j, i) > MAX_DIST ||
-              this->image_.at<float>(j, i) < MIN_DIST) {
-             this->image_.at<float>(j, i) = 0.0f;
-          }
-          if (static_cast<int>(
-                 this->image_mask_.at<uchar>(j, i)) != 0) {
-             this->image_.at<float>(j, i) = 0.0f;
+    
+    if (depth_counter == 0) {
+       this->image_prev_ = image_.clone();
+       this->image_mask_prev_ = image_mask_.clone();
+       depth_counter++;
+    }
+
+    cv::Mat matte_image = cv::Mat::zeros(image_mask_.size(), CV_8U);
+    for (int j = 0; j < image_mask_.rows; j++) {
+       for (int i = 0; i < image_mask_.cols; i++) {
+          if (image_mask_.at<uchar>(j, i) !=
+              (image_mask_prev_.at<uchar>(j, i))) {
+             matte_image.at<uchar>(j, i) = 255;
           }
        }
     }
-    if (depth_counter == 0) {
-       this->image_prev_ = image_.clone();
-    }
-    
-    cv::Mat fgMaskMOG2;
-    cv::absdiff(image_, image_prev_, fgMaskMOG2);
 
+    cvMorphologicalOperations(matte_image, matte_image, true, 1);
+    cvMorphologicalOperations(matte_image, matte_image, false, 1);
+    // this->contourSmoothing(matte_image);
+    cv::Mat current_roi;
+    cv::Mat cur_mask_invert;
+    // cv::bitwise_not(image_mask_, cur_mask_invert);
+    cv::bitwise_and(matte_image, image_mask_prev_, current_roi);
+    
     pcl::PointIndices::Ptr filtered_indices(new pcl::PointIndices);
-    cv::Mat mask_img = cv::Mat::zeros(fgMaskMOG2.size(), CV_8U);
-    for (int j = 0; j < fgMaskMOG2.rows; j++) {
-       for (int i = 0; i < fgMaskMOG2.cols; i++) {
-          int index = i + (j * fgMaskMOG2.cols);
-          if (fgMaskMOG2.at<float>(j, i) != 0.0f) {
-             mask_img.at<uchar>(j, i) = 255;
+    for (int j = 0; j < current_roi.rows; j++) {
+       for (int i = 0; i < current_roi.cols; i++) {
+          int index = i + (j * current_roi.cols);
+          if (static_cast<int>(
+                 current_roi.at<uchar>(j, i)) == 255) {
              filtered_indices->indices.push_back(index);
           }
        }
     }
-
-    if (depth_counter == 0) {
-       this->image_mask_prev_ = mask_img.clone();
-       depth_counter++;
-    }
-    cv::bitwise_xor(mask_img, image_mask_prev_, mask_img);
-
-    
-    
     if (!filtered_indices->indices.empty()) {
        pcl::ExtractIndices<PointT>::Ptr eifilter(
        new pcl::ExtractIndices<PointT>);
@@ -232,17 +226,16 @@ void PointCloudClusterMatching::cloudCallback(
        ros_cloud.header = cloud_msg->header;
        pub_cloud_.publish(ros_cloud);
     }
-
-    cv::imshow("previous", image_prev_);
-    cv::imshow("current", image_);
-    cv::imshow("BS", fgMaskMOG2);
-    cv::imshow("mask", mask_img);
+    
+    cv::imshow("current roi", current_roi);
+    cv::imshow("Matte", matte_image);
+    cv::imshow("mask", image_mask_);
+    
     cv::waitKey(3);
 }
 
-void PointCloudClusterMatching::getManipulatedObjectClusters(
-    const cv::Mat &mask_img,
-    std::vector<cv::Rect_<int> > &cluster_rects) {
+void PointCloudClusterMatching::contourSmoothing(
+    cv::Mat &mask_img) {
     if (mask_img.empty()) {
        ROS_ERROR("--NO REGION IN EMPTY MASK");
        return;
@@ -254,38 +247,14 @@ void PointCloudClusterMatching::getManipulatedObjectClusters(
     findContours(canny_output, contours, hierarchy,
                  CV_RETR_TREE, CV_CHAIN_APPROX_SIMPLE, cv::Point(0, 0));
     const double MIN_AREA = 20;
+    mask_img = cv::Mat::zeros(canny_output.size(), CV_8U);
     for (int i = 0; i < contours.size(); i++) {
        double area = cv::contourArea(contours[i]);
        if (area > MIN_AREA) {
-          cv::Rect_<int> rect = cv::boundingRect(contours[i]);
-          cluster_rects.push_back(rect);
+          cv::drawContours(
+             mask_img, contours, i, cv::Scalar(255), CV_FILLED);
        }
     }
-}
-
-
-void PointCloudClusterMatching::projectMaskImageRegionToPointCloud(
-    const pcl::PointCloud<PointT>::Ptr cloud,
-    const cv::Mat &mask_img,
-    pcl::PointIndices::Ptr filtered_indices) {
-    // if (cloud->empty() || cluster_rects.empty()) {
-    //    ROS_ERROR("-- NO REGION MASKED");
-    //    return;
-    // }
-    for (int j = 0; j < mask_img.rows; j++) {
-       for (int i = 0; i < mask_img.cols; i++) {
-          int index = i + (j * mask_img.cols);
-       }
-    }
-
-    /*
-    for (int k = 0; k < cluster_rects.size(); k++) {
-       cv::Rect_<int> rect = cluster_rects[k];
-       this->extractObjectROIIndices(
-          rect, filtered_indices, this->image_.size());
-
-    }
-    */
 }
 
 
@@ -314,6 +283,26 @@ void PointCloudClusterMatching::extractObjectROIIndices(
 }
 
 
+void PointCloudClusterMatching::cvMorphologicalOperations(
+    const cv::Mat &img, cv::Mat &erosion_dst,
+    bool is_errode, int erosion_size) {
+    if (img.empty()) {
+       ROS_ERROR("Cannnot perfrom Morphological Operations on empty image....");
+       return;
+    }
+    // int erosion_size = 5;
+    int erosion_const = 2;
+    int erosion_type = cv::MORPH_ELLIPSE;
+    cv::Mat element = cv::getStructuringElement(erosion_type,
+       cv::Size(erosion_const * erosion_size + sizeof(char),
+                erosion_const * erosion_size + sizeof(char)),
+       cv::Point(erosion_size, erosion_size));
+    if (is_errode) {
+       cv::erode(img, erosion_dst, element);
+    } else {
+       cv::dilate(img, erosion_dst, element);
+    }
+}
 
 
 
