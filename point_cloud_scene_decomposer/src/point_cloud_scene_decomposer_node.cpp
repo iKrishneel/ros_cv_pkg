@@ -8,12 +8,14 @@
 
 PointCloudSceneDecomposer::PointCloudSceneDecomposer() :
     max_distance_(1.0f),
+    start_signal_(true),
+    processing_counter_(0),
     normal_(pcl::PointCloud<pcl::Normal>::Ptr(
                 new pcl::PointCloud<pcl::Normal>)),
     orig_cloud_(pcl::PointCloud<PointT>::Ptr(
                         new pcl::PointCloud<PointT>)) {
-    this->srv_client_ = nh_.serviceClient<
-       point_cloud_scene_decomposer::ClusterVoxels>("cluster_voxels");
+
+   
     this->subscribe();
     this->onInit();
 }
@@ -26,26 +28,67 @@ void PointCloudSceneDecomposer::onInit() {
              "/scene_decomposer/output/indices", sizeof(char));
     this->pub_image_ = nh_.advertise<sensor_msgs::Image>(
         "/scene_decomposer/output/image", sizeof(char));
+    this->pub_signal_ = nh_.advertise<point_cloud_scene_decomposer::signal>(
+       "/scene_decomposer/output/signal", sizeof(char));
 }
 
 void PointCloudSceneDecomposer::subscribe() {
 
-    this->sub_cloud_ori_ = nh_.subscribe(
-       "/camera/depth_registered/points", 1,
-        &PointCloudSceneDecomposer::origcloudCallback , this);
+   // if (this->start_signal_) {
+   //     std::cout << "RUNNNING CONSTRUCTOR" << std::endl;
+   //     this->sub_cloud_ori_ = nh_.subscribe(
+   //        "/camera/depth_registered/points", 1,
+   //        &PointCloudSceneDecomposer::origcloudCallback, this);
+   //     this->sub_image_ = nh_.subscribe(
+   //        "input_image", 1, &PointCloudSceneDecomposer::imageCallback, this);
+   //     this->sub_norm_ = nh_.subscribe(
+   //        "input_norm", 1, &PointCloudSceneDecomposer::normalCallback, this);
+   //     this->sub_cloud_ = nh_.subscribe(
+   //        "input_cloud", 1, &PointCloudSceneDecomposer::cloudCallback, this);
+   //  } else {
+       this->sub_signal_ = this->nh_.subscribe(
+          "input_signal", sizeof(char),
+          &PointCloudSceneDecomposer::signalCallback, this);
+       //}
     
-    this->sub_image_ = nh_.subscribe("input_image", 1,
-        &PointCloudSceneDecomposer::imageCallback, this);
-    this->sub_norm_ = nh_.subscribe("input_norm", 1,
-       &PointCloudSceneDecomposer::normalCallback, this);
-    this->sub_cloud_ = nh_.subscribe("input_cloud", 1,
-        &PointCloudSceneDecomposer::cloudCallback, this);
 }
 
 void PointCloudSceneDecomposer::unsubscribe() {
     this->sub_cloud_.shutdown();
     this->sub_norm_.shutdown();
     this->sub_image_.shutdown();
+}
+
+void PointCloudSceneDecomposer::signalCallback(
+    const point_cloud_scene_decomposer::signal &signal_msg) {
+    std::cout << "SIGNAL CALL BACK" << std::endl;
+    if (this->start_signal_ ||
+    ((this->processing_counter_ == signal_msg.counter) &&
+     (signal_msg.command == 100))) {
+       this->sub_cloud_ori_ = nh_.subscribe(
+          "/camera/depth_registered/points", 1,
+          &PointCloudSceneDecomposer::origcloudCallback, this);
+       this->sub_image_ = nh_.subscribe(
+          "input_image", 1, &PointCloudSceneDecomposer::imageCallback, this);
+       this->sub_norm_ = nh_.subscribe(
+          "input_norm", 1, &PointCloudSceneDecomposer::normalCallback, this);
+       this->sub_cloud_ = nh_.subscribe(
+          "input_cloud", 1, &PointCloudSceneDecomposer::cloudCallback, this);
+       this->processing_counter_++;
+    } else {
+       ROS_WARN("-- PUBLISHING OLD DATA.");
+       if (this->processing_counter_ != 0) {
+          this->publishing_indices.header = signal_msg.header;
+          this->publishing_cloud.header = signal_msg.header;
+          this->pub_indices_.publish(this->publishing_indices);
+          this->pub_cloud_.publish(this->publishing_cloud);
+       }
+    }
+    point_cloud_scene_decomposer::signal pub_sig;
+    pub_sig.header = signal_msg.header;
+    pub_sig.command = 010;
+    pub_sig.counter = this->processing_counter_;
+    this->pub_signal_.publish(pub_sig);
 }
 
 void PointCloudSceneDecomposer::origcloudCallback(
@@ -67,6 +110,7 @@ void PointCloudSceneDecomposer::imageCallback(
     }
     this->image_ = cv_ptr->image.clone();
     std::cout << "Image: " << image_.size() << std::endl;
+    this->pub_image_.publish(cv_ptr->toImageMsg());
 }
 
 void PointCloudSceneDecomposer::normalCallback(
@@ -140,11 +184,18 @@ void PointCloudSceneDecomposer::cloudCallback(
     ros_indices.cluster_indices = this->convertToROSPointIndices(
        all_indices, cloud_msg->header);
     ros_indices.header = cloud_msg->header;
-    this->pub_indices_.publish(ros_indices);
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
+    
+    this->start_signal_ = false;  // turn off start up signal
+    this->publishing_indices.cluster_indices.clear();
+    this->publishing_cloud.data.clear();
+    this->publishing_indices = ros_indices;
+    this->publishing_cloud = ros_cloud;
+    
+    this->pub_indices_.publish(ros_indices);
     this->pub_cloud_.publish(ros_cloud);
 }
 

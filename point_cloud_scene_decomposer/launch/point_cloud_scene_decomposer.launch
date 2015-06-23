@@ -8,6 +8,7 @@
     <remap from="input_image" to="/cloud_image/output/interpolated_image" />
     <!---<remap from="input_cloud" to="/normal_gradient/output/cloud" />-->
     <remap from="input_norm" to="/normal_gradient/output/normal" />
+    <remap from="input_signal" to="/manipulated_cluster/output/signal" />
     <!---<remap from="input_image" to="/cloud_image/output/interpolated_image" />-->
   </node>
 </launch>

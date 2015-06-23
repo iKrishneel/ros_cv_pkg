@@ -45,6 +45,7 @@
 
 #include <point_cloud_cluster_matching/point_cloud_image_creator.h>
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
+#include <point_cloud_scene_decomposer/signal.h>
 #include <std_msgs/Bool.h>
 #include <std_msgs/Int16.h>
 #include <geometry_msgs/Pose.h>
@@ -68,10 +69,10 @@ class PointCloudClusterMatching: public PointCloudImageCreator {
 
     ros::Subscriber sub_signal_;
    
-    ros::Subscriber sub_cam_info_;
     ros::Subscriber sub_image_;
     ros::Subscriber sub_image_prev_;
-    ros::Subscriber sub_normal_grad_;
+    ros::Subscriber sub_mask_;
+    ros::Subscriber sub_mask_prev_;
    
     ros::Subscriber sub_manip_cluster_;
     ros::Subscriber sub_grip_end_pose_;
@@ -92,6 +93,9 @@ class PointCloudClusterMatching: public PointCloudImageCreator {
     sensor_msgs::CameraInfo::ConstPtr camera_info_;
 
     int depth_counter;
+    int processing_counter_;
+
+    sensor_msgs::PointCloud2 publishing_cloud;
    
  public:
     PointCloudClusterMatching();
@@ -102,7 +106,7 @@ class PointCloudClusterMatching: public PointCloudImageCreator {
     virtual void indicesCallback(
       const jsk_recognition_msgs::ClusterPointIndices &);
     virtual void signalCallback(
-      const std_msgs::Bool &);
+       const point_cloud_scene_decomposer::signal &);
     virtual void manipulatedClusterCallback(
       const std_msgs::Int16 &);
     virtual void gripperEndPoseCallback(
@@ -115,7 +119,8 @@ class PointCloudClusterMatching: public PointCloudImageCreator {
        const sensor_msgs::Image::ConstPtr &);
     virtual void imageMaskCallback(
        const sensor_msgs::Image::ConstPtr &);
-
+    virtual void imageMaskPrevCallback(
+      const sensor_msgs::Image::ConstPtr &);
 
     void contourSmoothing(
        cv::Mat &);

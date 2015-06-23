@@ -6,8 +6,11 @@
 #include <point_cloud_scene_decomposer/constants.h>
 #include <point_cloud_scene_decomposer/scene_decomposer_image_processor.h>
 #include <point_cloud_scene_decomposer/region_adjacency_graph.h>
+#include <point_cloud_scene_decomposer/signal.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
+#include <jsk_recognition_msgs/BoundingBox.h>
+
 
 class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
  private:
@@ -15,15 +18,25 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     ros::Publisher pub_image_;
     ros::Publisher pub_cloud_;
     ros::Publisher pub_indices_;
+   
     ros::Subscriber sub_cloud_;
     ros::Subscriber sub_cloud_ori_;
     ros::Subscriber sub_norm_;
     ros::Subscriber sub_image_;
-    ros::ServiceClient srv_client_;
+
+    ros::Subscriber sub_signal_;
+    ros::Publisher pub_signal_;
    
     pcl::PointCloud<PointT>::Ptr pcl_cloud__;
     pcl::PointCloud<PointT>::Ptr filter_cloud__;
 
+    bool start_signal_;
+    int processing_counter_;
+   
+    //  variables to publish while not processing
+    jsk_recognition_msgs::ClusterPointIndices publishing_indices;
+    sensor_msgs::PointCloud2 publishing_cloud;
+   
     void pclNearestNeigborSearch(
         pcl::PointCloud<pcl::PointXYZ>::Ptr,
         std::vector<std::vector<int> > &,
@@ -57,12 +70,16 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
  public:
     PointCloudSceneDecomposer();
     void origcloudCallback(
-        const sensor_msgs::PointCloud2ConstPtr &);
-    
+       const sensor_msgs::PointCloud2ConstPtr &);
     void cloudCallback(
         const sensor_msgs::PointCloud2ConstPtr &);
     void normalCallback(
        const sensor_msgs::PointCloud2ConstPtr &);
+    void signalCallback(
+       const point_cloud_scene_decomposer::signal &);
+    void imageCallback(
+      const sensor_msgs::Image::ConstPtr &);
+   
     void extractPointCloudClustersFrom2DMap(
         const pcl::PointCloud<PointT>::Ptr,
         const std::vector<cvPatch<int> > &,
@@ -70,9 +87,6 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
         std::vector<pcl::PointCloud<pcl::Normal>::Ptr> &,
         pcl::PointCloud<pcl::PointXYZ>::Ptr,
         const cv::Size);
-
-    void imageCallback(
-        const sensor_msgs::Image::ConstPtr &);
 
 
     void pointCloudVoxelClustering(
@@ -88,6 +102,7 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
        pcl::PointCloud<PointT>::Ptr,
        std::vector<pcl::PointIndices> &,
        const int = 64);
+
    
 };
 #endif  // _POINT_CLOUD_SCENE_DECOMPOSER_H_

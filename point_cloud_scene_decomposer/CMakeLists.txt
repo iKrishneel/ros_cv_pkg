@@ -51,11 +51,11 @@ find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msg
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
-# )
+add_message_files(
+   FILES
+   signal.msg
+   #   Message2.msg
+   )
 
 ## Generate services in the 'srv' folder
 add_service_files(
@@ -74,7 +74,8 @@ add_service_files(
 ## Generate added messages and services with any dependencies listed here
 generate_messages(
   DEPENDENCIES
-#   sensor_msgs#   std_msgs
+  #   sensor_msgs#
+  std_msgs
 )
 
 ###################################
@@ -89,7 +90,8 @@ generate_messages(
 catkin_package(
     INCLUDE_DIRS include
     LIBRARIES point_cloud_scene_decomposer
-#  CATKIN_DEPENDS cv_bridge image_tranport pcl_conversions pcl_conversions roscpp rospy sensor_msgs std_msgs
+    #CATKIN_DEPENDS cv_bridge image_tranport pcl_conversions pcl_conversions roscpp rospy sensor_msgs std_msgs
+    CATKIN_DEPENDS std_msgs
  DEPENDS system_lib
 )
 
