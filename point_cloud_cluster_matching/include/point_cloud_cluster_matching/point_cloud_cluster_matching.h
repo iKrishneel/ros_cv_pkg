@@ -87,12 +87,14 @@ class PointCloudClusterMatching: public PointCloudImageCreator {
     cv::Mat image_prev_;
     cv::Mat image_mask_;
     cv::Mat image_mask_prev_;
+
    
     int manipulated_cluster_index_;
     geometry_msgs::Pose gripper_pose_;
     std::vector<pcl::PointIndices> all_indices;
     std::vector<pcl::PointCloud<PointT>::Ptr> prev_cloud_clusters;
-
+    pcl::PointCloud<PointT>::Ptr cloud_prev_;
+   
     int depth_counter;
     int processing_counter_;
 
