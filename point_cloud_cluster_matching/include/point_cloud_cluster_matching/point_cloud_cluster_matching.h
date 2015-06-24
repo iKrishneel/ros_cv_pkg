@@ -42,6 +42,8 @@
 #include <pcl/segmentation/segment_differences.h>
 #include <pcl/octree/octree.h>
 #include <pcl/surface/concave_hull.h>
+#include <pcl/segmentation/extract_clusters.h>
+#include <pcl/filters/filter.h>
 
 #include <point_cloud_cluster_matching/point_cloud_image_creator.h>
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
@@ -125,6 +127,11 @@ class PointCloudClusterMatching: public PointCloudImageCreator {
 
     void contourSmoothing(
        cv::Mat &);
+    void clusterMovedObjectROI(
+       pcl::PointCloud<PointT>::Ptr,
+       pcl::PointIndices::Ptr,
+       const int = 64);
+   
    
     void extractObjectROIIndices(
        cv::Rect_<int> &,
@@ -132,7 +139,7 @@ class PointCloudClusterMatching: public PointCloudImageCreator {
        const cv::Size);
     void cvMorphologicalOperations(
        const cv::Mat &, cv::Mat &, bool, int);
-
+   
 
 
 

@@ -12,7 +12,6 @@
     <remap from="input_mask" to="/cloud_image/output/interpolated_image" />
     <remap from="input_mask_prev" to="/scene_decomposer/output/image" />
     <remap from="input_signal" to="/robot_node/output/signal" />
-
     
   </node>
 
