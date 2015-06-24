@@ -158,7 +158,7 @@ void PointCloudClusterMatching::indicesCallback(
  */
 void PointCloudClusterMatching::cloudPrevCallback(
     const sensor_msgs::PointCloud2ConstPtr &cloud_msg) {
-    cloud_prev_ = pcl::PointCloud<PointT>::Ptr(
+    this->cloud_prev_ = pcl::PointCloud<PointT>::Ptr(
        new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud_prev_);
     // this->prev_cloud_clusters.clear();
@@ -261,9 +261,9 @@ void PointCloudClusterMatching::cloudCallback(
        }
        this->processing_counter_++;
        
-       // cv::imshow("current roi", current_roi);
-       // cv::imshow("Matte", matte_image);
-       // cv::imshow("mask", image_mask_);
+       cv::imshow("current roi", current_roi);
+       cv::imshow("Matte", matte_image);
+       cv::imshow("mask", image_mask_);
        cv::imshow("inverted", cur_mask_invert);
        cv::imshow("prev_mask", image_mask_);
        cv::waitKey(3);
