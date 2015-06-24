@@ -92,13 +92,15 @@ class PointCloudClusterMatching: public PointCloudImageCreator {
     geometry_msgs::Pose gripper_pose_;
     std::vector<pcl::PointIndices> all_indices;
     std::vector<pcl::PointCloud<PointT>::Ptr> prev_cloud_clusters;
-    sensor_msgs::CameraInfo::ConstPtr camera_info_;
 
     int depth_counter;
     int processing_counter_;
 
     sensor_msgs::PointCloud2 publishing_cloud;
     point_cloud_scene_decomposer::signal signal_;
+
+    const int max_distance_;
+    const int min_object_size_;
    
  public:
     PointCloudClusterMatching();
@@ -114,8 +116,6 @@ class PointCloudClusterMatching: public PointCloudImageCreator {
       const std_msgs::Int16 &);
     virtual void gripperEndPoseCallback(
        const geometry_msgs::Pose &);
-    virtual void cameraInfoCallback(
-       const sensor_msgs::CameraInfo::ConstPtr &);
     virtual void imageCallback(
        const sensor_msgs::Image::ConstPtr &);
     virtual void imagePrevCallback(
