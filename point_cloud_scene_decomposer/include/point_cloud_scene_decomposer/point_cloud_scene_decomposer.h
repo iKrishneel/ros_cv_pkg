@@ -18,6 +18,7 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     ros::Publisher pub_image_;
     ros::Publisher pub_cloud_;
     ros::Publisher pub_indices_;
+    ros::Publisher pub_cloud_orig_;
    
     ros::Subscriber sub_cloud_;
     ros::Subscriber sub_cloud_ori_;
@@ -33,11 +34,11 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     bool start_signal_;
     int processing_counter_;
     point_cloud_scene_decomposer::signal signal_;
-    
    
     //  variables to publish while not processing
     jsk_recognition_msgs::ClusterPointIndices publishing_indices;
     sensor_msgs::PointCloud2 publishing_cloud;
+    sensor_msgs::PointCloud2 publishing_cloud_orig;
     cv_bridge::CvImagePtr image_msg;
    
     void pclNearestNeigborSearch(

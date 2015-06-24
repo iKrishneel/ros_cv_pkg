@@ -23,6 +23,8 @@ PointCloudSceneDecomposer::PointCloudSceneDecomposer() :
 void PointCloudSceneDecomposer::onInit() {
     this->pub_cloud_ = nh_.advertise<sensor_msgs::PointCloud2>(
         "/scene_decomposer/output/cloud_cluster", sizeof(char));
+    this->pub_cloud_orig_ = nh_.advertise<sensor_msgs::PointCloud2>(
+       "/scene_decomposer/output/original_cloud", sizeof(char));
     this->pub_indices_ = nh_.advertise<
           jsk_recognition_msgs::ClusterPointIndices>(
              "/scene_decomposer/output/indices", sizeof(char));
@@ -160,13 +162,19 @@ void PointCloudSceneDecomposer::cloudCallback(
        sensor_msgs::PointCloud2 ros_cloud;
        pcl::toROSMsg(*cloud, ros_cloud);
        ros_cloud.header = cloud_msg->header;
-    
+
+       // publishing the original subcribed cloud
+       sensor_msgs::PointCloud2 ros_cloud_orig;
+       pcl::toROSMsg(*orig_cloud_, ros_cloud_orig);
+       ros_cloud_orig.header = cloud_msg->header;
+       
        this->start_signal_ = false;  // turn off start up signal
        this->processing_counter_++;
        this->publishing_indices.cluster_indices.clear();
        this->publishing_cloud.data.clear();
        this->publishing_indices = ros_indices;
        this->publishing_cloud = ros_cloud;
+       this->publishing_cloud_orig = ros_cloud_orig;
 
        image_msg = cv_bridge::CvImagePtr(new cv_bridge::CvImage);
        image_msg->header = cloud_msg->header;
@@ -176,13 +184,16 @@ void PointCloudSceneDecomposer::cloudCallback(
        
        this->pub_indices_.publish(ros_indices);
        this->pub_cloud_.publish(ros_cloud);
+       this->pub_cloud_orig_.publish(ros_cloud_orig);
     } else {
        ROS_WARN("-- PUBLISHING OLD DATA.");
        if (this->processing_counter_ != 0) {
           this->publishing_indices.header = cloud_msg->header;
           this->publishing_cloud.header = cloud_msg->header;
+          this->publishing_cloud_orig.header = cloud_msg->header;
           this->pub_indices_.publish(this->publishing_indices);
           this->pub_cloud_.publish(this->publishing_cloud);
+          this->pub_cloud_orig_.publish(this->publishing_cloud_orig);
           image_msg->header = cloud_msg->header;
           this->pub_image_.publish(image_msg->toImageMsg());
        }
