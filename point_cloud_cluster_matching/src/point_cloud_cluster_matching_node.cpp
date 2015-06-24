@@ -143,8 +143,6 @@ void PointCloudClusterMatching::imageMaskPrevCallback(
        tmp, this->image_mask_prev_, 0, 255, CV_THRESH_BINARY | CV_THRESH_OTSU);
 }
 
-
-
 void PointCloudClusterMatching::indicesCallback(
     const jsk_recognition_msgs::ClusterPointIndices &indices_msgs) {
     this->all_indices.clear();
@@ -155,18 +153,17 @@ void PointCloudClusterMatching::indicesCallback(
     }
 }
 
-
 /**
  * subscribers to previous and current point clouds
  */
 void PointCloudClusterMatching::cloudPrevCallback(
     const sensor_msgs::PointCloud2ConstPtr &cloud_msg) {
-    pcl::PointCloud<PointT>::Ptr cloud_prev(
-      new pcl::PointCloud<PointT>);
-    pcl::fromROSMsg(*cloud_msg, *cloud_prev);
-    this->prev_cloud_clusters.clear();
-    this->objectCloudClusters(
-       cloud_prev, this->all_indices, this->prev_cloud_clusters);
+    cloud_prev_ = pcl::PointCloud<PointT>::Ptr(
+       new pcl::PointCloud<PointT>);
+    pcl::fromROSMsg(*cloud_msg, *cloud_prev_);
+    // this->prev_cloud_clusters.clear();
+    // this->objectCloudClusters(
+    //    cloud_prev, this->all_indices, this->prev_cloud_clusters);
 }
 
 void PointCloudClusterMatching::cloudCallback(
@@ -179,9 +176,11 @@ void PointCloudClusterMatching::cloudCallback(
        ROS_ERROR("-- EMPTY CLOUD CANNOT BE PROCESSED.");
        return;
     }
-    
     if (this->signal_.command == 3 &&
         this->signal_.counter == this->processing_counter_) {
+
+       const float manip_distance_threshold = 0.05f;
+       const float max_manip_distance = 0.30f;
        cv::Mat matte_image = cv::Mat::zeros(image_mask_.size(), CV_8U);
        for (int j = 0; j < image_mask_.rows; j++) {
           for (int i = 0; i < image_mask_.cols; i++) {
@@ -189,73 +188,101 @@ void PointCloudClusterMatching::cloudCallback(
                  (image_mask_prev_.at<uchar>(j, i))) {
                 matte_image.at<uchar>(j, i) = 255;
              }
-          }
-       }
-       this->cvMorphologicalOperations(matte_image, matte_image, true, 1);
-       this->cvMorphologicalOperations(matte_image, matte_image, false, 1);
-       // this->contourSmoothing(matte_image);
-
-       cv::Mat current_roi;
-       cv::Mat cur_mask_invert;
-       cv::bitwise_not(image_mask_, cur_mask_invert);
-       cv::bitwise_and(matte_image, cur_mask_invert, current_roi);
-    
-       pcl::PointIndices::Ptr filtered_indices(new pcl::PointIndices);
-       for (int j = 0; j < current_roi.rows; j++) {
-          for (int i = 0; i < current_roi.cols; i++) {
-             int index = i + (j * current_roi.cols);
-             if (static_cast<int>(
-                    current_roi.at<uchar>(j, i)) == 255 &&
-                 cloud->points[index].z < this->max_distance_) {
-                filtered_indices->indices.push_back(index);
+             int index = i + (j * matte_image.cols);
+             if (cloud->points[index].z > this->max_distance_) {
+                cloud->points[index].z = 0.0f;
+                cloud->points[index].y = 0.0f;
+                cloud->points[index].x = 0.0f;
+             }
+             if (this->cloud_prev_->points[index].z > this->max_distance_) {
+                this->cloud_prev_->points[index].z = 0.0f;
+                this->cloud_prev_->points[index].y = 0.0f;
+                this->cloud_prev_->points[index].x = 0.0f;
+             }
+             float x1 = this->cloud_prev_->points[index].x;
+             float y1 = this->cloud_prev_->points[index].y;
+             float z1 = this->cloud_prev_->points[index].z;
+             float x2 = cloud->points[index].x;
+             float y2 = cloud->points[index].y;
+             float z2 = cloud->points[index].z;
+             if (!isnan(x1) && !isnan(y1) && !isnan(z1) &&
+                 !isnan(x2) && !isnan(y2) && !isnan(z2)) {
+                x2 -= x1;
+                y2 -= y1;
+                z2 -= z1;
+                float manip_dist = std::sqrt(
+                   (x2 * x2) + (y2 * y2) + (z2 * z2));
+                if (manip_dist > manip_distance_threshold &&
+                    manip_dist < max_manip_distance) {
+                   matte_image.at<uchar>(j, i) = 255;
+                }
              }
           }
-       }
+          this->cvMorphologicalOperations(matte_image, matte_image, true, 1);
+          this->cvMorphologicalOperations(matte_image, matte_image, false, 1);
+          // this->contourSmoothing(matte_image);
 
-       if (!filtered_indices->indices.empty())  {
-          pcl::ExtractIndices<PointT>::Ptr eifilter(
-             new pcl::ExtractIndices<PointT>);
-          eifilter->setInputCloud(cloud);
-          eifilter->setIndices(filtered_indices);
-          eifilter->filter(*cloud);
+          cv::Mat current_roi;
+          cv::Mat cur_mask_invert;
+          cv::bitwise_not(image_mask_, cur_mask_invert);
+          cv::bitwise_and(matte_image, cur_mask_invert, current_roi);
+    
+          pcl::PointIndices::Ptr filtered_indices(new pcl::PointIndices);
+          for (int j = 0; j < current_roi.rows; j++) {
+             for (int i = 0; i < current_roi.cols; i++) {
+                int index = i + (j * current_roi.cols);
+                if (static_cast<int>(
+                       current_roi.at<uchar>(j, i)) == 255 &&
+                    cloud->points[index].z < this->max_distance_) {
+                   filtered_indices->indices.push_back(index);
+                }
+             }
+          }
 
-          // this->clusterMovedObjectROI(cloud, filtered_indices);
+          if (!filtered_indices->indices.empty())  {
+             pcl::ExtractIndices<PointT>::Ptr eifilter(
+                new pcl::ExtractIndices<PointT>);
+             eifilter->setInputCloud(cloud);
+             eifilter->setIndices(filtered_indices);
+             eifilter->filter(*cloud);
+
+             // this->clusterMovedObjectROI(cloud, filtered_indices);
           
-          sensor_msgs::PointCloud2 ros_cloud;
-          pcl::toROSMsg(*cloud, ros_cloud);
-          ros_cloud.header = cloud_msg->header;
+             sensor_msgs::PointCloud2 ros_cloud;
+             pcl::toROSMsg(*cloud, ros_cloud);
+             ros_cloud.header = cloud_msg->header;
 
-          this->publishing_cloud.data.clear();
-          this->publishing_cloud = ros_cloud;
+             this->publishing_cloud.data.clear();
+             this->publishing_cloud = ros_cloud;
        
-          this->pub_cloud_.publish(ros_cloud);
-       }
-       this->processing_counter_++;
+             this->pub_cloud_.publish(ros_cloud);
+          }
+          this->processing_counter_++;
        
-       // cv::imshow("current roi", current_roi);
-       // cv::imshow("Matte", matte_image);
-       // cv::imshow("mask", image_mask_);
-       cv::imshow("inverted", cur_mask_invert);
-       cv::imshow("prev_mask", image_mask_);
-       cv::waitKey(3);
+          // cv::imshow("current roi", current_roi);
+          // cv::imshow("Matte", matte_image);
+          // cv::imshow("mask", image_mask_);
+          cv::imshow("inverted", cur_mask_invert);
+          cv::imshow("prev_mask", image_mask_);
+          cv::waitKey(3);
        
-    } else {
-       if (this->processing_counter_ != 0) {
-          this->publishing_cloud.header = cloud_msg->header;
-          this->pub_cloud_.publish(publishing_cloud);
        } else {
-          ROS_WARN("-- NOT PROCESSING");
+          if (this->processing_counter_ != 0) {
+             this->publishing_cloud.header = cloud_msg->header;
+             this->pub_cloud_.publish(publishing_cloud);
+          } else {
+             ROS_WARN("-- NOT PROCESSING");
+          }
        }
-    }
-    point_cloud_scene_decomposer::signal pub_sig;
-    pub_sig.header = cloud_msg->header;
-    pub_sig.command = 1;
-    pub_sig.counter = this->processing_counter_;
-    this->pub_signal_.publish(pub_sig);
+       point_cloud_scene_decomposer::signal pub_sig;
+       pub_sig.header = cloud_msg->header;
+       pub_sig.command = 1;
+       pub_sig.counter = this->processing_counter_;
+       this->pub_signal_.publish(pub_sig);
 
-    std::cout << "Counter: " << pub_sig.command << "\t"
-              << pub_sig.counter   << std::endl;
-}
+       std::cout << "Counter: " << pub_sig.command << "\t"
+                 << pub_sig.counter   << std::endl;
+    }
 
 void PointCloudClusterMatching::clusterMovedObjectROI(
     pcl::PointCloud<PointT>::Ptr in_cloud,

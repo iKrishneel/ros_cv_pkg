@@ -4,7 +4,7 @@
 
     <remap from="input_cloud" to="/camera/depth_registered/points" />
     <remap from="input_indices" to="/scene_decomposer/output/indices" />
-    <remap from="input_cloud_prev" to="/scene_decomposer/output/cloud_cluster" />
+    <remap from="input_cloud_prev" to="/scene_decomposer/output/original_cloud" />
 
     <remap from="input_image" to="/camera/depth/image_rect" />
     <remap from="input_image_prev" to="/camera/rgb/image_rect_color" />
@@ -12,7 +12,5 @@
     <remap from="input_mask" to="/cloud_image/output/interpolated_image" />
     <remap from="input_mask_prev" to="/scene_decomposer/output/image" />
     <remap from="input_signal" to="/robot_node/output/signal" />
-    
   </node>
-
 </launch>
