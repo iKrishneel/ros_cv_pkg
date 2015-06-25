@@ -24,6 +24,7 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     ros::Subscriber sub_cloud_ori_;
     ros::Subscriber sub_norm_;
     ros::Subscriber sub_image_;
+    ros::Subscriber sub_indices_;
 
     ros::Subscriber sub_signal_;
     ros::Publisher pub_signal_;
@@ -34,6 +35,7 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     bool start_signal_;
     int processing_counter_;
     point_cloud_scene_decomposer::signal signal_;
+    std::vector<pcl::PointIndices> manipulated_obj_indices_;
    
     //  variables to publish while not processing
     jsk_recognition_msgs::ClusterPointIndices publishing_indices;
@@ -82,7 +84,9 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     void signalCallback(
        const point_cloud_scene_decomposer::signal &);
     void imageCallback(
-      const sensor_msgs::Image::ConstPtr &);
+       const sensor_msgs::Image::ConstPtr &);
+    void indicesCallback(
+       const jsk_recognition_msgs::ClusterPointIndices &);
    
     void extractPointCloudClustersFrom2DMap(
         const pcl::PointCloud<PointT>::Ptr,

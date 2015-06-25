@@ -110,7 +110,7 @@ include_directories(
 ## Declare a cpp executable
 add_executable(point_cloud_cluster_matching_node
   src/point_cloud_cluster_matching_node.cpp
-  src/point_cloud_image_creator.cpp
+  #src/point_cloud_image_creator.cpp
   )
 
 ## Add cmake target dependencies of the executable/library

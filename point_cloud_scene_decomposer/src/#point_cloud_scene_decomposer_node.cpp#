@@ -120,6 +120,7 @@ void PointCloudSceneDecomposer::cloudCallback(
     if (!this->start_signal_ && !this->manipulated_obj_indices_.empty()) {
        this->objectCloudClusterPostProcessing(
           cloud, this->manipulated_obj_indices_);
+       
     }
 
     if (this->start_signal_ ||

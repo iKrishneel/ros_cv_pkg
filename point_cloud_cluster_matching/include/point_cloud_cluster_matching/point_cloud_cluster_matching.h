@@ -45,7 +45,6 @@
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/filters/filter.h>
 
-#include <point_cloud_cluster_matching/point_cloud_image_creator.h>
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <point_cloud_scene_decomposer/signal.h>
 #include <std_msgs/Bool.h>
@@ -54,7 +53,7 @@
 
 #include <vector>
 
-class PointCloudClusterMatching: public PointCloudImageCreator {
+class PointCloudClusterMatching {
 
  private:
     typedef pcl::PointXYZRGB PointT;
@@ -98,6 +97,7 @@ class PointCloudClusterMatching: public PointCloudImageCreator {
     int processing_counter_;
 
     sensor_msgs::PointCloud2 publishing_cloud;
+    jsk_recognition_msgs::ClusterPointIndices publishing_indices;
     point_cloud_scene_decomposer::signal signal_;
 
     const int max_distance_;
@@ -131,8 +131,12 @@ class PointCloudClusterMatching: public PointCloudImageCreator {
     void clusterMovedObjectROI(
        pcl::PointCloud<PointT>::Ptr,
        pcl::PointIndices::Ptr,
+       std::vector<pcl::PointIndices> &,
        const int = 64);
-   
+
+    std::vector<pcl_msgs::PointIndices> convertToROSPointIndices(
+       const std::vector<pcl::PointIndices>,
+       const std_msgs::Header&);
    
     void extractObjectROIIndices(
        cv::Rect_<int> &,
