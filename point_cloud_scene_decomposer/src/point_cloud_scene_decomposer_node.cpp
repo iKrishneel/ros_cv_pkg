@@ -7,7 +7,7 @@
 
 
 PointCloudSceneDecomposer::PointCloudSceneDecomposer() :
-    max_distance_(1.0f),
+    max_distance_(1.5f),
     start_signal_(true),
     processing_counter_(0),
     normal_(pcl::PointCloud<pcl::Normal>::Ptr(
@@ -120,6 +120,7 @@ void PointCloudSceneDecomposer::cloudCallback(
     if (!this->start_signal_ && !this->manipulated_obj_indices_.empty()) {
        this->objectCloudClusterPostProcessing(
           cloud, this->manipulated_obj_indices_);
+       
     }
 
     if (this->start_signal_ ||

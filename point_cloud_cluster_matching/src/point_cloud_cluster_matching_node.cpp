@@ -172,9 +172,12 @@ void PointCloudClusterMatching::cloudCallback(
     const sensor_msgs::PointCloud2ConstPtr &cloud_msg) {
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-
-    if (cloud->empty() || image_.empty() ||
+    
+    if (cloud->empty() ||/* image_.empty() ||*/
         image_mask_.empty() || this->image_mask_prev_.empty()) {
+       std::cout << cloud->size() << "\t" << image_.size() << "\t"
+                 << image_mask_.size() << "\t" << image_mask_prev_.size()
+                 << std::endl;
        ROS_ERROR("-- EMPTY CLOUD CANNOT BE PROCESSED.");
        return;
     }
@@ -249,6 +252,8 @@ void PointCloudClusterMatching::cloudCallback(
           eifilter->setInputCloud(cloud);
           eifilter->setIndices(filtered_indices);
           eifilter->filter(*cloud);
+
+          std::cout << "Filtered Cloud Size: " << cloud->size() << std::endl;
           
           sensor_msgs::PointCloud2 ros_cloud;
           pcl::toROSMsg(*cloud, ros_cloud);
@@ -317,7 +322,7 @@ void PointCloudClusterMatching::clusterMovedObjectROI(
        new pcl::search::KdTree<PointT>);
     tree->setInputCloud(in_cloud);
     pcl::EuclideanClusterExtraction<PointT> euclidean_clustering;
-    euclidean_clustering.setClusterTolerance(0.01);
+    euclidean_clustering.setClusterTolerance(0.02);
     euclidean_clustering.setMinClusterSize(min_cluster_size);
     euclidean_clustering.setMaxClusterSize(25000);
     euclidean_clustering.setSearchMethod(tree);
