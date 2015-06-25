@@ -12,5 +12,8 @@
     <remap from="input_mask" to="/cloud_image/output/interpolated_image" />
     <remap from="input_mask_prev" to="/scene_decomposer/output/image" />
     <remap from="input_signal" to="/robot_node/output/signal" />
+
+    <remap from="input_manip_cluster" to="/robot_pushing_motion_node/pushed_box_index" />
+    <remap from="input_gripper_end_pose" to="/robot_pushing_motion_node/pushed_box_assumed_pose" />
   </node>
 </launch>

@@ -70,12 +70,15 @@ void PointCloudClusterMatching::signalCallback(
 }
 
 void PointCloudClusterMatching::gripperEndPoseCallback(
-    const geometry_msgs::Pose & end_pose_msg) {
+    const geometry_msgs::PoseStamped & end_pose_msg) {
     this->gripper_pose_ = end_pose_msg;
 }
 
+/**
+ * subscriber to which cluster was manipulated
+ */
 void PointCloudClusterMatching::manipulatedClusterCallback(
-    const std_msgs::Int16 &manip_cluster_index_msg) {
+    const std_msgs::Int64 &manip_cluster_index_msg) {
     this->manipulated_cluster_index_ = manip_cluster_index_msg.data;
 }
 
@@ -147,11 +150,11 @@ void PointCloudClusterMatching::imageMaskPrevCallback(
 
 void PointCloudClusterMatching::indicesCallback(
     const jsk_recognition_msgs::ClusterPointIndices &indices_msgs) {
-    this->all_indices.clear();
+    this->all_indices_.clear();
     for (int i = 0; i < indices_msgs.cluster_indices.size(); i++) {
        pcl::PointIndices indices;
        indices.indices = indices_msgs.cluster_indices[i].indices;
-       this->all_indices.push_back(indices);
+       this->all_indices_.push_back(indices);
     }
 }
 
@@ -165,7 +168,7 @@ void PointCloudClusterMatching::cloudPrevCallback(
     pcl::fromROSMsg(*cloud_msg, *cloud_prev_);
     // this->prev_cloud_clusters.clear();
     // this->objectCloudClusters(
-    //    cloud_prev, this->all_indices, this->prev_cloud_clusters);
+    //    cloud_prev, this->all_indices_, this->prev_cloud_clusters);
 }
 
 void PointCloudClusterMatching::cloudCallback(
@@ -242,7 +245,8 @@ void PointCloudClusterMatching::cloudCallback(
              }
           }
        }
-
+       pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
+       pcl::copyPointCloud<PointT, PointT>(*cloud, *in_cloud);
        if (!filtered_indices->indices.empty())  {
           pcl::ExtractIndices<PointT>::Ptr eifilter(
              new pcl::ExtractIndices<PointT>);
@@ -261,17 +265,18 @@ void PointCloudClusterMatching::cloudCallback(
           // publish the indices
           std::vector<pcl::PointIndices> all_index;
           this->clusterMovedObjectROI(cloud, filtered_indices, all_index);
-
-          std::cout << "Cluster Size: " << all_index.size() << std::endl;
-
           if (all_index.size() > 0) {
              jsk_recognition_msgs::ClusterPointIndices ros_indices;
              ros_indices.cluster_indices = this->convertToROSPointIndices(
                 all_index, cloud_msg->header);
              ros_indices.header = cloud_msg->header;
-             this->publishing_indices = ros_indices;
+             this->publishing_indices.cluster_indices.insert(
+                this->publishing_indices.cluster_indices.end(),
+                ros_indices.cluster_indices.begin(),
+                ros_indices.cluster_indices.end());
              this->pub_indices_.publish(ros_indices);
           }
+          std::cout << "Cluster Size: " << all_index.size() << std::endl;
        }
        this->processing_counter_++;
        /*
@@ -282,7 +287,6 @@ void PointCloudClusterMatching::cloudCallback(
        cv::imshow("prev_mask", image_mask_);
        cv::waitKey(3);
        */
-       
     } else {
        if (this->processing_counter_ != 0) {
           this->publishing_cloud.header = cloud_msg->header;
@@ -331,14 +335,26 @@ void PointCloudClusterMatching::clusterMovedObjectROI(
     int index = -1;
     int icounter = 0;
     int cluster_size = min_cluster_size;
+    float end_effector_dist = FLT_MAX;
     for (std::vector<pcl::PointIndices>::iterator it = cluster_indices.begin();
          it != cluster_indices.end(); it++) {
        if (it->indices.size() > cluster_size) {
+          Eigen::Vector4f centroid;
+          pcl::compute3DCentroid<PointT, float>(
+             *in_cloud, it->indices, centroid);
+          float ct_x = static_cast<float>(centroid[0]);
+          float ct_y = static_cast<float>(centroid[1]);
+          float ct_z = static_cast<float>(centroid[2]);
+          if (!isnan(ct_x) && !isnan(ct_y) && !isnan(ct_z)) {
+             
+          }
+          
           cluster_size = it->indices.size();
           index = icounter;
        }
        icounter++;
     }
+    
     if (index != -1) {
        pcl::PointCloud<PointT>::Ptr cloud_filtered(new pcl::PointCloud<PointT>);
        for (int i = 0; i < cluster_indices[index].indices.size(); i++) {

@@ -44,12 +44,14 @@
 #include <pcl/surface/concave_hull.h>
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/filters/filter.h>
+#include <pcl/common/centroid.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
+#include <jsk_recognition_msgs/BoundingBox.h>
 #include <point_cloud_scene_decomposer/signal.h>
 #include <std_msgs/Bool.h>
-#include <std_msgs/Int16.h>
-#include <geometry_msgs/Pose.h>
+#include <std_msgs/Int64.h>
+#include <geometry_msgs/PoseStamped.h>
 
 #include <vector>
 
@@ -88,8 +90,8 @@ class PointCloudClusterMatching {
     cv::Mat image_mask_prev_;
    
     int manipulated_cluster_index_;
-    geometry_msgs::Pose gripper_pose_;
-    std::vector<pcl::PointIndices> all_indices;
+    geometry_msgs::PoseStamped gripper_pose_;
+    std::vector<pcl::PointIndices> all_indices_;
     std::vector<pcl::PointCloud<PointT>::Ptr> prev_cloud_clusters;
     pcl::PointCloud<PointT>::Ptr cloud_prev_;
    
@@ -99,7 +101,7 @@ class PointCloudClusterMatching {
     sensor_msgs::PointCloud2 publishing_cloud;
     jsk_recognition_msgs::ClusterPointIndices publishing_indices;
     point_cloud_scene_decomposer::signal signal_;
-
+   
     const int max_distance_;
     const int min_object_size_;
    
@@ -114,9 +116,9 @@ class PointCloudClusterMatching {
     virtual void signalCallback(
        const point_cloud_scene_decomposer::signal &);
     virtual void manipulatedClusterCallback(
-      const std_msgs::Int16 &);
+      const std_msgs::Int64 &);
     virtual void gripperEndPoseCallback(
-       const geometry_msgs::Pose &);
+       const geometry_msgs::PoseStamped &);
     virtual void imageCallback(
        const sensor_msgs::Image::ConstPtr &);
     virtual void imagePrevCallback(
