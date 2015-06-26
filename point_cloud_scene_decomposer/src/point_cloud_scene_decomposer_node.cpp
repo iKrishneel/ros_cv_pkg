@@ -7,7 +7,7 @@
 
 
 PointCloudSceneDecomposer::PointCloudSceneDecomposer() :
-    max_distance_(1.0f),
+    max_distance_(1.5f),
     start_signal_(true),
     processing_counter_(0),
     normal_(pcl::PointCloud<pcl::Normal>::Ptr(
@@ -27,9 +27,9 @@ void PointCloudSceneDecomposer::onInit() {
     this->pub_indices_ = nh_.advertise<
           jsk_recognition_msgs::ClusterPointIndices>(
              "/scene_decomposer/output/indices", sizeof(char));
-    this->pub_known_bbox_ = nh_.advertise<
-       jsk_recognition_msgs::BoundingBoxArray>(
-          "/scene_decomposer/output/known_bounding_boxes", sizeof(char));
+    // this->pub_known_bbox_ = nh_.advertise<
+    //    jsk_recognition_msgs::BoundingBoxArray>(
+    //       "/scene_decomposer/output/known_bounding_boxes", sizeof(char));
     this->pub_image_ = nh_.advertise<sensor_msgs::Image>(
         "/scene_decomposer/output/image", sizeof(char));
     this->pub_signal_ = nh_.advertise<point_cloud_scene_decomposer::signal>(
@@ -50,11 +50,11 @@ void PointCloudSceneDecomposer::subscribe() {
 
     this->sub_indices_ = nh_.subscribe(
        "input_indices", 1, &PointCloudSceneDecomposer::indicesCallback, this);
-
+    /*
     this->sub_bbox_ = nh_.subscribe(
        "input_known_bbox", 1,
        &PointCloudSceneDecomposer::manipulatedClusterCentroidCallback, this);
-    
+    */
     this->sub_cloud_ = nh_.subscribe(
        "input_cloud", 1, &PointCloudSceneDecomposer::cloudCallback, this);
 }
@@ -74,15 +74,16 @@ void PointCloudSceneDecomposer::signalCallback(
 /**
  * subscriber to the bounding_box_filter
  */
+/*
 void PointCloudSceneDecomposer::boundingBoxCallback(
     const jsk_recognition_msgs::BoundingBoxArray &bba_msg) {
     this->bbox_ = bba_msg;
 }
-
+/*
 
 /**
  * subscriber to manipulated cluster centroid
- */
+ 
 void PointCloudSceneDecomposer::manipulatedClusterCentroidCallback(
     const geometry_msgs::PoseArray &manip_centroid) {
     this->manipulated_obj_centroid_.poses.clear();
@@ -146,11 +147,13 @@ void PointCloudSceneDecomposer::cloudCallback(
        ROS_ERROR("-- CANNOT PROCESS EMPTY INSTANCE");
        return;
     }
-    
+
+    /*
     jsk_recognition_msgs::BoundingBoxArray known_object_bboxes;
     if (!this->start_signal_) {
        this->getKnownObjectRegion(known_object_bboxes, 0.05f);
     }
+    */
     
     if (this->start_signal_ ||
         ((this->processing_counter_ == this->signal_.counter) &&
@@ -434,45 +437,6 @@ PointCloudSceneDecomposer::convertToROSPointIndices(
     }
     return ret;
 }
-
-
-void PointCloudSceneDecomposer::getKnownObjectRegion(
-    jsk_recognition_msgs::BoundingBoxArray &known_object_bbox,
-    const float min_assignment_threshold) {
-    for (int j = 0; j < this->manipulated_obj_centroid_.poses.size(); j++) {
-       float distance = FLT_MAX;
-       int object_index = -1;
-       float b_x = manipulated_obj_centroid_.poses[j].position.x;
-       float b_y = manipulated_obj_centroid_.poses[j].position.y;
-       float b_z = manipulated_obj_centroid_.poses[j].position.z;
-       for (int i = 0; i < this->bbox_.boxes.size(); i++) {
-          float c_x = this->bbox_.boxes[i].pose.position.x +
-             this->bbox_.boxes[i].dimensions.x / 2;
-          float c_y = this->bbox_.boxes[i].pose.position.x +
-             this->bbox_.boxes[i].dimensions.y / 2;
-          float c_z = this->bbox_.boxes[i].pose.position.x +
-             this->bbox_.boxes[i].dimensions.z / 2;
-          float dist = std::sqrt(
-             std::pow((c_x - b_x), 2) +
-             std::pow((c_y - b_y), 2) +
-             std::pow((c_z - b_z), 2));
-          if (dist < distance && dist <= min_assignment_threshold) {
-             distance = dist;
-             object_index = i;
-          }
-       }
-       if (object_index != -1) {
-          known_object_bbox.boxes.push_back(this->bbox_.boxes[object_index]);
-       }
-    }
-}
-
-/*
-void PointCloudSceneDecomposer::filterKnownRegionLabelClusters(    
-    const jsk_recognition_msgs::BoundingBoxArray &known_box_bboxes ) {
-   
-}
-*/
 
 int main(int argc, char *argv[]) {
 

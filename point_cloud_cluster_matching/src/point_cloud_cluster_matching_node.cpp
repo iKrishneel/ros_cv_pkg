@@ -7,6 +7,7 @@ PointCloudClusterMatching::PointCloudClusterMatching() :
     depth_counter(0),
     min_object_size_(100),
     max_distance_(1.5f) {
+    this->known_object_bboxes_.clear();
     this->subscribe();
     this->onInit();
 }
@@ -18,6 +19,9 @@ void PointCloudClusterMatching::onInit() {
     this->pub_indices_ = pnh_.advertise<
        jsk_recognition_msgs::ClusterPointIndices>(
           "/manipulated_cluster/output/indices", sizeof(char));
+    this->pub_known_bbox_ = pnh_.advertise<
+       jsk_recognition_msgs::BoundingBoxArray>(
+          "/manipulated_cluster/output/known_bounding_boxes", sizeof(char));
     this->pub_signal_ = pnh_.advertise<point_cloud_scene_decomposer::signal>(
        "/manipulated_cluster/output/signal", sizeof(char));
 }
@@ -51,6 +55,9 @@ void PointCloudClusterMatching::subscribe() {
     this->sub_mask_prev_ = pnh_.subscribe(
        "input_mask_prev", sizeof(char),
        &PointCloudClusterMatching::imageMaskPrevCallback, this);
+     this->sub_bbox_ = pnh_.subscribe(
+        "input_bbox", 1,
+        &PointCloudClusterMatching::boundingBoxCallback, this);
     this->sub_cloud_ = this->pnh_.subscribe(
        "input_cloud", sizeof(char),
        &PointCloudClusterMatching::cloudCallback, this);
@@ -72,6 +79,14 @@ void PointCloudClusterMatching::signalCallback(
 void PointCloudClusterMatching::gripperEndPoseCallback(
     const geometry_msgs::PoseStamped & end_pose_msg) {
     this->gripper_pose_ = end_pose_msg;
+}
+
+/**
+ * subscriber to the bounding_box_filter of current frame
+ */
+void PointCloudClusterMatching::boundingBoxCallback(
+    const jsk_recognition_msgs::BoundingBoxArray &bba_msg) {
+    this->bbox_ = bba_msg;
 }
 
 /**
@@ -183,7 +198,8 @@ void PointCloudClusterMatching::cloudCallback(
     }
     if (this->signal_.command == 3 &&
         this->signal_.counter == this->processing_counter_) {
-
+       pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
+       pcl::copyPointCloud<PointT, PointT>(*cloud, *in_cloud);
        const float manip_distance_threshold = 0.05f;
        const float max_manip_distance = 0.30f;
        cv::Mat matte_image = cv::Mat::zeros(image_mask_.size(), CV_8U);
@@ -224,6 +240,8 @@ void PointCloudClusterMatching::cloudCallback(
              }
           }
        }
+       cloud->clear();
+       pcl::copyPointCloud<PointT, PointT>(*in_cloud, *cloud);
        
        this->cvMorphologicalOperations(matte_image, matte_image, true, 2);
        this->cvMorphologicalOperations(matte_image, matte_image, false, 2);
@@ -245,8 +263,6 @@ void PointCloudClusterMatching::cloudCallback(
              }
           }
        }
-       pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
-       pcl::copyPointCloud<PointT, PointT>(*cloud, *in_cloud);
        if (!filtered_indices->indices.empty())  {
           pcl::ExtractIndices<PointT>::Ptr eifilter(
              new pcl::ExtractIndices<PointT>);
@@ -263,12 +279,23 @@ void PointCloudClusterMatching::cloudCallback(
           this->publishing_cloud = ros_cloud;
 
           // publish the indices
-          std::vector<pcl::PointIndices> all_index;
-          this->clusterMovedObjectROI(cloud, filtered_indices, all_index);
-          if (all_index.size() > 0) {
+          std::vector<pcl::PointIndices> obj_index;
+          this->clusterMovedObjectROI(cloud, filtered_indices, obj_index);
+          if (obj_index.size() > 0) {
+             // current manipulated object centroid
+             Eigen::Vector4f centroid;
+             pcl::compute3DCentroid<PointT, float>(
+                *cloud, obj_index[0], centroid);
+             float ct_x = static_cast<float>(centroid[0]);
+             float ct_y = static_cast<float>(centroid[1]);
+             float ct_z = static_cast<float>(centroid[2]);
+             if (!isnan(ct_x) && !isnan(ct_y) && !isnan(ct_z)) {
+                this->known_object_bboxes_.push_back(
+                   Eigen::Vector3f(ct_x, ct_y, ct_z));
+             }
              jsk_recognition_msgs::ClusterPointIndices ros_indices;
              ros_indices.cluster_indices = this->convertToROSPointIndices(
-                all_index, cloud_msg->header);
+                obj_index, cloud_msg->header);
              ros_indices.header = cloud_msg->header;
              this->publishing_indices.cluster_indices.insert(
                 this->publishing_indices.cluster_indices.end(),
@@ -276,7 +303,19 @@ void PointCloudClusterMatching::cloudCallback(
                 ros_indices.cluster_indices.end());
              this->pub_indices_.publish(ros_indices);
           }
-          std::cout << "Cluster Size: " << all_index.size() << std::endl;
+          jsk_recognition_msgs::BoundingBoxArray known_object_bbox_array;
+          this->getKnownObjectRegion(
+             this->known_object_bboxes_, known_object_bbox_array);
+          known_object_bbox_array.header = cloud_msg->header;
+          this->pub_known_bbox_.publish(known_object_bbox_array);
+          // this->publishing_known_bbox.boxes.insert(
+          //    this->publishing_known_bbox.boxes.end(),
+          //    known_object_bbox_array.boxes.begin(),
+          //    known_object_bbox_array.boxes.end());
+          this->publishing_known_bbox = known_object_bbox_array;
+          
+          std::cout << "Cluster Size: " << obj_index.size() << "\t"
+                    << publishing_known_bbox.boxes.size() << std::endl;
        }
        this->processing_counter_++;
        /*
@@ -289,12 +328,14 @@ void PointCloudClusterMatching::cloudCallback(
        */
     } else {
        if (this->processing_counter_ != 0) {
+          ROS_WARN("-- CLUSTERING NODE PUBLISHING OLD TOPICS");
           this->publishing_cloud.header = cloud_msg->header;
-          this->pub_cloud_.publish(this->publishing_cloud);
           this->publishing_indices.header = cloud_msg->header;
+          this->publishing_known_bbox.header = cloud_msg->header;
+          
+          this->pub_known_bbox_.publish(this->publishing_known_bbox);
+          this->pub_cloud_.publish(this->publishing_cloud);
           this->pub_indices_.publish(this->publishing_indices);
-       } else {
-          ROS_WARN("-- NOT PROCESSING");
        }
     }
     point_cloud_scene_decomposer::signal pub_sig;
@@ -310,66 +351,102 @@ void PointCloudClusterMatching::cloudCallback(
 void PointCloudClusterMatching::clusterMovedObjectROI(
     pcl::PointCloud<PointT>::Ptr in_cloud,
     pcl::PointIndices::Ptr indices,
-    std::vector<pcl::PointIndices> &cluster_indices,
-    const int min_cluster_size) {
+    std::vector<pcl::PointIndices> &moved_indices,
+    const int min_cluster_size,
+    const float min_distance_threshold) {
     if (in_cloud->empty() || indices->indices.empty()) {
        ROS_WARN("-- Not object Region for Clustering...");
        return;
     }
-    cluster_indices.clear();
     pcl::search::KdTree<PointT>::Ptr tree(
        new pcl::search::KdTree<PointT>);
     tree->setInputCloud(in_cloud);
+    std::vector<pcl::PointIndices> cluster_indices;
     pcl::EuclideanClusterExtraction<PointT> euclidean_clustering;
-    euclidean_clustering.setClusterTolerance(0.01);
+    euclidean_clustering.setClusterTolerance(0.02);
     euclidean_clustering.setMinClusterSize(min_cluster_size);
     euclidean_clustering.setMaxClusterSize(25000);
     euclidean_clustering.setSearchMethod(tree);
     euclidean_clustering.setInputCloud(in_cloud);
     // euclidean_clustering.setIndices(indices);
-    // std::vector<pcl::PointIndices> cluster_indices;
     euclidean_clustering.extract(cluster_indices);
+
+    std::cout << "\n ----- # of Cluster: " << cluster_indices.size()
+              << "\n"<< std::endl;
     
-    /* TODO(ADD THE CODE TO CHECK THE BEST CLUSTER NEADR LAST GRIP POSITION)*/
-    /*
     int index = -1;
     int icounter = 0;
-    int cluster_size = min_cluster_size;
     float end_effector_dist = FLT_MAX;
     for (std::vector<pcl::PointIndices>::iterator it = cluster_indices.begin();
          it != cluster_indices.end(); it++) {
-       if (it->indices.size() > cluster_size) {
+       if (it->indices.size() > min_cluster_size) {
           Eigen::Vector4f centroid;
           pcl::compute3DCentroid<PointT, float>(
-             *in_cloud, it->indices, centroid);
+             *in_cloud, *it, centroid);
           float ct_x = static_cast<float>(centroid[0]);
           float ct_y = static_cast<float>(centroid[1]);
           float ct_z = static_cast<float>(centroid[2]);
           if (!isnan(ct_x) && !isnan(ct_y) && !isnan(ct_z)) {
-             
+             float dist = std::sqrt(
+                std::pow((ct_x - this->gripper_pose_.pose.position.x), 2) +
+                std::pow((ct_y - this->gripper_pose_.pose.position.y), 2) +
+                std::pow((ct_z - this->gripper_pose_.pose.position.z), 2));
+             if (dist < end_effector_dist && dist < min_distance_threshold) {
+                end_effector_dist = dist;
+                index = icounter;
+             }
           }
-          
-          cluster_size = it->indices.size();
-          index = icounter;
        }
        icounter++;
     }
-    
     if (index != -1) {
        pcl::PointCloud<PointT>::Ptr cloud_filtered(new pcl::PointCloud<PointT>);
        for (int i = 0; i < cluster_indices[index].indices.size(); i++) {
           int idx = cluster_indices[index].indices.at(i);
           cloud_filtered->push_back(in_cloud->points[idx]);
        }
+       moved_indices.clear();
+       moved_indices.push_back(cluster_indices[index]);
        in_cloud->clear();
        pcl::copyPointCloud<PointT, PointT>(*cloud_filtered, *in_cloud);
     }
-    /*
-    indices = pcl::PointIndices::Ptr(new pcl::PointIndices);
-    if (index != -1) {
-       indices->indices = cluster_indices[index].indices;
+}
+
+
+/**
+ * determines all the known object region
+ TODO(Add the feature matching)
+ */
+void PointCloudClusterMatching::getKnownObjectRegion(
+    const std::vector<Eigen::Vector3f> &manipulated_obj_centroids,
+    jsk_recognition_msgs::BoundingBoxArray &known_object_bbox,
+    const float min_assignment_threshold) {
+    for (int j = 0; j < manipulated_obj_centroids.size(); j++) {
+       float distance = FLT_MAX;
+       int object_index = -1;
+       float b_x = manipulated_obj_centroids[j][0];
+       float b_y = manipulated_obj_centroids[j][1];
+       float b_z = manipulated_obj_centroids[j][2];
+       for (int i = 0; i < this->bbox_.boxes.size(); i++) {
+          float c_x = this->bbox_.boxes[i].pose.position.x +
+             this->bbox_.boxes[i].dimensions.x / 2;
+          float c_y = this->bbox_.boxes[i].pose.position.x +
+             this->bbox_.boxes[i].dimensions.y / 2;
+          float c_z = this->bbox_.boxes[i].pose.position.x +
+             this->bbox_.boxes[i].dimensions.z / 2;
+          float dist = std::sqrt(
+             std::pow((c_x - b_x), 2) +
+             std::pow((c_y - b_y), 2) +
+             std::pow((c_z - b_z), 2));
+          if (dist < distance && dist <= min_assignment_threshold) {
+             distance = dist;
+             object_index = i;
+          }
+       }
+       if (object_index != -1) {
+          known_object_bbox.boxes.push_back(this->bbox_.boxes[object_index]);
+       }
     }
-    */
 }
 
 void PointCloudClusterMatching::contourSmoothing(

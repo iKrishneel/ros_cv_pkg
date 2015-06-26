@@ -25,19 +25,19 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     ros::Subscriber sub_norm_;
     ros::Subscriber sub_image_;
     ros::Subscriber sub_indices_;
-    ros::Subscriber sub_bbox_;
+    // ros::Subscriber sub_bbox_;
    
     ros::Subscriber sub_signal_;
     ros::Publisher pub_signal_;
-    ros::Publisher pub_known_bbox_;
+    // ros::Publisher pub_known_bbox_;
    
     pcl::PointCloud<PointT>::Ptr pcl_cloud__;
     pcl::PointCloud<PointT>::Ptr filter_cloud__;
 
     bool start_signal_;
     int processing_counter_;
-    jsk_recognition_msgs::BoundingBoxArray bbox_;
-    geometry_msgs::PoseArray manipulated_obj_centroid_;
+    // jsk_recognition_msgs::BoundingBoxArray bbox_;
+    // geometry_msgs::PoseArray manipulated_obj_centroid_;
     point_cloud_scene_decomposer::signal signal_;
     // std::vector<pcl::PointIndices> manipulated_obj_indices_;
    
@@ -91,10 +91,10 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
        const sensor_msgs::Image::ConstPtr &);
     void indicesCallback(
        const jsk_recognition_msgs::ClusterPointIndices &);
-    void boundingBoxCallback(
-       const jsk_recognition_msgs::BoundingBoxArray &);
-    void manipulatedClusterCentroidCallback(
-      const geometry_msgs::PoseArray &);
+    // void boundingBoxCallback(
+    //    const jsk_recognition_msgs::BoundingBoxArray &);
+    // void manipulatedClusterCentroidCallback(
+    //   const geometry_msgs::PoseArray &);
    
    
     void extractPointCloudClustersFrom2DMap(
@@ -119,11 +119,5 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
        pcl::PointCloud<PointT>::Ptr,
        std::vector<pcl::PointIndices> &,
        const int = 64);
-
-    virtual void getKnownObjectRegion(
-       jsk_recognition_msgs::BoundingBoxArray &,
-       const float = 0.05f);
-   
-   
 };
 #endif  // _POINT_CLOUD_SCENE_DECOMPOSER_H_

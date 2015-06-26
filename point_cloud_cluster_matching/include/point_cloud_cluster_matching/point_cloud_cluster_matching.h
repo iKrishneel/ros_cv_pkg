@@ -47,11 +47,13 @@
 #include <pcl/common/centroid.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
-#include <jsk_recognition_msgs/BoundingBox.h>
+#include <jsk_recognition_msgs/BoundingBoxArray.h>
 #include <point_cloud_scene_decomposer/signal.h>
+
 #include <std_msgs/Bool.h>
 #include <std_msgs/Int64.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/PoseArray.h>
 
 #include <vector>
 
@@ -79,10 +81,12 @@ class PointCloudClusterMatching {
    
     ros::Subscriber sub_manip_cluster_;
     ros::Subscriber sub_grip_end_pose_;
-
+    ros::Subscriber sub_bbox_;
+   
     ros::Publisher pub_signal_;
     ros::Publisher pub_cloud_;
     ros::Publisher pub_indices_;
+    ros::Publisher pub_known_bbox_;
    
     cv::Mat image_;
     cv::Mat image_prev_;
@@ -90,6 +94,7 @@ class PointCloudClusterMatching {
     cv::Mat image_mask_prev_;
    
     int manipulated_cluster_index_;
+    jsk_recognition_msgs::BoundingBoxArray bbox_;
     geometry_msgs::PoseStamped gripper_pose_;
     std::vector<pcl::PointIndices> all_indices_;
     std::vector<pcl::PointCloud<PointT>::Ptr> prev_cloud_clusters;
@@ -100,7 +105,9 @@ class PointCloudClusterMatching {
 
     sensor_msgs::PointCloud2 publishing_cloud;
     jsk_recognition_msgs::ClusterPointIndices publishing_indices;
+    jsk_recognition_msgs::BoundingBoxArray publishing_known_bbox;
     point_cloud_scene_decomposer::signal signal_;
+    std::vector<Eigen::Vector3f> known_object_bboxes_;
    
     const int max_distance_;
     const int min_object_size_;
@@ -127,26 +134,32 @@ class PointCloudClusterMatching {
        const sensor_msgs::Image::ConstPtr &);
     virtual void imageMaskPrevCallback(
       const sensor_msgs::Image::ConstPtr &);
-
+    virtual void boundingBoxCallback(
+       const jsk_recognition_msgs::BoundingBoxArray &);
+   
     void contourSmoothing(
        cv::Mat &);
     void clusterMovedObjectROI(
        pcl::PointCloud<PointT>::Ptr,
        pcl::PointIndices::Ptr,
        std::vector<pcl::PointIndices> &,
-       const int = 64);
+       const int = 64,
+       const float = 0.05f);
 
     std::vector<pcl_msgs::PointIndices> convertToROSPointIndices(
        const std::vector<pcl::PointIndices>,
        const std_msgs::Header&);
    
-    void extractObjectROIIndices(
+    virtual void extractObjectROIIndices(
        cv::Rect_<int> &,
        pcl::PointIndices::Ptr,
        const cv::Size);
-    void cvMorphologicalOperations(
+    virtual void cvMorphologicalOperations(
        const cv::Mat &, cv::Mat &, bool, int);
-   
+    virtual void getKnownObjectRegion(
+       const std::vector<Eigen::Vector3f> &,
+       jsk_recognition_msgs::BoundingBoxArray &,
+       const float = 0.05f);
 
 
 
