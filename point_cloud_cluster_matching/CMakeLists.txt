@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(point_cloud_scene_decomposer)
+project(point_cloud_cluster_matching)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -14,11 +14,9 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
 )
 
-find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msgs std_srvs geometry_msgs roscpp rospy sensor_msgs visualization_msgs message_filters message_generation jsk_pcl_ros interactive_markers pcl_conversions jsk_topic_tools rviz eigen_conversions dynamic_tf_publisher jsk_interactive_marker jsk_recognition_msgs move_base_msgs rosgraph_msgs topic_tools jsk_topic_tools jsk_ik_server pcl_msgs jsk_footstep_msgs drc_com_common jsk_perception jsk_calibration resized_image_transport smach_msgs pcl_ros nav_msgs tf dynamic_reconfigure roseus)
-
-
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
+find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msgs std_srvs geometry_msgs roscpp rospy sensor_msgs visualization_msgs message_filters message_generation jsk_pcl_ros interactive_markers pcl_conversions jsk_topic_tools rviz eigen_conversions dynamic_tf_publisher jsk_interactive_marker jsk_recognition_msgs move_base_msgs rosgraph_msgs topic_tools jsk_topic_tools jsk_ik_server pcl_msgs jsk_footstep_msgs drc_com_common jsk_perception jsk_calibration resized_image_transport smach_msgs pcl_ros nav_msgs tf dynamic_reconfigure roseus)
 
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -50,22 +48,19 @@ find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msg
 ##   * uncomment the generate_messages entry below
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
-generate_dynamic_reconfigure_options(
-    cfg/PointCloudFilterUtils.cfg)
-
 ## Generate messages in the 'msg' folder
-add_message_files(
-   FILES
-   signal.msg
-   #   Message2.msg
-   )
+# add_message_files(
+#   FILES
+#   Message1.msg
+#   Message2.msg
+# )
 
 ## Generate services in the 'srv' folder
-add_service_files(
-  FILES
-  ClusterVoxels.srv
+# add_service_files(
+#   FILES
+#   Service1.srv
 #   Service2.srv
-)
+# )
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -75,11 +70,10 @@ add_service_files(
 # )
 
 ## Generate added messages and services with any dependencies listed here
-generate_messages(
-  DEPENDENCIES
-  #   sensor_msgs#
-  std_msgs
-)
+# generate_messages(
+#   DEPENDENCIES
+#   std_msgs  # Or other packages containing msgs
+# )
 
 ###################################
 ## catkin specific configuration ##
@@ -91,10 +85,9 @@ generate_messages(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-    INCLUDE_DIRS include
-    LIBRARIES point_cloud_scene_decomposer
-    #CATKIN_DEPENDS cv_bridge image_tranport pcl_conversions pcl_conversions roscpp rospy sensor_msgs std_msgs
-    CATKIN_DEPENDS std_msgs
+  INCLUDE_DIRS include
+  LIBRARIES point_cloud_cluster_matching
+#  CATKIN_DEPENDS cv_bridge roscpp rospy
  DEPENDS system_lib
 )
 
@@ -110,39 +103,24 @@ include_directories(
 )
 
 ## Declare a cpp library
-# add_library(point_cloud_scene_decomposer
-#   src/${PROJECT_NAME}/point_cloud_scene_decomposer.cpp
+# add_library(point_cloud_cluster_matching
+#   src/${PROJECT_NAME}/point_cloud_cluster_matching.cpp
 # )
 
 ## Declare a cpp executable
-add_executable(pcl_filter_utils_node
-  src/pcl_filter_utils_node.cpp)
-add_executable(point_cloud_image_creator_node
-  src/point_cloud_image_creator_node.cpp)
-add_executable(point_cloud_normal_gradient_node
-  src/point_cloud_normal_gradient_node.cpp)
- add_executable(point_cloud_scene_decomposer_node 
-   src/point_cloud_scene_decomposer_node.cpp
-   src/scene_decomposer_image_processor.cpp
-   src/region_adjacency_graph.cpp)
 add_executable(point_cloud_cluster_matching_node
-  src/point_cloud_cluster_matching_node.cpp)
+  src/point_cloud_cluster_matching_node.cpp
+  #src/point_cloud_image_creator.cpp
+  )
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
-add_dependencies(pcl_filter_utils_node ${PROJECT_NAME}_gencfg)
+# add_dependencies(point_cloud_cluster_matching_node point_cloud_cluster_matching_generate_messages_cpp)
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(point_cloud_image_creator_node
-  ${catkin_LIBRARIES})
-target_link_libraries(pcl_filter_utils_node
-  ${catkin_LIBRARIES})
-target_link_libraries(point_cloud_normal_gradient_node
-  ${catkin_LIBRARIES})
-target_link_libraries(point_cloud_scene_decomposer_node
-  ${catkin_LIBRARIES})
 target_link_libraries(point_cloud_cluster_matching_node
-   ${catkin_LIBRARIES})
+   ${catkin_LIBRARIES}
+ )
 
 #############
 ## Install ##
@@ -159,7 +137,7 @@ target_link_libraries(point_cloud_cluster_matching_node
 # )
 
 ## Mark executables and/or libraries for installation
-# install(TARGETS point_cloud_scene_decomposer point_cloud_scene_decomposer_node
+# install(TARGETS point_cloud_cluster_matching point_cloud_cluster_matching_node
 #   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
@@ -184,7 +162,7 @@ target_link_libraries(point_cloud_cluster_matching_node
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_point_cloud_scene_decomposer.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_point_cloud_cluster_matching.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()

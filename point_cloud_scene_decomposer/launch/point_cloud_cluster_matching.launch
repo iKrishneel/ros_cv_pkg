@@ -1,0 +1,20 @@
+<launch>
+  <node pkg="point_cloud_cluster_matching" type="point_cloud_cluster_matching_node"
+	name="point_cloud_cluster_matching" output="screen">
+
+    <remap from="input_cloud" to="/openni_c2/depth_registered/points" />
+    <remap from="input_indices" to="/scene_decomposer/output/indices" />
+    <remap from="input_cloud_prev" to="/scene_decomposer/output/original_cloud" />
+
+    <!---<remap from="input_image" to="/openni_c2/rgb/image_rect_color" />-->
+    <remap from="input_image_prev" to="/openni_c2/rgb/image_rect_color" />
+
+    <remap from="input_mask" to="/cloud_image/output/interpolated_image" />
+    <remap from="input_mask_prev" to="/scene_decomposer/output/image" />
+    <remap from="input_signal" to="/robot_pushing_motion_node/signal" />
+    <remap from="input_bbox" to="/bounding_box_filter/output_box" />
+    
+    <remap from="input_manip_cluster" to="/robot_pushing_motion_node/pushed_box_index" />
+    <remap from="input_gripper_end_pose" to="/robot_pushing_motion_node/pushed_box_assumed_pose" />
+  </node>
+</launch>

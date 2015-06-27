@@ -74,7 +74,7 @@ void SceneDecomposerImageProcessor:: cvVisualization(
            // }
        labCounter += patch_label[y].k;
     }
-    cv::imshow(wname, regionMD);
+    /// cv::imshow(wname, regionMD);
 }
 
 
@@ -129,8 +129,8 @@ void SceneDecomposerImageProcessor::publishROSImage(
     out_msg->image = dep;
     this->depth_pub_.publish(out_msg->toImageMsg());
 
-    cv::imshow("depth", depth);
-    cv::waitKey(3);
+    /// cv::imshow("depth", depth);
+    // cv::waitKey(3);
 }
 
 
@@ -167,8 +167,8 @@ void SceneDecomposerImageProcessor::getDepthEdge(
     }
     // edgeMap = cv::Mat::zeros(img.size(), CV_32SC1);
     // edgeMap = binary_edge.clone();
-    cv::imshow("Binary Edge", binary_edge);
-    cv::imshow("Depth Edge", edgeMap);
+    /// cv::imshow("Binary Edge", binary_edge);
+    /// cv::imshow("Depth Edge", edgeMap);
     
     cv::Mat marker = cv::Mat(binary_edge.size(), CV_8UC1);
     binary_edge.convertTo(marker, CV_8UC1, 255.0f);
@@ -198,7 +198,7 @@ void SceneDecomposerImageProcessor::cvMorphologicalOperations(
                 erosion_const * erosion_size + sizeof(char)),
        cv::Point(erosion_size, erosion_size));
     cv::dilate(img, erosion_dst, element);
-    cv::imshow("Morphological Op", erosion_dst);
+    /// cv::imshow("Morphological Op", erosion_dst);
 }
 
 /**
@@ -236,7 +236,7 @@ void SceneDecomposerImageProcessor::getRGBEdge(
     } else if (type == "cvCanny") {
        cv:Canny(img_, edgeMap, 20, 100, 3);
     }
-    imshow("RGB-Edge", edgeMap);
+    /// cv::imshow("RGB-Edge", edgeMap);
 }
 
 
@@ -508,7 +508,7 @@ void SceneDecomposerImageProcessor::cvLabelEgdeMap(
     this->cvGetLabelImagePatch(cloud, src, mop_img, patch_label);
     
     this->cvVisualization(patch_label, edgeMap.size());
-    cv::imshow("Thin", mop_img);
+    // cv::imshow("Thin", mop_img);
     // std::cout << "Total Size: " << this->total_cluster << std::endl;
 }
 
