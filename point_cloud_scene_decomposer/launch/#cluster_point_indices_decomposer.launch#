@@ -1,0 +1,30 @@
+<launch>
+  <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer"
+	name="point_cloud_scene_decomposer_cluster_points">
+    <remap from="~input" to="scene_decomposer/output/cloud_cluster" />
+    <remap from="~target" to="scene_decomposer/output/indices" />
+    <remap from="~align_planes" to="/multi_plane_estimate/output_refined_polygon" />
+    <remap from="~align_planes_coefficients"
+           to="/multi_plane_estimate/output_refined_coefficients" />
+    <rosparam>
+      align_boxes: true
+      use_pca: true
+      publish_clouds: false
+      publish_tf: true
+    </rosparam> 
+  </node>
+  <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer"
+	name="manipulated_clustering">
+    <remap from="~input" to="/manipulated_cluster/output/cloud_cluster" />
+    <remap from="~target" to="/manipulated_cluster/output/indices" />
+    <remap from="~align_planes" to="/multi_plane_estimate/output_refined_polygon" />
+    <remap from="~align_planes_coefficients"
+           to="/multi_plane_estimate/output_refined_coefficients" />
+    <rosparam>
+      align_boxes: true
+      use_pca: true
+      publish_clouds: false
+      publish_tf: true
+    </rosparam> 
+  </node>
+</launch>

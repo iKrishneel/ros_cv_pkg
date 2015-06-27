@@ -1,0 +1,9 @@
+<launch>
+1;3201;0c  <node pkg="pcl_filter_utils" type="pcl_filter_utils_node" 
+	name ="pcl_filter_utils" output="screen">
+    <remap from="input" to="/openni_c2/depth_registered/points"/>
+    <remap from="target" to="pcl_filter_utils/output/cloud" />
+  </node>
+  <node pkg="rqt_reconfigure" type="rqt_reconfigure"
+	name="detector_reconfigure" />
+</launch>

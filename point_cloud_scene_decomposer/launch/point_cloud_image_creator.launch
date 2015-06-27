@@ -1,0 +1,11 @@
+<launch>
+  <node pkg="point_cloud_image_creator" type="point_cloud_image_creator_node"
+	name="point_cloud_image_creator" output="screen">
+    <remap from="input_info" to="/openni_c2/depth_registered/camera_info" />
+    <remap from="input" to="/normal_gradient/output/cloud" />
+  </node>
+  <node pkg="image_view" type="image_view"
+	name="image_view" output="screen" >
+    <remap from="image" to="/cloud_image/output/image" />
+  </node>
+</launch>
