@@ -36,10 +36,7 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
 
     bool start_signal_;
     int processing_counter_;
-    // jsk_recognition_msgs::BoundingBoxArray bbox_;
-    // geometry_msgs::PoseArray manipulated_obj_centroid_;
     point_cloud_scene_decomposer::signal signal_;
-    // std::vector<pcl::PointIndices> manipulated_obj_indices_;
    
     //  variables to publish while not processing
     jsk_recognition_msgs::ClusterPointIndices publishing_indices;
@@ -90,12 +87,7 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     void imageCallback(
        const sensor_msgs::Image::ConstPtr &);
     void indicesCallback(
-       const jsk_recognition_msgs::ClusterPointIndices &);
-    // void boundingBoxCallback(
-    //    const jsk_recognition_msgs::BoundingBoxArray &);
-    // void manipulatedClusterCentroidCallback(
-    //   const geometry_msgs::PoseArray &);
-   
+       const jsk_recognition_msgs::ClusterPointIndices &);   
    
     void extractPointCloudClustersFrom2DMap(
         const pcl::PointCloud<PointT>::Ptr,

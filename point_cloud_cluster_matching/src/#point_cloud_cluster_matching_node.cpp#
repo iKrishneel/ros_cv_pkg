@@ -765,7 +765,7 @@ cv::Rect_<int> PointCloudClusterMatching::detectMatchROI(
     }
     if (corner_top_left.y < 0) {
         corner_top_left.y = 0;
-    }
+        ;*****======    }
     if (corner_top_left.x < 0 && corner_bottom_left.x < 0) {
         corner_top_left.x = 0;
         corner_bottom_left. x = 0;

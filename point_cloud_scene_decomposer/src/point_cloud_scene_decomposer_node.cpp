@@ -14,7 +14,6 @@ PointCloudSceneDecomposer::PointCloudSceneDecomposer() :
                 new pcl::PointCloud<pcl::Normal>)),
     orig_cloud_(pcl::PointCloud<PointT>::Ptr(
                         new pcl::PointCloud<PointT>)) {
-    // this->manipulated_obj_indices_.clear();
     this->subscribe();
     this->onInit();
 }
@@ -27,9 +26,6 @@ void PointCloudSceneDecomposer::onInit() {
     this->pub_indices_ = nh_.advertise<
           jsk_recognition_msgs::ClusterPointIndices>(
              "/scene_decomposer/output/indices", sizeof(char));
-    // this->pub_known_bbox_ = nh_.advertise<
-    //    jsk_recognition_msgs::BoundingBoxArray>(
-    //       "/scene_decomposer/output/known_bounding_boxes", sizeof(char));
     this->pub_image_ = nh_.advertise<sensor_msgs::Image>(
         "/scene_decomposer/output/image", sizeof(char));
     this->pub_signal_ = nh_.advertise<point_cloud_scene_decomposer::signal>(
@@ -47,14 +43,8 @@ void PointCloudSceneDecomposer::subscribe() {
        "input_image", 1, &PointCloudSceneDecomposer::imageCallback, this);
     this->sub_norm_ = nh_.subscribe(
        "input_norm", 1, &PointCloudSceneDecomposer::normalCallback, this);
-
     this->sub_indices_ = nh_.subscribe(
        "input_indices", 1, &PointCloudSceneDecomposer::indicesCallback, this);
-    /*
-    this->sub_bbox_ = nh_.subscribe(
-       "input_known_bbox", 1,
-       &PointCloudSceneDecomposer::manipulatedClusterCentroidCallback, this);
-    */
     this->sub_cloud_ = nh_.subscribe(
        "input_cloud", 1, &PointCloudSceneDecomposer::cloudCallback, this);
 }
@@ -68,26 +58,6 @@ void PointCloudSceneDecomposer::unsubscribe() {
 void PointCloudSceneDecomposer::signalCallback(
     const point_cloud_scene_decomposer::signal &signal_msg) {
     this->signal_ = signal_msg;
-}
-
-
-/**
- * subscriber to the bounding_box_filter
- */
-/*
-void PointCloudSceneDecomposer::boundingBoxCallback(
-    const jsk_recognition_msgs::BoundingBoxArray &bba_msg) {
-    this->bbox_ = bba_msg;
-}
-/*
-
-/**
- * subscriber to manipulated cluster centroid
- 
-void PointCloudSceneDecomposer::manipulatedClusterCentroidCallback(
-    const geometry_msgs::PoseArray &manip_centroid) {
-    this->manipulated_obj_centroid_.poses.clear();
-    this->manipulated_obj_centroid_ = manip_centroid;
 }
 
 /**
