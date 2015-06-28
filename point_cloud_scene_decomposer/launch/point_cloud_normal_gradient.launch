@@ -1,5 +1,5 @@
 <launch>
-  <node pkg="point_cloud_normal_gradient" type="point_cloud_normal_gradient_node"
+  <node pkg="point_cloud_scene_decomposer" type="point_cloud_normal_gradient_node"
 	name="point_cloud_normal_gradient" output="screen">
     <remap from="input" to="/plane_extraction/output" />
   </node>

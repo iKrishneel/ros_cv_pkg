@@ -191,6 +191,9 @@ void PointCloudClusterMatching::cloudCallback(
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
+    std::cout << "Incoming Signal: " << this->signal_.command << "\t"
+              << this->signal_.counter << std::endl;
+    
     if (cloud->empty() /*|| image_.empty()*/ ||
         image_mask_.empty() || this->image_mask_prev_.empty()) {
        std::cout << "Size: " << cloud->size() << "\t" << image_mask_.size()
@@ -198,9 +201,11 @@ void PointCloudClusterMatching::cloudCallback(
        ROS_ERROR("-- EMPTY CLOUD CANNOT BE PROCESSED.");
        return;
     }
+
+    
     if (this->signal_.command == 3 &&
-        this->signal_.counter == this->processing_counter_ &&
-        this->manipulated_cluster_index_ != -1) {
+        this->signal_.counter == this->processing_counter_ /*&&
+        /*this->manipulated_cluster_index_ != -1*/) {
        pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
        pcl::copyPointCloud<PointT, PointT>(*cloud, *in_cloud);
        const float manip_distance_threshold = 0.05f;
@@ -326,8 +331,8 @@ void PointCloudClusterMatching::cloudCallback(
        cv::waitKey(3);
        */
     } else {
-       if (this->processing_counter_ != 0 &&
-           this->manipulated_cluster_index_ != -1) {
+       if (this->processing_counter_ != 0 /*&&
+           /*this->manipulated_cluster_index_ != -1*/) {
           ROS_WARN("-- CLUSTERING NODE PUBLISHING OLD TOPICS");
           this->publishing_cloud.header = cloud_msg->header;
           this->publishing_indices.header = cloud_msg->header;
@@ -336,9 +341,10 @@ void PointCloudClusterMatching::cloudCallback(
           this->pub_known_bbox_.publish(this->publishing_known_bbox);
           this->pub_cloud_.publish(this->publishing_cloud);
           this->pub_indices_.publish(this->publishing_indices);
-       } else if (this->manipulated_cluster_index_ == -1) {
-          ROS_INFO("\nALL OBJECTS ON THE TABLE IS LABELED\n");
        }
+/* else if (this->manipulated_cluster_index_ == -1) {
+          ROS_INFO("\nALL OBJECTS ON THE TABLE IS LABELED\n");
+          }*/
     }
     point_cloud_scene_decomposer::signal pub_sig;
     pub_sig.header = cloud_msg->header;
@@ -346,7 +352,7 @@ void PointCloudClusterMatching::cloudCallback(
     pub_sig.counter = this->processing_counter_;
     this->pub_signal_.publish(pub_sig);
     
-    std::cout << "Counter: " << pub_sig.command << "\t"
+    std::cout << " --- Counter: " << pub_sig.command << "\t"
               << pub_sig.counter   << std::endl;
 }
 
@@ -440,7 +446,8 @@ void PointCloudClusterMatching::getKnownObjectRegion(
              std::pow((c_x - b_x), 2) +
              std::pow((c_y - b_y), 2) +
              std::pow((c_z - b_z), 2));
-          if (dist < distance && dist <= min_assignment_threshold) {
+          if (dist < distance && dist <
+              min_assignment_threshold) {
              distance = dist;
              object_index = i;
           }
