@@ -578,7 +578,7 @@ void RegionAdjacencyGraph::printGraph(
 void RegionAdjacencyGraph::computeCloudClusterRPYHistogram(
     const pcl::PointCloud<PointT>::Ptr _cloud,
     const pcl::PointCloud<pcl::Normal>::Ptr _normal,
-    cv::Mat &_histogram) {
+    cv::Mat &histogram) {
     pcl::VFHEstimation<PointT,
                        pcl::Normal,
                        pcl::VFHSignature308> vfh;
@@ -590,11 +590,46 @@ void RegionAdjacencyGraph::computeCloudClusterRPYHistogram(
     pcl::PointCloud<pcl::VFHSignature308>::Ptr _vfhs(
        new pcl::PointCloud<pcl::VFHSignature308>());
     vfh.compute(*_vfhs);
-    _histogram = cv::Mat(sizeof(char), 308, CV_32F);
+    cv::Mat _histogram = cv::Mat(sizeof(char), 308, CV_32F);
     for (int i = 0; i < _histogram.cols; i++) {
        _histogram.at<float>(0, i) = _vfhs->points[0].histogram[i];
     }
-    // cv::normalize(_histogram, _histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+    cv::normalize(_histogram, _histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+    // compute FPFH and cluster the features
+    pcl::FPFHEstimation<PointT, pcl::Normal, pcl::FPFHSignature33> fpfh;
+    fpfh.setInputCloud(_cloud);
+    fpfh.setInputNormals(_normal);
+    // pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
+    fpfh.setSearchMethod(tree);
+    pcl::PointCloud<pcl::FPFHSignature33>::Ptr fpfhs(
+       new pcl::PointCloud<pcl::FPFHSignature33>());
+    fpfh.setRadiusSearch(0.025);
+    fpfh.compute(*fpfhs);
+    cv::Mat fpfh_features = cv::Mat(_cloud->size(), 33, CV_32F);
+    for (int i = 0; i < fpfh_features.rows; i++) {
+       for (int j = 0; j < fpfh_features.cols; j++) {
+          fpfh_features.at<float>(i, j) = fpfhs->points[i].histogram[j];
+       }
+    }
+    cv::Mat label;
+    cv::Mat centers;
+    int cluster_count = 20;
+    cv::kmeans(fpfh_features, cluster_count, label, cv::TermCriteria(
+                  cv::TermCriteria::EPS + cv::TermCriteria::COUNT, 3, 1.0), 10,
+               cv::KMEANS_PP_CENTERS, centers);
+    centers = centers.reshape(1, 1);
+    cv::normalize(centers, centers, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+    
+    cv::Mat featureMD = cv::Mat(
+       _histogram.rows, _histogram.cols + centers.cols, CV_32F);
+    for (int i = 0; i < _histogram.cols; i++) {
+       featureMD.at<float>(0, i) = _histogram.at<float>(0, i);
+    }
+    for (int i = _histogram.cols; i < featureMD.cols; i++) {
+       featureMD.at<float>(0, i) = centers.at<float>(0, i - _histogram.cols);
+    }
+    histogram = featureMD.clone();
+    // histogram = _histogram.clone();
 }
 
 

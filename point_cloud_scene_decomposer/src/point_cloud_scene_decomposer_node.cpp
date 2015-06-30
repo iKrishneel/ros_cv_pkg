@@ -7,7 +7,7 @@
 
 
 PointCloudSceneDecomposer::PointCloudSceneDecomposer() :
-    max_distance_(1.0f),
+    max_distance_(1.5f),
     normal_(pcl::PointCloud<pcl::Normal>::Ptr(
                 new pcl::PointCloud<pcl::Normal>)),
     orig_cloud_(pcl::PointCloud<PointT>::Ptr(
@@ -118,7 +118,7 @@ void PointCloudSceneDecomposer::cloudCallback(
     rag->generateRAG(cloud_clusters, normal_clusters,
                      centroids, neigbour_idx, edge_weight_criteria);
     rag->splitMergeRAG(cloud_clusters, normal_clusters,
-                       edge_weight_criteria, 0.50);
+                       edge_weight_criteria, 0.40);
     std::vector<int> labelMD;
     rag->getCloudClusterLabels(labelMD);
     free(rag);
@@ -187,7 +187,7 @@ void PointCloudSceneDecomposer::extractPointCloudClustersFrom2DMap(
        ROS_ERROR("ERROR: Point Cloud vector is empty...");
        return;
     }
-    const int FILTER_SIZE = 10;
+    const int FILTER_SIZE = 20;
     int icounter = 0;
     cloud_clusters.clear();
     pcl::ExtractIndices<PointT>::Ptr eifilter(
