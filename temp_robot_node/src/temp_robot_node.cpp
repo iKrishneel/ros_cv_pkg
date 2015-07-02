@@ -12,7 +12,7 @@ RobotNode::RobotNode() :
 void RobotNode::onInit() {
     pub_cloud_ = pnh_.advertise<
        point_cloud_scene_decomposer::signal>(
-          "/robot_node/output/signal", 1);
+          "/robot_pushing_motion_node/output/signal", 1);
 }
 
 void RobotNode::subsribe() {
