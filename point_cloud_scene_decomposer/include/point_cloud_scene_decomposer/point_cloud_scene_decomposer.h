@@ -19,11 +19,13 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     ros::Publisher pub_cloud_;
     ros::Publisher pub_indices_;
     ros::Publisher pub_cloud_orig_;
+    ros::Publisher pub_img_orig_;
    
     ros::Subscriber sub_cloud_;
     ros::Subscriber sub_cloud_ori_;
     ros::Subscriber sub_norm_;
     ros::Subscriber sub_image_;
+    ros::Subscriber sub_img_orgi_;
     ros::Subscriber sub_indices_;
     // ros::Subscriber sub_bbox_;
    
@@ -33,7 +35,8 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
    
     pcl::PointCloud<PointT>::Ptr pcl_cloud__;
     pcl::PointCloud<PointT>::Ptr filter_cloud__;
-
+    cv::Mat image_orig_;
+   
     bool start_signal_;
     int processing_counter_;
     point_cloud_scene_decomposer::signal signal_;
@@ -43,6 +46,7 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     sensor_msgs::PointCloud2 publishing_cloud;
     sensor_msgs::PointCloud2 publishing_cloud_orig;
     cv_bridge::CvImagePtr image_msg;
+    cv_bridge::CvImagePtr image_orig_msg;
    
     void pclNearestNeigborSearch(
         pcl::PointCloud<pcl::PointXYZ>::Ptr,
@@ -87,7 +91,9 @@ class PointCloudSceneDecomposer: public SceneDecomposerImageProcessor {
     void imageCallback(
        const sensor_msgs::Image::ConstPtr &);
     void indicesCallback(
-       const jsk_recognition_msgs::ClusterPointIndices &);   
+       const jsk_recognition_msgs::ClusterPointIndices &);
+    void imageOrigCallback(
+       const sensor_msgs::Image::ConstPtr &);
    
     void extractPointCloudClustersFrom2DMap(
         const pcl::PointCloud<PointT>::Ptr,

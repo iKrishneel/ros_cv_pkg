@@ -59,6 +59,12 @@
 
 class PointCloudClusterMatching {
 
+    struct FeatureInfo {
+       cv::Mat image;
+       cv::Mat descriptor;
+       std::vector<cv::KeyPoint> keypoints;
+    };
+   
  private:
     typedef pcl::PointXYZRGB PointT;
     typedef pcl::SHOT352 DescriptorType;
@@ -92,6 +98,10 @@ class PointCloudClusterMatching {
     cv::Mat image_prev_;
     cv::Mat image_mask_;
     cv::Mat image_mask_prev_;
+
+    FeatureInfo prev_info_;
+    cv::Ptr<cv::FeatureDetector> detector_;
+    cv::Ptr<cv::DescriptorExtractor> descriptor_;
    
     int manipulated_cluster_index_;
     jsk_recognition_msgs::BoundingBoxArray bbox_;
@@ -150,45 +160,26 @@ class PointCloudClusterMatching {
        const std::vector<pcl::PointIndices>,
        const std_msgs::Header&);
    
-    virtual void extractObjectROIIndices(
-       cv::Rect_<int> &,
-       pcl::PointIndices::Ptr,
-       const cv::Size);
+
     virtual void cvMorphologicalOperations(
        const cv::Mat &, cv::Mat &, bool, int);
     virtual void getKnownObjectRegion(
        const std::vector<Eigen::Vector3f> &,
        jsk_recognition_msgs::BoundingBoxArray &,
-       const float = 0.05f);
+       const float = 0.1f);
+
+    virtual void buildImagePyramid(
+       const cv::Mat &, std::vector<cv::Mat> &);
+    virtual void getOpticalFlow(
+      const cv::Mat &, const cv::Mat &,
+      std::vector<cv::Point2f> &nextPts,
+      std::vector<cv::Point2f> &prevPts,
+      std::vector<uchar> &status);
+
+    virtual void forwardBackwardMatchingAndFeatureCorrespondance(
+       const cv::Mat, const cv::Mat, FeatureInfo &);
 
 
-
-   
-    virtual void objectCloudClusters(
-       const pcl::PointCloud<PointT>::Ptr,
-       const std::vector<pcl::PointIndices> &,
-       std::vector<pcl::PointCloud<PointT>::Ptr> &);
-    virtual void createImageFromObjectClusters(
-       const std::vector<pcl::PointCloud<PointT>::Ptr> &,
-       const sensor_msgs::CameraInfo::ConstPtr,
-       const cv::Mat &,
-       std::vector<cv::Mat> &,
-       std::vector<cv::Rect_<int> > &);
-    virtual void getObjectRegionMask(
-       cv::Mat &, cv::Rect_<int> &);
-    virtual void  extractKeyPointsAndDescriptors(
-      const cv::Mat &image,
-      cv::Mat &descriptor,
-      std::vector<cv::KeyPoint> &keypoints);
-    virtual void computeFeatureMatch(
-       const cv::Mat &model, const cv::Mat,
-       const cv::Mat &model_descriptors, const cv::Mat &,
-       const std::vector<cv::KeyPoint> &,
-       const std::vector<cv::KeyPoint> &scene_keypoints,
-       cv::Rect_<int> &);
-    cv::Rect_<int> detectMatchROI(
-       const cv::Mat &, cv::Point2f &, cv::Point2f &,
-       cv::Point2f &, cv::Point2f &);
    
  protected:
     void onInit();

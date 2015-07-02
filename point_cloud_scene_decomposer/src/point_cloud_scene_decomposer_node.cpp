@@ -28,6 +28,8 @@ void PointCloudSceneDecomposer::onInit() {
              "/scene_decomposer/output/indices", sizeof(char));
     this->pub_image_ = nh_.advertise<sensor_msgs::Image>(
         "/scene_decomposer/output/image", sizeof(char));
+    this->pub_img_orig_ = nh_.advertise<sensor_msgs::Image>(
+       "/scene_decomposer/output/image_rect_color", sizeof(char));
     this->pub_signal_ = nh_.advertise<point_cloud_scene_decomposer::signal>(
        "/scene_decomposer/output/signal", sizeof(char));
 }
@@ -41,6 +43,8 @@ void PointCloudSceneDecomposer::subscribe() {
        &PointCloudSceneDecomposer::origcloudCallback, this);
     this->sub_image_ = nh_.subscribe(
        "input_image", 1, &PointCloudSceneDecomposer::imageCallback, this);
+    this->sub_img_orgi_ = nh_.subscribe("input_image_orig", 1,
+       &PointCloudSceneDecomposer::imageOrigCallback, this);
     this->sub_norm_ = nh_.subscribe(
        "input_norm", 1, &PointCloudSceneDecomposer::normalCallback, this);
     this->sub_indices_ = nh_.subscribe(
@@ -96,6 +100,19 @@ void PointCloudSceneDecomposer::imageCallback(
     this->image_ = cv_ptr->image.clone();
     std::cout << "Image: " << image_.size() << std::endl;
     // this->pub_image_.publish(cv_ptr->toImageMsg());
+}
+
+void PointCloudSceneDecomposer::imageOrigCallback(
+    const sensor_msgs::Image::ConstPtr &image_msg) {
+    cv_bridge::CvImagePtr cv_ptr;
+    try {
+        cv_ptr = cv_bridge::toCvCopy(
+           image_msg, sensor_msgs::image_encodings::BGR8);
+    } catch (cv_bridge::Exception& e) {
+        ROS_ERROR("cv_bridge exception: %s", e.what());
+        return;
+    }
+    this->image_orig_ = cv_ptr->image.clone();
 }
 
 void PointCloudSceneDecomposer::normalCallback(
@@ -199,6 +216,12 @@ void PointCloudSceneDecomposer::cloudCallback(
        image_msg->encoding = sensor_msgs::image_encodings::BGR8;
        image_msg->image = this->image_.clone();
        this->pub_image_.publish(image_msg->toImageMsg());
+
+       image_orig_msg = cv_bridge::CvImagePtr(new cv_bridge::CvImage);
+       image_orig_msg->header = cloud_msg->header;
+       image_orig_msg->encoding = sensor_msgs::image_encodings::BGR8;
+       image_orig_msg->image = this->image_orig_.clone();
+       this->pub_img_orig_.publish(image_orig_msg->toImageMsg());
        
        this->pub_indices_.publish(ros_indices);
        this->pub_cloud_.publish(ros_cloud);
@@ -214,6 +237,8 @@ void PointCloudSceneDecomposer::cloudCallback(
           this->pub_cloud_orig_.publish(this->publishing_cloud_orig);
           image_msg->header = cloud_msg->header;
           this->pub_image_.publish(image_msg->toImageMsg());
+          image_orig_msg->header = cloud_msg->header;
+          this->pub_img_orig_.publish(image_orig_msg->toImageMsg());
        }
     }
     point_cloud_scene_decomposer::signal pub_sig;

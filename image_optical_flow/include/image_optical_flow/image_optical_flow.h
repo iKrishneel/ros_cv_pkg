@@ -8,6 +8,18 @@
 #include <ros/console.h>
 
 #include <opencv2/opencv.hpp>
+#include <opencv2/opencv_modules.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/core/core.hpp>
+#include <opencv2/video/tracking.hpp>
+#include <opencv2/features2d/features2d.hpp>
+#include <opencv2/nonfree/features2d.hpp>
+#include <opencv2/legacy/legacy.hpp>
+#include <opencv2/videostab/videostab.hpp>
+#include <opencv2/videostab/global_motion.hpp>
+#include <opencv2/videostab/optical_flow.hpp>
+#include <opencv2/video/video.hpp>
 
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/image_encodings.h>
@@ -17,6 +29,12 @@
 
 class ImageOpticalFlow {
 
+    struct FeatureInfo {
+       cv::Mat image;
+       cv::Mat descriptor;
+       std::vector<cv::KeyPoint> keypoints;
+    };
+   
  private:
     virtual void onInit();
     virtual void subscribe();
@@ -25,19 +43,27 @@ class ImageOpticalFlow {
     cv::Mat prev_image_;
     std::vector<cv::Point2f> prev_pts_;
     int icounter;
+
+    FeatureInfo prev_info_;
+    cv::Ptr<cv::FeatureDetector> detector_;
+    cv::Ptr<cv::DescriptorExtractor> descriptor_;
    
  public:
     ImageOpticalFlow();
     virtual void imageCallback(
        const sensor_msgs::Image::ConstPtr &);
-    virtual void drawFlowField(
-       cv::Mat &, cv::Mat &,
-       std::vector<cv::Point2f> &,
-       std::vector<cv::Point2f> &);
-    void computeOpticalFlow(
-       cv::Mat &, cv::Mat &,
-       std::vector<cv::Point2f> &,
-       std::vector<cv::Point2f> &);
+   
+    void buildImagePyramid(
+       const cv::Mat &, std::vector<cv::Mat> &);
+    void getOpticalFlow(
+      const cv::Mat &, const cv::Mat &,
+      std::vector<cv::Point2f> &nextPts,
+      std::vector<cv::Point2f> &prevPts,
+      std::vector<uchar> &status);
+
+    void forwardBackwardMatchingAndFeatureCorrespondance(
+       const cv::Mat, const cv::Mat, FeatureInfo &);
+   
  protected:
     boost::mutex lock_;
     ros::NodeHandle pnh_;
