@@ -59,6 +59,12 @@
 
 class PointCloudClusterMatching {
 
+    struct FeatureInfo {
+       cv::Mat image;
+       cv::Mat descriptor;
+       std::vector<cv::KeyPoint> keypoints;
+    };
+   
  private:
     typedef pcl::PointXYZRGB PointT;
     typedef pcl::SHOT352 DescriptorType;
@@ -92,6 +98,10 @@ class PointCloudClusterMatching {
     cv::Mat image_prev_;
     cv::Mat image_mask_;
     cv::Mat image_mask_prev_;
+
+    FeatureInfo prev_info_;
+    cv::Ptr<cv::FeatureDetector> detector_;
+    cv::Ptr<cv::DescriptorExtractor> descriptor_;
    
     int manipulated_cluster_index_;
     jsk_recognition_msgs::BoundingBoxArray bbox_;
@@ -156,9 +166,18 @@ class PointCloudClusterMatching {
     virtual void getKnownObjectRegion(
        const std::vector<Eigen::Vector3f> &,
        jsk_recognition_msgs::BoundingBoxArray &,
-       const float = 0.05f);
+       const float = 0.1f);
 
+    virtual void buildImagePyramid(
+       const cv::Mat &, std::vector<cv::Mat> &);
+    virtual void getOpticalFlow(
+      const cv::Mat &, const cv::Mat &,
+      std::vector<cv::Point2f> &nextPts,
+      std::vector<cv::Point2f> &prevPts,
+      std::vector<uchar> &status);
 
+    virtual void forwardBackwardMatchingAndFeatureCorrespondance(
+       const cv::Mat, const cv::Mat, FeatureInfo &);
 
 
    
