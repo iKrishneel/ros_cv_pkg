@@ -139,32 +139,41 @@ void PointCloudClusterMatching::imageMaskCallback(
     const sensor_msgs::Image::ConstPtr &image_msg) {
     cv_bridge::CvImagePtr cv_ptr;
     try {
+
+       // std::cout << "Current Masked...\n" << std::endl;
+       
        cv_ptr = cv_bridge::toCvCopy(
           image_msg, sensor_msgs::image_encodings::BGR8);
+           cv::Mat tmp = cv_ptr->image.clone();
+           cv::Mat tmp_gray;
+           cv::cvtColor(tmp, tmp_gray, CV_BGR2GRAY);
+           cv::threshold(tmp_gray, this->image_mask_, 0, 255,
+                         CV_THRESH_BINARY | CV_THRESH_OTSU);
     } catch (cv_bridge::Exception& e) {
        ROS_ERROR("cv_bridge exception: %s", e.what());
        return;
     }
-    cv::Mat tmp = cv_ptr->image.clone();
-    cv::cvtColor(tmp, tmp, CV_BGR2GRAY);
-    cv::threshold(
-       tmp, this->image_mask_, 0, 255, CV_THRESH_BINARY | CV_THRESH_OTSU);
 }
 
 void PointCloudClusterMatching::imageMaskPrevCallback(
     const sensor_msgs::Image::ConstPtr &image_msg) {
     cv_bridge::CvImagePtr cv_ptr;
     try {
+
+       // std::cout << "Prev Masked...\n" << std::endl;
+       
        cv_ptr = cv_bridge::toCvCopy(
           image_msg, sensor_msgs::image_encodings::BGR8);
+       cv::Mat tmp = cv_ptr->image.clone();
+       cv::Mat tmp_gray;
+       cv::cvtColor(tmp, tmp_gray, CV_BGR2GRAY);
+       cv::threshold(
+          tmp_gray, this->image_mask_prev_, 0, 255,
+          CV_THRESH_BINARY | CV_THRESH_OTSU);
     } catch (cv_bridge::Exception& e) {
        ROS_ERROR("cv_bridge exception: %s", e.what());
        return;
     }
-    cv::Mat tmp = cv_ptr->image.clone();
-    cv::cvtColor(tmp, tmp, CV_BGR2GRAY);
-    cv::threshold(
-       tmp, this->image_mask_prev_, 0, 255, CV_THRESH_BINARY | CV_THRESH_OTSU);
 }
 
 void PointCloudClusterMatching::indicesCallback(

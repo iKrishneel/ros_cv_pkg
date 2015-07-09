@@ -88,8 +88,8 @@ class RegionAdjacencyGraph {
     void computeColorHistogram(
        const pcl::PointCloud<PointT>::Ptr,
        cv::Mat &,
-       const int = 16,
-       const int = 16,
+       const int = 90,
+       const int = 128,
        bool = true);
 
     float getEdgeWeight(

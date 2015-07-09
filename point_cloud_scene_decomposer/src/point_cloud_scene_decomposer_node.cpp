@@ -149,7 +149,10 @@ void PointCloudSceneDecomposer::cloudCallback(
        cv::Mat edge_map;
        this->getRGBEdge(image, edge_map, "cvCanny");
        // this->getDepthEdge(dep_img, edge_map, true);
-    
+
+       cv::imwrite("/home/krishneel/Desktop/edge.jpg", edge_map);
+       
+       
        std::vector<cvPatch<int> > patch_label;
        this->cvLabelEgdeMap(orig_cloud_, image, edge_map, patch_label);
 
@@ -167,17 +170,17 @@ void PointCloudSceneDecomposer::cloudCallback(
           normal_clusters, centroids, image.size());
 
 
-       const int neigbour_size = 4; /*5*/
+       const int neigbour_size = 3; /*5*/
        std::vector<std::vector<int> > neigbour_idx;
        this->pclNearestNeigborSearch(
-          centroids, neigbour_idx, true, neigbour_size, 0.03);
+          centroids, neigbour_idx, true, neigbour_size, 0.04);
        RegionAdjacencyGraph *rag = new RegionAdjacencyGraph();
        // const int edge_weight_criteria = rag->RAG_EDGE_WEIGHT_CONVEX_CRITERIA;
        const int edge_weight_criteria = rag->RAG_EDGE_WEIGHT_DISTANCE;
        rag->generateRAG(cloud_clusters, normal_clusters,
                         centroids, neigbour_idx, edge_weight_criteria);
        rag->splitMergeRAG(cloud_clusters, normal_clusters,
-                          edge_weight_criteria, 0.50);
+                          edge_weight_criteria, 0.5);
        std::vector<int> labelMD;
        rag->getCloudClusterLabels(labelMD);
        free(rag);
@@ -292,7 +295,7 @@ void PointCloudSceneDecomposer::extractPointCloudClustersFrom2DMap(
        ROS_ERROR("ERROR: Point Cloud vector is empty...");
        return;
     }
-    const int FILTER_SIZE = 10;
+    const int FILTER_SIZE = 20;
     int icounter = 0;
     cloud_clusters.clear();
     pcl::ExtractIndices<PointT>::Ptr eifilter(

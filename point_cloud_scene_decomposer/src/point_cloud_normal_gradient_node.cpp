@@ -30,6 +30,11 @@ void PointCloudNormalGradients::cloudCallback(
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
+    if (cloud->empty()) {
+       ROS_ERROR("Empty Cloud for Normal Gadient...");
+       return;
+    }
+    
     std::vector< int > index;
     pcl::removeNaNFromPointCloud(*cloud, *cloud, index);
     

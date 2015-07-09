@@ -594,9 +594,8 @@ void RegionAdjacencyGraph::computeCloudClusterRPYHistogram(
     for (int i = 0; i < _histogram.cols; i++) {
        _histogram.at<float>(0, i) = _vfhs->points[0].histogram[i];
     }
-    // cv::normalize(_histogram, _histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+    cv::normalize(_histogram, _histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
 }
-
 
 void RegionAdjacencyGraph::computeColorHistogram(
     const pcl::PointCloud<PointT>::Ptr _cloud,
