@@ -1,0 +1,7 @@
+<launch>
+  <node pkg="particle_filter_tracking" type="particle_filter_tracking_node"
+	name="particle_filter_tracking" output="screen" >
+    <remap from="input" to="/camera/rgb/image_rect_color"/>
+    <remap from="target" to="/particle_filter_tracking/output/image"/>
+  </node>
+</launch>
