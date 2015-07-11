@@ -3,6 +3,8 @@
 #define _PARTICLE_FILTER_TRACKING_H_
 
 #include <particle_filter_tracking/particle_filter.h>
+#include <particle_filter_tracking/motion_dynamics.h>
+#include <particle_filter_tracking/color_histogram.h>
 
 #include <ros/ros.h>
 #include <ros/console.h>
@@ -27,23 +29,76 @@
 #include <cv_bridge/cv_bridge.h>
 #include <boost/thread/mutex.hpp>
 
-class ParticleFilterTracking: public ParticleFilter {
+#include <geometry_msgs/PolygonStamped.h>
+
+#include <vector>
+
+class ParticleFilterTracking: public ParticleFilter,
+                              public MotionDynamics,
+                              public ColorHistogram {
 
  private:
     virtual void onInit();
     virtual void subscribe();
     virtual void unsubscribe();
 
-    
+    cv::Rect_<int> screen_rect_;
+
+    std::vector<cv::Mat> reference_object_histogram_;
+    std::vector<cv::Mat> reference_background_histogram_;
+
+    int width_;
+    int height_;
+    int block_size_;
+
+    int hbins;
+    int sbins;
+   
+    cv::Mat dynamics;
+    std::vector<Particle> particles;
+    cv::RNG randomNum;
+    std::vector<cv::Point2f> prevPts;
+    std::vector<cv::Point2f> particle_prev_position;
+    cv::Mat prevFrame;
+
+    bool tracker_init_;
+   
  public:
     ParticleFilterTracking();
     virtual void imageCallback(
        const sensor_msgs::Image::ConstPtr &);
+    virtual void screenPointCallback(
+       const geometry_msgs::PolygonStamped &);
+
+    void initializeTracker(
+       const cv::Mat &, cv::Rect &);
+    void runObjectTracker(
+      cv::Mat *image, cv::Rect &rect);
+   
+    std::vector<cv::Mat> imagePatchHistogram(
+       cv::Mat &);
+    std::vector<cv::Mat> particleHistogram(
+      cv::Mat &, std::vector<Particle> &);
+    std::vector<double> colorHistogramLikelihood(
+       std::vector<cv::Mat> &);
+    double computeHistogramDistances(
+       cv::Mat &, std::vector<cv::Mat> *hist_MD CV_DEFAULT(NULL),
+       cv::Mat *h_D CV_DEFAULT(NULL));
+    std::vector<double> motionLikelihood(
+       std::vector<double> &, std::vector<Particle> &,
+       std::vector<Particle> &);
+    cv::Point2f motionCovarianceEstimator(
+       std::vector<cv::Point2f> &, std::vector<Particle> &);
+    double motionVelocityLikelihood(
+       double);
+    double gaussianNoise(double, double);
+    void roiCondition(cv::Rect &, cv::Size);
    
  protected:
     boost::mutex lock_;
     ros::NodeHandle pnh_;
     ros::Subscriber sub_image_;
+    ros::Subscriber sub_screen_pt_;
     ros::Publisher pub_image_;
 };
 

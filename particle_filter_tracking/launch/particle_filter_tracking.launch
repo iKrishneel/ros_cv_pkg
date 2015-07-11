@@ -1,7 +1,16 @@
 <launch>
   <node pkg="particle_filter_tracking" type="particle_filter_tracking_node"
 	name="particle_filter_tracking" output="screen" >
+    <remap from="input_screen" to="/camera/rgb/image_rect_color/screenrectangle"/>
     <remap from="input" to="/camera/rgb/image_rect_color"/>
     <remap from="target" to="/particle_filter_tracking/output/image"/>
+  </node>
+  <node pkg="image_view2" type="image_view2"
+	name="image_view2" output="screen">
+    <remap from="image" to="/camera/rgb/image_rect_color"/>
+  </node>
+  <node pkg="image_view" type="image_view"
+	name="image_view" output="screen">
+    <remap from="image" to="/particle_filter_tracking/output/image"/>
   </node>
 </launch>

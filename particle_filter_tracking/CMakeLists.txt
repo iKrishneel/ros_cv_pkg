@@ -114,7 +114,9 @@ include_directories(
 add_executable(particle_filter_tracking_node
   src/particle_filter_tracking_node.cpp
   src/particle_filter.cpp
-  src/histogram_of_oriented_gradients.cpp)
+  src/histogram_of_oriented_gradients.cpp
+  src/motion_dynamics.cpp
+  src/color_histogram.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
