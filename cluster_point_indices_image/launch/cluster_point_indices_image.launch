@@ -1,0 +1,9 @@
+<launch>
+  <include file="$(find cluster_point_indices_image)/launch/supervoxel_segmentation.launch" />
+  <node pkg="cluster_point_indices_image" type="cluster_point_indices_image_node"
+	name="cluster_point_indices_image" output="screen" >
+    <remap from="input_cloud" to="/camera/depth_registered/points" />
+    <remap from="input_indices" to="supervoxel_segmentation/output/indices" />
+  </node>
+  <node pkg="rqt_reconfigure" type="rqt_reconfigure" name="rqt_reconfigure"/>
+</launch>
