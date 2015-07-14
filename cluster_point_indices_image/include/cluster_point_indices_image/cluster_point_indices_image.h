@@ -55,7 +55,6 @@ class ClusterPointIndicesToImage {
     boost::mutex mutex_;
     ros::NodeHandle pnh_;
     typedef  message_filters::sync_policies::ApproximateTime<
-       sensor_msgs::PointCloud2,
        jsk_recognition_msgs::ClusterPointIndices,
        sensor_msgs::PointCloud2> SyncPolicy;
 

@@ -19,10 +19,10 @@ void ClusterPointIndicesToImage::subscribe() {
     this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
     this->sync_ = boost::make_shared<message_filters::Synchronizer<
        SyncPolicy> >(100);
-    sync_->connectInput(sub_select_, sub_indices_, sub_cloud_);
+    sync_->connectInput(sub_indices_, sub_cloud_);
     sync_->registerCallback(boost::bind(
                                &ClusterPointIndicesToImage::callback,
-                               this, _1, _2, _3));
+                               this, _1, _2));
 }
 
 void ClusterPointIndicesToImage::unsubscribe() {
@@ -36,7 +36,7 @@ void ClusterPointIndicesToImage::callback(
 
     // std::vector<pcl::PointIndices::Ptr> cluster_indices;
     // cluster_indices = this->clusterPointIndicesToPointIndices(indices_mgs);
-
+    std::cout << indices_mgs->cluster_indices.size() << std::endl;
     
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
