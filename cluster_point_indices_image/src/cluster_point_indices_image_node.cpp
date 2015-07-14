@@ -34,8 +34,8 @@ void ClusterPointIndicesToImage::callback(
     const jsk_recognition_msgs::ClusterPointIndicesConstPtr &indices_mgs,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
 
-    std::vector<pcl::PointIndices::Ptr> cluster_indices;
-    cluster_indices = this->clusterPointIndicesToPointIndices(indices_mgs);
+    // std::vector<pcl::PointIndices::Ptr> cluster_indices;
+    // cluster_indices = this->clusterPointIndicesToPointIndices(indices_mgs);
 
     
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
