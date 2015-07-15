@@ -1,0 +1,13 @@
+<launch>
+  <node pkg="multilayer_object_tracking" type="object_model_annotation_node"
+	name="object_model_annotation" output="screen">
+    <remap from="input_image" to="/camera/rgb/image_rect_color" />
+    <remap from="input_cloud" to="/camera/depth_registered/points" />
+    <remap from="input_screen" to="/camera/rgb/image_rect_color/screenrectangle" />
+  </node>
+  <node pkg="image_view2" type="image_view2"
+	name="image_view2" output="screen">
+    <remap from="image" to="/camera/rgb/image_rect_color"/>
+  </node>
+  <include file="$(find multilayer_object_tracking)/launch/object_supervoxel.launch" />
+</launch>
