@@ -4,6 +4,8 @@
 	name="multilayer_object_tracking" output="screen" >
     <remap from="input_cloud" to="/camera/depth_registered/points" />
     <remap from="input_indices" to="supervoxel_segmentation/output/indices" />
+    <remap from="input_obj_cloud" to="object_supervoxel/output/cloud" />
+    <remap from="input_obj_indices" to="object_supervoxel/output/indices" />
   </node>
   <node pkg="rqt_reconfigure" type="rqt_reconfigure" name="rqt_reconfigure"/>
 </launch>

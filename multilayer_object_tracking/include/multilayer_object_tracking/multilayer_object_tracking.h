@@ -49,29 +49,53 @@
 #include <pcl/filters/filter.h>
 #include <pcl/common/centroid.h>
 #include <pcl/features/fpfh_omp.h>
+#include <pcl/features/vfh.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 
 class MultilayerObjectTracking {
- private:
     typedef pcl::PointXYZRGB PointT;
+   
+    struct ReferenceModel {
+       pcl::PointCloud<PointT>::Ptr cloud_clusters;
+       cv::Mat cluster_histograms;
+       pcl::PointIndices::Ptr cluster_neigbors;
+       pcl::PointCloud<pcl::Normal>::Ptr cluster_normals;
+    };
+    typedef std::vector<ReferenceModel> Models;
+    typedef boost::shared_ptr<Models> ModelsPtr;
+    // typedef boost::shared_ptr<Models> ReferenceModel;
+   
+ private:
     boost::mutex mutex_;
     ros::NodeHandle pnh_;
     typedef  message_filters::sync_policies::ApproximateTime<
        jsk_recognition_msgs::ClusterPointIndices,
        sensor_msgs::PointCloud2> SyncPolicy;
-
+   
     message_filters::Subscriber<
       jsk_recognition_msgs::ClusterPointIndices> sub_indices_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
-    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_select_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
+    // subscribe after init
+    typedef  message_filters::sync_policies::ApproximateTime<
+       jsk_recognition_msgs::ClusterPointIndices,
+       sensor_msgs::PointCloud2> ObjectSyncPolicy;
+    message_filters::Subscriber<
+       jsk_recognition_msgs::ClusterPointIndices> sub_obj_indices_;
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_obj_cloud_;
+    boost::shared_ptr<
+       message_filters::Synchronizer<ObjectSyncPolicy> >obj_sync_;
+   
     ros::Publisher pub_cloud_;
     ros::Publisher pub_image_;
 
     // loaded model params
     pcl::PointCloud<PointT>::Ptr model_cloud_;
+    int init_counter_;
+    int min_cluster_size_;
+   
     cv::Mat model_fpfh_;
    
  protected:
@@ -84,18 +108,24 @@ void unsubscribe();
     virtual void callback(
        const jsk_recognition_msgs::ClusterPointIndicesConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
+    virtual void objInitCallback(
+       const jsk_recognition_msgs::ClusterPointIndicesConstPtr &,
+       const sensor_msgs::PointCloud2::ConstPtr &);
+   
    virtual std::vector<pcl::PointIndices::Ptr>
     clusterPointIndicesToPointIndices(
        const jsk_recognition_msgs::ClusterPointIndicesConstPtr &);
-
-    virtual void loadModelPcdFile(
-       pcl::PointCloud<PointT>::Ptr,
-       const char*);
+   
     template<class T>
     void estimatePointCloudNormals(
        const pcl::PointCloud<PointT>::Ptr,
        pcl::PointCloud<pcl::Normal>::Ptr,
        T = 0.05f, bool = false) const;
+   
+    void computeCloudClusterRPYHistogram(
+       const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<pcl::Normal>::Ptr,
+       cv::Mat &);
     void computePointFPFH(
        const pcl::PointCloud<PointT>::Ptr,
        pcl::PointCloud<pcl::Normal>::Ptr,

@@ -3,10 +3,11 @@
 
 #include <multilayer_object_tracking/multilayer_object_tracking.h>
 
-MultilayerObjectTracking::MultilayerObjectTracking() {   
+MultilayerObjectTracking::MultilayerObjectTracking() :
+    init_counter_(0),
+    min_cluster_size_(50) {
     this->model_cloud_ = pcl::PointCloud<PointT>::Ptr(
        new pcl::PointCloud<PointT>);
-    this->loadModelPcdFile(this->model_cloud_, "flake_box.pcd");    
     this->subscribe();
     this->onInit();
 }
@@ -19,7 +20,15 @@ void MultilayerObjectTracking::onInit() {
 }
 
 void MultilayerObjectTracking::subscribe() {
-    this->sub_select_.subscribe(this->pnh_, "selected_region", 1);
+    this->sub_obj_cloud_.subscribe(this->pnh_, "input_obj_cloud", 1);
+    this->sub_obj_indices_.subscribe(this->pnh_, "input_obj_indices", 1);
+    this->obj_sync_ = boost::make_shared<message_filters::Synchronizer<
+       ObjectSyncPolicy> >(100);
+    obj_sync_->connectInput(sub_obj_indices_, sub_obj_cloud_);
+    obj_sync_->registerCallback(boost::bind(
+                               &MultilayerObjectTracking::objInitCallback,
+                               this, _1, _2));
+    
     this->sub_indices_.subscribe(this->pnh_, "input_indices", 1);
     this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
     this->sync_ = boost::make_shared<message_filters::Synchronizer<
@@ -35,12 +44,66 @@ void MultilayerObjectTracking::unsubscribe() {
     this->sub_indices_.unsubscribe();
 }
 
+void MultilayerObjectTracking::objInitCallback(
+    const jsk_recognition_msgs::ClusterPointIndicesConstPtr &indices_mgs,
+    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
+    std::vector<pcl::PointIndices::Ptr> cluster_indices;
+    pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
+    cluster_indices = this->clusterPointIndicesToPointIndices(indices_mgs);
+    pcl::fromROSMsg(*cloud_msg, *cloud);
+    this->model_cloud_ = pcl::PointCloud<PointT>::Ptr(
+       new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*cloud, *model_cloud_);
+    if (this->init_counter_++ > 0) {
+       // reset tracking
+       ROS_WARN("Object is re-initalized! stopping & reseting...");
+    }
+    if (!this->model_cloud_->empty()) {
+       std::vector<pcl::PointIndices::Ptr> all_indices =
+          this->clusterPointIndicesToPointIndices(indices_mgs);
+       ModelsPtr obj_reference = ModelsPtr(new Models);
+       int icounter = 0;
+       for (std::vector<pcl::PointIndices::Ptr>::iterator it =
+               all_indices.begin(); it != all_indices.end(); it++) {
+          if ((*it)->indices.size() > this->min_cluster_size_) {
+             ReferenceModel ref_model;
+             ref_model.cloud_clusters = pcl::PointCloud<PointT>::Ptr(
+                new pcl::PointCloud<PointT>);
+             ref_model.cluster_normals = pcl::PointCloud<pcl::Normal>::Ptr(
+                new pcl::PointCloud<pcl::Normal>);
+             pcl::ExtractIndices<PointT>::Ptr eifilter(
+                new pcl::ExtractIndices<PointT>);
+             eifilter->setInputCloud(cloud);
+             eifilter->setIndices(*it);
+             eifilter->filter(*ref_model.cloud_clusters);
+             this->estimatePointCloudNormals<float>(
+                ref_model.cloud_clusters, ref_model.cluster_normals, 0.03);
+             this->computeCloudClusterRPYHistogram(
+                ref_model.cloud_clusters,
+                ref_model.cluster_normals,
+                ref_model.cluster_histograms);
+
+             std::cout << "Cluster: "
+                       << ref_model.cloud_clusters->size() << "\t"
+                       << ref_model.cluster_normals->size() << "\t"
+                       << ref_model.cluster_histograms.size()<< std::endl;
+          
+             obj_reference->push_back(ref_model);   
+          }
+       }
+    }
+}
+
 void MultilayerObjectTracking::callback(
     const jsk_recognition_msgs::ClusterPointIndicesConstPtr &indices_mgs,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
-
-    // std::vector<pcl::PointIndices::Ptr> cluster_indices;
-    // cluster_indices = this->clusterPointIndicesToPointIndices(indices_mgs);
+    if (this->model_cloud_->empty()) {
+       ROS_WARN("No Model To Track Selected");
+       return;
+    }
+   
+    std::vector<pcl::PointIndices::Ptr> cluster_indices;
+    cluster_indices = this->clusterPointIndicesToPointIndices(indices_mgs);
 
 
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
@@ -49,6 +112,7 @@ void MultilayerObjectTracking::callback(
     std::vector<int> index;
     pcl::removeNaNFromPointCloud(*cloud, *cloud, index);
     
+    /*
     pcl::PointCloud<pcl::Normal>::Ptr normals(
        new pcl::PointCloud<pcl::Normal>);
     this->estimatePointCloudNormals(cloud, normals, 0.03, false);
@@ -68,7 +132,7 @@ void MultilayerObjectTracking::callback(
           cloud->points[i].b = 0;
        }
     }
-    
+    */
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
@@ -95,6 +159,28 @@ void MultilayerObjectTracking::estimatePointCloudNormals(
         ne.setRadiusSearch(k);
     }
     ne.compute(*normals);
+}
+
+void MultilayerObjectTracking::computeCloudClusterRPYHistogram(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<pcl::Normal>::Ptr normal,
+    cv::Mat &histogram) {
+    pcl::VFHEstimation<PointT,
+                       pcl::Normal,
+                       pcl::VFHSignature308> vfh;
+    vfh.setInputCloud(cloud);
+    vfh.setInputNormals(normal);
+    pcl::search::KdTree<PointT>::Ptr tree(
+       new pcl::search::KdTree<PointT>);
+    vfh.setSearchMethod(tree);
+    pcl::PointCloud<pcl::VFHSignature308>::Ptr vfhs(
+       new pcl::PointCloud<pcl::VFHSignature308>());
+    vfh.compute(*vfhs);
+    histogram = cv::Mat(sizeof(char), 308, CV_32F);
+    for (int i = 0; i < histogram.cols; i++) {
+       histogram.at<float>(0, i) = vfhs->points[0].histogram[i];
+    }
+    cv::normalize(histogram, histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
 }
 
 void MultilayerObjectTracking::computePointFPFH(
@@ -138,35 +224,13 @@ std::vector<pcl::PointIndices::Ptr>
 MultilayerObjectTracking::clusterPointIndicesToPointIndices(
     const jsk_recognition_msgs::ClusterPointIndicesConstPtr &indices_mgs) {
     std::vector<pcl::PointIndices::Ptr> ret;
-    int icounter = 0;
     for (int i = 0; i < indices_mgs->cluster_indices.size(); i++) {
        std::vector<int> indices = indices_mgs->cluster_indices[i].indices;
        pcl::PointIndices::Ptr pcl_indices (new pcl::PointIndices);
        pcl_indices->indices = indices;
        ret.push_back(pcl_indices);
-       icounter += indices.size();
     }
-    std::cout << "Size: " << icounter  << std::endl;
-    
     return ret;
-}
-
-void MultilayerObjectTracking::loadModelPcdFile(
-    pcl::PointCloud<PointT>::Ptr cloud,
-    const char* filename) {
-    int load = pcl::io::loadPCDFile<PointT>(filename, *cloud);
-    if (load == -1) {
-       ROS_ERROR("-- %s not such file found!", filename);
-       return;
-    } else {
-       std::cout << "Successfully loaded PCD" << std::endl;
-       std::cout << "Size: " << cloud->size() << std::endl;
-
-       pcl::PointCloud<pcl::Normal>::Ptr normals(
-          new pcl::PointCloud<pcl::Normal>);
-       this->estimatePointCloudNormals<float>(cloud, normals, 0.03f, false);
-       this->computePointFPFH(cloud, normals, this->model_fpfh_);
-    }
 }
 
 int main(int argc, char *argv[]) {
