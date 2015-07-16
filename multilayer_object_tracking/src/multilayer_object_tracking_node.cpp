@@ -5,9 +5,9 @@
 
 MultilayerObjectTracking::MultilayerObjectTracking() :
     init_counter_(0),
-    min_cluster_size_(50) {
-    this->model_cloud_ = pcl::PointCloud<PointT>::Ptr(
-       new pcl::PointCloud<PointT>);
+    min_cluster_size_(20),
+    radius_search_(0.03f) {
+    this->object_reference_ = ModelsPtr(new Models);
     this->subscribe();
     this->onInit();
 }
@@ -51,18 +51,14 @@ void MultilayerObjectTracking::objInitCallback(
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     cluster_indices = this->clusterPointIndicesToPointIndices(indices_mgs);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-    this->model_cloud_ = pcl::PointCloud<PointT>::Ptr(
-       new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointT, PointT>(*cloud, *model_cloud_);
     if (this->init_counter_++ > 0) {
-       // reset tracking
+       // reset tracking params
        ROS_WARN("Object is re-initalized! stopping & reseting...");
     }
-    if (!this->model_cloud_->empty()) {
+    if (!cloud->empty()) {
        std::vector<pcl::PointIndices::Ptr> all_indices =
           this->clusterPointIndicesToPointIndices(indices_mgs);
-       ModelsPtr obj_reference = ModelsPtr(new Models);
-       int icounter = 0;
+       this->object_reference_ = ModelsPtr(new Models);
        for (std::vector<pcl::PointIndices::Ptr>::iterator it =
                all_indices.begin(); it != all_indices.end(); it++) {
           if ((*it)->indices.size() > this->min_cluster_size_) {
@@ -77,18 +73,25 @@ void MultilayerObjectTracking::objInitCallback(
              eifilter->setIndices(*it);
              eifilter->filter(*ref_model.cloud_clusters);
              this->estimatePointCloudNormals<float>(
-                ref_model.cloud_clusters, ref_model.cluster_normals, 0.03);
+                ref_model.cloud_clusters,
+                ref_model.cluster_normals,
+                this->radius_search_);
              this->computeCloudClusterRPYHistogram(
                 ref_model.cloud_clusters,
                 ref_model.cluster_normals,
-                ref_model.cluster_histograms);
+                ref_model.cluster_vfh_hist);
+             this->computeColorHistogram(
+                ref_model.cloud_clusters,
+                ref_model.cluster_color_hist);
 
-             std::cout << "Cluster: "
+             std::cout << "DEBUG: Model Info: "
                        << ref_model.cloud_clusters->size() << "\t"
                        << ref_model.cluster_normals->size() << "\t"
-                       << ref_model.cluster_histograms.size()<< std::endl;
+                       << ref_model.cluster_vfh_hist.size() << "\t"
+                       << ref_model.cluster_color_hist.size()
+                       << std::endl;
           
-             obj_reference->push_back(ref_model);   
+             this->object_reference_->push_back(ref_model);
           }
        }
     }
@@ -97,47 +100,82 @@ void MultilayerObjectTracking::objInitCallback(
 void MultilayerObjectTracking::callback(
     const jsk_recognition_msgs::ClusterPointIndicesConstPtr &indices_mgs,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
-    if (this->model_cloud_->empty()) {
+    if (this->object_reference_->empty()) {
        ROS_WARN("No Model To Track Selected");
        return;
     }
    
-    std::vector<pcl::PointIndices::Ptr> cluster_indices;
-    cluster_indices = this->clusterPointIndicesToPointIndices(indices_mgs);
-
+    std::vector<pcl::PointIndices::Ptr> all_indices;
+    all_indices = this->clusterPointIndicesToPointIndices(indices_mgs);
 
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-
-    std::vector<int> index;
-    pcl::removeNaNFromPointCloud(*cloud, *cloud, index);
     
-    /*
-    pcl::PointCloud<pcl::Normal>::Ptr normals(
-       new pcl::PointCloud<pcl::Normal>);
-    this->estimatePointCloudNormals(cloud, normals, 0.03, false);
-    cv::Mat scene_fpfh;
-    this->computePointFPFH(cloud, normals, scene_fpfh, false);
+    this->globalLayerPointCloudProcessing(cloud, all_indices);
 
-    std::cout << "-- computing weight" << std::endl;
-    
-    for (int i = 0; i < scene_fpfh.rows; i++) {
-       float dist = static_cast<float>(
-          cv::compareHist(
-             this->model_fpfh_, scene_fpfh.row(i), CV_COMP_BHATTACHARYYA));
-       // float weight = exp(-1 * dist);
-       if (dist > 0.5f) {
-          cloud->points[i].r = 0;
-          cloud->points[i].g = 0;
-          cloud->points[i].b = 0;
-       }
-    }
-    */
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
 }
+
+void MultilayerObjectTracking::globalLayerPointCloudProcessing(
+    pcl::PointCloud<PointT>::Ptr cloud,
+    const std::vector<pcl::PointIndices::Ptr> &all_indices) {
+    if (cloud->empty() || all_indices.empty()) {
+       ROS_ERROR("ERROR: Global Layer Input Empty");
+       return;
+    }
+    pcl::PointCloud<PointT>::Ptr n_cloud(new pcl::PointCloud<PointT>);
+    Models obj_ref = *object_reference_;
+    for (std::vector<pcl::PointIndices::Ptr>::const_iterator it =
+            all_indices.begin(); it != all_indices.end(); it++) {
+       if ((*it)->indices.size() > this->min_cluster_size_) {
+          pcl::ExtractIndices<PointT>::Ptr eifilter(
+             new pcl::ExtractIndices<PointT>);
+          eifilter->setInputCloud(cloud);
+          eifilter->setIndices(*it);
+          pcl::PointCloud<PointT>::Ptr cloud_cluster(
+             new pcl::PointCloud<PointT>);
+          eifilter->filter(*cloud_cluster);
+          pcl::PointCloud<pcl::Normal>::Ptr cluster_normal(
+             new pcl::PointCloud<pcl::Normal>);
+          this->estimatePointCloudNormals<float>(
+             cloud_cluster, cluster_normal, this->radius_search_);
+          cv::Mat cluster_hist;
+          this->computeCloudClusterRPYHistogram(
+             cloud_cluster, cluster_normal, cluster_hist);
+          cv::Mat color_hist;
+          this->computeColorHistogram(cloud_cluster, color_hist);
+          float probability = 0.0;
+          for (int i = 0; i < obj_ref.size(); i++) {
+             float dist_vfh = static_cast<float>(
+                cv::compareHist(cluster_hist,
+                                obj_ref[i].cluster_vfh_hist,
+                                CV_COMP_BHATTACHARYYA));
+             float dist_col = static_cast<float>(
+                cv::compareHist(color_hist,
+                                obj_ref[i].cluster_color_hist,
+                                CV_COMP_BHATTACHARYYA));
+             
+             float prob = std::exp(-0.7 * dist_vfh) * std::exp(-1.5 * dist_col);
+             if (prob > probability /*&& prob > 0.5f*/) {
+                probability = prob;
+             }
+          }
+          for (int i = 0; i < cloud_cluster->size(); i++) {
+             PointT pt = cloud_cluster->points[i];
+             pt.r = 255 * probability;
+             pt.g = 255 * probability;
+             pt.b = 255 * probability;
+             n_cloud->push_back(pt);
+          }
+       }
+    }
+    cloud->clear();
+    pcl::copyPointCloud<PointT, PointT>(*n_cloud, *cloud);
+}
+
 
 template<class T>
 void MultilayerObjectTracking::estimatePointCloudNormals(
@@ -165,6 +203,10 @@ void MultilayerObjectTracking::computeCloudClusterRPYHistogram(
     const pcl::PointCloud<PointT>::Ptr cloud,
     const pcl::PointCloud<pcl::Normal>::Ptr normal,
     cv::Mat &histogram) {
+    if (cloud->empty() || normal->empty()) {
+       ROS_ERROR("ERROR: Empty Input");
+       return;
+    }
     pcl::VFHEstimation<PointT,
                        pcl::Normal,
                        pcl::VFHSignature308> vfh;
@@ -181,6 +223,32 @@ void MultilayerObjectTracking::computeCloudClusterRPYHistogram(
        histogram.at<float>(0, i) = vfhs->points[0].histogram[i];
     }
     cv::normalize(histogram, histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+}
+
+void MultilayerObjectTracking::computeColorHistogram(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    cv::Mat &hist, const int hBin, const int sBin, bool is_norm) {
+    cv::Mat pixels = cv::Mat::zeros(
+       sizeof(char), static_cast<int>(cloud->size()), CV_8UC3);
+    for (int i = 0; i < cloud->size(); i++) {
+       cv::Vec3b pix_val;
+       pix_val[0] = cloud->points[i].b;
+       pix_val[1] = cloud->points[i].g;
+       pix_val[2] = cloud->points[i].r;
+       pixels.at<cv::Vec3b>(0, i) = pix_val;
+    }
+    cv::Mat hsv;
+    cv::cvtColor(pixels, hsv, CV_BGR2HSV);
+    int histSize[] = {hBin, sBin};
+    float h_ranges[] = {0, 180};
+    float s_ranges[] = {0, 256};
+    const float* ranges[] = {h_ranges, s_ranges};
+    int channels[] = {0, 1};
+    cv::calcHist(
+       &hsv, 1, channels, cv::Mat(), hist, 2, histSize, ranges, true, false);
+    if (is_norm) {
+       cv::normalize(hist, hist, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+    }
 }
 
 void MultilayerObjectTracking::computePointFPFH(

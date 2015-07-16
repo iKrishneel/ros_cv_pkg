@@ -58,13 +58,13 @@ class MultilayerObjectTracking {
    
     struct ReferenceModel {
        pcl::PointCloud<PointT>::Ptr cloud_clusters;
-       cv::Mat cluster_histograms;
+       cv::Mat cluster_vfh_hist;
+       cv::Mat cluster_color_hist;
        pcl::PointIndices::Ptr cluster_neigbors;
        pcl::PointCloud<pcl::Normal>::Ptr cluster_normals;
     };
     typedef std::vector<ReferenceModel> Models;
     typedef boost::shared_ptr<Models> ModelsPtr;
-    // typedef boost::shared_ptr<Models> ReferenceModel;
    
  private:
     boost::mutex mutex_;
@@ -91,10 +91,14 @@ class MultilayerObjectTracking {
     ros::Publisher pub_cloud_;
     ros::Publisher pub_image_;
 
-    // loaded model params
+    // object model params
     pcl::PointCloud<PointT>::Ptr model_cloud_;
     int init_counter_;
     int min_cluster_size_;
+    ModelsPtr object_reference_;
+
+    // global setup variable
+    float radius_search_;
    
     cv::Mat model_fpfh_;
    
@@ -115,7 +119,10 @@ void unsubscribe();
    virtual std::vector<pcl::PointIndices::Ptr>
     clusterPointIndicesToPointIndices(
        const jsk_recognition_msgs::ClusterPointIndicesConstPtr &);
-   
+
+    void globalLayerPointCloudProcessing(
+       pcl::PointCloud<PointT>::Ptr,
+       const std::vector<pcl::PointIndices::Ptr> &);
     template<class T>
     void estimatePointCloudNormals(
        const pcl::PointCloud<PointT>::Ptr,
@@ -126,6 +133,12 @@ void unsubscribe();
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr,
        cv::Mat &);
+    void computeColorHistogram(
+       const pcl::PointCloud<PointT>::Ptr,
+       cv::Mat &,
+       const int = 16,
+       const int = 16,
+       bool = true);
     void computePointFPFH(
        const pcl::PointCloud<PointT>::Ptr,
        pcl::PointCloud<pcl::Normal>::Ptr,
