@@ -42,7 +42,7 @@ void InteractiveSegmentation::callback(
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     
-    this->pointCloudEdge(image, edge_img, 10);
+    this->pointCloudEdge(cloud, image, edge_img, 10);
     
     
     cv_bridge::CvImage pub_img(
@@ -56,7 +56,9 @@ void InteractiveSegmentation::callback(
 }
 
 void InteractiveSegmentation::pointCloudEdge(
-    const cv::Mat &image, const cv::Mat &edge_img, const int contour_thresh) {
+    pcl::PointCloud<PointT>::Ptr cloud,
+    const cv::Mat &image, const cv::Mat &edge_img,
+    const int contour_thresh) {
     if (image.empty()) {
        ROS_ERROR("-- Cannot eompute edge of empty image");
        return;
@@ -76,48 +78,72 @@ void InteractiveSegmentation::pointCloudEdge(
           }
        }
     }
-    std::vector<EdgeNormalDirectionPoint> normal_points;
+    std::vector<std::vector<EdgeNormalDirectionPoint> > normal_points;
     std::vector<std::vector<cv::Point> > tangents;
     this->computeEdgeCurvature(
        cont_img, contours, tangents, normal_points);
     
     cv::imshow("Contours", cont_img);
     cv::waitKey(3);
-}
 
-void InteractiveSegmentation::cvMorphologicalOperations(
-    const cv::Mat &img, cv::Mat &erosion_dst,
-    bool is_errode, int erosion_size) {
-    if (img.empty()) {
-       ROS_ERROR("Cannnot perfrom Morphological Operations on empty image....");
-       return;
+    pcl::PointCloud<pcl::Normal>::Ptr normals(
+       new pcl::PointCloud<pcl::Normal>);
+    this->estimatePointCloudNormals(cloud, normals, 0.03f, false);
+    pcl::PointCloud<PointT>::Ptr concave_cloud(new pcl::PointCloud<PointT>);
+    for (int j = 0; j < normal_points.size(); j++) {
+       for (int i = 0; i < normal_points[j].size(); i++) {
+          EdgeNormalDirectionPoint point_info = normal_points[j][i];
+          cv::Point2f n_pt1 = point_info.normal_pt1;
+          cv::Point2f n_pt2 = point_info.normal_pt2;
+          cv::Point2f e_pt = (n_pt1 + n_pt2);
+          e_pt = cv::Point2f(e_pt.x/2, e_pt.y/2);
+          int ept_index = e_pt.x + (e_pt.y * image.cols);
+          int pt1_index = n_pt1.x + (n_pt1.y * image.cols);
+          int pt2_index = n_pt2.x + (n_pt2.y * image.cols);
+
+          // std::cout << "Index: " << ept_index << "\t "
+          //           << pt1_index << "\t" << pt2_index<< std::endl;
+          if (pt1_index > -1 && pt2_index > -1 &&  ept_index > -1 &&
+             pt1_index <= 307200 && pt2_index <= 307200 &&
+              ept_index <= 307200) {
+             pcl::Normal n1 = normals->points[pt1_index];
+             pcl::Normal n2 = normals->points[pt2_index];
+             Eigen::Vector3f n1_vec = Eigen::Vector3f(
+                n1.normal_x, n1.normal_y, n1.normal_z);
+             Eigen::Vector3f n2_vec = Eigen::Vector3f(
+                n2.normal_x, n2.normal_y, n2.normal_z);
+             float cos_theta = n1_vec.dot(n2_vec) /
+                (n1_vec.norm() * n2_vec.norm());
+             float angle = std::acos(cos_theta);
+             if (angle < CV_PI/2) {
+                PointT pt = cloud->points[ept_index];
+                pt.r = 255;
+                pt.b = 0;
+                pt.g = 0;
+                concave_cloud->push_back(pt);
+             }
+          }
+       }
     }
-    int erosion_const = 2;
-    int erosion_type = cv::MORPH_ELLIPSE;
-    cv::Mat element = cv::getStructuringElement(erosion_type,
-       cv::Size(erosion_const * erosion_size + sizeof(char),
-                erosion_const * erosion_size + sizeof(char)),
-       cv::Point(erosion_size, erosion_size));
-    if (is_errode) {
-       cv::erode(img, erosion_dst, element);
-    } else {
-       cv::dilate(img, erosion_dst, element);
-    }
+    cloud->clear();
+    pcl::copyPointCloud<PointT, PointT>(*concave_cloud, *cloud);
 }
 
 void InteractiveSegmentation::computeEdgeCurvature(
     const cv::Mat &image,
     const std::vector<std::vector<cv::Point> > &contours,
     std::vector<std::vector<cv::Point> > &tangents,
-    std::vector<EdgeNormalDirectionPoint> &normal_points) {
+    std::vector<std::vector<EdgeNormalDirectionPoint> > &normal_points) {
     if (contours.empty()) {
        ROS_ERROR("-- no contours found");
        return;
     }
+    normal_points.clear();
     cv::Mat img = image.clone();
     for (int j = 0; j < contours.size(); j++) {
        std::vector<cv::Point> tangent;
        std::vector<float> t_gradient;
+       std::vector<EdgeNormalDirectionPoint> norm_tangt;
        cv::Point2f edge_pt = contours[j].front();
        cv::Point2f edge_tngt = contours[j].back() - contours[j][1];
        tangent.push_back(edge_tngt);
@@ -138,8 +164,11 @@ void InteractiveSegmentation::computeEdgeCurvature(
             cv::Point2f trans = pt1 - edge_pt;
             cv::Point2f ortho_pt1 = edge_pt + cv::Point2f(-trans.y, trans.x);
             cv::Point2f ortho_pt2 = edge_pt - cv::Point2f(-trans.y, trans.x);
-            normal_points.push_back(EdgeNormalDirectionPoint(
-                                       ortho_pt1, ortho_pt2));
+            
+            norm_tangt.push_back(EdgeNormalDirectionPoint(
+                                       ortho_pt1, ortho_pt2,
+                                       edge_pt - edge_tngt,
+                                       edge_pt + edge_tngt));
             
             cv::line(img, ortho_pt1, ortho_pt2, cv::Scalar(0, 255, 0), 1);
             cv::line(img, edge_pt + edge_tngt, edge_pt -  edge_tngt,
@@ -147,71 +176,32 @@ void InteractiveSegmentation::computeEdgeCurvature(
           }
       }
        tangents.push_back(tangent);
+       normal_points.push_back(norm_tangt);
     }
-    // this->computeEdgeCurvatureOrientation(contours, tangents, orientation);
     cv::imshow("tangent", img);
 }
 
-void InteractiveSegmentation::computeEdgeCurvatureOrientation(
-    const std::vector<std::vector<cv::Point> > &contours,
-    const std::vector<std::vector<cv::Point> > &contours_tangent,
-    std::vector<std::vector<float> > &orientation,
-    bool is_normalize) {
-    for (int j = 0; j < contours_tangent.size(); j++) {
-       std::vector<float> ang;
-       for (int i = 0; i < contours_tangent[j].size(); i++) {
-          float angle_ = 0.0f;
-          if (contours_tangent[j][i].x == 0) {
-             angle_ = 90.0f;
-          } else {
-             angle_ = atan2(contours_tangent[j][i].y,
-                            contours_tangent[j][i].x) * (180/CV_PI);
-          }
-          if (is_normalize) {
-             angle_ /= static_cast<float>(360.0);
-          }
-          ang.push_back(static_cast<float>(angle_));
-       }
-       orientation.push_back(ang);
-       ang.clear();
-    }
-}
-
-void InteractiveSegmentation::getEdgeNormalPoint(
-    cv::Mat &image,
-    std::vector<EdgeNormalDirectionPoint> &direction,
-    const std::vector<std::vector<cv::Point> > &contours,
-    const std::vector<std::vector<cv::Point> > &tangents,
-    const std::vector<std::vector<float> > &orientation,
-    const float lenght) {
-    if (contours.empty() || tangents.empty() || orientation.empty()) {
-       ROS_ERROR("ERROR! Empty data...");
+template<class T>
+void InteractiveSegmentation::estimatePointCloudNormals(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    pcl::PointCloud<pcl::Normal>::Ptr normals,
+    const T k, bool use_knn) const {
+    if (cloud->empty()) {
+       ROS_ERROR("ERROR: The Input cloud is Empty.....");
        return;
     }
-    for (int i = 0; i < orientation.size(); i++) {
-       for (int j = 0; j < orientation[i].size(); j++) {
-          cv::Point pt = contours[i][j];
-          cv::circle(image, pt, 1, cv::Scalar(255, 0, 255), -1);   
-          float max_norm = std::max(
-            std::abs(tangents[i][j].x), std::abs(tangents[i][j].y));
-         float tang_x = 0.0f;
-         float tang_y = 0.0f;
-         if (max_norm != 0) {
-            tang_x = tangents[i][j].x / static_cast<float>(max_norm);
-            tang_y = tangents[i][j].y / static_cast<float>(max_norm);
-         }
-         float r = sqrt((tang_y * tang_y) + (tang_x * tang_x)) * lenght;
-         float angle = orientation[i][j] * 360.0f * (CV_PI/180.0f);
-         cv::Point end_pt = cv::Point(pt.x + r * std::cos(angle),
-                                      pt.y + r * std::sin(angle));
-         cv::line(image, pt, end_pt, cv::Scalar(0, 255, 0), 1);
-         direction.push_back(EdgeNormalDirectionPoint(pt, end_pt));
-      }
+    pcl::NormalEstimationOMP<PointT, pcl::Normal> ne;
+    ne.setInputCloud(cloud);
+    ne.setNumberOfThreads(8);
+    pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT> ());
+    ne.setSearchMethod(tree);
+    if (use_knn) {
+        ne.setKSearch(k);
+    } else {
+        ne.setRadiusSearch(k);
     }
-    cv::imshow("edge direction", image);
+    ne.compute(*normals);
 }
-
-
 
 int main(int argc, char *argv[]) {
     ros::init(argc, argv, "interactive_segmentation");

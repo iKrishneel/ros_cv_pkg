@@ -69,13 +69,17 @@ class InteractiveSegmentation {
     };
    
     struct EdgeNormalDirectionPoint {
-       cv::Point pt;
-       cv::Point end_pt;
-
+       cv::Point2f normal_pt1;
+       cv::Point2f normal_pt2;
+       cv::Point2f tangent_pt1;
+       cv::Point2f tangent_pt2;
        EdgeNormalDirectionPoint(
-          cv::Point p = cv::Point(),
-          cv::Point e = cv::Point()) :
-          pt(p), end_pt(e) {}
+          cv::Point2f np1 = cv::Point(),
+          cv::Point2f np2 = cv::Point(),
+          cv::Point2f t1 = cv::Point(),
+          cv::Point2f t2 = cv::Point()) :
+          normal_pt1(np1), normal_pt2(np2),
+          tangent_pt1(t1), tangent_pt2(t2) {}
     };
        
    
@@ -108,27 +112,18 @@ class InteractiveSegmentation {
        const sensor_msgs::Image::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
     virtual void pointCloudEdge(
+       pcl::PointCloud<PointT>::Ptr,
        const cv::Mat &, const cv::Mat &, const int = 50);
-    virtual void cvMorphologicalOperations(
-       const cv::Mat &, cv::Mat &, bool, int);
-
     void computeEdgeCurvature(
        const cv::Mat &,
        const std::vector<std::vector<cv::Point> > &contours,
        std::vector<std::vector<cv::Point> > &,
-       std::vector<EdgeNormalDirectionPoint> &);
-    void computeEdgeCurvatureOrientation(
-       const std::vector<std::vector<cv::Point> > &,
-       const std::vector<std::vector<cv::Point> > &,
-       std::vector<std::vector<float> > &,
-       bool = true);
-    void getEdgeNormalPoint(
-        cv::Mat &,
-        std::vector<EdgeNormalDirectionPoint> &,
-        const std::vector<std::vector<cv::Point> > &,
-        const std::vector<std::vector<cv::Point> > &,
-        const std::vector<std::vector<float> > &,
-        const float = 10);
+       std::vector<std::vector<EdgeNormalDirectionPoint> >&);
+    template<class T>
+    void estimatePointCloudNormals(
+       const pcl::PointCloud<PointT>::Ptr,
+       pcl::PointCloud<pcl::Normal>::Ptr,
+       T = 0.05f, bool = false) const;
 };
 
 
