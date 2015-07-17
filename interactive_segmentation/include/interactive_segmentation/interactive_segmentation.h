@@ -61,6 +61,13 @@
 
 class InteractiveSegmentation {
 
+    struct EdgeParam {
+       cv::Point index;
+       float orientation;
+       int contour_position;
+       bool flag;
+    };
+   
  private:
     typedef pcl::PointXYZRGB PointT;
     boost::mutex mutex_;
@@ -91,11 +98,25 @@ class InteractiveSegmentation {
        const sensor_msgs::PointCloud2::ConstPtr &);
     virtual void pointCloudEdge(
        const cv::Mat &, const cv::Mat &, const int = 50);
-    virtual void getRGBEdge(
-       const cv::Mat &, cv::Mat &, std::string = "cvCanny");
     virtual void cvMorphologicalOperations(
        const cv::Mat &, cv::Mat &, bool, int);
-   
+
+    void computeEdgeCurvature(
+       const cv::Mat &,
+       const std::vector<std::vector<cv::Point> > &contours,
+       std::vector<std::vector<cv::Point> > &,
+       std::vector<std::vector<float> > &,
+       std::vector<EdgeParam> &);
+    void computeEdgeCurvatureOrientation(
+       const std::vector<std::vector<cv::Point> > &,
+       const std::vector<std::vector<cv::Point> > &,
+       std::vector<std::vector<float> > &,
+       bool = true);
+    void plotEdgeNormal(
+        cv::Mat &,
+        const std::vector<std::vector<cv::Point> > &,
+        const std::vector<std::vector<cv::Point> > &,
+        const std::vector<std::vector<float> > &);
 };
 
 

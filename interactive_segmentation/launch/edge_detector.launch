@@ -1,5 +1,6 @@
 <launch>
   <node pkg="jsk_perception" type="edge_detector" name="edge_detector">
+    <!---<remap from="image" to="/cloud_image/output/image" /> -->
     <remap from="image" to="/camera/rgb/image_rect_color" />
   </node>
   <node pkg="image_view" type="image_view" name="edge_view" >
