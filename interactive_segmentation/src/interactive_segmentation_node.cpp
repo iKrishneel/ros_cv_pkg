@@ -30,7 +30,6 @@ void InteractiveSegmentation::unsubscribe() {
     this->sub_image_.unsubscribe();
 }
 
-
 void InteractiveSegmentation::callback(
     const sensor_msgs::Image::ConstPtr &image_msg,
     const sensor_msgs::Image::ConstPtr &edge_msg,
@@ -71,24 +70,16 @@ void InteractiveSegmentation::pointCloudEdge(
     for (int i = 0; i < contours.size(); i++) {
        if (cv::contourArea(contours[i]) > contour_thresh) {
           selected_contours.push_back(contours[i]);
-          // drawContours(
-          //    cont_img, contours, i, cv::Scalar(0, 255, 0), 1, 8,
-          //    hierarchy, 0, cv::Point());
           for (int j = 0; j < contours[i].size(); j++) {
              cv::circle(cont_img, contours[i][j], 1,
                         cv::Scalar(255, 0, 0), -1);
           }
        }
     }
+    std::vector<EdgeNormalDirectionPoint> normal_points;
     std::vector<std::vector<cv::Point> > tangents;
-    std::vector<std::vector<float> > orientation;
-    std::vector<EdgeParam> hcurvature_pts;
     this->computeEdgeCurvature(
-       cont_img, contours, tangents, orientation, hcurvature_pts);
-
-    std::cout << contours.size() << "\t" << orientation.size() << std::endl;
-    
-    this->plotEdgeNormal(cont_img, contours, tangents, orientation);
+       cont_img, contours, tangents, normal_points);
     
     cv::imshow("Contours", cont_img);
     cv::waitKey(3);
@@ -118,22 +109,20 @@ void InteractiveSegmentation::computeEdgeCurvature(
     const cv::Mat &image,
     const std::vector<std::vector<cv::Point> > &contours,
     std::vector<std::vector<cv::Point> > &tangents,
-    std::vector<std::vector<float> > &orientation,
-    std::vector<EdgeParam> &hcurvature_pts) {
+    std::vector<EdgeNormalDirectionPoint> &normal_points) {
     if (contours.empty()) {
        ROS_ERROR("-- no contours found");
        return;
     }
     cv::Mat img = image.clone();
     for (int j = 0; j < contours.size(); j++) {
-       
        std::vector<cv::Point> tangent;
+       std::vector<float> t_gradient;
        cv::Point2f edge_pt = contours[j].front();
        cv::Point2f edge_tngt = contours[j].back() - contours[j][1];
-       // if (edge_tngt.x >= 0 && edge_tngt.x <= image.cols &&
-       // edge_tngt.y >= 0 && edge_tngt.y <= image.rows) {
-          tangent.push_back(edge_tngt);
-          // }
+       tangent.push_back(edge_tngt);
+       float grad = (edge_tngt.y - edge_pt.y) / (edge_tngt.x - edge_pt.x);
+       t_gradient.push_back(grad);
        const int neighbor_pts = 0;
        if (contours[j].size() > 2) {
           for (int i = sizeof(char) + neighbor_pts;
@@ -143,43 +132,23 @@ void InteractiveSegmentation::computeEdgeCurvature(
              edge_tngt = contours[j][i-1-neighbor_pts] -
                 contours[j][i+1+neighbor_pts];
             tangent.push_back(edge_tngt);
-         }
+            grad = (edge_tngt.y - edge_pt.y) / (edge_tngt.x - edge_pt.x);
+            t_gradient.push_back(grad);
+            cv::Point2f pt1 = edge_tngt + edge_pt;
+            cv::Point2f trans = pt1 - edge_pt;
+            cv::Point2f ortho_pt1 = edge_pt + cv::Point2f(-trans.y, trans.x);
+            cv::Point2f ortho_pt2 = edge_pt - cv::Point2f(-trans.y, trans.x);
+            normal_points.push_back(EdgeNormalDirectionPoint(
+                                       ortho_pt1, ortho_pt2));
+            
+            cv::line(img, ortho_pt1, ortho_pt2, cv::Scalar(0, 255, 0), 1);
+            cv::line(img, edge_pt + edge_tngt, edge_pt -  edge_tngt,
+                     cv::Scalar(255, 0, 255), 1);
+          }
       }
        tangents.push_back(tangent);
     }
-    this->computeEdgeCurvatureOrientation(contours, tangents, orientation);
-    for (int j = 0; j < tangents.size(); j++) {
-       if (tangents[j].size() < 2) {
-          continue;
-       }
-       for (int i = sizeof(char); i < tangents[j].size() - sizeof(char); i++) {
-          float y1 = tangents[j][i+1].y;
-          float x1 = tangents[j][i+1].x;
-          float y0 = tangents[j][i-1].y;
-          float x0 = tangents[j][i-1].x;
-          float tang1 = 0.0f;
-          float tang0 = 0.0f;
-          if (x1 != 0) {
-             tang1 = y1/x1;
-          }
-          if (x0 != 0) {
-             tang0 = y0/x0;
-          }
-          if ((tang1 >= 0.0f  && tang0 < 0.0f) ||
-              (tang1 < 0.0f && tang0 >= 0.0f)) {
-             if ((abs(tang0 - tang1) < 1.0f) || (abs(tang1 - tang0) < 1.0f)) {
-                continue;
-             }
-             EdgeParam eP;
-             eP.index = contours[j][i];
-             eP.orientation = orientation[j][i];
-             eP.contour_position = j;
-             hcurvature_pts.push_back(eP);
-             // circle(img, contours[j][i], 1, cv::Scalar(255, 0, 0), 1);
-             // circle(img, contours[j][i], 2, cv::Scalar(0, 255, 0), 2);
-         }
-      }
-    }
+    // this->computeEdgeCurvatureOrientation(contours, tangents, orientation);
     cv::imshow("tangent", img);
 }
 
@@ -208,20 +177,21 @@ void InteractiveSegmentation::computeEdgeCurvatureOrientation(
     }
 }
 
-void InteractiveSegmentation::plotEdgeNormal(
+void InteractiveSegmentation::getEdgeNormalPoint(
     cv::Mat &image,
+    std::vector<EdgeNormalDirectionPoint> &direction,
     const std::vector<std::vector<cv::Point> > &contours,
     const std::vector<std::vector<cv::Point> > &tangents,
-    const std::vector<std::vector<float> > &orientation) {
+    const std::vector<std::vector<float> > &orientation,
+    const float lenght) {
     if (contours.empty() || tangents.empty() || orientation.empty()) {
-       ROS_ERROR("Empty data.. skipping plot");
+       ROS_ERROR("ERROR! Empty data...");
        return;
     }
     for (int i = 0; i < orientation.size(); i++) {
        for (int j = 0; j < orientation[i].size(); j++) {
           cv::Point pt = contours[i][j];
-          cv::circle(image, pt, 1, cv::Scalar(255, 0, 255), -1);
-          
+          cv::circle(image, pt, 1, cv::Scalar(255, 0, 255), -1);   
           float max_norm = std::max(
             std::abs(tangents[i][j].x), std::abs(tangents[i][j].y));
          float tang_x = 0.0f;
@@ -230,16 +200,18 @@ void InteractiveSegmentation::plotEdgeNormal(
             tang_x = tangents[i][j].x / static_cast<float>(max_norm);
             tang_y = tangents[i][j].y / static_cast<float>(max_norm);
          }
-         float dist = 15.0f;
-         float r = sqrt((tang_y * tang_y) + (tang_x * tang_x)) * dist;
-         float angle = orientation[i][j] * 360.0f * (180.0f/CV_PI);
-         cv::line(image, pt, cv::Point(pt.x + r * std::cos(angle),
-                                       pt.y + r * std::sin(angle)),
-                  cv::Scalar(0, 255, 0), 1);
+         float r = sqrt((tang_y * tang_y) + (tang_x * tang_x)) * lenght;
+         float angle = orientation[i][j] * 360.0f * (CV_PI/180.0f);
+         cv::Point end_pt = cv::Point(pt.x + r * std::cos(angle),
+                                      pt.y + r * std::sin(angle));
+         cv::line(image, pt, end_pt, cv::Scalar(0, 255, 0), 1);
+         direction.push_back(EdgeNormalDirectionPoint(pt, end_pt));
       }
     }
     cv::imshow("edge direction", image);
 }
+
+
 
 int main(int argc, char *argv[]) {
     ros::init(argc, argv, "interactive_segmentation");

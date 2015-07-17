@@ -68,6 +68,17 @@ class InteractiveSegmentation {
        bool flag;
     };
    
+    struct EdgeNormalDirectionPoint {
+       cv::Point pt;
+       cv::Point end_pt;
+
+       EdgeNormalDirectionPoint(
+          cv::Point p = cv::Point(),
+          cv::Point e = cv::Point()) :
+          pt(p), end_pt(e) {}
+    };
+       
+   
  private:
     typedef pcl::PointXYZRGB PointT;
     boost::mutex mutex_;
@@ -105,18 +116,19 @@ class InteractiveSegmentation {
        const cv::Mat &,
        const std::vector<std::vector<cv::Point> > &contours,
        std::vector<std::vector<cv::Point> > &,
-       std::vector<std::vector<float> > &,
-       std::vector<EdgeParam> &);
+       std::vector<EdgeNormalDirectionPoint> &);
     void computeEdgeCurvatureOrientation(
        const std::vector<std::vector<cv::Point> > &,
        const std::vector<std::vector<cv::Point> > &,
        std::vector<std::vector<float> > &,
        bool = true);
-    void plotEdgeNormal(
+    void getEdgeNormalPoint(
         cv::Mat &,
+        std::vector<EdgeNormalDirectionPoint> &,
         const std::vector<std::vector<cv::Point> > &,
         const std::vector<std::vector<cv::Point> > &,
-        const std::vector<std::vector<float> > &);
+        const std::vector<std::vector<float> > &,
+        const float = 10);
 };
 
 
