@@ -72,6 +72,7 @@ void InteractiveSegmentation::pointCloudEdge(
     for (int i = 0; i < contours.size(); i++) {
        if (cv::contourArea(contours[i]) > contour_thresh) {
           selected_contours.push_back(contours[i]);
+          cv::drawContours(cont_img, contours, i, cv::Scalar(0, 255, 0), 2);
           for (int j = 0; j < contours[i].size(); j++) {
              cv::circle(cont_img, contours[i][j], 1,
                         cv::Scalar(255, 0, 0), -1);
@@ -81,14 +82,14 @@ void InteractiveSegmentation::pointCloudEdge(
     std::vector<std::vector<EdgeNormalDirectionPoint> > normal_points;
     std::vector<std::vector<cv::Point> > tangents;
     this->computeEdgeCurvature(
-       cont_img, contours, tangents, normal_points);
+       cont_img, selected_contours, tangents, normal_points);
     
     cv::imshow("Contours", cont_img);
     cv::waitKey(3);
 
-    pcl::PointCloud<pcl::Normal>::Ptr normals(
-       new pcl::PointCloud<pcl::Normal>);
-    this->estimatePointCloudNormals(cloud, normals, 0.03f, false);
+    // pcl::PointCloud<pcl::Normal>::Ptr normals(
+    //    new pcl::PointCloud<pcl::Normal>);
+    // this->estimatePointCloudNormals(cloud, normals, 0.03f, false);
     pcl::PointCloud<PointT>::Ptr concave_cloud(new pcl::PointCloud<PointT>);
     for (int j = 0; j < normal_points.size(); j++) {
        for (int i = 0; i < normal_points[j].size(); i++) {
@@ -106,6 +107,22 @@ void InteractiveSegmentation::pointCloudEdge(
           if (pt1_index > -1 && pt2_index > -1 &&  ept_index > -1 &&
              pt1_index <= 307200 && pt2_index <= 307200 &&
               ept_index <= 307200) {
+             Eigen::Vector3f ne_pt1 = cloud->points[pt1_index].getVector3fMap();
+             Eigen::Vector3f ne_pt2 = cloud->points[pt2_index].getVector3fMap();
+             Eigen::Vector3f ne_cntr = ((ne_pt1 - ne_pt2) / 2) + ne_pt2;
+             Eigen::Vector3f e_pt = cloud->points[ept_index].getVector3fMap();
+
+
+             PointT pt = cloud->points[ept_index];
+             if (ne_cntr(2) < e_pt(2) - 0.005f) {
+                pt.r = 0;
+                pt.b = 0;
+                pt.g = 255;
+                concave_cloud->push_back(pt);
+             }
+
+             
+             /*
              pcl::Normal n1 = normals->points[pt1_index];
              pcl::Normal n2 = normals->points[pt2_index];
              Eigen::Vector3f n1_vec = Eigen::Vector3f(
@@ -123,6 +140,7 @@ void InteractiveSegmentation::pointCloudEdge(
                 pt.g = 0;
                 concave_cloud->push_back(pt);
              }
+             */
           }
        }
     }
@@ -168,7 +186,7 @@ void InteractiveSegmentation::computeEdgeCurvature(
 
             float theta = std::atan2(ortho_pt1.y - ortho_pt2.y ,
                                      ortho_pt1.x - ortho_pt2.x);
-            const float lenght = 5.0f;
+            const float lenght = 10.0f;
             float y1 = std::sin(theta) * lenght;
             float x1 = std::cos(theta) * lenght;
             float y2 = std::sin(CV_PI + theta) * lenght;
