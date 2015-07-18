@@ -115,7 +115,8 @@ void InteractiveSegmentation::pointCloudEdge(
              float cos_theta = n1_vec.dot(n2_vec) /
                 (n1_vec.norm() * n2_vec.norm());
              float angle = std::acos(cos_theta);
-             if (angle < CV_PI/2) {
+             std::cout << "Angle: " << angle * 180.0f/CV_PI << std::endl;
+             if (angle < CV_PI/3 && !isnan(angle)) {
                 PointT pt = cloud->points[ept_index];
                 pt.r = 255;
                 pt.b = 0;
@@ -164,13 +165,25 @@ void InteractiveSegmentation::computeEdgeCurvature(
             cv::Point2f trans = pt1 - edge_pt;
             cv::Point2f ortho_pt1 = edge_pt + cv::Point2f(-trans.y, trans.x);
             cv::Point2f ortho_pt2 = edge_pt - cv::Point2f(-trans.y, trans.x);
+
+            float theta = std::atan2(ortho_pt1.y - ortho_pt2.y ,
+                                     ortho_pt1.x - ortho_pt2.x);
+            const float lenght = 5.0f;
+            float y1 = std::sin(theta) * lenght;
+            float x1 = std::cos(theta) * lenght;
+            float y2 = std::sin(CV_PI + theta) * lenght;
+            float x2 = std::cos(CV_PI + theta) * lenght;
             
             norm_tangt.push_back(EdgeNormalDirectionPoint(
                                        ortho_pt1, ortho_pt2,
                                        edge_pt - edge_tngt,
                                        edge_pt + edge_tngt));
-            
-            cv::line(img, ortho_pt1, ortho_pt2, cv::Scalar(0, 255, 0), 1);
+
+
+            // cv::line(img, ortho_pt1, ortho_pt2, cv::Scalar(0, 255,
+            // 0), 1);
+            cv::line(img, cv::Point2f(x1, y1) + edge_pt,
+                     edge_pt + cv::Point2f(x2, y2), cv::Scalar(0, 255, 0), 1);
             cv::line(img, edge_pt + edge_tngt, edge_pt -  edge_tngt,
                      cv::Scalar(255, 0, 255), 1);
           }
