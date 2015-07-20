@@ -1,4 +1,5 @@
 <launch>
+  <include file="$(find multilayer_object_tracking)/launch/object_model_annotation.launch" />
   <include file="$(find multilayer_object_tracking)/launch/supervoxel_segmentation.launch" />
   <node pkg="multilayer_object_tracking" type="multilayer_object_tracking_node"
 	name="multilayer_object_tracking" output="screen" >
