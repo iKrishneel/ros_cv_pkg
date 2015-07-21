@@ -107,7 +107,6 @@ include_directories(
 
 ## Declare a cpp executable
 add_executable(multilayer_object_tracking_node src/multilayer_object_tracking_node.cpp)
-add_executable(point_cloud_image_creator_node src/point_cloud_image_creator_node.cpp)
 add_executable(object_model_annotation_node src/object_model_annotation_node.cpp)
 
 ## Add cmake target dependencies of the executable/library
@@ -116,7 +115,6 @@ add_executable(object_model_annotation_node src/object_model_annotation_node.cpp
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(multilayer_object_tracking_node ${catkin_LIBRARIES})
-target_link_libraries(point_cloud_image_creator_node ${catkin_LIBRARIES})
 target_link_libraries(object_model_annotation_node ${catkin_LIBRARIES})
 
 #############

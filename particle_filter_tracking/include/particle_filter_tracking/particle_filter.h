@@ -18,7 +18,7 @@ class ParticleFilter {
    
 #define PI 3.14159265358979323846
 #define SIGMA 15.0
-#define NUM_PARTICLES 600
+#define NUM_PARTICLES 400
 #define NUM_STATE 4
    
  public:

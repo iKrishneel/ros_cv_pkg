@@ -14,9 +14,9 @@ MultilayerObjectTracking::MultilayerObjectTracking() :
 
 void MultilayerObjectTracking::onInit() {
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
-       "/cluster_point_indices_to_image/output/cloud", 1);
+       "/multilayer_object_tracking/output/cloud", 1);
     this->pub_image_ = this->pnh_.advertise<sensor_msgs::Image>(
-       "/cluster_point_indices_to_image/output/image", 1);
+       "/multilayer_object_tracking/output/image", 1);
 }
 
 void MultilayerObjectTracking::subscribe() {
@@ -31,12 +31,13 @@ void MultilayerObjectTracking::subscribe() {
     
     this->sub_indices_.subscribe(this->pnh_, "input_indices", 1);
     this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
+    this->sub_pose_.subscribe(this->pnh_, "input_pose", 1);
     this->sync_ = boost::make_shared<message_filters::Synchronizer<
        SyncPolicy> >(100);
-    sync_->connectInput(sub_indices_, sub_cloud_);
+    sync_->connectInput(sub_indices_, sub_cloud_, sub_pose_);
     sync_->registerCallback(boost::bind(
                                &MultilayerObjectTracking::callback,
-                               this, _1, _2));
+                               this, _1, _2, _3));
 }
 
 void MultilayerObjectTracking::unsubscribe() {
@@ -83,7 +84,7 @@ void MultilayerObjectTracking::objInitCallback(
              this->computeColorHistogram(
                 ref_model.cloud_clusters,
                 ref_model.cluster_color_hist);
-
+             
              std::cout << "DEBUG: Model Info: "
                        << ref_model.cloud_clusters->size() << "\t"
                        << ref_model.cluster_normals->size() << "\t"
@@ -94,20 +95,37 @@ void MultilayerObjectTracking::objInitCallback(
              this->object_reference_->push_back(ref_model);
           }
        }
+       Eigen::Vector4f centroid;
+       pcl::compute3DCentroid<PointT, float>(*cloud, centroid);
+       if (!isnan(centroid(0) && !isnan(centroid(1) && !isnan(centroid(2))))) {
+          PointXYZRPY cur_position;
+          cur_position.x = centroid(0);
+          cur_position.y = centroid(1);
+          cur_position.z = centroid(2);
+          this->motion_history_.push_back(cur_position);
+          // std::cout << "Centroid: " << cur_position << std::endl;
+       }
     }
 }
 
 void MultilayerObjectTracking::callback(
     const jsk_recognition_msgs::ClusterPointIndicesConstPtr &indices_mgs,
-    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
+    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
+    const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
     if (this->object_reference_->empty()) {
        ROS_WARN("No Model To Track Selected");
        return;
     }
-   
+    // get the indices of time t
     std::vector<pcl::PointIndices::Ptr> all_indices;
     all_indices = this->clusterPointIndicesToPointIndices(indices_mgs);
 
+    // get PF pose of time t
+    PointXYZRPY motion_displacement;
+    this->estimatedPFPose(pose_msg, motion_displacement);
+    std::cout << "Pose: " << motion_displacement << std::endl;
+    
+    // get the input cloud at time t
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     
@@ -301,10 +319,36 @@ MultilayerObjectTracking::clusterPointIndicesToPointIndices(
     return ret;
 }
 
+void MultilayerObjectTracking::estimatedPFPose(
+    const geometry_msgs::PoseStamped::ConstPtr &pose_msg,
+    PointXYZRPY &motion_displacement) {
+    PointXYZRPY current_pose;
+    current_pose.x = pose_msg->pose.position.x;
+    current_pose.y = pose_msg->pose.position.y;
+    current_pose.z = pose_msg->pose.position.z;
+    current_pose.roll = pose_msg->pose.orientation.x;
+    current_pose.pitch = pose_msg->pose.orientation.y;
+    current_pose.yaw = pose_msg->pose.orientation.z;
+    current_pose.weight = pose_msg->pose.orientation.w;
+    if (!isnan(current_pose.x) && !isnan(current_pose.y) &&
+        !isnan(current_pose.z)) {
+       int last_index = static_cast<int>(this->motion_history_.size()) - 1;
+       motion_displacement.x = current_pose.x -
+          this->motion_history_[last_index].x;
+       motion_displacement.y = current_pose.y -
+          this->motion_history_[last_index].y;
+       motion_displacement.z = current_pose.z -
+          this->motion_history_[last_index].z;
+       this->motion_history_.push_back(current_pose);
+    } else {
+       // pertubate with history error weight
+    }
+}
+
 int main(int argc, char *argv[]) {
 
     ros::init(argc, argv, "multilayer_object_tracking");
-    MultilayerObjectTracking cpi2i;
+    MultilayerObjectTracking mot;
     ros::spin();
     return 0;
 }

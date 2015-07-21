@@ -2,7 +2,7 @@
 #include <particle_filter_tracking/particle_filter_tracking.h>
 
 ParticleFilterTracking::ParticleFilterTracking() :
-    block_size_(16), hbins(10), sbins(10), tracker_init_(false) {
+    block_size_(16), hbins(10), sbins(12), tracker_init_(false) {
     this->subscribe();
     this->onInit();
 }
@@ -104,13 +104,11 @@ void ParticleFilterTracking::runObjectTracker(
     std::vector<Particle> x_particle = this->transition(
        this->particles, this->dynamics, this->randomNum);
     this->prevPts.clear();
-#pragma omp parallel for
     for (int i = 0; i < NUM_PARTICLES; i++) {
        this->prevPts.push_back(cv::Point2f(x_particle[i].x, x_particle[i].y));
     }
     this->getOpticalFlow(image, this->prevFrame, this->prevPts);
     std::vector<double> of_velocity;
-#pragma omp parallel for
     for (int i = 0; i < this->prevPts.size(); i++) {
         double vel_X = this->prevPts[i].x - particle_prev_position[i].x;
         double vel_Y = this->prevPts[i].y - particle_prev_position[i].y;
@@ -131,6 +129,9 @@ void ParticleFilterTracking::runObjectTracker(
     }
     std::vector<double> nWeights = this->normalizeWeight(wN);
     this->reSampling(this->particles, x_particle, nWeights);
+
+    this->printParticles(image, particles);
+    
     Particle x_e = this->meanArr(this->particles);
     cv::Rect b_rect = cv::Rect(
        x_e.x - rect.width/2, x_e.y - rect.height/2,
@@ -191,7 +192,6 @@ std::vector<cv::Mat> ParticleFilterTracking::particleHistogram(
     if (image.empty()) {
        return std::vector<cv::Mat>();
     }
-#pragma omp parallel for
     for (int i = 0; i < NUM_PARTICLES; i++) {
        cv::Rect p_rect = cv::Rect(p[i].x - block_size_/2,
                                   p[i].y - block_size_/2,
@@ -213,7 +213,6 @@ std::vector<cv::Mat> ParticleFilterTracking::imagePatchHistogram(
     }
     const int OVERLAP = 2;
     std::vector<cv::Mat> _patch_hist;
-#pragma omp parallel for
     for (int j = 0; j < image.rows; j += (block_size_/OVERLAP)) {
        for (int i = 0; i < image.cols; i += (block_size_/OVERLAP)) {
            cv::Rect rect = cv::Rect(i, j, block_size_, block_size_);
@@ -243,7 +242,6 @@ cv::Point2f ParticleFilterTracking::motionCovarianceEstimator(
     std::vector<cv::Point2f> &prevPts, std::vector<Particle> &x_e) {
     double sumX = 0.0;
     double sumY = 0.0;
-#pragma omp parallel for
     for (int i = 0; i < prevPts.size(); i++) {
         double v_X = static_cast<double>(abs(x_e[i].dx - prevPts[i].x));
         double v_Y = static_cast<double>(abs(x_e[i].dy - prevPts[i].y));
@@ -260,13 +258,11 @@ std::vector<double> ParticleFilterTracking::motionLikelihood(
     std::vector<Particle> &particles) {
     std::vector<double> m_prob;
     std::vector<double> particle_vel;
-#pragma omp parallel for
     for (int i = 0; i < x_particle.size(); i++) {
        double x = std::sqrt((x_particle[i].dx*x_particle[i].dx) +
                             (x_particle[i].dy*x_particle[i].dy));
         particle_vel.push_back(x);
     }
-#pragma omp parallel for
     for (int i = 0; i < prevPts.size(); i++) {
         double v_X = static_cast<double>(particle_vel[i] - prevPts[i]);
         double d_x = static_cast<double>(motionVelocityLikelihood(abs(v_X)));

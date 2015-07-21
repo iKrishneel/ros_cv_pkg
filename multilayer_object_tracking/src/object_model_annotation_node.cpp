@@ -35,7 +35,7 @@ void ObjectModelAnnotation::callback(
     const sensor_msgs::Image::ConstPtr &image_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
     const geometry_msgs::PolygonStampedConstPtr &screen_msg) {
-    boost::mutex::scoped_lock lock(this->mutex_);
+   // boost::mutex::scoped_lock lock(this->mutex_);
     int x = screen_msg->polygon.points[0].x;
     int y = screen_msg->polygon.points[0].y;
     int width = screen_msg->polygon.points[1].x - x;
@@ -58,7 +58,8 @@ void ObjectModelAnnotation::callback(
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
-    
+
+    ROS_INFO("--Publish selected object info.");
     this->pub_cloud_.publish(ros_cloud);
     this->pub_image_.publish(pub_img.toImageMsg());
 }
@@ -79,15 +80,15 @@ void ObjectModelAnnotation::getAnnotatedObjectCloud(
     tree->setInputCloud(cloud);
     std::vector<pcl::PointIndices> cluster_indices;
     pcl::EuclideanClusterExtraction<PointT> euclidean_clustering;
-    euclidean_clustering.setClusterTolerance(0.02);
+    euclidean_clustering.setClusterTolerance(0.01);
     euclidean_clustering.setMinClusterSize(60);
     euclidean_clustering.setMaxClusterSize(25000);
     euclidean_clustering.setSearchMethod(tree);
     euclidean_clustering.setInputCloud(cloud);
     euclidean_clustering.setIndices(indices);
     euclidean_clustering.extract(cluster_indices);
-    int max_size = 0;
-    int index = -1;
+    int max_size = FLT_MIN;
+    int index = 0;
     for (int i = 0; i < cluster_indices.size(); i++) {
        int c_size = cluster_indices[i].indices.size();
        if (c_size > max_size) {

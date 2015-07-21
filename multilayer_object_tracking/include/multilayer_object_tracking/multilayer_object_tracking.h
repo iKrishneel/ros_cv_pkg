@@ -50,8 +50,10 @@
 #include <pcl/common/centroid.h>
 #include <pcl/features/fpfh_omp.h>
 #include <pcl/features/vfh.h>
+#include <pcl/tracking/tracking.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
+#include <geometry_msgs/PoseStamped.h>
 
 class MultilayerObjectTracking {
     typedef pcl::PointXYZRGB PointT;
@@ -65,17 +67,23 @@ class MultilayerObjectTracking {
     };
     typedef std::vector<ReferenceModel> Models;
     typedef boost::shared_ptr<Models> ModelsPtr;
+
+    
+    typedef pcl::tracking::ParticleXYZRPY PointXYZRPY;
+    typedef std::vector<PointXYZRPY> MotionHistory;
    
  private:
     boost::mutex mutex_;
     ros::NodeHandle pnh_;
     typedef  message_filters::sync_policies::ApproximateTime<
        jsk_recognition_msgs::ClusterPointIndices,
-       sensor_msgs::PointCloud2> SyncPolicy;
+       sensor_msgs::PointCloud2,
+       geometry_msgs::PoseStamped> SyncPolicy;
    
     message_filters::Subscriber<
       jsk_recognition_msgs::ClusterPointIndices> sub_indices_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
+    message_filters::Subscriber<geometry_msgs::PoseStamped> sub_pose_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
     // subscribe after init
@@ -96,30 +104,36 @@ class MultilayerObjectTracking {
     int init_counter_;
     int min_cluster_size_;
     ModelsPtr object_reference_;
-
+   
     // global setup variable
     float radius_search_;
+
+    // motion previous
+    MotionHistory motion_history_;
    
     cv::Mat model_fpfh_;
    
  protected:
     void onInit();
     void subscribe();
-void unsubscribe();
+    void unsubscribe();
 
  public:
     MultilayerObjectTracking();
     virtual void callback(
        const jsk_recognition_msgs::ClusterPointIndicesConstPtr &,
-       const sensor_msgs::PointCloud2::ConstPtr &);
+       const sensor_msgs::PointCloud2::ConstPtr &,
+       const geometry_msgs::PoseStamped::ConstPtr &);
     virtual void objInitCallback(
        const jsk_recognition_msgs::ClusterPointIndicesConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
    
-   virtual std::vector<pcl::PointIndices::Ptr>
+    virtual std::vector<pcl::PointIndices::Ptr>
     clusterPointIndicesToPointIndices(
        const jsk_recognition_msgs::ClusterPointIndicesConstPtr &);
-
+    void estimatedPFPose(
+       const geometry_msgs::PoseStamped::ConstPtr &, PointXYZRPY &);
+   
     void globalLayerPointCloudProcessing(
        pcl::PointCloud<PointT>::Ptr,
        const std::vector<pcl::PointIndices::Ptr> &);
@@ -145,6 +159,5 @@ void unsubscribe();
        cv::Mat &, bool = true);
    
 };
-
 
 #endif  // _MULTILAYER_OBJECT_TRACKING_H_
