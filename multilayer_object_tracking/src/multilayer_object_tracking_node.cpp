@@ -22,22 +22,24 @@ void MultilayerObjectTracking::onInit() {
 void MultilayerObjectTracking::subscribe() {
     this->sub_obj_cloud_.subscribe(this->pnh_, "input_obj_cloud", 1);
     this->sub_obj_indices_.subscribe(this->pnh_, "input_obj_indices", 1);
+    this->sub_adj_.subscribe(this->pnh_, "input_obj_adj", 1);
     this->obj_sync_ = boost::make_shared<message_filters::Synchronizer<
        ObjectSyncPolicy> >(100);
-    obj_sync_->connectInput(sub_obj_indices_, sub_obj_cloud_);
-    obj_sync_->registerCallback(boost::bind(
-                               &MultilayerObjectTracking::objInitCallback,
-                               this, _1, _2));
-    
+    this->obj_sync_->connectInput(
+       sub_obj_indices_, sub_obj_cloud_, sub_adj_);
+    this->obj_sync_->registerCallback(
+       boost::bind(&MultilayerObjectTracking::objInitCallback,
+                   this, _1, _2, _3));
+       
     this->sub_indices_.subscribe(this->pnh_, "input_indices", 1);
     this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
     this->sub_pose_.subscribe(this->pnh_, "input_pose", 1);
     this->sync_ = boost::make_shared<message_filters::Synchronizer<
        SyncPolicy> >(100);
-    sync_->connectInput(sub_indices_, sub_cloud_, sub_pose_);
-    sync_->registerCallback(boost::bind(
-                               &MultilayerObjectTracking::callback,
-                               this, _1, _2, _3));
+    this->sync_->connectInput(sub_indices_, sub_cloud_, sub_pose_);
+    this->sync_->registerCallback(
+       boost::bind(&MultilayerObjectTracking::callback,
+                   this, _1, _2, _3));
 }
 
 void MultilayerObjectTracking::unsubscribe() {
@@ -47,7 +49,8 @@ void MultilayerObjectTracking::unsubscribe() {
 
 void MultilayerObjectTracking::objInitCallback(
     const jsk_recognition_msgs::ClusterPointIndicesConstPtr &indices_mgs,
-    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
+    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
+    const jsk_recognition_msgs::AdjacencyList::ConstPtr &vertices_msg) {
     std::vector<pcl::PointIndices::Ptr> cluster_indices;
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     cluster_indices = this->clusterPointIndicesToPointIndices(indices_mgs);
@@ -57,8 +60,20 @@ void MultilayerObjectTracking::objInitCallback(
        ROS_WARN("Object is re-initalized! stopping & reseting...");
     }
     if (!cloud->empty()) {
+       jsk_recognition_msgs::AdjacencyList adjacency_list = *vertices_msg;
        std::vector<pcl::PointIndices::Ptr> all_indices =
           this->clusterPointIndicesToPointIndices(indices_mgs);
+       std::vector<std::vector<int> > supervoxel_list;
+       std::vector<int> tmp_list;
+       for (int i = 0 ; i < adjacency_list.vertices.size(); i++) {
+          int vertex_index = adjacency_list.vertices[i];
+          if (vertex_index == -1) {
+             supervoxel_list.push_back(tmp_list);
+             tmp_list.clear();
+          } else {
+             tmp_list.push_back(vertex_index);
+          }
+       }
        this->object_reference_ = ModelsPtr(new Models);
        for (std::vector<pcl::PointIndices::Ptr>::iterator it =
                all_indices.begin(); it != all_indices.end(); it++) {
@@ -95,6 +110,39 @@ void MultilayerObjectTracking::objInitCallback(
              this->object_reference_->push_back(ref_model);
           }
        }
+
+       std::cout << "Size: " << supervoxel_list.size() << "\t"
+                 << all_indices.size() << std::endl;
+       pcl::PointCloud<PointT>::Ptr output (new pcl::PointCloud<PointT>);
+       for (int i = 0; i < supervoxel_list[0].size(); i++) {
+          int idx = supervoxel_list[0][i];
+          std::cout << "index: " << idx  << std::endl;
+          pcl::PointIndices::Ptr indices (new pcl::PointIndices);
+          indices = all_indices[idx];
+          pcl::ExtractIndices<PointT>::Ptr eifilter(
+             new pcl::ExtractIndices<PointT>);
+          eifilter->setInputCloud(cloud);
+          eifilter->setIndices(indices);
+          pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
+          eifilter->filter(*tmp_cloud);
+
+          for (int y = 0; y < tmp_cloud->size(); y++) {
+             PointT pt = tmp_cloud->points[y];
+             pt.r = idx * 10;
+             pt.g = 255;
+             pt.b = 255;
+          }
+
+          
+          *output = *output + *tmp_cloud;
+       }
+       sensor_msgs::PointCloud2 ros_cloud;
+       pcl::toROSMsg(*output, ros_cloud);
+       ros_cloud.header = cloud_msg->header;
+       this->pub_cloud_.publish(ros_cloud);
+
+
+       
        Eigen::Vector4f centroid;
        pcl::compute3DCentroid<PointT, float>(*cloud, centroid);
        if (!isnan(centroid(0) && !isnan(centroid(1) && !isnan(centroid(2))))) {

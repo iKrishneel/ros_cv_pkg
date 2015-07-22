@@ -54,6 +54,7 @@
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <jsk_recognition_msgs/AdjacencyList.h>
 
 class MultilayerObjectTracking {
     typedef pcl::PointXYZRGB PointT;
@@ -67,8 +68,7 @@ class MultilayerObjectTracking {
     };
     typedef std::vector<ReferenceModel> Models;
     typedef boost::shared_ptr<Models> ModelsPtr;
-
-    
+   
     typedef pcl::tracking::ParticleXYZRPY PointXYZRPY;
     typedef std::vector<PointXYZRPY> MotionHistory;
    
@@ -89,10 +89,12 @@ class MultilayerObjectTracking {
     // subscribe after init
     typedef  message_filters::sync_policies::ApproximateTime<
        jsk_recognition_msgs::ClusterPointIndices,
-       sensor_msgs::PointCloud2> ObjectSyncPolicy;
+       sensor_msgs::PointCloud2,
+       jsk_recognition_msgs::AdjacencyList> ObjectSyncPolicy;
     message_filters::Subscriber<
        jsk_recognition_msgs::ClusterPointIndices> sub_obj_indices_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_obj_cloud_;
+    message_filters::Subscriber<jsk_recognition_msgs::AdjacencyList> sub_adj_;
     boost::shared_ptr<
        message_filters::Synchronizer<ObjectSyncPolicy> >obj_sync_;
    
@@ -126,7 +128,8 @@ class MultilayerObjectTracking {
        const geometry_msgs::PoseStamped::ConstPtr &);
     virtual void objInitCallback(
        const jsk_recognition_msgs::ClusterPointIndicesConstPtr &,
-       const sensor_msgs::PointCloud2::ConstPtr &);
+       const sensor_msgs::PointCloud2::ConstPtr &,
+       const jsk_recognition_msgs::AdjacencyList::ConstPtr &);
    
     virtual std::vector<pcl::PointIndices::Ptr>
     clusterPointIndicesToPointIndices(
