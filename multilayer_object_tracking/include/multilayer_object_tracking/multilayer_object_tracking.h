@@ -51,6 +51,7 @@
 #include <pcl/features/fpfh_omp.h>
 #include <pcl/features/vfh.h>
 #include <pcl/tracking/tracking.h>
+#include <pcl/common/common.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -58,13 +59,19 @@
 
 class MultilayerObjectTracking {
     typedef pcl::PointXYZRGB PointT;
+
+    struct AdjacentInfo {
+       std::vector<int> adjacent_indices;
+       std::vector<float> adjacent_distances;
+    };
    
     struct ReferenceModel {
-       pcl::PointCloud<PointT>::Ptr cloud_clusters;
+       pcl::PointCloud<PointT>::Ptr cluster_cloud;
        cv::Mat cluster_vfh_hist;
        cv::Mat cluster_color_hist;
-       pcl::PointIndices::Ptr cluster_neigbors;
+       AdjacentInfo cluster_neigbors;
        pcl::PointCloud<pcl::Normal>::Ptr cluster_normals;
+       Eigen::Vector4f cluster_centroid;
     };
     typedef std::vector<ReferenceModel> Models;
     typedef boost::shared_ptr<Models> ModelsPtr;
@@ -78,11 +85,13 @@ class MultilayerObjectTracking {
     typedef  message_filters::sync_policies::ApproximateTime<
        jsk_recognition_msgs::ClusterPointIndices,
        sensor_msgs::PointCloud2,
+       jsk_recognition_msgs::AdjacencyList,
        geometry_msgs::PoseStamped> SyncPolicy;
    
     message_filters::Subscriber<
       jsk_recognition_msgs::ClusterPointIndices> sub_indices_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
+    message_filters::Subscriber<jsk_recognition_msgs::AdjacencyList> sub_adj_;
     message_filters::Subscriber<geometry_msgs::PoseStamped> sub_pose_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
@@ -94,15 +103,16 @@ class MultilayerObjectTracking {
     message_filters::Subscriber<
        jsk_recognition_msgs::ClusterPointIndices> sub_obj_indices_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_obj_cloud_;
-    message_filters::Subscriber<jsk_recognition_msgs::AdjacencyList> sub_adj_;
+    message_filters::Subscriber<
+       jsk_recognition_msgs::AdjacencyList> sub_obj_adj_;
     boost::shared_ptr<
        message_filters::Synchronizer<ObjectSyncPolicy> >obj_sync_;
    
     ros::Publisher pub_cloud_;
+    ros::Publisher pub_indices_;
     ros::Publisher pub_image_;
 
     // object model params
-    pcl::PointCloud<PointT>::Ptr model_cloud_;
     int init_counter_;
     int min_cluster_size_;
     ModelsPtr object_reference_;
@@ -125,6 +135,7 @@ class MultilayerObjectTracking {
     virtual void callback(
        const jsk_recognition_msgs::ClusterPointIndicesConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &,
+       const jsk_recognition_msgs::AdjacencyList::ConstPtr &,
        const geometry_msgs::PoseStamped::ConstPtr &);
     virtual void objInitCallback(
        const jsk_recognition_msgs::ClusterPointIndicesConstPtr &,
@@ -136,7 +147,9 @@ class MultilayerObjectTracking {
        const jsk_recognition_msgs::ClusterPointIndicesConstPtr &);
     void estimatedPFPose(
        const geometry_msgs::PoseStamped::ConstPtr &, PointXYZRPY &);
-   
+
+    std::vector<AdjacentInfo> voxelAdjacencyList(
+       const jsk_recognition_msgs::AdjacencyList &);
     void globalLayerPointCloudProcessing(
        pcl::PointCloud<PointT>::Ptr,
        const std::vector<pcl::PointIndices::Ptr> &);
@@ -160,7 +173,15 @@ class MultilayerObjectTracking {
        const pcl::PointCloud<PointT>::Ptr,
        pcl::PointCloud<pcl::Normal>::Ptr,
        cv::Mat &, bool = true);
-   
+    void compute3DCentroids(
+       const pcl::PointCloud<PointT>::Ptr,
+       Eigen::Vector4f &);
+    Eigen::Vector4f cloudMeanNormal(
+       const pcl::PointCloud<pcl::Normal>::Ptr, bool = true);
+    void adjacentVoxelCoherencey(
+       const ModelsPtr &, const int, float &, float &);
+    float computeCoherency(
+       const float, const float);
 };
 
 #endif  // _MULTILAYER_OBJECT_TRACKING_H_

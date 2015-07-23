@@ -100,6 +100,7 @@ class ParticleFilterTracking: public ParticleFilter,
     ros::Subscriber sub_image_;
     ros::Subscriber sub_screen_pt_;
     ros::Publisher pub_image_;
+    unsigned int threads_;
 };
 
 #endif  // _PARTICLE_FILTER_TRACKING_H_

@@ -15,6 +15,9 @@ MultilayerObjectTracking::MultilayerObjectTracking() :
 void MultilayerObjectTracking::onInit() {
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/multilayer_object_tracking/output/cloud", 1);
+    this->pub_indices_ = this->pnh_.advertise<
+       jsk_recognition_msgs::ClusterPointIndices>(
+       "/multilayer_object_tracking/output/indices", 1);
     this->pub_image_ = this->pnh_.advertise<sensor_msgs::Image>(
        "/multilayer_object_tracking/output/image", 1);
 }
@@ -22,11 +25,11 @@ void MultilayerObjectTracking::onInit() {
 void MultilayerObjectTracking::subscribe() {
     this->sub_obj_cloud_.subscribe(this->pnh_, "input_obj_cloud", 1);
     this->sub_obj_indices_.subscribe(this->pnh_, "input_obj_indices", 1);
-    this->sub_adj_.subscribe(this->pnh_, "input_obj_adj", 1);
+    this->sub_obj_adj_.subscribe(this->pnh_, "input_obj_adj", 1);
     this->obj_sync_ = boost::make_shared<message_filters::Synchronizer<
        ObjectSyncPolicy> >(100);
     this->obj_sync_->connectInput(
-       sub_obj_indices_, sub_obj_cloud_, sub_adj_);
+       sub_obj_indices_, sub_obj_cloud_, sub_obj_adj_);
     this->obj_sync_->registerCallback(
        boost::bind(&MultilayerObjectTracking::objInitCallback,
                    this, _1, _2, _3));
@@ -34,12 +37,13 @@ void MultilayerObjectTracking::subscribe() {
     this->sub_indices_.subscribe(this->pnh_, "input_indices", 1);
     this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
     this->sub_pose_.subscribe(this->pnh_, "input_pose", 1);
+    this->sub_adj_.subscribe(this->pnh_, "input_adj", 1);
     this->sync_ = boost::make_shared<message_filters::Synchronizer<
        SyncPolicy> >(100);
-    this->sync_->connectInput(sub_indices_, sub_cloud_, sub_pose_);
+    this->sync_->connectInput(sub_indices_, sub_cloud_, sub_adj_, sub_pose_);
     this->sync_->registerCallback(
        boost::bind(&MultilayerObjectTracking::callback,
-                   this, _1, _2, _3));
+                   this, _1, _2, _3, _4));
 }
 
 void MultilayerObjectTracking::unsubscribe() {
@@ -63,23 +67,35 @@ void MultilayerObjectTracking::objInitCallback(
        jsk_recognition_msgs::AdjacencyList adjacency_list = *vertices_msg;
        std::vector<pcl::PointIndices::Ptr> all_indices =
           this->clusterPointIndicesToPointIndices(indices_mgs);
-       std::vector<std::vector<int> > supervoxel_list;
-       std::vector<int> tmp_list;
+
+       std::vector<AdjacentInfo> supervoxel_list =
+          this->voxelAdjacencyList(adjacency_list);
+       /*
+       AdjacentInfo tmp_list;
        for (int i = 0 ; i < adjacency_list.vertices.size(); i++) {
           int vertex_index = adjacency_list.vertices[i];
+          float dist = static_cast<float>(adjacency_list.edge_weight[i]);
           if (vertex_index == -1) {
              supervoxel_list.push_back(tmp_list);
-             tmp_list.clear();
+             tmp_list.adjacent_indices.clear();
+             tmp_list.adjacent_distances.clear();
           } else {
-             tmp_list.push_back(vertex_index);
+             tmp_list.adjacent_indices.push_back(vertex_index);
+             tmp_list.adjacent_distances.push_back(dist);
           }
        }
+       */
+
+       std::cout << "Size: " << supervoxel_list.size() << "\t"
+                 << all_indices.size() << std::endl;
+       
        this->object_reference_ = ModelsPtr(new Models);
+       int icounter = 0;
        for (std::vector<pcl::PointIndices::Ptr>::iterator it =
                all_indices.begin(); it != all_indices.end(); it++) {
           if ((*it)->indices.size() > this->min_cluster_size_) {
              ReferenceModel ref_model;
-             ref_model.cloud_clusters = pcl::PointCloud<PointT>::Ptr(
+             ref_model.cluster_cloud = pcl::PointCloud<PointT>::Ptr(
                 new pcl::PointCloud<PointT>);
              ref_model.cluster_normals = pcl::PointCloud<pcl::Normal>::Ptr(
                 new pcl::PointCloud<pcl::Normal>);
@@ -87,78 +103,45 @@ void MultilayerObjectTracking::objInitCallback(
                 new pcl::ExtractIndices<PointT>);
              eifilter->setInputCloud(cloud);
              eifilter->setIndices(*it);
-             eifilter->filter(*ref_model.cloud_clusters);
+             eifilter->filter(*ref_model.cluster_cloud);
              this->estimatePointCloudNormals<float>(
-                ref_model.cloud_clusters,
+                ref_model.cluster_cloud,
                 ref_model.cluster_normals,
                 this->radius_search_);
              this->computeCloudClusterRPYHistogram(
-                ref_model.cloud_clusters,
+                ref_model.cluster_cloud,
                 ref_model.cluster_normals,
                 ref_model.cluster_vfh_hist);
              this->computeColorHistogram(
-                ref_model.cloud_clusters,
+                ref_model.cluster_cloud,
                 ref_model.cluster_color_hist);
+             ref_model.cluster_neigbors = supervoxel_list[icounter++];
+             this->compute3DCentroids(ref_model.cluster_cloud,
+                                      ref_model.cluster_centroid);
+             this->object_reference_->push_back(ref_model);
              
              std::cout << "DEBUG: Model Info: "
-                       << ref_model.cloud_clusters->size() << "\t"
+                       << ref_model.cluster_cloud->size() << "\t"
                        << ref_model.cluster_normals->size() << "\t"
                        << ref_model.cluster_vfh_hist.size() << "\t"
                        << ref_model.cluster_color_hist.size()
                        << std::endl;
-          
-             this->object_reference_->push_back(ref_model);
           }
        }
-
-       std::cout << "Size: " << supervoxel_list.size() << "\t"
-                 << all_indices.size() << std::endl;
-       pcl::PointCloud<PointT>::Ptr output (new pcl::PointCloud<PointT>);
-       for (int i = 0; i < supervoxel_list[0].size(); i++) {
-          int idx = supervoxel_list[0][i];
-          std::cout << "index: " << idx  << std::endl;
-          pcl::PointIndices::Ptr indices (new pcl::PointIndices);
-          indices = all_indices[idx];
-          pcl::ExtractIndices<PointT>::Ptr eifilter(
-             new pcl::ExtractIndices<PointT>);
-          eifilter->setInputCloud(cloud);
-          eifilter->setIndices(indices);
-          pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
-          eifilter->filter(*tmp_cloud);
-
-          for (int y = 0; y < tmp_cloud->size(); y++) {
-             PointT pt = tmp_cloud->points[y];
-             pt.r = idx * 10;
-             pt.g = 255;
-             pt.b = 255;
-          }
-
-          
-          *output = *output + *tmp_cloud;
-       }
-       sensor_msgs::PointCloud2 ros_cloud;
-       pcl::toROSMsg(*output, ros_cloud);
-       ros_cloud.header = cloud_msg->header;
-       this->pub_cloud_.publish(ros_cloud);
-
-
-       
        Eigen::Vector4f centroid;
-       pcl::compute3DCentroid<PointT, float>(*cloud, centroid);
-       if (!isnan(centroid(0) && !isnan(centroid(1) && !isnan(centroid(2))))) {
-          PointXYZRPY cur_position;
-          cur_position.x = centroid(0);
-          cur_position.y = centroid(1);
-          cur_position.z = centroid(2);
-          this->motion_history_.push_back(cur_position);
-          // std::cout << "Centroid: " << cur_position << std::endl;
-       }
+       this->compute3DCentroids(cloud, centroid);
+       PointXYZRPY cur_position;
+       cur_position.x = centroid(0);
+       cur_position.y = centroid(1);
+       cur_position.z = centroid(2);
+       this->motion_history_.push_back(cur_position);
     }
 }
 
 void MultilayerObjectTracking::callback(
     const jsk_recognition_msgs::ClusterPointIndicesConstPtr &indices_mgs,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
+    const jsk_recognition_msgs::AdjacencyList::ConstPtr &vertices_msg,
     const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
     if (this->object_reference_->empty()) {
        ROS_WARN("No Model To Track Selected");
@@ -223,6 +206,14 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                 cv::compareHist(color_hist,
                                 obj_ref[i].cluster_color_hist,
                                 CV_COMP_BHATTACHARYYA));
+
+             // voxel neigbor weight
+             float obj_dist_weight;
+             float obj_angle_weight;
+             this->adjacentVoxelCoherencey(
+                this->object_reference_, i, obj_dist_weight, obj_angle_weight);
+
+             
              
              float prob = std::exp(-0.7 * dist_vfh) * std::exp(-1.5 * dist_col);
              if (prob > probability /*&& prob > 0.5f*/) {
@@ -242,6 +233,25 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     pcl::copyPointCloud<PointT, PointT>(*n_cloud, *cloud);
 }
 
+std::vector<MultilayerObjectTracking::AdjacentInfo>
+MultilayerObjectTracking::voxelAdjacencyList(
+    const jsk_recognition_msgs::AdjacencyList &adjacency_list) {
+    std::vector<AdjacentInfo> supervoxel_list;
+    AdjacentInfo tmp_list;
+    for (int i = 0 ; i < adjacency_list.vertices.size(); i++) {
+       int vertex_index = adjacency_list.vertices[i];
+       float dist = static_cast<float>(adjacency_list.edge_weight[i]);
+       if (vertex_index == -1) {
+          supervoxel_list.push_back(tmp_list);
+          tmp_list.adjacent_indices.clear();
+          tmp_list.adjacent_distances.clear();
+       } else {
+          tmp_list.adjacent_indices.push_back(vertex_index);
+          tmp_list.adjacent_distances.push_back(dist);
+       }
+    }
+    return supervoxel_list;
+}
 
 template<class T>
 void MultilayerObjectTracking::estimatePointCloudNormals(
@@ -391,6 +401,83 @@ void MultilayerObjectTracking::estimatedPFPose(
     } else {
        // pertubate with history error weight
     }
+}
+
+void MultilayerObjectTracking::compute3DCentroids(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    Eigen::Vector4f &centre) {
+    if (cloud->empty()) {
+       ROS_ERROR("ERROR: empty cloud for centroid");
+       centre = Eigen::Vector4f(-1, -1, -1, -1);
+       return;
+    }
+    Eigen::Vector4f centroid;
+    pcl::compute3DCentroid<PointT, float>(*cloud, centroid);
+    if (!isnan(centroid(0)) && !isnan(centroid(1)) && !isnan(centroid(2))) {
+       centre = centroid;
+    }
+}
+
+Eigen::Vector4f MultilayerObjectTracking::cloudMeanNormal(
+    const pcl::PointCloud<pcl::Normal>::Ptr normal,
+    bool isnorm) {
+    if (normal->empty()) {
+       return Eigen::Vector4f(0, 0, 0, 0);
+    }
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+    int icounter = 0;
+    for (int i = 0; i < normal->size(); i++) {
+       if ((!isnan(normal->points[i].normal_x)) &&
+           (!isnan(normal->points[i].normal_y)) &&
+           (!isnan(normal->points[i].normal_z))) {
+          x += normal->points[i].normal_x;
+          y += normal->points[i].normal_y;
+          z += normal->points[i].normal_z;
+          icounter++;
+       }
+    }
+    Eigen::Vector4f n_mean = Eigen::Vector4f(
+       x/static_cast<float>(icounter),
+       y/static_cast<float>(icounter),
+       z/static_cast<float>(icounter),
+       0.0f);
+    if (isnorm) {
+       n_mean.normalize();
+    }
+    return n_mean;
+}
+
+float MultilayerObjectTracking::computeCoherency(
+    const float dist, const float weight) {
+    if (isnan(dist)) {
+       return 0.0f;
+    }
+    return static_cast<float>(1/(1 + (weight * std::pow(dist, 2))));
+}
+
+void MultilayerObjectTracking::adjacentVoxelCoherencey(
+    const ModelsPtr &ref_model, const int index,
+    float &dist_weight, float &angle_weight) {
+    Models obj_mod = *ref_model;
+    ReferenceModel object_model = obj_mod[index];
+    AdjacentInfo adjacent_info = object_model.cluster_neigbors;
+    dist_weight = 0.0f;
+    angle_weight = 0.0f;
+    Eigen::Vector4f c_mean = this->cloudMeanNormal(
+       object_model.cluster_normals);
+    for (int i = 1; i < adjacent_info.adjacent_indices.size(); i++) {
+       float dist = adjacent_info.adjacent_distances[i];
+       dist_weight += this->computeCoherency(dist, 1.0f);
+       int nidx = adjacent_info.adjacent_indices[i];
+       Eigen::Vector4f n_mean = this->cloudMeanNormal(
+          obj_mod[nidx].cluster_normals);
+       float theta = static_cast<float>(pcl::getAngle3D(c_mean, n_mean));
+       angle_weight += this->computeCoherency(theta, 1.0f);
+    }
+    dist_weight /= static_cast<float>(adjacent_info.adjacent_indices.size());
+    angle_weight /= static_cast<float>(adjacent_info.adjacent_indices.size());
 }
 
 int main(int argc, char *argv[]) {

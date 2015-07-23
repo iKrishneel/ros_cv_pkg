@@ -2,7 +2,8 @@
 #include <particle_filter_tracking/particle_filter_tracking.h>
 
 ParticleFilterTracking::ParticleFilterTracking() :
-    block_size_(16), hbins(10), sbins(12), tracker_init_(false) {
+    block_size_(16), hbins(10), sbins(12),
+    tracker_init_(false), threads_(8) {
     this->subscribe();
     this->onInit();
 }
@@ -146,7 +147,6 @@ void ParticleFilterTracking::runObjectTracker(
 std::vector<double> ParticleFilterTracking::colorHistogramLikelihood(
     std::vector<cv::Mat> &obj_patch) {
     std::vector<double> prob_hist;
-#pragma omp parallel for
     for (int i = 0; i < obj_patch.size(); i++) {
        double dist = static_cast<double>(
           this->computeHistogramDistances(
@@ -173,7 +173,6 @@ double ParticleFilterTracking::computeHistogramDistances(
        sum = static_cast<double>(
           cv::compareHist(hist, *h_D, CV_COMP_BHATTACHARYYA));
     } else if (hist_MD->size() > 0) {
-#pragma omp parallel for
        for (int i = 0; i < hist_MD->size(); i++) {
           double d__ = static_cast<double>(
              cv::compareHist(hist, (*hist_MD)[i], CV_COMP_BHATTACHARYYA));

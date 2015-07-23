@@ -42,6 +42,9 @@ class ParticleFilter {
        std::vector<Particle> &);
     void printParticles(
        cv::Mat &, std::vector<Particle> &);
+
+ protected:
+    unsigned int threads_;
 };
 
 
