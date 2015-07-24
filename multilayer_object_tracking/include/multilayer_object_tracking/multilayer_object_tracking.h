@@ -72,6 +72,7 @@ class MultilayerObjectTracking {
        AdjacentInfo cluster_neigbors;
        pcl::PointCloud<pcl::Normal>::Ptr cluster_normals;
        Eigen::Vector4f cluster_centroid;
+       bool flag;
     };
     typedef std::vector<ReferenceModel> Models;
     typedef boost::shared_ptr<Models> ModelsPtr;
@@ -148,10 +149,17 @@ class MultilayerObjectTracking {
     void estimatedPFPose(
        const geometry_msgs::PoseStamped::ConstPtr &, PointXYZRPY &);
 
+    void processDecomposedCloud(
+       const pcl::PointCloud<PointT>::Ptr,
+       const std::vector<pcl::PointIndices::Ptr> &,
+       const std::vector<AdjacentInfo> &,
+       ModelsPtr &);
+   
     std::vector<AdjacentInfo> voxelAdjacencyList(
        const jsk_recognition_msgs::AdjacencyList &);
     void globalLayerPointCloudProcessing(
        pcl::PointCloud<PointT>::Ptr,
+       const std::vector<AdjacentInfo> &,
        const std::vector<pcl::PointIndices::Ptr> &);
     template<class T>
     void estimatePointCloudNormals(
@@ -179,7 +187,7 @@ class MultilayerObjectTracking {
     Eigen::Vector4f cloudMeanNormal(
        const pcl::PointCloud<pcl::Normal>::Ptr, bool = true);
     void adjacentVoxelCoherencey(
-       const ModelsPtr &, const int, float &, float &);
+       const Models &, const int, float &, float &);
     float computeCoherency(
        const float, const float);
 };

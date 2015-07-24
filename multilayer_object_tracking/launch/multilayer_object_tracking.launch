@@ -1,6 +1,6 @@
 <launch>
   <include file="$(find multilayer_object_tracking)/launch/object_model_annotation.launch" />
-  <!---<include file="$(find multilayer_object_tracking)/launch/supervoxel_segmentation.launch" />-->
+  <include file="$(find multilayer_object_tracking)/launch/supervoxel_segmentation.launch" />
   <node pkg="multilayer_object_tracking" type="multilayer_object_tracking_node"
 	name="multilayer_object_tracking" output="screen" >
     <remap from="input_cloud" to="supervoxel_segmentation/output/cloud" />
@@ -9,6 +9,7 @@
     <remap from="input_obj_indices" to="object_supervoxel/output/indices" />
     <remap from="input_pose" to="/particle_filter_tracker/track_result_pose" />
     <remap from="input_obj_adj" to="object_supervoxel/output/adjacency_list" />
+    <remap from="input_adj" to="supervoxel_segmentation/output/adjacency_list" />
   </node>
   <node pkg="rqt_reconfigure" type="rqt_reconfigure" name="rqt_reconfigure"/>
 </launch>

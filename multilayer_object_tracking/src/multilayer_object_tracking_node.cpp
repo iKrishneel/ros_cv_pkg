@@ -70,44 +70,8 @@ void MultilayerObjectTracking::objInitCallback(
        std::vector<AdjacentInfo> supervoxel_list =
           this->voxelAdjacencyList(adjacency_list);
        this->object_reference_ = ModelsPtr(new Models);
-       int icounter = 0;
-       for (std::vector<pcl::PointIndices::Ptr>::iterator it =
-               all_indices.begin(); it != all_indices.end(); it++) {
-          if ((*it)->indices.size() > this->min_cluster_size_) {
-             ReferenceModel ref_model;
-             ref_model.cluster_cloud = pcl::PointCloud<PointT>::Ptr(
-                new pcl::PointCloud<PointT>);
-             ref_model.cluster_normals = pcl::PointCloud<pcl::Normal>::Ptr(
-                new pcl::PointCloud<pcl::Normal>);
-             pcl::ExtractIndices<PointT>::Ptr eifilter(
-                new pcl::ExtractIndices<PointT>);
-             eifilter->setInputCloud(cloud);
-             eifilter->setIndices(*it);
-             eifilter->filter(*ref_model.cluster_cloud);
-             this->estimatePointCloudNormals<float>(
-                ref_model.cluster_cloud,
-                ref_model.cluster_normals,
-                this->radius_search_);
-             this->computeCloudClusterRPYHistogram(
-                ref_model.cluster_cloud,
-                ref_model.cluster_normals,
-                ref_model.cluster_vfh_hist);
-             this->computeColorHistogram(
-                ref_model.cluster_cloud,
-                ref_model.cluster_color_hist);
-             ref_model.cluster_neigbors = supervoxel_list[icounter++];
-             this->compute3DCentroids(ref_model.cluster_cloud,
-                                      ref_model.cluster_centroid);
-             this->object_reference_->push_back(ref_model);
-             
-             std::cout << "DEBUG: Model Info: "
-                       << ref_model.cluster_cloud->size() << "\t"
-                       << ref_model.cluster_normals->size() << "\t"
-                       << ref_model.cluster_vfh_hist.size() << "\t"
-                       << ref_model.cluster_color_hist.size()
-                       << std::endl;
-          }
-       }
+       this->processDecomposedCloud(
+          cloud, all_indices, supervoxel_list, this->object_reference_);       
        Eigen::Vector4f centroid;
        this->compute3DCentroids(cloud, centroid);
        PointXYZRPY cur_position;
@@ -115,49 +79,6 @@ void MultilayerObjectTracking::objInitCallback(
        cur_position.y = centroid(1);
        cur_position.z = centroid(2);
        this->motion_history_.push_back(cur_position);
-    }
-}
-
-
-void MultilayerObjectTracking::processDecomposedCloud(
-    const pcl::PointCloud<PointT>::Ptr cloud,
-    const std::vector<pcl::PointIndices::Ptr> &all_indices,
-    const std::vector<AdjacentInfo> &supervoxel_list,
-    MultilayerObjectTracking::ModelsPtr models) {
-    if (all_indices.empty()) {
-       return;
-    }
-    int icounter = 0;
-    models = ModelsPtr(new Models);
-    for (std::vector<pcl::PointIndices::Ptr>::const_iterator it =
-            all_indices.begin(); it != all_indices.end(); it++) {
-       if ((*it)->indices.size() > this->min_cluster_size_) {
-          ReferenceModel ref_model;
-          ref_model.cluster_cloud = pcl::PointCloud<PointT>::Ptr(
-             new pcl::PointCloud<PointT>);
-          ref_model.cluster_normals = pcl::PointCloud<pcl::Normal>::Ptr(
-             new pcl::PointCloud<pcl::Normal>);
-          pcl::ExtractIndices<PointT>::Ptr eifilter(
-             new pcl::ExtractIndices<PointT>);
-          eifilter->setInputCloud(cloud);
-          eifilter->setIndices(*it);
-          eifilter->filter(*ref_model.cluster_cloud);
-          this->estimatePointCloudNormals<float>(
-             ref_model.cluster_cloud,
-             ref_model.cluster_normals,
-             this->radius_search_);
-          this->computeCloudClusterRPYHistogram(
-             ref_model.cluster_cloud,
-             ref_model.cluster_normals,
-             ref_model.cluster_vfh_hist);
-          this->computeColorHistogram(
-             ref_model.cluster_cloud,
-             ref_model.cluster_color_hist);
-          ref_model.cluster_neigbors = supervoxel_list[icounter++];
-          this->compute3DCentroids(ref_model.cluster_cloud,
-                                   ref_model.cluster_centroid);
-          models->push_back(ref_model);
-       }
     }
 }
 
@@ -170,6 +91,9 @@ void MultilayerObjectTracking::callback(
        ROS_WARN("No Model To Track Selected");
        return;
     }
+
+    std::cout << "RUNNING CALLBACK---" << std::endl;
+    
     // get the indices of time t
     std::vector<pcl::PointIndices::Ptr> all_indices;
     all_indices = this->clusterPointIndicesToPointIndices(indices_mgs);
@@ -195,6 +119,57 @@ void MultilayerObjectTracking::callback(
     this->pub_cloud_.publish(ros_cloud);
 }
 
+void MultilayerObjectTracking::processDecomposedCloud(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const std::vector<pcl::PointIndices::Ptr> &all_indices,
+    const std::vector<AdjacentInfo> &supervoxel_list,
+    MultilayerObjectTracking::ModelsPtr &models) {
+    if (all_indices.empty()) {
+       return;
+    }
+    int icounter = 0;
+    models = ModelsPtr(new Models);
+    for (std::vector<pcl::PointIndices::Ptr>::const_iterator it =
+            all_indices.begin(); it != all_indices.end(); it++) {
+       ReferenceModel ref_model;
+       ref_model.flag = true;
+       if ((*it)->indices.size() > this->min_cluster_size_) {
+          ref_model.cluster_cloud = pcl::PointCloud<PointT>::Ptr(
+             new pcl::PointCloud<PointT>);
+          ref_model.cluster_normals = pcl::PointCloud<pcl::Normal>::Ptr(
+             new pcl::PointCloud<pcl::Normal>);
+          pcl::ExtractIndices<PointT>::Ptr eifilter(
+             new pcl::ExtractIndices<PointT>);
+          eifilter->setInputCloud(cloud);
+          eifilter->setIndices(*it);
+          eifilter->filter(*ref_model.cluster_cloud);
+          this->estimatePointCloudNormals<float>(
+             ref_model.cluster_cloud,
+             ref_model.cluster_normals,
+             this->radius_search_);
+          this->computeCloudClusterRPYHistogram(
+             ref_model.cluster_cloud,
+             ref_model.cluster_normals,
+             ref_model.cluster_vfh_hist);
+          this->computeColorHistogram(
+             ref_model.cluster_cloud,
+             ref_model.cluster_color_hist);
+          ref_model.cluster_neigbors = supervoxel_list[icounter++];
+          this->compute3DCentroids(ref_model.cluster_cloud,
+                                   ref_model.cluster_centroid);
+          ref_model.flag = false;
+          
+          // std::cout << "DEBUG: Model Info: "
+          //           << ref_model.cluster_cloud->size() << "\t"
+          //           << ref_model.cluster_normals->size() << "\t"
+          //           << ref_model.cluster_vfh_hist.size() << "\t"
+          //           << ref_model.cluster_color_hist.size()
+          //           << std::endl;
+       }
+       models->push_back(ref_model);
+    }
+}
+
 void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     pcl::PointCloud<PointT>::Ptr cloud,
     const std::vector<AdjacentInfo> &supervoxel_list,
@@ -205,67 +180,54 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     }
     pcl::PointCloud<PointT>::Ptr n_cloud(new pcl::PointCloud<PointT>);
     Models obj_ref = *object_reference_;
-
-
-    Models scene_models;
-    for (std::vector<pcl::PointIndices::Ptr>::const_iterator it =
-            all_indices.begin(); it != all_indices.end(); it++) {
-       if ((*it)->indices.size() > this->min_cluster_size_) {
-          ReferenceModel ref_model;
-          ref_model.cluster_cloud = pcl::PointCloud<PointT>::Ptr(
-             new pcl::PointCloud<PointT>);
-          ref_model.cluster_normals = pcl::PointCloud<pcl::Normal>::Ptr(
-             new pcl::PointCloud<pcl::Normal>);
-
-          
-          pcl::ExtractIndices<PointT>::Ptr eifilter(
-             new pcl::ExtractIndices<PointT>);
-          eifilter->setInputCloud(cloud);
-          eifilter->setIndices(*it);
-          pcl::PointCloud<PointT>::Ptr cloud_cluster(
-             new pcl::PointCloud<PointT>);
-          eifilter->filter(*cloud_cluster);
-          pcl::PointCloud<pcl::Normal>::Ptr cluster_normal(
-             new pcl::PointCloud<pcl::Normal>);
-          this->estimatePointCloudNormals<float>(
-             cloud_cluster, cluster_normal, this->radius_search_);
-          cv::Mat cluster_hist;
-          this->computeCloudClusterRPYHistogram(
-             cloud_cluster, cluster_normal, cluster_hist);
-          cv::Mat color_hist;
-          this->computeColorHistogram(cloud_cluster, color_hist);
-
-
-
-
-          
+    ModelsPtr s_models = ModelsPtr(new Models);
+    this->processDecomposedCloud(
+       cloud, all_indices, supervoxel_list, s_models);
+    Models scene_models = *s_models;
+    for (int j = 0; j < scene_models.size(); j++) {
+       ReferenceModel scene_model = scene_models[j];
+       if (!scene_model.flag) {
           float probability = 0.0;
           for (int i = 0; i < obj_ref.size(); i++) {
-             float dist_vfh = static_cast<float>(
-                cv::compareHist(cluster_hist,
-                                obj_ref[i].cluster_vfh_hist,
-                                CV_COMP_BHATTACHARYYA));
-             float dist_col = static_cast<float>(
-                cv::compareHist(color_hist,
-                                obj_ref[i].cluster_color_hist,
-                                CV_COMP_BHATTACHARYYA));
-
-             // voxel neigbor weight
-             // if works than move out to process once
-             float obj_dist_weight;
-             float obj_angle_weight;
-             this->adjacentVoxelCoherencey(
-                this->object_reference_, i, obj_dist_weight, obj_angle_weight);
-
-             
-             
-             float prob = std::exp(-0.7 * dist_vfh) * std::exp(-1.5 * dist_col);
-             if (prob > probability /*&& prob > 0.5f*/) {
-                probability = prob;
+             if (!obj_ref[i].flag) {
+                // std::cout << i << "\tSize: "
+                //           << obj_ref[i].cluster_vfh_hist.size()
+                //           << obj_ref[i].cluster_color_hist.size()
+                //           << scene_model.cluster_vfh_hist.size()
+                //           << scene_model.cluster_color_hist.size()
+                // << std::endl;
+                
+                float dist_vfh = static_cast<float>(
+                   cv::compareHist(scene_model.cluster_vfh_hist,
+                                   obj_ref[i].cluster_vfh_hist,
+                                   CV_COMP_BHATTACHARYYA));
+                float dist_col = static_cast<float>(
+                   cv::compareHist(scene_model.cluster_color_hist,
+                                   obj_ref[i].cluster_color_hist,
+                                   CV_COMP_BHATTACHARYYA));
+                
+                // voxel neigbor weight
+                // if works than move out to process once
+                float obj_dist_weight;
+                float obj_angle_weight;
+                this->adjacentVoxelCoherencey(
+                obj_ref, i, obj_dist_weight, obj_angle_weight);
+                
+                float s_dist_weight;
+                float s_angle_weight;
+                this->adjacentVoxelCoherencey(
+                   scene_models, j, s_dist_weight, s_angle_weight);
+                
+                float prob = std::exp(-0.7 * dist_vfh) *
+                   std::exp(-1.5 * dist_col);
+                if (prob > probability /*&& prob > 0.5f*/) {
+                   probability = prob;
+                }
              }
           }
-          for (int i = 0; i < cloud_cluster->size(); i++) {
-             PointT pt = cloud_cluster->points[i];
+          std::cout << "Probability: " << probability << std::endl;
+          for (int i = 0; i < scene_model.cluster_cloud->size(); i++) {
+             PointT pt = scene_model.cluster_cloud->points[i];
              pt.r = 255 * probability;
              pt.g = 255 * probability;
              pt.b = 255 * probability;
@@ -502,26 +464,32 @@ float MultilayerObjectTracking::computeCoherency(
 }
 
 void MultilayerObjectTracking::adjacentVoxelCoherencey(
-    const ModelsPtr &ref_model, const int index,
+    const Models &ref_model, const int index,
     float &dist_weight, float &angle_weight) {
-    Models obj_mod = *ref_model;
-    ReferenceModel object_model = obj_mod[index];
+    ReferenceModel object_model = ref_model[index];
+    if (object_model.flag) {
+       return;
+    }
     AdjacentInfo adjacent_info = object_model.cluster_neigbors;
     dist_weight = 0.0f;
     angle_weight = 0.0f;
     Eigen::Vector4f c_mean = this->cloudMeanNormal(
        object_model.cluster_normals);
+    int icounter = 0;
     for (int i = 1; i < adjacent_info.adjacent_indices.size(); i++) {
-       float dist = adjacent_info.adjacent_distances[i];
-       dist_weight += this->computeCoherency(dist, 1.0f);
-       int nidx = adjacent_info.adjacent_indices[i];
-       Eigen::Vector4f n_mean = this->cloudMeanNormal(
-          obj_mod[nidx].cluster_normals);
-       float theta = static_cast<float>(pcl::getAngle3D(c_mean, n_mean));
-       angle_weight += this->computeCoherency(theta, 1.0f);
+       int nidx = adjacent_info.adjacent_indices[i] - 1;
+       if (!ref_model[nidx].flag && nidx < ref_model.size()) {
+          Eigen::Vector4f n_mean = this->cloudMeanNormal(
+             ref_model[nidx].cluster_normals);
+          float dist = adjacent_info.adjacent_distances[i];
+          dist_weight += this->computeCoherency(dist, 1.0f);
+          float theta = static_cast<float>(pcl::getAngle3D(c_mean, n_mean));
+          angle_weight += this->computeCoherency(theta, 1.0f);
+          icounter++;
+       }
     }
-    dist_weight /= static_cast<float>(adjacent_info.adjacent_indices.size());
-    angle_weight /= static_cast<float>(adjacent_info.adjacent_indices.size());
+    dist_weight /= static_cast<float>(icounter);
+    angle_weight /= static_cast<float>(icounter);
 }
 
 int main(int argc, char *argv[]) {
