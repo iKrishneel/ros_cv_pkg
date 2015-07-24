@@ -297,7 +297,7 @@ MultilayerObjectTracking::voxelAdjacencyList(
     const jsk_recognition_msgs::AdjacencyList &adjacency_list) {
     std::vector<AdjacentInfo> supervoxel_list;
     AdjacentInfo tmp_list;
-    for (int i = 0 ; i < adjacency_list.vertices.size(); i++) {
+    for (int i = 0; i < adjacency_list.vertices.size(); i++) {
        int vertex_index = adjacency_list.vertices[i];
        float dist = static_cast<float>(adjacency_list.edge_weight[i]);
        if (vertex_index == -1) {

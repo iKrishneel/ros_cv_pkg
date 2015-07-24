@@ -52,6 +52,7 @@
 #include <pcl/features/vfh.h>
 #include <pcl/tracking/tracking.h>
 #include <pcl/common/common.h>
+#include <pcl/registration/distances.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -153,14 +154,15 @@ class MultilayerObjectTracking {
        const pcl::PointCloud<PointT>::Ptr,
        const std::vector<pcl::PointIndices::Ptr> &,
        const std::vector<AdjacentInfo> &,
-       ModelsPtr &);
+       ModelsPtr &, bool = true, bool = true, bool = true);
    
     std::vector<AdjacentInfo> voxelAdjacencyList(
        const jsk_recognition_msgs::AdjacencyList &);
     void globalLayerPointCloudProcessing(
        pcl::PointCloud<PointT>::Ptr,
        const std::vector<AdjacentInfo> &,
-       const std::vector<pcl::PointIndices::Ptr> &);
+       const std::vector<pcl::PointIndices::Ptr> &,
+       const MultilayerObjectTracking::PointXYZRPY &);
     template<class T>
     void estimatePointCloudNormals(
        const pcl::PointCloud<PointT>::Ptr,
