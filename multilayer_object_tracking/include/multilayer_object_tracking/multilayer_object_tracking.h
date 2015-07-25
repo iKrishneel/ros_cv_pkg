@@ -58,7 +58,10 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <jsk_recognition_msgs/AdjacencyList.h>
 
-class MultilayerObjectTracking {
+#include <multilayer_object_tracking/supervoxel_segmentation.h>
+
+
+class MultilayerObjectTracking: public SupervoxelSegmentation {
     typedef pcl::PointXYZRGB PointT;
 
     struct AdjacentInfo {
@@ -99,14 +102,10 @@ class MultilayerObjectTracking {
 
     // subscribe after init
     typedef  message_filters::sync_policies::ApproximateTime<
-       jsk_recognition_msgs::ClusterPointIndices,
        sensor_msgs::PointCloud2,
-       jsk_recognition_msgs::AdjacencyList> ObjectSyncPolicy;
-    message_filters::Subscriber<
-       jsk_recognition_msgs::ClusterPointIndices> sub_obj_indices_;
+       geometry_msgs::PoseStamped> ObjectSyncPolicy;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_obj_cloud_;
-    message_filters::Subscriber<
-       jsk_recognition_msgs::AdjacencyList> sub_obj_adj_;
+    message_filters::Subscriber<geometry_msgs::PoseStamped> sub_obj_pose_;
     boost::shared_ptr<
        message_filters::Synchronizer<ObjectSyncPolicy> >obj_sync_;
    
@@ -140,11 +139,10 @@ class MultilayerObjectTracking {
        const jsk_recognition_msgs::AdjacencyList::ConstPtr &,
        const geometry_msgs::PoseStamped::ConstPtr &);
     virtual void objInitCallback(
-       const jsk_recognition_msgs::ClusterPointIndicesConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &,
-       const jsk_recognition_msgs::AdjacencyList::ConstPtr &);
+       const geometry_msgs::PoseStamped::ConstPtr &);
    
-    virtual std::vector<pcl::PointIndices::Ptr>
+   virtual std::vector<pcl::PointIndices::Ptr>
     clusterPointIndicesToPointIndices(
        const jsk_recognition_msgs::ClusterPointIndicesConstPtr &);
     void estimatedPFPose(
