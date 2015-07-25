@@ -68,82 +68,13 @@ void MultilayerObjectTracking::objInitCallback(
        this->supervoxelSegmentation(cloud,
                                     supervoxel_clusters,
                                     supervoxel_adjacency);
-       
-       for (std::multimap<uint32_t, uint32_t>::iterator label_itr =
-               supervoxel_adjacency.begin(); label_itr !=
-               supervoxel_adjacency.end();) {
-          uint32_t supervoxel_label = label_itr->first;
-          pcl::Supervoxel<PointT>::Ptr supervoxel =
-             supervoxel_clusters.at(supervoxel_label);
-          
-          for (std::multimap<uint32_t, uint32_t>::iterator adjacent_itr =
-                  supervoxel_adjacency.equal_range(supervoxel_label).first;
-               adjacent_itr != supervoxel_adjacency.equal_range(
-                  supervoxel_label).second; ++adjacent_itr) {
-             pcl::Supervoxel<PointT>::Ptr neighbor_supervoxel =
-                supervoxel_clusters.at(adjacent_itr->second);
-             Eigen::Vector4f centroid = Eigen::Vector4f();
-             centroid = neighbor_supervoxel->centroid_.getVector4fMap();
-          }
-          label_itr = supervoxel_adjacency.upper_bound(supervoxel_label);
-       }
-       
-       
-       /*
-       jsk_recognition_msgs::AdjacencyList adjacency_list = *vertices_msg;
-       std::vector<pcl::PointIndices::Ptr> all_indices =
-          this->clusterPointIndicesToPointIndices(indices_mgs);
-       std::vector<AdjacentInfo> supervoxel_list =
-          this->voxelAdjacencyList(adjacency_list);
+       std::vector<AdjacentInfo> supervoxel_list;
        this->object_reference_ = ModelsPtr(new Models);
        this->processDecomposedCloud(
-          cloud, all_indices, supervoxel_list, this->object_reference_);
-       Eigen::Vector4f centroid;
-       this->compute3DCentroids(cloud, centroid);
-       PointXYZRPY cur_position;
-       cur_position.x = centroid(0);
-       cur_position.y = centroid(1);
-       cur_position.z = centroid(2);
-       this->motion_history_.push_back(cur_position);
-       */
+          cloud, supervoxel_clusters, supervoxel_adjacency,
+          supervoxel_list, this->object_reference_);
     }
 }
-
-
-/*
-  void MultilayerObjectTracking::objInitCallback(
-    const jsk_recognition_msgs::ClusterPointIndicesConstPtr &indices_mgs,
-    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
-    const jsk_recognition_msgs::AdjacencyList::ConstPtr &vertices_msg) {
-    std::vector<pcl::PointIndices::Ptr> cluster_indices;
-    pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
-    cluster_indices = this->clusterPointIndicesToPointIndices(indices_mgs);
-    pcl::fromROSMsg(*cloud_msg, *cloud);
-    if (this->init_counter_++ > 0) {
-       // reset tracking params
-       ROS_WARN("Object is re-initalized! stopping & reseting...");
-    }
-    if (!cloud->empty()) {
-       jsk_recognition_msgs::AdjacencyList adjacency_list = *vertices_msg;
-       std::vector<pcl::PointIndices::Ptr> all_indices =
-          this->clusterPointIndicesToPointIndices(indices_mgs);
-       std::vector<AdjacentInfo> supervoxel_list =
-          this->voxelAdjacencyList(adjacency_list);
-       this->object_reference_ = ModelsPtr(new Models);
-       this->processDecomposedCloud(
-          cloud, all_indices, supervoxel_list, this->object_reference_);
-       Eigen::Vector4f centroid;
-       this->compute3DCentroids(cloud, centroid);
-       PointXYZRPY cur_position;
-       cur_position.x = centroid(0);
-       cur_position.y = centroid(1);
-       cur_position.z = centroid(2);
-       this->motion_history_.push_back(cur_position);
-    }
-}
- */
-
-
 
 void MultilayerObjectTracking::callback(
     const jsk_recognition_msgs::ClusterPointIndicesConstPtr &indices_mgs,
@@ -183,37 +114,51 @@ void MultilayerObjectTracking::callback(
     this->pub_cloud_.publish(ros_cloud);
 }
 
-
 void MultilayerObjectTracking::processDecomposedCloud(
     const pcl::PointCloud<PointT>::Ptr cloud,
-    const std::vector<pcl::PointIndices::Ptr> &all_indices,
-    const std::vector<AdjacentInfo> &supervoxel_list,
+    const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> &
+    supervoxel_clusters,
+    const std::multimap<uint32_t, uint32_t> &supervoxel_adjacency,
+    std::vector<AdjacentInfo> &supervoxel_list,
     MultilayerObjectTracking::ModelsPtr &models,
     bool norm_flag, bool feat_flag, bool cent_flag) {
-    if (all_indices.empty()) {
+    if (cloud->empty() || supervoxel_clusters.empty()) {
        return;
     }
-    int icounter = 0;
     models = ModelsPtr(new Models);
-    for (std::vector<pcl::PointIndices::Ptr>::const_iterator it =
-            all_indices.begin(); it != all_indices.end(); it++) {
+    for (std::multimap<uint32_t, uint32_t>::const_iterator label_itr =
+            supervoxel_adjacency.begin(); label_itr !=
+            supervoxel_adjacency.end();) {
        ReferenceModel ref_model;
        ref_model.flag = true;
-       if ((*it)->indices.size() > this->min_cluster_size_) {
+       uint32_t supervoxel_label = label_itr->first;
+       pcl::Supervoxel<PointT>::Ptr supervoxel =
+          supervoxel_clusters.at(supervoxel_label);
+       if (supervoxel->voxels_->size() > min_cluster_size_) {
+          std::vector<uint32_t> adjacent_voxels;
+          for (std::multimap<uint32_t, uint32_t>::const_iterator
+                  adjacent_itr = supervoxel_adjacency.equal_range(
+                     supervoxel_label).first; adjacent_itr !=
+                  supervoxel_adjacency.equal_range(
+                     supervoxel_label).second; ++adjacent_itr) {
+             pcl::Supervoxel<PointT>::Ptr neighbor_supervoxel =
+                supervoxel_clusters.at(adjacent_itr->second);
+             if (neighbor_supervoxel->voxels_->size() >
+                 min_cluster_size_) {
+                adjacent_voxels.push_back(adjacent_itr->second);
+             }
+          }
+          AdjacentInfo a_info;
+          a_info.adjacent_voxel_indices[supervoxel_label] =
+             adjacent_voxels;
+          supervoxel_list.push_back(a_info);
           ref_model.cluster_cloud = pcl::PointCloud<PointT>::Ptr(
              new pcl::PointCloud<PointT>);
-          pcl::ExtractIndices<PointT>::Ptr eifilter(
-             new pcl::ExtractIndices<PointT>);
-          eifilter->setInputCloud(cloud);
-          eifilter->setIndices(*it);
-          eifilter->filter(*ref_model.cluster_cloud);
+          ref_model.cluster_cloud = supervoxel->voxels_;
           if (norm_flag) {
              ref_model.cluster_normals = pcl::PointCloud<pcl::Normal>::Ptr(
                 new pcl::PointCloud<pcl::Normal>);
-             this->estimatePointCloudNormals<float>(
-                ref_model.cluster_cloud,
-                ref_model.cluster_normals,
-                this->radius_search_);
+             ref_model.cluster_normals = supervoxel->normals_;
           }
           if (feat_flag) {
              this->computeCloudClusterRPYHistogram(
@@ -225,11 +170,12 @@ void MultilayerObjectTracking::processDecomposedCloud(
                 ref_model.cluster_color_hist);
           }
           if (cent_flag) {
-             this->compute3DCentroids(ref_model.cluster_cloud,
-                                      ref_model.cluster_centroid);
+             ref_model.cluster_centroid = Eigen::Vector4f();
+             ref_model.cluster_centroid =
+                supervoxel->centroid_.getVector4fMap();
           }
-          ref_model.cluster_neigbors = supervoxel_list[icounter++];
           ref_model.flag = false;
+          label_itr = supervoxel_adjacency.upper_bound(supervoxel_label);
        }
        models->push_back(ref_model);
     }
@@ -249,8 +195,8 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
 
     //------------------------------
     ModelsPtr t_voxels = ModelsPtr(new Models);
-    this->processDecomposedCloud(
-       cloud, all_indices, supervoxel_list, t_voxels, false, false);
+    // this->processDecomposedCloud(
+    //    cloud, all_indices, supervoxel_list, t_voxels, false, false);
     Models target_voxels = *t_voxels;
     Models good_matches;
     for (int j = 0; j < obj_ref.size(); j++) {

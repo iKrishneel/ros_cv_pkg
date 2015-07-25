@@ -59,7 +59,7 @@
 #include <jsk_recognition_msgs/AdjacencyList.h>
 
 #include <multilayer_object_tracking/supervoxel_segmentation.h>
-
+#include <map>
 
 class MultilayerObjectTracking: public SupervoxelSegmentation {
     typedef pcl::PointXYZRGB PointT;
@@ -67,6 +67,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     struct AdjacentInfo {
        std::vector<int> adjacent_indices;
        std::vector<float> adjacent_distances;
+       
+       std::map<uint32_t, std::vector<uint32_t> > adjacent_voxel_indices;
     };
    
     struct ReferenceModel {
@@ -149,9 +151,10 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        const geometry_msgs::PoseStamped::ConstPtr &, PointXYZRPY &);
 
     void processDecomposedCloud(
-       const pcl::PointCloud<PointT>::Ptr,
-       const std::vector<pcl::PointIndices::Ptr> &,
-       const std::vector<AdjacentInfo> &,
+       const pcl::PointCloud<PointT>::Ptr cloud,
+       const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> &,
+       const std::multimap<uint32_t, uint32_t> &,
+       std::vector<AdjacentInfo> &,
        ModelsPtr &, bool = true, bool = true, bool = true);
    
     std::vector<AdjacentInfo> voxelAdjacencyList(
