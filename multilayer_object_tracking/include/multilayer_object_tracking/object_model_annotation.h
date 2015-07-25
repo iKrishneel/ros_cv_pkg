@@ -28,12 +28,16 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl/common/common.h>
+#include <pcl/common/transforms.h>
+#include <pcl/filters/filter.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/segmentation/extract_clusters.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <geometry_msgs/PolygonStamped.h>
+#include <geometry_msgs/PoseStamped.h>
 
 class ObjectModelAnnotation {
  private:
@@ -52,6 +56,7 @@ class ObjectModelAnnotation {
 
     ros::Publisher pub_cloud_;
     ros::Publisher pub_image_;
+    ros::Publisher pub_pose_;
    
  protected:
     void onInit();
@@ -72,6 +77,9 @@ class ObjectModelAnnotation {
        pcl::PointCloud<PointT>::Ptr,
        const cv::Mat &,
        const cv::Rect_<int>);
+    void compute3DCentroids(
+       const pcl::PointCloud<PointT>::Ptr,
+       Eigen::Vector4f &);
 };
 
 

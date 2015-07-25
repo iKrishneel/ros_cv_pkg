@@ -67,7 +67,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     struct AdjacentInfo {
        std::vector<int> adjacent_indices;
        std::vector<float> adjacent_distances;
-       
+       uint32_t voxel_index;
        std::map<uint32_t, std::vector<uint32_t> > adjacent_voxel_indices;
     };
    
@@ -90,15 +90,10 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     boost::mutex mutex_;
     ros::NodeHandle pnh_;
     typedef  message_filters::sync_policies::ApproximateTime<
-       jsk_recognition_msgs::ClusterPointIndices,
        sensor_msgs::PointCloud2,
-       jsk_recognition_msgs::AdjacencyList,
        geometry_msgs::PoseStamped> SyncPolicy;
    
-    message_filters::Subscriber<
-      jsk_recognition_msgs::ClusterPointIndices> sub_indices_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
-    message_filters::Subscriber<jsk_recognition_msgs::AdjacencyList> sub_adj_;
     message_filters::Subscriber<geometry_msgs::PoseStamped> sub_pose_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
@@ -136,15 +131,13 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
  public:
     MultilayerObjectTracking();
     virtual void callback(
-       const jsk_recognition_msgs::ClusterPointIndicesConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &,
-       const jsk_recognition_msgs::AdjacencyList::ConstPtr &,
        const geometry_msgs::PoseStamped::ConstPtr &);
     virtual void objInitCallback(
        const sensor_msgs::PointCloud2::ConstPtr &,
        const geometry_msgs::PoseStamped::ConstPtr &);
    
-   virtual std::vector<pcl::PointIndices::Ptr>
+    virtual std::vector<pcl::PointIndices::Ptr>
     clusterPointIndicesToPointIndices(
        const jsk_recognition_msgs::ClusterPointIndicesConstPtr &);
     void estimatedPFPose(
@@ -161,8 +154,6 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        const jsk_recognition_msgs::AdjacencyList &);
     void globalLayerPointCloudProcessing(
        pcl::PointCloud<PointT>::Ptr,
-       const std::vector<AdjacentInfo> &,
-       const std::vector<pcl::PointIndices::Ptr> &,
        const MultilayerObjectTracking::PointXYZRPY &);
     template<class T>
     void estimatePointCloudNormals(

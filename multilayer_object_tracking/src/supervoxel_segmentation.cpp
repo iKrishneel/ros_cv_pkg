@@ -19,6 +19,7 @@ void SupervoxelSegmentation::supervoxelSegmentation(
        ROS_ERROR("ERROR: Supervoxel input cloud empty...");
        return;
     }
+    boost::mutex::scoped_lock lock(mutex_);
     pcl::SupervoxelClustering<PointT> super(voxel_resolution_,
                                             seed_resolution_,
                                             use_transform_);

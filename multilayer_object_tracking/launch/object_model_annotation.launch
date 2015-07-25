@@ -9,5 +9,5 @@
 	name="image_view2" output="screen">
     <remap from="image" to="/camera/rgb/image_rect_color"/>
   </node>
-  <include file="$(find multilayer_object_tracking)/launch/object_supervoxel.launch" />
+  <!--<include file="$(find multilayer_object_tracking)/launch/object_supervoxel.launch" />-->
 </launch>
