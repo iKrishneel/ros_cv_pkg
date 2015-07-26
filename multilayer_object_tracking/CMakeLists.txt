@@ -46,6 +46,9 @@ find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msg
 ##   * uncomment the generate_messages entry below
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
+generate_dynamic_reconfigure_options(
+  cfg/SupervoxelSegmentation.cfg)
+
 ## Generate messages in the 'msg' folder
 # add_message_files(
 #   FILES
@@ -106,12 +109,15 @@ include_directories(
 # )
 
 ## Declare a cpp executable
-add_executable(multilayer_object_tracking_node src/multilayer_object_tracking_node.cpp)
+add_executable(multilayer_object_tracking_node
+  src/multilayer_object_tracking_node.cpp
+  src/supervoxel_segmentation.cpp)
 add_executable(object_model_annotation_node src/object_model_annotation_node.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
-# add_dependencies(multilayer_object_tracking_node multilayer_object_tracking_generate_messages_cpp)
+#add_dependencies(multilayer_object_tracking_node multilayer_object_tracking_generate_messages_cpp)
+add_dependencies(multilayer_object_tracking_node ${PROJECT_NAME}_gencfg)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(multilayer_object_tracking_node ${catkin_LIBRARIES})

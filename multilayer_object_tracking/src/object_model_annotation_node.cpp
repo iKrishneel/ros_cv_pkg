@@ -12,6 +12,8 @@ void ObjectModelAnnotation::onInit() {
        "/object_model/output/cloud", 1);
     this->pub_image_ = this->pnh_.advertise<sensor_msgs::Image>(
        "/object_model/output/image", 1);
+    this->pub_pose_ = this->pnh_.advertise<geometry_msgs::PoseStamped>(
+       "/object_model/output/pose", 1);
 }
 
 void ObjectModelAnnotation::subscribe() {
@@ -52,6 +54,18 @@ void ObjectModelAnnotation::callback(
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
     this->getAnnotatedObjectCloud(cloud, image, screen_rect);
+
+    Eigen::Vector4f centroid;
+    this->compute3DCentroids(cloud, centroid);
+    geometry_msgs::PoseStamped ros_pose;
+    ros_pose.pose.position.x = centroid(0);
+    ros_pose.pose.position.y = centroid(1);
+    ros_pose.pose.position.z = centroid(2);
+    ros_pose.pose.orientation.x = 0.0f;
+    ros_pose.pose.orientation.y = 0.0f;
+    ros_pose.pose.orientation.z = 0.0f;
+    ros_pose.pose.orientation.w = 0.0f;
+    ros_pose.header = cloud_msg->header;
     
     cv_bridge::CvImage pub_img(
        image_msg->header, sensor_msgs::image_encodings::BGR8, image);
@@ -62,6 +76,7 @@ void ObjectModelAnnotation::callback(
     ROS_INFO("--Publish selected object info.");
     this->pub_cloud_.publish(ros_cloud);
     this->pub_image_.publish(pub_img.toImageMsg());
+    this->pub_pose_.publish(ros_pose);
 }
 
 void ObjectModelAnnotation::getAnnotatedObjectCloud(
@@ -128,6 +143,23 @@ void ObjectModelAnnotation::imageToPointCloudIndices(
           pt.z = 0;
           cloud->points[i] = pt;
        }
+    }
+}
+
+void ObjectModelAnnotation::compute3DCentroids(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    Eigen::Vector4f &centre) {
+    if (cloud->empty()) {
+       ROS_ERROR("ERROR: empty cloud for centroid");
+       centre = Eigen::Vector4f(-1, -1, -1, -1);
+       return;
+    }
+    Eigen::Vector4f centroid;
+    pcl::compute3DCentroid<PointT, float>(*cloud, centroid);
+    if (!isnan(centroid(0)) && !isnan(centroid(1)) && !isnan(centroid(2))) {
+       centre = centroid;
+    } else {
+       ROS_ERROR("ERROR: NAN CENTROID\n-- reselect object");
     }
 }
 
