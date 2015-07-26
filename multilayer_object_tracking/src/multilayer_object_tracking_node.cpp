@@ -186,7 +186,6 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     this->supervoxelSegmentation(cloud,
                                  supervoxel_clusters,
                                  supervoxel_adjacency);
-    
     std::vector<AdjacentInfo> supervoxel_list;
     ModelsPtr t_voxels = ModelsPtr(new Models);
     this->processDecomposedCloud(
@@ -194,6 +193,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
        supervoxel_list, t_voxels, true, false, true);
     Models target_voxels = *t_voxels;
     Models good_matches;
+    std::map<int, int> matching_indices;
     for (int j = 0; j < obj_ref.size(); j++) {
        if (!obj_ref[j].flag) {
           float distance = FLT_MAX;
@@ -217,12 +217,38 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              }
           }
           if (nearest_index != -1) {
+             matching_indices[j] = nearest_index;
              good_matches.push_back(target_voxels[nearest_index]);
           }
        }
     }
     // set of patches that match the trajectory
     pcl::PointCloud<PointT>::Ptr output(new pcl::PointCloud<PointT>);
+    /*
+    for (std::map<int, int>::iterator itr = matching_indices.begin();
+         itr != matching_indices.end(); itr++) {
+       if (!target_voxels[itr->first].flag) {
+          ReferenceModel matching_models = target_voxels[itr->first];
+          *output = *output + *target_voxels[itr->first].cluster_cloud;
+          std::map<uint32_t, std::vector<uint32_t> > neigb =
+             target_voxels[itr->first].cluster_neigbors.adjacent_voxel_indices;
+          uint32_t v_ind = target_voxels[
+             itr->first].cluster_neigbors.voxel_index;
+          for (std::vector<uint32_t>::iterator it =
+                  neigb.find(v_ind)->second.begin();
+               it != neigb.find(v_ind)->second.end(); it++) {
+             matching_models.cluster_normals = pcl::PointCloud<
+                pcl::Normal>::Ptr(new pcl::PointCloud<pcl::Normal>);
+             matching_models.cluster_normals
+                = supervoxel_clusters.at(*it)->normals_;
+             matching_models.cluster_centroid = Eigen::Vector4f();
+             matching_models.cluster_centroid =
+                supervoxel_clusters.at(*it)->centroid_.getVector4fMap();
+             *output = *output + *supervoxel_clusters.at(*it)->voxels_;
+          }
+       }
+    }
+    */
     for (int i = 0; i < good_matches.size(); i++) {
        if (!good_matches[i].flag) {
           ReferenceModel matching_models = good_matches[i];
@@ -240,9 +266,6 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              matching_models.cluster_centroid = Eigen::Vector4f();
              matching_models.cluster_centroid =
                 supervoxel_clusters.at(*it)->centroid_.getVector4fMap();
-             
-             
-             
              *output = *output + *supervoxel_clusters.at(*it)->voxels_;
           }
        }
