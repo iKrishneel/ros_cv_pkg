@@ -222,10 +222,6 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           }
        }
     }
-
-    std::cout << obj_ref.size() << "\t" << good_matches.size() << "\t"
-              << matching_indices.size() << std::endl;
-    
     // set of patches that match the trajectory
     pcl::PointCloud<PointT>::Ptr output(new pcl::PointCloud<PointT>);
     for (std::map<int, int>::iterator itr = matching_indices.begin();
