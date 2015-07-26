@@ -191,7 +191,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     ModelsPtr t_voxels = ModelsPtr(new Models);
     this->processDecomposedCloud(
        cloud, supervoxel_clusters, supervoxel_adjacency,
-       supervoxel_list, t_voxels, false, false);
+       supervoxel_list, t_voxels, true, false, true);
     Models target_voxels = *t_voxels;
     Models good_matches;
     for (int j = 0; j < obj_ref.size(); j++) {
@@ -221,9 +221,11 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           }
        }
     }
+    // set of patches that match the trajectory
     pcl::PointCloud<PointT>::Ptr output(new pcl::PointCloud<PointT>);
     for (int i = 0; i < good_matches.size(); i++) {
        if (!good_matches[i].flag) {
+          ReferenceModel matching_models = good_matches[i];
           *output = *output + *good_matches[i].cluster_cloud;
           std::map<uint32_t, std::vector<uint32_t> > neigb =
              good_matches[i].cluster_neigbors.adjacent_voxel_indices;
@@ -231,53 +233,23 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           for (std::vector<uint32_t>::iterator it =
                   neigb.find(v_ind)->second.begin();
                it != neigb.find(v_ind)->second.end(); it++) {
+             matching_models.cluster_normals = pcl::PointCloud<
+                pcl::Normal>::Ptr(new pcl::PointCloud<pcl::Normal>);
+             matching_models.cluster_normals
+                = supervoxel_clusters.at(*it)->normals_;
+             matching_models.cluster_centroid = Eigen::Vector4f();
+             matching_models.cluster_centroid =
+                supervoxel_clusters.at(*it)->centroid_.getVector4fMap();
+             
+             
+             
              *output = *output + *supervoxel_clusters.at(*it)->voxels_;
           }
        }
     }
+    
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
-}
-
-std::vector<MultilayerObjectTracking::AdjacentInfo>
-MultilayerObjectTracking::voxelAdjacencyList(
-    const jsk_recognition_msgs::AdjacencyList &adjacency_list) {
-    std::vector<AdjacentInfo> supervoxel_list;
-    AdjacentInfo tmp_list;
-    for (int i = 0; i < adjacency_list.vertices.size(); i++) {
-       int vertex_index = adjacency_list.vertices[i];
-       float dist = static_cast<float>(adjacency_list.edge_weight[i]);
-       if (vertex_index == -1) {
-          supervoxel_list.push_back(tmp_list);
-          tmp_list.adjacent_indices.clear();
-          tmp_list.adjacent_distances.clear();
-       } else {
-          tmp_list.adjacent_indices.push_back(vertex_index);
-          tmp_list.adjacent_distances.push_back(dist);
-       }
-    }
-    /*      *      *      * sort according to the index*/
-    std::vector<std::pair<int, std::vector<int> > > list;
-    for (int i = 0; i < supervoxel_list.size(); i++) {
-       int key = supervoxel_list[i].adjacent_indices[0];
-       std::vector<int> values = supervoxel_list[i].adjacent_indices;
-       list.push_back(std::pair<int, std::vector<int> >(key, values));
-    }
-    std::sort(list.begin(), list.end());
-    std::vector<AdjacentInfo> supervoxel_adjacency_list;
-    for (int i = 0; i < list.size(); i++) {
-       AdjacentInfo a_info;
-       a_info.adjacent_indices = list[i].second;
-       supervoxel_adjacency_list.push_back(a_info);
-    }
-    /*
-    for (int i = 0; i < supervoxel_list.size(); i++) {
-       int index = supervoxel_list[i].adjacent_indices[0] - 1;
-       supervoxel_adjacency_list[index].adjacent_distances =
-          supervoxel_list[i].adjacent_distances;
-    }
-    */
-    return supervoxel_adjacency_list;
 }
 
 template<class T>
@@ -402,6 +374,26 @@ MultilayerObjectTracking::clusterPointIndicesToPointIndices(
        ret.push_back(pcl_indices);
     }
     return ret;
+}
+
+std::vector<MultilayerObjectTracking::AdjacentInfo>
+MultilayerObjectTracking::voxelAdjacencyList(
+    const jsk_recognition_msgs::AdjacencyList &adjacency_list) {
+    std::vector<AdjacentInfo> supervoxel_list;
+    AdjacentInfo tmp_list;
+    for (int i = 0; i < adjacency_list.vertices.size(); i++) {
+       int vertex_index = adjacency_list.vertices[i];
+       float dist = static_cast<float>(adjacency_list.edge_weight[i]);
+       if (vertex_index == -1) {
+          supervoxel_list.push_back(tmp_list);
+          tmp_list.adjacent_indices.clear();
+          tmp_list.adjacent_distances.clear();
+       } else {
+          tmp_list.adjacent_indices.push_back(vertex_index);
+          tmp_list.adjacent_distances.push_back(dist);
+       }
+    }
+    return supervoxel_list;
 }
 
 void MultilayerObjectTracking::estimatedPFPose(
