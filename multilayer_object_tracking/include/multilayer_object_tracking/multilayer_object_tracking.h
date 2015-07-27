@@ -165,10 +165,10 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        const Eigen::Vector4f &);
     template<class T>
     T localVoxelConvexityLikelihood(
-       const Eigen::Vector4f,
-       const Eigen::Vector4f,
-       const Eigen::Vector4f,
-       const Eigen::Vector4f);
+       Eigen::Vector4f,
+       const pcl::Normal,
+       Eigen::Vector4f,
+       const pcl::Normal);
    
     template<class T>
     void estimatePointCloudNormals(
@@ -199,10 +199,6 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        const Models &, const int, float &, float &);
     float computeCoherency(
        const float, const float);
-
-    void intraConvexityRelationship(
-       const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr>,
-       const std::vector<std::map<uint32_t, std::vector<uint32_t> > > &);
 };
 
 #endif  // _MULTILAYER_OBJECT_TRACKING_H_

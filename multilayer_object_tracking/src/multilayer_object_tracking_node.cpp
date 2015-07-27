@@ -186,32 +186,12 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     this->supervoxelSegmentation(cloud,
                                  supervoxel_clusters,
                                  supervoxel_adjacency);
-
-    /*
-    // ---------------------------------
-    std::map<uint32_t, std::vector<uint32_t> > supervoxel_adjacency_list;
-    for (std::multimap<uint32_t, uint32_t>::iterator it =
-            supervoxel_adjacency.begin(); it != supervoxel_adjacency.end();
-         it++) {
-       std::pair<std::multimap<uint32_t, uint32_t>::iterator,
-                 std::multimap<uint32_t, uint32_t>::iterator> ret;
-       ret = supervoxel_adjacency.equal_range(it->first);
-       std::vector<uint32_t> neigbour_indices;
-       for (std::multimap<uint32_t, uint32_t>::iterator itr = ret.first;
-            itr != ret.second; itr++) {
-          neigbour_indices.push_back(itr->second);
-       }
-       supervoxel_adjacency_list[it->first] = neigbour_indices;
-    }
-    // ---------------------------------
-    */
-    
+    // TODO(remove below): REF: 2304893
     std::vector<AdjacentInfo> supervoxel_list;
     ModelsPtr t_voxels = ModelsPtr(new Models);
     this->processDecomposedCloud(
        cloud, supervoxel_clusters, supervoxel_adjacency,
        supervoxel_list, t_voxels, true, false, true);
-    
     Models target_voxels = *t_voxels;
     std::map<int, int> matching_indices;
     // increase to neigbours neigbour incase of poor result
@@ -224,7 +204,6 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           obj_centroid(1) = obj_ref[j].cluster_centroid(1) + motion_disp.y;
           obj_centroid(2) = obj_ref[j].cluster_centroid(2) + motion_disp.z;
           obj_centroid(3) = 0.0f;
-          
           for (int i = 0; i < target_voxels.size(); i++) {
              if (!target_voxels[i].flag) {
                 Eigen::Vector4f t_centroid =
@@ -241,49 +220,25 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           if (nearest_index != -1) {
              matching_indices[j] = nearest_index;
           }
-          /*
-          // ---------------------------------
-          for (std::map<uint32_t, std::vector<uint32_t> >::iterator it =
-                  supervoxel_adjacency_list.begin(); it !=
-                  supervoxel_adjacency_list.end(); it++) {
-             if (supervoxel_clusters.at(it->first)->voxels_->size() >
-                 min_cluster_size_) {
-                Eigen::Vector4f t_centroid = supervoxel_clusters.at(
-                   it->first)->centroid_.getVector4fMap();
-                t_centroid(3) = 0.0f;
-                float dist = static_cast<float>(
-                   pcl::distances::l2(obj_centroid, t_centroid));
-                if (dist < distance) {
-                   distance = dist;
-                   nearest_index = it->first;
-                }
-             }
-             }*/
-          // ---------------------------------
-
        }
     }
     // set of patches that match the trajectory
+    std::vector<uint32_t> best_match_index;
     pcl::PointCloud<PointT>::Ptr output(new pcl::PointCloud<PointT>);
     for (std::map<int, int>::iterator itr = matching_indices.begin();
          itr != matching_indices.end(); itr++) {
        if (!target_voxels[itr->second].flag) {
-          // *output = *output + *target_voxels[itr->second].cluster_cloud;
           std::map<uint32_t, std::vector<uint32_t> > neigb =
              target_voxels[itr->second].cluster_neigbors.adjacent_voxel_indices;
           uint32_t v_ind = target_voxels[
              itr->second].cluster_neigbors.voxel_index;
-
-          *output = *output + *supervoxel_clusters.at(v_ind)->voxels_;
-          
-          // int best_match_index = itr->second;
-          int best_match_index = static_cast<int>(v_ind);
+          best_match_index.push_back(v_ind);
           float probability = 0.0f;
           probability = this->targetCandidateToReferenceLikelihood<float>(
              obj_ref[itr->first], target_voxels[itr->second].cluster_cloud,
              target_voxels[itr->second].cluster_normals,
              target_voxels[itr->second].cluster_centroid);
-
+          
           pcl::PointCloud<PointT>::Ptr match_cloud(new pcl::PointCloud<PointT>);
           *match_cloud = *target_voxels[itr->second].cluster_cloud;
           
@@ -296,7 +251,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                 supervoxel_clusters.at(*it)->centroid_.getVector4fMap());
              if (prob > probability) {
                 probability = prob;
-                best_match_index = static_cast<int>(*it);
+                best_match_index.push_back(*it);
 
                 match_cloud->clear();
                 *match_cloud = *supervoxel_clusters.at(*it)->voxels_;
@@ -305,14 +260,36 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           }
           // best match local convexity
 
-          
-          
+
           // plot the best match
-          // *output = *output + *match_cloud;
-          // std::cout << "Probability: " << probability << std::endl;
+          // *output = *output + *supervoxel_clusters.at(v_ind)->voxels_;
+          *output = *output + *match_cloud;
+          std::cout << "Probability: " << probability << std::endl;
        }
     }
-    
+    /*
+    // get the neigbours of best match index
+    for (std::vector<uint32_t>::iterator it = best_match_index.begin();
+         it != best_match_index.end(); it++) {
+       std::pair<std::multimap<uint32_t, uint32_t>::iterator,
+                 std::multimap<uint32_t, uint32_t>::iterator> ret;
+       ret = supervoxel_adjacency.equal_range(*it);
+       Eigen::Vector4f c_centroid = supervoxel_clusters.at(
+          *it)->centroid_.getVector4fMap();
+       pcl::Normal c_normal = supervoxel_clusters.at(*it)->normal_;
+       for (std::multimap<uint32_t, uint32_t>::iterator itr = ret.first;
+            itr != ret.second; itr++) {
+          if (!supervoxel_clusters.at(itr->second)->voxels_->empty()) {
+             Eigen::Vector4f n_centroid = supervoxel_clusters.at(
+                itr->second)->centroid_.getVector4fMap();
+             pcl::Normal n_normal = supervoxel_clusters.at(
+                itr->second)->normal_;
+             float convx_weight = this->localVoxelConvexityLikelihood<float>(
+                c_centroid, c_normal, n_centroid, n_normal);
+          }
+       }
+    }
+    */
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
 }
@@ -338,43 +315,22 @@ T MultilayerObjectTracking::targetCandidateToReferenceLikelihood(
        cv::compareHist(color_hist,
                        reference_model.cluster_color_hist,
                        CV_COMP_BHATTACHARYYA));
-    T probability = std::exp(-1 * dist_vfh) /* * std::exp(-1 * dist_col)*/;
+    T probability = std::exp(-1 * dist_vfh) * std::exp(-1 * dist_col);
     return probability;
 }
 
-
-//-------------
-void MultilayerObjectTracking::intraConvexityRelationship(
-    const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters,
-    const std::vector<std::map<uint32_t, std::vector<uint32_t>
-    > > &voxel_adjacent_list) {
-    if (voxel_adjacent_list.empty()) {
-       return;
-    }
-    for (std::vector<std::map<uint32_t, std::vector<uint32_t> >
-            >::const_iterator it = voxel_adjacent_list.begin();
-         it != voxel_adjacent_list.end(); it++) {
-       
-       for (std::map<uint32_t, std::vector<uint32_t> >::const_iterator
-               label_itr = it->begin(); label_itr != it->end(); label_itr++) {
-          Eigen::Vector4f c_centroid = supervoxel_clusters.at(
-             label_itr->first)->centroid_.getVector4fMap();
-          for (std::vector<uint32_t>::const_iterator neigb_itr =
-                  label_itr->second.begin(); neigb_itr !=
-                  label_itr->second.end(); neigb_itr++) {
-             
-          }
-       }
-    }
-}
-//-------------
-
 template<class T>
 T MultilayerObjectTracking::localVoxelConvexityLikelihood(
-    const Eigen::Vector4f c_centroid,
-    const Eigen::Vector4f c_normal,
-    const Eigen::Vector4f n_centroid,
-    const Eigen::Vector4f n_normal) {
+    Eigen::Vector4f c_centroid,
+    const pcl::Normal c_norm,
+    Eigen::Vector4f n_centroid,
+    const pcl::Normal n_norm) {
+    Eigen::Vector4f c_normal = Eigen::Vector4f(
+       c_norm.normal_x, c_norm.normal_y, c_norm.normal_z, 0.0f);
+    Eigen::Vector4f n_normal = Eigen::Vector4f(
+       n_norm.normal_x, n_norm.normal_y, n_norm.normal_z, 0.0f);
+    c_centroid(3) = 0.0f;
+    n_centroid(3) = 0.0f;
     T weight = 1.0f;
     if ((n_centroid - c_centroid).dot(n_normal) > 0) {
        weight = static_cast<T>(std::pow(1 - (c_normal.dot(n_normal)), 2));
