@@ -186,9 +186,9 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     this->supervoxelSegmentation(cloud,
                                  supervoxel_clusters,
                                  supervoxel_adjacency);
-    
+
+    /*
     // ---------------------------------
-    /* collect all keys and neigbours */
     std::map<uint32_t, std::vector<uint32_t> > supervoxel_adjacency_list;
     for (std::multimap<uint32_t, uint32_t>::iterator it =
             supervoxel_adjacency.begin(); it != supervoxel_adjacency.end();
@@ -204,6 +204,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
        supervoxel_adjacency_list[it->first] = neigbour_indices;
     }
     // ---------------------------------
+    */
     
     std::vector<AdjacentInfo> supervoxel_list;
     ModelsPtr t_voxels = ModelsPtr(new Models);
@@ -233,9 +234,12 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                    pcl::distances::l2(obj_centroid, t_centroid));
                 if (dist < distance) {
                    distance = dist;
-                   nearest_index = i;
+                   nearest_index = i;  // voxel_index
                 }
              }
+          }
+          if (nearest_index != -1) {
+             matching_indices[j] = nearest_index;
           }
           /*
           // ---------------------------------
@@ -256,9 +260,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              }
              }*/
           // ---------------------------------
-          if (nearest_index != -1) {
-             matching_indices[j] = nearest_index;
-          }
+
        }
     }
     // set of patches that match the trajectory
@@ -271,7 +273,11 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              target_voxels[itr->second].cluster_neigbors.adjacent_voxel_indices;
           uint32_t v_ind = target_voxels[
              itr->second].cluster_neigbors.voxel_index;
-          int best_match_index = itr->second;
+
+          *output = *output + *supervoxel_clusters.at(v_ind)->voxels_;
+          
+          // int best_match_index = itr->second;
+          int best_match_index = static_cast<int>(v_ind);
           float probability = 0.0f;
           probability = this->targetCandidateToReferenceLikelihood<float>(
              obj_ref[itr->first], target_voxels[itr->second].cluster_cloud,
@@ -290,7 +296,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                 supervoxel_clusters.at(*it)->centroid_.getVector4fMap());
              if (prob > probability) {
                 probability = prob;
-                best_match_index = *it;
+                best_match_index = static_cast<int>(*it);
 
                 match_cloud->clear();
                 *match_cloud = *supervoxel_clusters.at(*it)->voxels_;
@@ -302,7 +308,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           
           
           // plot the best match
-          *output = *output + *match_cloud;
+          // *output = *output + *match_cloud;
           // std::cout << "Probability: " << probability << std::endl;
        }
     }
@@ -335,6 +341,33 @@ T MultilayerObjectTracking::targetCandidateToReferenceLikelihood(
     T probability = std::exp(-1 * dist_vfh) /* * std::exp(-1 * dist_col)*/;
     return probability;
 }
+
+
+//-------------
+void MultilayerObjectTracking::intraConvexityRelationship(
+    const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters,
+    const std::vector<std::map<uint32_t, std::vector<uint32_t>
+    > > &voxel_adjacent_list) {
+    if (voxel_adjacent_list.empty()) {
+       return;
+    }
+    for (std::vector<std::map<uint32_t, std::vector<uint32_t> >
+            >::const_iterator it = voxel_adjacent_list.begin();
+         it != voxel_adjacent_list.end(); it++) {
+       
+       for (std::map<uint32_t, std::vector<uint32_t> >::const_iterator
+               label_itr = it->begin(); label_itr != it->end(); label_itr++) {
+          Eigen::Vector4f c_centroid = supervoxel_clusters.at(
+             label_itr->first)->centroid_.getVector4fMap();
+          for (std::vector<uint32_t>::const_iterator neigb_itr =
+                  label_itr->second.begin(); neigb_itr !=
+                  label_itr->second.end(); neigb_itr++) {
+             
+          }
+       }
+    }
+}
+//-------------
 
 template<class T>
 T MultilayerObjectTracking::localVoxelConvexityLikelihood(
