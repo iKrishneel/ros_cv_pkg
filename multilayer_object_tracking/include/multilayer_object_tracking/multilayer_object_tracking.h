@@ -65,8 +65,10 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     typedef pcl::PointXYZRGB PointT;
 
     struct AdjacentInfo {
+       /* -old type (remove) */
        std::vector<int> adjacent_indices;
        std::vector<float> adjacent_distances;
+       
        uint32_t voxel_index;
        std::map<uint32_t, std::vector<uint32_t> > adjacent_voxel_indices;
     };
@@ -156,6 +158,19 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        pcl::PointCloud<PointT>::Ptr,
        const MultilayerObjectTracking::PointXYZRPY &);
     template<class T>
+    T targetCandidateToReferenceLikelihood(
+       const ReferenceModel &,
+       const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<pcl::Normal>::Ptr,
+       const Eigen::Vector4f &);
+    template<class T>
+    T localVoxelConvexityLikelihood(
+       const Eigen::Vector4f,
+       const Eigen::Vector4f,
+       const Eigen::Vector4f,
+       const Eigen::Vector4f);
+   
+    template<class T>
     void estimatePointCloudNormals(
        const pcl::PointCloud<PointT>::Ptr,
        pcl::PointCloud<pcl::Normal>::Ptr,
@@ -164,20 +179,20 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     void computeCloudClusterRPYHistogram(
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr,
-       cv::Mat &);
+       cv::Mat &) const;
     void computeColorHistogram(
        const pcl::PointCloud<PointT>::Ptr,
        cv::Mat &,
        const int = 16,
        const int = 16,
-       bool = true);
+       bool = true) const;
     void computePointFPFH(
        const pcl::PointCloud<PointT>::Ptr,
        pcl::PointCloud<pcl::Normal>::Ptr,
-       cv::Mat &, bool = true);
+       cv::Mat &, bool = true) const;
     void compute3DCentroids(
        const pcl::PointCloud<PointT>::Ptr,
-       Eigen::Vector4f &);
+       Eigen::Vector4f &) const;
     Eigen::Vector4f cloudMeanNormal(
        const pcl::PointCloud<pcl::Normal>::Ptr, bool = true);
     void adjacentVoxelCoherencey(

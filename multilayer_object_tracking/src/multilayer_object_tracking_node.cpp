@@ -192,8 +192,8 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
        cloud, supervoxel_clusters, supervoxel_adjacency,
        supervoxel_list, t_voxels, true, false, true);
     Models target_voxels = *t_voxels;
-    Models good_matches;
     std::map<int, int> matching_indices;
+    // increase to neigbours neigbour incase of poor result
     for (int j = 0; j < obj_ref.size(); j++) {
        if (!obj_ref[j].flag) {
           float distance = FLT_MAX;
@@ -218,65 +218,97 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           }
           if (nearest_index != -1) {
              matching_indices[j] = nearest_index;
-             good_matches.push_back(target_voxels[nearest_index]);
           }
        }
     }
-
-    std::cout << obj_ref.size() << "\t" << good_matches.size() << "\t"
-              << matching_indices.size() << std::endl;
-    
     // set of patches that match the trajectory
     pcl::PointCloud<PointT>::Ptr output(new pcl::PointCloud<PointT>);
     for (std::map<int, int>::iterator itr = matching_indices.begin();
          itr != matching_indices.end(); itr++) {
        if (!target_voxels[itr->second].flag) {
-          ReferenceModel matching_models = target_voxels[itr->second];
-          *output = *output + *target_voxels[itr->second].cluster_cloud;
+          // *output = *output + *target_voxels[itr->second].cluster_cloud;
           std::map<uint32_t, std::vector<uint32_t> > neigb =
              target_voxels[itr->second].cluster_neigbors.adjacent_voxel_indices;
           uint32_t v_ind = target_voxels[
              itr->second].cluster_neigbors.voxel_index;
+          int best_match_index = itr->second;
+          float probability = 0.0f;
+          probability = this->targetCandidateToReferenceLikelihood<float>(
+             obj_ref[itr->first], target_voxels[itr->second].cluster_cloud,
+             target_voxels[itr->second].cluster_normals,
+             target_voxels[itr->second].cluster_centroid);
+
+          pcl::PointCloud<PointT>::Ptr match_cloud(new pcl::PointCloud<PointT>);
+          *match_cloud = *target_voxels[itr->second].cluster_cloud;
+          
           for (std::vector<uint32_t>::iterator it =
                   neigb.find(v_ind)->second.begin();
                it != neigb.find(v_ind)->second.end(); it++) {
-             matching_models.cluster_normals = pcl::PointCloud<
-                pcl::Normal>::Ptr(new pcl::PointCloud<pcl::Normal>);
-             matching_models.cluster_normals
-                = supervoxel_clusters.at(*it)->normals_;
-             matching_models.cluster_centroid = Eigen::Vector4f();
-             matching_models.cluster_centroid =
-                supervoxel_clusters.at(*it)->centroid_.getVector4fMap();
-             *output = *output + *supervoxel_clusters.at(*it)->voxels_;
+             float prob = this->targetCandidateToReferenceLikelihood<float>(
+                obj_ref[itr->first], supervoxel_clusters.at(*it)->voxels_,
+                supervoxel_clusters.at(*it)->normals_,
+                supervoxel_clusters.at(*it)->centroid_.getVector4fMap());
+             if (prob > probability) {
+                probability = prob;
+                best_match_index = *it;
+
+                match_cloud->clear();
+                *match_cloud = *supervoxel_clusters.at(*it)->voxels_;
+             }
+             // *output = *output + *supervoxel_clusters.at(*it)->voxels_;
           }
+          // plot the best match
+          std::cout << "Probability: " << probability << std::endl;
+          *output = *output + *match_cloud;
        }
     }
     
-    /*
-    for (int i = 0; i < good_matches.size(); i++) {
-       if (!good_matches[i].flag) {
-          ReferenceModel matching_models = good_matches[i];
-          *output = *output + *good_matches[i].cluster_cloud;
-          std::map<uint32_t, std::vector<uint32_t> > neigb =
-             good_matches[i].cluster_neigbors.adjacent_voxel_indices;
-          uint32_t v_ind = good_matches[i].cluster_neigbors.voxel_index;
-          for (std::vector<uint32_t>::iterator it =
-                  neigb.find(v_ind)->second.begin();
-               it != neigb.find(v_ind)->second.end(); it++) {
-             matching_models.cluster_normals = pcl::PointCloud<
-                pcl::Normal>::Ptr(new pcl::PointCloud<pcl::Normal>);
-             matching_models.cluster_normals
-                = supervoxel_clusters.at(*it)->normals_;
-             matching_models.cluster_centroid = Eigen::Vector4f();
-             matching_models.cluster_centroid =
-                supervoxel_clusters.at(*it)->centroid_.getVector4fMap();
-             *output = *output + *supervoxel_clusters.at(*it)->voxels_;
-          }
-       }
-    }
-    */
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
+}
+
+template<class T>
+T MultilayerObjectTracking::targetCandidateToReferenceLikelihood(
+    const MultilayerObjectTracking::ReferenceModel &reference_model,
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<pcl::Normal>::Ptr normal,
+    const Eigen::Vector4f &centroid) {
+    if (cloud->empty() || normal->empty()) {
+      return 0.0f;
+    }
+    cv::Mat vfh_hist;
+    this->computeCloudClusterRPYHistogram(cloud, normal, vfh_hist);
+    cv::Mat color_hist;
+    this->computeColorHistogram(cloud, color_hist);
+    T dist_vfh = static_cast<T>(
+       cv::compareHist(vfh_hist,
+                       reference_model.cluster_vfh_hist,
+                       CV_COMP_BHATTACHARYYA));
+    T dist_col = static_cast<T>(
+       cv::compareHist(color_hist,
+                       reference_model.cluster_color_hist,
+                       CV_COMP_BHATTACHARYYA));
+    T probability = std::exp(-1 * dist_vfh) /* * std::exp(-1 * dist_col)*/;
+    return probability;
+}
+
+template<class T>
+T MultilayerObjectTracking::localVoxelConvexityLikelihood(
+    const Eigen::Vector4f c_centroid,
+    const Eigen::Vector4f c_normal,
+    const Eigen::Vector4f n_centroid,
+    const Eigen::Vector4f n_normal) {
+    T weight = 1.0f;
+    if ((n_centroid - c_centroid).dot(n_normal) > 0) {
+       weight = static_cast<T>(std::pow(1 - (c_normal.dot(n_normal)), 2));
+    } else {
+       weight = static_cast<T>(1 - (c_normal.dot(n_normal)));
+    }
+    if (isnan(weight)) {
+       return 0.0f;
+    }
+    T probability = std::exp(-1 * weight);
+    return probability;
 }
 
 template<class T>
@@ -304,7 +336,7 @@ void MultilayerObjectTracking::estimatePointCloudNormals(
 void MultilayerObjectTracking::computeCloudClusterRPYHistogram(
     const pcl::PointCloud<PointT>::Ptr cloud,
     const pcl::PointCloud<pcl::Normal>::Ptr normal,
-    cv::Mat &histogram) {
+    cv::Mat &histogram) const {
     if (cloud->empty() || normal->empty()) {
        ROS_ERROR("ERROR: Empty Input");
        return;
@@ -329,7 +361,7 @@ void MultilayerObjectTracking::computeCloudClusterRPYHistogram(
 
 void MultilayerObjectTracking::computeColorHistogram(
     const pcl::PointCloud<PointT>::Ptr cloud,
-    cv::Mat &hist, const int hBin, const int sBin, bool is_norm) {
+    cv::Mat &hist, const int hBin, const int sBin, bool is_norm) const {
     cv::Mat pixels = cv::Mat::zeros(
        sizeof(char), static_cast<int>(cloud->size()), CV_8UC3);
     for (int i = 0; i < cloud->size(); i++) {
@@ -356,7 +388,7 @@ void MultilayerObjectTracking::computeColorHistogram(
 void MultilayerObjectTracking::computePointFPFH(
     const pcl::PointCloud<PointT>::Ptr cloud,
     const pcl::PointCloud<pcl::Normal>::Ptr normals,
-    cv::Mat &histogram, bool holistic) {
+    cv::Mat &histogram, bool holistic) const {
     if (cloud->empty() || normals->empty()) {
        ROS_ERROR("-- ERROR: cannot compute FPFH");
        return;
@@ -455,7 +487,7 @@ void MultilayerObjectTracking::estimatedPFPose(
 
 void MultilayerObjectTracking::compute3DCentroids(
     const pcl::PointCloud<PointT>::Ptr cloud,
-    Eigen::Vector4f &centre) {
+    Eigen::Vector4f &centre) const {
     if (cloud->empty()) {
        ROS_ERROR("ERROR: empty cloud for centroid");
        centre = Eigen::Vector4f(-1, -1, -1, -1);
