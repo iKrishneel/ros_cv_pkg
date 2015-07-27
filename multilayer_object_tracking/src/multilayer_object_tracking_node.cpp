@@ -186,11 +186,31 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     this->supervoxelSegmentation(cloud,
                                  supervoxel_clusters,
                                  supervoxel_adjacency);
+    
+    // ---------------------------------
+    /* collect all keys and neigbours */
+    std::map<uint32_t, std::vector<uint32_t> > supervoxel_adjacency_list;
+    for (std::multimap<uint32_t, uint32_t>::iterator it =
+            supervoxel_adjacency.begin(); it != supervoxel_adjacency.end();
+         it++) {
+       std::pair<std::multimap<uint32_t, uint32_t>::iterator,
+                 std::multimap<uint32_t, uint32_t>::iterator> ret;
+       ret = supervoxel_adjacency.equal_range(it->first);
+       std::vector<uint32_t> neigbour_indices;
+       for (std::multimap<uint32_t, uint32_t>::iterator itr = ret.first;
+            itr != ret.second; itr++) {
+          neigbour_indices.push_back(itr->second);
+       }
+       supervoxel_adjacency_list[it->first] = neigbour_indices;
+    }
+    // ---------------------------------
+    
     std::vector<AdjacentInfo> supervoxel_list;
     ModelsPtr t_voxels = ModelsPtr(new Models);
     this->processDecomposedCloud(
        cloud, supervoxel_clusters, supervoxel_adjacency,
        supervoxel_list, t_voxels, true, false, true);
+    
     Models target_voxels = *t_voxels;
     std::map<int, int> matching_indices;
     // increase to neigbours neigbour incase of poor result
@@ -203,6 +223,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           obj_centroid(1) = obj_ref[j].cluster_centroid(1) + motion_disp.y;
           obj_centroid(2) = obj_ref[j].cluster_centroid(2) + motion_disp.z;
           obj_centroid(3) = 0.0f;
+          
           for (int i = 0; i < target_voxels.size(); i++) {
              if (!target_voxels[i].flag) {
                 Eigen::Vector4f t_centroid =
@@ -216,6 +237,25 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                 }
              }
           }
+          /*
+          // ---------------------------------
+          for (std::map<uint32_t, std::vector<uint32_t> >::iterator it =
+                  supervoxel_adjacency_list.begin(); it !=
+                  supervoxel_adjacency_list.end(); it++) {
+             if (supervoxel_clusters.at(it->first)->voxels_->size() >
+                 min_cluster_size_) {
+                Eigen::Vector4f t_centroid = supervoxel_clusters.at(
+                   it->first)->centroid_.getVector4fMap();
+                t_centroid(3) = 0.0f;
+                float dist = static_cast<float>(
+                   pcl::distances::l2(obj_centroid, t_centroid));
+                if (dist < distance) {
+                   distance = dist;
+                   nearest_index = it->first;
+                }
+             }
+             }*/
+          // ---------------------------------
           if (nearest_index != -1) {
              matching_indices[j] = nearest_index;
           }
@@ -257,9 +297,13 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              }
              // *output = *output + *supervoxel_clusters.at(*it)->voxels_;
           }
+          // best match local convexity
+
+          
+          
           // plot the best match
-          std::cout << "Probability: " << probability << std::endl;
           *output = *output + *match_cloud;
+          // std::cout << "Probability: " << probability << std::endl;
        }
     }
     
