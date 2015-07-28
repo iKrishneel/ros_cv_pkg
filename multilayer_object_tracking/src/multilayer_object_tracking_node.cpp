@@ -241,7 +241,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              target_voxels[itr->second].cluster_neigbors.adjacent_voxel_indices;
           uint32_t v_ind = target_voxels[
              itr->second].cluster_neigbors.voxel_index;
-          best_match_index.push_back(v_ind);
+          uint32_t bm_index = v_ind;
           float probability = 0.0f;
           probability = this->targetCandidateToReferenceLikelihood<float>(
              obj_ref[itr->first], target_voxels[itr->second].cluster_cloud,
@@ -254,25 +254,28 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           for (std::vector<uint32_t>::iterator it =
                   neigb.find(v_ind)->second.begin();
                it != neigb.find(v_ind)->second.end(); it++) {
+
+              // std::cout << itr->second << "\t";
+              
              float prob = this->targetCandidateToReferenceLikelihood<float>(
                 obj_ref[itr->first], supervoxel_clusters.at(*it)->voxels_,
                 supervoxel_clusters.at(*it)->normals_,
                 supervoxel_clusters.at(*it)->centroid_.getVector4fMap());
              if (prob > probability) {
                 probability = prob;
-                best_match_index.push_back(*it);
-
-                match_cloud->clear();
-                *match_cloud = *supervoxel_clusters.at(*it)->voxels_;
+                bm_index = *it;
              }
              // *output = *output + *supervoxel_clusters.at(*it)->voxels_;
           }
           // best match local convexity
+          best_match_index.push_back(bm_index);
+          *match_cloud = *supervoxel_clusters.at(bm_index)->voxels_;
 
+          // std::cout << std::endl;
 
           // plot the best match
           // *output = *output + *supervoxel_clusters.at(v_ind)->voxels_;
-          *output = *output + *match_cloud;
+          // *output = *output + *match_cloud;
           // std::cout << "Probability: " << probability << std::endl;
        }
     }
@@ -286,27 +289,25 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           *it)->centroid_.getVector4fMap();
        Eigen::Vector4f c_normal = this->cloudMeanNormal(
           supervoxel_clusters.at(*it)->normals_);
-       *output = *output + *supervoxel_clusters.at(*it)->voxels_;
+       // *output = *output + *supervoxel_clusters.at(*it)->voxels_;
+       // neigbour voxel convex relationship
        for (std::multimap<uint32_t, uint32_t>::iterator itr = ret.first;
             itr != ret.second; itr++) {
-          if (!supervoxel_clusters.at(itr->second)->voxels_->empty()) {
+           if (!supervoxel_clusters.at(itr->second)->voxels_->empty()) {
              Eigen::Vector4f n_centroid = supervoxel_clusters.at(
                 itr->second)->centroid_.getVector4fMap();
              Eigen::Vector4f n_normal = this->cloudMeanNormal(
                 supervoxel_clusters.at(itr->second)->normals_);
              float convx_weight = this->localVoxelConvexityLikelihood<float>(
                 c_centroid, c_normal, n_centroid, n_normal);
-             // std::cout << "Convex Region Prob: "
-             // << convx_weight << std::endl;
-
              if (convx_weight != 0.0f) {
-                *output = *output + *supervoxel_clusters.at(
-                   itr->second)->voxels_;
+                 *output = *output + *supervoxel_clusters.at(
+                     itr->second)->voxels_;
              }
-          }
-          // *output = *output + *supervoxel_clusters.at(
-          //    itr->second)->voxels_;
+             std::cout << convx_weight << "\t";
+           }
        }
+       std::cout << std::endl;
     }
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
@@ -361,7 +362,6 @@ T MultilayerObjectTracking::localVoxelConvexityLikelihood(
        return 0.0f;
     }
     */
-
     if ((n_centroid - c_centroid).dot(n_normal) > 0) {
        weight = static_cast<T>(std::pow(1 - (c_normal.dot(n_normal)), 2));
     } else {
@@ -371,7 +371,6 @@ T MultilayerObjectTracking::localVoxelConvexityLikelihood(
     if (isnan(weight)) {
        return 0.0f;
     }
-    
     T probability = std::exp(-1 * weight);
     return probability;
 }
