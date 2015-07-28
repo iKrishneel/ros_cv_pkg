@@ -38,10 +38,11 @@ class SupervoxelSegmentation {
     void publishSupervoxel(
        const std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr>,
        sensor_msgs::PointCloud2 &,
-       jsk_recognition_msgs::ClusterPointIndices &);
+       jsk_recognition_msgs::ClusterPointIndices &,
+       const std_msgs::Header &);
     std::vector<pcl_msgs::PointIndices> convertToROSPointIndices(
        const std::vector<pcl::PointIndices>,
-       const std_msgs::Header&);
+       const std_msgs::Header &);
    
  private:
     typedef multilayer_object_tracking::SupervoxelSegmentationConfig Config;

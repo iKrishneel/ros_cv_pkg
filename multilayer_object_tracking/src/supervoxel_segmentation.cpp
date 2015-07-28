@@ -35,7 +35,8 @@ void SupervoxelSegmentation::supervoxelSegmentation(
 void SupervoxelSegmentation::publishSupervoxel(
     const std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters,
     sensor_msgs::PointCloud2 &ros_cloud,
-    jsk_recognition_msgs::ClusterPointIndices &ros_indices) {
+    jsk_recognition_msgs::ClusterPointIndices &ros_indices,
+    const std_msgs::Header &header) {
     pcl::PointCloud<PointT>::Ptr output (new pcl::PointCloud<PointT>);
     std::vector<pcl::PointIndices> all_indices;
     for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr >::const_iterator
@@ -52,12 +53,12 @@ void SupervoxelSegmentation::publishSupervoxel(
       *output = *output + *super_voxel_cloud;
     }
     ros_indices.cluster_indices.clear();
-    std_msgs::Header header;
-    header.stamp = ros::Time::now();
     ros_indices.cluster_indices = this->convertToROSPointIndices(
        all_indices, header);
     ros_cloud.data.clear();
     pcl::toROSMsg(*output, ros_cloud);
+    ros_indices.header = header;
+    ros_cloud.header = header;
 }
 
 std::vector<pcl_msgs::PointIndices>

@@ -56,7 +56,7 @@
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <geometry_msgs/PoseStamped.h>
-// #include <jsk_recognition_msgs/AdjacencyList.h>
+#include <std_msgs/Header.h>
 
 #include <multilayer_object_tracking/supervoxel_segmentation.h>
 #include <map>
@@ -111,8 +111,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     ros::Publisher pub_cloud_;
     ros::Publisher pub_sindices_;
     ros::Publisher pub_scloud_;
-    ros::Publisher pub_image_;
-
+    ros::Publisher pub_normal_;
+    
     // object model params
     int init_counter_;
     int min_cluster_size_;
@@ -123,10 +123,6 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
 
     // motion previous
     MotionHistory motion_history_;
-
-    // TEMP**
-    sensor_msgs::PointCloud2 ros_cloud_;
-    jsk_recognition_msgs::ClusterPointIndices ros_indices_;
     
  protected:
     void onInit();
@@ -161,7 +157,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
    */
     void globalLayerPointCloudProcessing(
        pcl::PointCloud<PointT>::Ptr,
-       const MultilayerObjectTracking::PointXYZRPY &);
+       const MultilayerObjectTracking::PointXYZRPY &,
+       const std_msgs::Header);
     template<class T>
     T targetCandidateToReferenceLikelihood(
        const ReferenceModel &,
@@ -204,6 +201,10 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        const Models &, const int, float &, float &);
     float computeCoherency(
        const float, const float);
+    pcl::PointXYZRGBNormal
+    convertVector4fToPointXYZRGBNORMAL(
+        const Eigen::Vector4f &,
+        const Eigen::Vector4f &);
 };
 
 #endif  // _MULTILAYER_OBJECT_TRACKING_H_
