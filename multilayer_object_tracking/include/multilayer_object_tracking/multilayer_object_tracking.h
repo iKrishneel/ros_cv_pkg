@@ -109,7 +109,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        message_filters::Synchronizer<ObjectSyncPolicy> >obj_sync_;
    
     ros::Publisher pub_cloud_;
-    ros::Publisher pub_indices_;
+    ros::Publisher pub_sindices_;
+    ros::Publisher pub_scloud_;
     ros::Publisher pub_image_;
 
     // object model params
@@ -122,9 +123,11 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
 
     // motion previous
     MotionHistory motion_history_;
-   
-    cv::Mat model_fpfh_;
-   
+
+    // TEMP**
+    sensor_msgs::PointCloud2 ros_cloud_;
+    jsk_recognition_msgs::ClusterPointIndices ros_indices_;
+    
  protected:
     void onInit();
     void subscribe();
@@ -166,9 +169,9 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     template<class T>
     T localVoxelConvexityLikelihood(
        Eigen::Vector4f,
-       const pcl::Normal,
        Eigen::Vector4f,
-       const pcl::Normal);
+       Eigen::Vector4f,
+       Eigen::Vector4f);
    
     template<class T>
     void estimatePointCloudNormals(

@@ -16,11 +16,14 @@ MultilayerObjectTracking::MultilayerObjectTracking() :
 void MultilayerObjectTracking::onInit() {
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/multilayer_object_tracking/output/cloud", 1);
-    this->pub_indices_ = this->pnh_.advertise<
-       jsk_recognition_msgs::ClusterPointIndices>(
-       "/multilayer_object_tracking/output/indices", 1);
     this->pub_image_ = this->pnh_.advertise<sensor_msgs::Image>(
        "/multilayer_object_tracking/output/image", 1);
+
+    this->pub_sindices_ = this->pnh_.advertise<
+       jsk_recognition_msgs::ClusterPointIndices>(
+          "/multilayer_object_tracking/supervoxel/indices", 1);
+    this->pub_scloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+          "/multilayer_object_tracking/supervoxel/cloud", 1);
 }
 
 void MultilayerObjectTracking::subscribe() {
@@ -102,6 +105,11 @@ void MultilayerObjectTracking::callback(
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
+
+    ros_cloud_.header = cloud_msg->header;
+    ros_indices_.header = cloud_msg->header;
+    pub_scloud_.publish(ros_cloud_);
+    pub_sindices_.publish(ros_indices_);
 }
 
 void MultilayerObjectTracking::processDecomposedCloud(
@@ -264,10 +272,9 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           // plot the best match
           // *output = *output + *supervoxel_clusters.at(v_ind)->voxels_;
           *output = *output + *match_cloud;
-          std::cout << "Probability: " << probability << std::endl;
+          // std::cout << "Probability: " << probability << std::endl;
        }
     }
-    /*
     // get the neigbours of best match index
     for (std::vector<uint32_t>::iterator it = best_match_index.begin();
          it != best_match_index.end(); it++) {
@@ -276,22 +283,34 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
        ret = supervoxel_adjacency.equal_range(*it);
        Eigen::Vector4f c_centroid = supervoxel_clusters.at(
           *it)->centroid_.getVector4fMap();
-       pcl::Normal c_normal = supervoxel_clusters.at(*it)->normal_;
+       Eigen::Vector4f c_normal = this->cloudMeanNormal(
+          supervoxel_clusters.at(*it)->normals_);
+       *output = *output + *supervoxel_clusters.at(*it)->voxels_;
        for (std::multimap<uint32_t, uint32_t>::iterator itr = ret.first;
             itr != ret.second; itr++) {
           if (!supervoxel_clusters.at(itr->second)->voxels_->empty()) {
              Eigen::Vector4f n_centroid = supervoxel_clusters.at(
                 itr->second)->centroid_.getVector4fMap();
-             pcl::Normal n_normal = supervoxel_clusters.at(
-                itr->second)->normal_;
+             Eigen::Vector4f n_normal = this->cloudMeanNormal(
+                supervoxel_clusters.at(itr->second)->normals_);
              float convx_weight = this->localVoxelConvexityLikelihood<float>(
                 c_centroid, c_normal, n_centroid, n_normal);
+             // std::cout << "Convex Region Prob: "
+             // << convx_weight << std::endl;
+
+             if (convx_weight != 0.0f) {
+                *output = *output + *supervoxel_clusters.at(
+                   itr->second)->voxels_;
+             }
           }
+          // *output = *output + *supervoxel_clusters.at(
+          //    itr->second)->voxels_;
        }
     }
-    */
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
+    this->publishSupervoxel(
+       supervoxel_clusters, ros_cloud_, ros_indices_);
 }
 
 template<class T>
@@ -322,24 +341,35 @@ T MultilayerObjectTracking::targetCandidateToReferenceLikelihood(
 template<class T>
 T MultilayerObjectTracking::localVoxelConvexityLikelihood(
     Eigen::Vector4f c_centroid,
-    const pcl::Normal c_norm,
+    Eigen::Vector4f c_normal,
     Eigen::Vector4f n_centroid,
-    const pcl::Normal n_norm) {
-    Eigen::Vector4f c_normal = Eigen::Vector4f(
-       c_norm.normal_x, c_norm.normal_y, c_norm.normal_z, 0.0f);
-    Eigen::Vector4f n_normal = Eigen::Vector4f(
-       n_norm.normal_x, n_norm.normal_y, n_norm.normal_z, 0.0f);
+    Eigen::Vector4f n_normal) {
     c_centroid(3) = 0.0f;
+    c_normal(3) = 0.0f;
     n_centroid(3) = 0.0f;
+    n_normal(3) = 0.0f;
     T weight = 1.0f;
+    /*
+    Eigen::Vector4f diff_vector = (c_centroid - n_centroid) / (
+       c_centroid - n_centroid).norm();
+    T connection = c_normal.dot(diff_vector) - n_normal.dot(diff_vector);
+    if (connection > 0.0f) {
+       weight = static_cast<T>(std::pow(1 - (c_normal.dot(n_normal)), 2));
+    } else {
+       return 0.0f;
+    }
+    */
+
     if ((n_centroid - c_centroid).dot(n_normal) > 0) {
        weight = static_cast<T>(std::pow(1 - (c_normal.dot(n_normal)), 2));
     } else {
-       weight = static_cast<T>(1 - (c_normal.dot(n_normal)));
+       // weight = static_cast<T>(1 - (c_normal.dot(n_normal)));
+       return 0.0f;
     }
     if (isnan(weight)) {
        return 0.0f;
     }
+    
     T probability = std::exp(-1 * weight);
     return probability;
 }
@@ -355,7 +385,7 @@ void MultilayerObjectTracking::estimatePointCloudNormals(
     }
     pcl::NormalEstimationOMP<PointT, pcl::Normal> ne;
     ne.setInputCloud(cloud);
-    ne.setNumberOfThreads(8);
+     ne.setNumberOfThreads(8);
     pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT> ());
     ne.setSearchMethod(tree);
     if (use_knn) {
