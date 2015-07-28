@@ -7,9 +7,13 @@
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl_conversions/pcl_conversions.h>
 #include <pcl/segmentation/supervoxel_clustering.h>
 
 #include <dynamic_reconfigure/server.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <std_msgs/Header.h>
+#include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <multilayer_object_tracking/SupervoxelSegmentationConfig.h>
 
 class SupervoxelSegmentation {
@@ -31,6 +35,13 @@ class SupervoxelSegmentation {
        const pcl::PointCloud<PointT>::Ptr,
        std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &,
        std::multimap<uint32_t, uint32_t> &);
+    void publishSupervoxel(
+       const std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr>,
+       sensor_msgs::PointCloud2 &,
+       jsk_recognition_msgs::ClusterPointIndices &);
+    std::vector<pcl_msgs::PointIndices> convertToROSPointIndices(
+       const std::vector<pcl::PointIndices>,
+       const std_msgs::Header&);
    
  private:
     typedef multilayer_object_tracking::SupervoxelSegmentationConfig Config;
