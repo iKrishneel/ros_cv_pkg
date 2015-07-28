@@ -285,7 +285,8 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           supervoxel_clusters.at(*it)->normals_);
 
        centroid_normal->push_back(
-           this->convertVector4fToPointXYZRGBNORMAL(c_centroid, c_normal));
+          this->convertVector4fToPointXyzRgbNormal(
+             c_centroid, c_normal, cv::Scalar(255, 0, 0)));
        
        // neigbour voxel convex relationship
        for (std::multimap<uint32_t, uint32_t>::iterator itr = ret.first;
@@ -301,7 +302,8 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                  *output = *output + *supervoxel_clusters.at(
                      itr->second)->voxels_;
                  centroid_normal->push_back(
-                     this->convertVector4fToPointXYZRGBNORMAL(n_centroid, n_normal));
+                    this->convertVector4fToPointXyzRgbNormal(
+                       n_centroid, n_normal, cv::Scalar(0, 255, 0)));
              }
              std::cout << convx_weight << "\t";
            }
@@ -311,12 +313,6 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     }
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
-
-    /* for visualization of normal */
-    sensor_msgs::PointCloud2 rviz_normal;
-    pcl::toROSMsg(*centroid_normal, rviz_normal);
-    rviz_normal.header = header;
-    this->pub_normal_.publish(rviz_normal);
     
     /* for visualization of supervoxel */
     sensor_msgs::PointCloud2 ros_svcloud;
@@ -325,6 +321,12 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
         supervoxel_clusters, ros_svcloud, ros_svindices, header);
     pub_scloud_.publish(ros_svcloud);
     pub_sindices_.publish(ros_svindices);
+
+    /* for visualization of normal */
+    sensor_msgs::PointCloud2 rviz_normal;
+    pcl::toROSMsg(*centroid_normal, rviz_normal);
+    rviz_normal.header = header;
+    this->pub_normal_.publish(rviz_normal);
 }
 
 template<class T>
@@ -617,13 +619,17 @@ float MultilayerObjectTracking::computeCoherency(
 }
 
 pcl::PointXYZRGBNormal
-MultilayerObjectTracking::convertVector4fToPointXYZRGBNORMAL(
+MultilayerObjectTracking::convertVector4fToPointXyzRgbNormal(
      const Eigen::Vector4f &centroid,
-     const Eigen::Vector4f &normal) {
+     const Eigen::Vector4f &normal,
+     const cv::Scalar color) {
      pcl::PointXYZRGBNormal pt;
      pt.x = centroid(0);
      pt.y = centroid(1);
      pt.z = centroid(2);
+     pt.r = color.val[2];
+     pt.g = color.val[1];
+     pt.b = color.val[0];
      pt.normal_x = normal(0);
      pt.normal_y = normal(1);
      pt.normal_z = normal(2);

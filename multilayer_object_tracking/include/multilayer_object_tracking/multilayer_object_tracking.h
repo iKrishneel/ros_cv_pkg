@@ -202,9 +202,10 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     float computeCoherency(
        const float, const float);
     pcl::PointXYZRGBNormal
-    convertVector4fToPointXYZRGBNORMAL(
+    convertVector4fToPointXyzRgbNormal(
         const Eigen::Vector4f &,
-        const Eigen::Vector4f &);
+        const Eigen::Vector4f &,
+        const cv::Scalar);
 };
 
 #endif  // _MULTILAYER_OBJECT_TRACKING_H_
