@@ -106,6 +106,7 @@ void MultilayerObjectTracking::callback(
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
 
+    /* for visualization of supervoxel */
     ros_cloud_.header = cloud_msg->header;
     ros_indices_.header = cloud_msg->header;
     pub_scloud_.publish(ros_cloud_);
@@ -309,6 +310,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     }
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
+    
     this->publishSupervoxel(
        supervoxel_clusters, ros_cloud_, ros_indices_);
 }
@@ -498,6 +500,7 @@ MultilayerObjectTracking::clusterPointIndicesToPointIndices(
     return ret;
 }
 
+/*
 std::vector<MultilayerObjectTracking::AdjacentInfo>
 MultilayerObjectTracking::voxelAdjacencyList(
     const jsk_recognition_msgs::AdjacencyList &adjacency_list) {
@@ -517,6 +520,7 @@ MultilayerObjectTracking::voxelAdjacencyList(
     }
     return supervoxel_list;
 }
+*/
 
 void MultilayerObjectTracking::estimatedPFPose(
     const geometry_msgs::PoseStamped::ConstPtr &pose_msg,
@@ -609,6 +613,7 @@ void MultilayerObjectTracking::adjacentVoxelCoherencey(
     if (object_model.flag) {
        return;
     }
+    /*
     AdjacentInfo adjacent_info = object_model.cluster_neigbors;
     dist_weight = 0.0f;
     angle_weight = 0.0f;
@@ -629,6 +634,7 @@ void MultilayerObjectTracking::adjacentVoxelCoherencey(
     }
     dist_weight /= static_cast<float>(icounter);
     angle_weight /= static_cast<float>(icounter);
+    */
 }
 
 int main(int argc, char *argv[]) {

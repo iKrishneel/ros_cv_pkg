@@ -56,7 +56,7 @@
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <geometry_msgs/PoseStamped.h>
-#include <jsk_recognition_msgs/AdjacencyList.h>
+// #include <jsk_recognition_msgs/AdjacencyList.h>
 
 #include <multilayer_object_tracking/supervoxel_segmentation.h>
 #include <map>
@@ -154,9 +154,11 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        const std::multimap<uint32_t, uint32_t> &,
        std::vector<AdjacentInfo> &,
        ModelsPtr &, bool = true, bool = true, bool = true);
-   
+
+   /*
     std::vector<AdjacentInfo> voxelAdjacencyList(
        const jsk_recognition_msgs::AdjacencyList &);
+   */
     void globalLayerPointCloudProcessing(
        pcl::PointCloud<PointT>::Ptr,
        const MultilayerObjectTracking::PointXYZRPY &);
