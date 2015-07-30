@@ -57,6 +57,7 @@
 #include <geometry_msgs/PoseArray.h>
 
 #include <interactive_segmentation/supervoxel_segmentation.h>
+#include <interactive_segmentation/region_adjacency_graph.h>
 
 #include <vector>
 #include <string>
@@ -64,6 +65,7 @@
 class InteractiveSegmentation: public SupervoxelSegmentation {
 
     typedef pcl::PointXYZRGB PointT;
+
     struct PointCloudSurfels {
         std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters;
         std::multimap<uint32_t, uint32_t> supervoxel_adjacency;
@@ -90,7 +92,6 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
           normal_pt1(np1), normal_pt2(np2),
           tangent_pt1(t1), tangent_pt2(t2) {}
     };
-       
    
  private:
     boost::mutex mutex_;
