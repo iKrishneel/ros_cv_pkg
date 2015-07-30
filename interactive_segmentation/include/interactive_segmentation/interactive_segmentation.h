@@ -125,6 +125,13 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     virtual InteractiveSegmentation::PointCloudSurfels
     decomposePointCloud2Voxels(
         const pcl::PointCloud<PointT>::Ptr);
+    virtual Eigen::Vector4f cloudMeanNormal(
+    const pcl::PointCloud<pcl::Normal>::Ptr,
+    bool = true);
+    bool localVoxelConvexityCriteria(
+        Eigen::Vector4f, Eigen::Vector4f,
+        Eigen::Vector4f, Eigen::Vector4f,
+        const float = 0.0f);
     
     virtual void pointCloudEdge(
        pcl::PointCloud<PointT>::Ptr,

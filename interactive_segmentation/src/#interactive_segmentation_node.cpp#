@@ -40,7 +40,7 @@ void InteractiveSegmentation::callback(
        image_msg, image_msg->encoding)->image;
     cv::Mat edge_img = cv_bridge::toCvShare(
        edge_msg, edge_msg->encoding)->image;
-    pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
+    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     
     // this->pointCloudEdge(cloud, image, edge_img, 10);
@@ -76,6 +76,9 @@ InteractiveSegmentation::decomposePointCloud2Voxels(
         pcl::Supervoxel<PointT>::Ptr supervoxel =
             supervoxel_clusters.at(supervoxel_label);
         if (supervoxel->voxels_->size() > min_cluster_size_) {
+            Eigen::Vector4f c_centroid = supervoxel->centroid_.getVector4fMap();
+            Eigen::Vector4f c_normal = this->cloudMeanNormal(
+                supervoxel->normals_);
             std::vector<uint32_t> adjacent_voxels;
             for (std::multimap<uint32_t, uint32_t>::const_iterator
                      adjacent_itr = supervoxel_adjacency.equal_range(
@@ -86,6 +89,14 @@ InteractiveSegmentation::decomposePointCloud2Voxels(
                     supervoxel_clusters.at(adjacent_itr->second);
                 if (neighbor_supervoxel->voxels_->size() >
                     min_cluster_size_) {
+                    Eigen::Vector4f n_centroid =
+                        neighbor_supervoxel->centroid_.getVector4fMap();
+                    Eigen::Vector4f n_normal = this->cloudMeanNormal(
+                        neighbor_supervoxel->normals_);
+                    if (this->localVoxelConvexityCriteria(
+                            c_centroid, c_normal, n_centroid, n_normal)) {
+                        
+                    }
                     adjacent_voxels.push_back(adjacent_itr->second);
                 }
             }
@@ -93,6 +104,51 @@ InteractiveSegmentation::decomposePointCloud2Voxels(
         }
     }
     return surfels;
+}
+
+bool InteractiveSegmentation::localVoxelConvexityCriteria(
+    Eigen::Vector4f c_centroid, Eigen::Vector4f c_normal,
+    Eigen::Vector4f n_centroid, Eigen::Vector4f n_normal,
+    const float threshold) {
+    c_centroid(3) = 0.0f;
+    c_normal(3) = 0.0f;
+    if ((n_centroid - c_centroid).dot(n_normal) > 0) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+Eigen::Vector4f InteractiveSegmentation::cloudMeanNormal(
+    const pcl::PointCloud<pcl::Normal>::Ptr normal,
+    bool isnorm) {
+
+    if (normal->empty()) {
+        return Eigen::Vector4f(0, 0, 0, 0);
+    }
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+    int icounter = 0;
+    for (int i = 0; i < normal->size(); i++) {
+        if ((!isnan(normal->points[i].normal_x)) &&
+            (!isnan(normal->points[i].normal_y)) &&
+            (!isnan(normal->points[i].normal_z))) {
+            x += normal->points[i].normal_x;
+            y += normal->points[i].normal_y;
+            z += normal->points[i].normal_z;
+            icounter++;
+        }
+    }
+    Eigen::Vector4f n_mean = Eigen::Vector4f(
+        x/static_cast<float>(icounter),
+        y/static_cast<float>(icounter),
+        z/static_cast<float>(icounter),
+        0.0f);
+    if (isnorm) {
+        n_mean.normalize();
+    }
+    return n_mean;
 }
 
 void InteractiveSegmentation::pointCloudEdge(
