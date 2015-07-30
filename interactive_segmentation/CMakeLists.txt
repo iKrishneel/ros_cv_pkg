@@ -48,6 +48,9 @@ find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msg
 ##   * uncomment the generate_messages entry below
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
+generate_dynamic_reconfigure_options(
+  cfg/SupervoxelSegmentation.cfg)
+
 ## Generate messages in the 'msg' folder
 # add_message_files(
 #   FILES
@@ -109,11 +112,13 @@ include_directories(
 
 ## Declare a cpp executable
 add_executable(interactive_segmentation_node
-  src/interactive_segmentation_node.cpp)
+  src/interactive_segmentation_node.cpp
+  src/supervoxel_segmentation.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
 # add_dependencies(interactive_segmentation_node interactive_segmentation_generate_messages_cpp)
+add_dependencies(interactive_segmentation_node ${PROJECT_NAME}_gencfg)
 
 ## Specify libraries to link a library or executable target against
  target_link_libraries(interactive_segmentation_node

@@ -92,7 +92,6 @@ InteractiveSegmentation::decomposePointCloud2Voxels(
             surfels.adjaceny_info[supervoxel_label] = adjacent_voxels;
         }
     }
-
     return surfels;
 }
 

@@ -56,11 +56,20 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PoseArray.h>
 
+#include <interactive_segmentation/supervoxel_segmentation.h>
+
 #include <vector>
 #include <string>
 
-class InteractiveSegmentation {
+class InteractiveSegmentation: public SupervoxelSegmentation {
 
+    typedef pcl::PointXYZRGB PointT;
+    struct PointCloudSurfels {
+        std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters;
+        std::multimap<uint32_t, uint32_t> supervoxel_adjacency;
+        std::map<uint32_t, std::vector<uint32_t> > adjaceny_info;
+    };
+    
     struct EdgeParam {
        cv::Point index;
        float orientation;
@@ -84,7 +93,6 @@ class InteractiveSegmentation {
        
    
  private:
-    typedef pcl::PointXYZRGB PointT;
     boost::mutex mutex_;
     ros::NodeHandle pnh_;
     typedef  message_filters::sync_policies::ApproximateTime<
@@ -100,6 +108,8 @@ class InteractiveSegmentation {
     ros::Publisher pub_cloud_;
     ros::Publisher pub_image_;
 
+    int min_cluster_size_;
+    
  protected:
     void onInit();
     void subscribe();
@@ -111,6 +121,11 @@ class InteractiveSegmentation {
        const sensor_msgs::Image::ConstPtr &,
        const sensor_msgs::Image::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
+
+    virtual InteractiveSegmentation::PointCloudSurfels
+    decomposePointCloud2Voxels(
+        const pcl::PointCloud<PointT>::Ptr);
+    
     virtual void pointCloudEdge(
        pcl::PointCloud<PointT>::Ptr,
        const cv::Mat &, const cv::Mat &, const int = 50);
