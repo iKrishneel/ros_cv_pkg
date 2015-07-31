@@ -35,43 +35,6 @@ void RegionAdjacencyGraph::generateRAG(
             label_itr++;
         }
     }
-    /*
-    VertexIterator i, end;
-    for (tie(i, end) = vertices(this->graph); i != end; ++i) {
-        uint32_t supervoxel_label = static_cast<uint32_t>(this->graph[*i].v_index);
-        Eigen::Vector4f c_centroid = supervoxel_clusters.at(
-            supervoxel_label)->centroid_.getVector4fMap();
-        Eigen::Vector4f c_normal = this->cloudMeanNormal(
-            supervoxel_clusters.at(supervoxel_label)->normals_);
-         std::cout << supervoxel_label << "\t";
-        for (std::multimap<uint32_t, uint32_t>::const_iterator
-                 adjacent_itr = supervoxel_adjacency.equal_range(
-                     supervoxel_label).first; adjacent_itr !=
-                 supervoxel_adjacency.equal_range(
-                     supervoxel_label).second; ++adjacent_itr) {
-            std::cout << adjacent_itr->second << ", ";
-            if (supervoxel_label != adjacent_itr->second) {
-                bool found = false;
-                EdgeDescriptor e_descriptor;
-                boost::tie(e_descriptor, found) = boost::edge(
-                    label_itr->first, adjacent_itr->second, this->graph);
-                if (!found) {
-                    Eigen::Vector4f n_centroid = supervoxel_clusters.at(
-                        adjacent_itr->second)->centroid_.getVector4fMap();
-                    Eigen::Vector4f n_normal = this->cloudMeanNormal(
-                        supervoxel_clusters.at(adjacent_itr->second)->normals_);
-                    float weight = this->localVoxelConvexityCriteria(
-                        c_centroid, c_normal, n_centroid, n_normal);
-                    boost::add_edge(supervoxel_label,
-                                    adjacent_itr->second,
-                                    EdgeProperty(static_cast<float>(weight)),
-                                    this->graph);
-                }
-            }
-        }
-    }
-    */
-
     
     for (std::multimap<uint32_t, uint32_t>::const_iterator label_itr =
              supervoxel_adjacency.begin(); label_itr !=
@@ -94,12 +57,14 @@ void RegionAdjacencyGraph::generateRAG(
                 boost::tie(e_descriptor, found) = boost::edge(
                     label_itr->first, adjacent_itr->second, this->graph);
                 if (!found) {
-                    Eigen::Vector4f n_centroid = supervoxel_clusters.at(
-                        adjacent_itr->second)->centroid_.getVector4fMap();
-                    Eigen::Vector4f n_normal = this->cloudMeanNormal(
-                        supervoxel_clusters.at(adjacent_itr->second)->normals_);
-                    float weight = this->localVoxelConvexityCriteria(
-                        c_centroid, c_normal, n_centroid, n_normal);
+                    // Eigen::Vector4f n_centroid = supervoxel_clusters.at(
+                    //     adjacent_itr->second)->centroid_.getVector4fMap();
+                    // Eigen::Vector4f n_normal = this->cloudMeanNormal(
+                    //     supervoxel_clusters.at(adjacent_itr->second)->normals_);
+                    // float weight = this->localVoxelConvexityCriteria(
+                    //     c_centroid, c_normal, n_centroid,
+                    //     n_normal);
+                    float weight = 0.0f;
                     boost::add_edge(supervoxel_label,
                                     adjacent_itr->second,
                                     EdgeProperty(static_cast<float>(weight)),
@@ -110,6 +75,8 @@ void RegionAdjacencyGraph::generateRAG(
         }
         std::cout << std::endl;
     }
+    std::cout << YELLOW << "--DONE LABELING: "  << num_vertices(this->graph)
+              << RESET << std::endl;
 }
 
 float RegionAdjacencyGraph::localVoxelConvexityCriteria(

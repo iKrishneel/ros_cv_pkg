@@ -71,7 +71,7 @@ InteractiveSegmentation::decomposePointCloud2Voxels(
     RegionAdjacencyGraph *rag = new RegionAdjacencyGraph();
     rag->generateRAG(supervoxel_clusters, supervoxel_adjacency);
     // rag->splitMergeRAG(0.0f);
-    rag->printGraph();
+    // rag->printGraph();
     free(rag);
     
     
