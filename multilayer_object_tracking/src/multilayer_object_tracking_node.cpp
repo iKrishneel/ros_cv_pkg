@@ -88,6 +88,8 @@ void MultilayerObjectTracking::callback(
        return;
     }
     std::cout << "RUNNING CALLBACK---" << std::endl;
+
+    ros::Time begin = ros::Time::now();
     
     // get PF pose of time t
     PointXYZRPY motion_displacement;
@@ -102,6 +104,9 @@ void MultilayerObjectTracking::callback(
     this->globalLayerPointCloudProcessing(
         cloud, motion_displacement, cloud_msg->header);
     std::cout << "CLOUD PROCESSED AND PUBLISHED" << std::endl;
+
+    ros::Time end = ros::Time::now();
+    std::cout << "Processing Time: " << end - begin << std::endl;
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
