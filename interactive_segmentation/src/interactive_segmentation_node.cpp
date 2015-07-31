@@ -68,41 +68,16 @@ InteractiveSegmentation::decomposePointCloud2Voxels(
     this->supervoxelSegmentation(cloud,
                                  supervoxel_clusters,
                                  supervoxel_adjacency);
+    RegionAdjacencyGraph *rag = new RegionAdjacencyGraph();
+    rag->generateRAG(supervoxel_clusters, supervoxel_adjacency);
+    // rag->splitMergeRAG(0.0f);
+    rag->printGraph();
+    free(rag);
+    
+    
+    std::cout << "\t\tSize: " << supervoxel_clusters.size()  << std::endl;
+    
     PointCloudSurfels surfels;
-    for (std::multimap<uint32_t, uint32_t>::const_iterator label_itr =
-             supervoxel_adjacency.begin(); label_itr !=
-             supervoxel_adjacency.end(); label_itr++) {
-        uint32_t supervoxel_label = label_itr->first;
-        pcl::Supervoxel<PointT>::Ptr supervoxel =
-            supervoxel_clusters.at(supervoxel_label);
-        if (supervoxel->voxels_->size() > min_cluster_size_) {
-            Eigen::Vector4f c_centroid = supervoxel->centroid_.getVector4fMap();
-            Eigen::Vector4f c_normal = this->cloudMeanNormal(
-                supervoxel->normals_);
-            std::vector<uint32_t> adjacent_voxels;
-            for (std::multimap<uint32_t, uint32_t>::const_iterator
-                     adjacent_itr = supervoxel_adjacency.equal_range(
-                         supervoxel_label).first; adjacent_itr !=
-                     supervoxel_adjacency.equal_range(
-                         supervoxel_label).second; ++adjacent_itr) {
-                pcl::Supervoxel<PointT>::Ptr neighbor_supervoxel =
-                    supervoxel_clusters.at(adjacent_itr->second);
-                if (neighbor_supervoxel->voxels_->size() >
-                    min_cluster_size_) {
-                    Eigen::Vector4f n_centroid =
-                        neighbor_supervoxel->centroid_.getVector4fMap();
-                    Eigen::Vector4f n_normal = this->cloudMeanNormal(
-                        neighbor_supervoxel->normals_);
-                    if (this->localVoxelConvexityCriteria(
-                            c_centroid, c_normal, n_centroid, n_normal)) {
-                        
-                    }
-                    adjacent_voxels.push_back(adjacent_itr->second);
-                }
-            }
-            surfels.adjaceny_info[supervoxel_label] = adjacent_voxels;
-        }
-    }
     return surfels;
 }
 

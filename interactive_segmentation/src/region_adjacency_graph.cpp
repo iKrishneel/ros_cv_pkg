@@ -21,7 +21,7 @@ void RegionAdjacencyGraph::generateRAG(
     }
     for (std::multimap<uint32_t, uint32_t>::const_iterator label_itr =
              supervoxel_adjacency.begin(); label_itr !=
-             supervoxel_adjacency.end(); label_itr++) {
+             supervoxel_adjacency.end(); ) {
         uint32_t supervoxel_label = label_itr->first;
         VertexDescriptor centre_vertex = boost::add_vertex(
             VertexProperty(supervoxel_label, supervoxel_clusters.at(
@@ -32,88 +32,145 @@ void RegionAdjacencyGraph::generateRAG(
                      supervoxel_label).first; adjacent_itr !=
                  supervoxel_adjacency.equal_range(
                      supervoxel_label).second; ++adjacent_itr) {
-            uint32_t index = adjacent_itr->second;
+            label_itr++;
+        }
+    }
+    /*
+    VertexIterator i, end;
+    for (tie(i, end) = vertices(this->graph); i != end; ++i) {
+        uint32_t supervoxel_label = static_cast<uint32_t>(this->graph[*i].v_index);
+        Eigen::Vector4f c_centroid = supervoxel_clusters.at(
+            supervoxel_label)->centroid_.getVector4fMap();
+        Eigen::Vector4f c_normal = this->cloudMeanNormal(
+            supervoxel_clusters.at(supervoxel_label)->normals_);
+         std::cout << supervoxel_label << "\t";
+        for (std::multimap<uint32_t, uint32_t>::const_iterator
+                 adjacent_itr = supervoxel_adjacency.equal_range(
+                     supervoxel_label).first; adjacent_itr !=
+                 supervoxel_adjacency.equal_range(
+                     supervoxel_label).second; ++adjacent_itr) {
+            std::cout << adjacent_itr->second << ", ";
             if (supervoxel_label != adjacent_itr->second) {
-                VertexDescriptor neig_vertex = boost::add_vertex(VertexProperty(
-                        adjacent_itr->second,supervoxel_clusters.at(
-                            adjacent_itr->second)->centroid_.getVector4fMap(),
-                        -1), this->graph);
                 bool found = false;
                 EdgeDescriptor e_descriptor;
                 boost::tie(e_descriptor, found) = boost::edge(
-                    centre_vertex, neig_vertex, this->graph);
+                    label_itr->first, adjacent_itr->second, this->graph);
                 if (!found) {
-                    boost::add_edge(centre_vertex,
-                                    neig_vertex,
-                                    EdgeProperty(0.0f),
+                    Eigen::Vector4f n_centroid = supervoxel_clusters.at(
+                        adjacent_itr->second)->centroid_.getVector4fMap();
+                    Eigen::Vector4f n_normal = this->cloudMeanNormal(
+                        supervoxel_clusters.at(adjacent_itr->second)->normals_);
+                    float weight = this->localVoxelConvexityCriteria(
+                        c_centroid, c_normal, n_centroid, n_normal);
+                    boost::add_edge(supervoxel_label,
+                                    adjacent_itr->second,
+                                    EdgeProperty(static_cast<float>(weight)),
                                     this->graph);
                 }
             }
         }
     }
-}
+    */
 
-   
-
-/*
-void RegionAdjacencyGraph::generateRAG(
-    const std::vector<pcl::PointCloud<PointT>::Ptr> &cloud_clusters,
-    const std::vector<pcl::PointCloud<pcl::Normal>::Ptr>  &normal_clusters,
-    const pcl::PointCloud<pcl::PointXYZ>::Ptr centroids,
-    std::vector<std::vector<int> > &neigbor_indices,
-    const int edge_weight_criteria) {
-    std::vector<VertexDescriptor> vertex_descriptor;
-    if (cloud_clusters.size() == neigbor_indices.size()) {
-       for (int j = 0; j < neigbor_indices.size(); j++) {
-           VertexDescriptor r_vd; // = vertex_descriptor[j];
-          for (int i = 0; i < neigbor_indices[j].size(); i++) {
-             int n_index = neigbor_indices[j][i];
-             VertexDescriptor vd = vertex_descriptor[n_index];
-             if (r_vd != vd) {
+    
+    for (std::multimap<uint32_t, uint32_t>::const_iterator label_itr =
+             supervoxel_adjacency.begin(); label_itr !=
+             supervoxel_adjacency.end(); ) {
+        uint32_t supervoxel_label = label_itr->first;
+        Eigen::Vector4f c_centroid = supervoxel_clusters.at(
+            supervoxel_label)->centroid_.getVector4fMap();
+        Eigen::Vector4f c_normal = this->cloudMeanNormal(
+            supervoxel_clusters.at(supervoxel_label)->normals_);
+         std::cout << supervoxel_label << "\t";
+        for (std::multimap<uint32_t, uint32_t>::const_iterator
+                 adjacent_itr = supervoxel_adjacency.equal_range(
+                     supervoxel_label).first; adjacent_itr !=
+                 supervoxel_adjacency.equal_range(
+                     supervoxel_label).second; ++adjacent_itr) {
+            std::cout << adjacent_itr->second << ", ";
+            if (supervoxel_label != adjacent_itr->second) {
                 bool found = false;
                 EdgeDescriptor e_descriptor;
-                tie(e_descriptor, found) = edge(r_vd, vd, graph);
+                boost::tie(e_descriptor, found) = boost::edge(
+                    label_itr->first, adjacent_itr->second, this->graph);
                 if (!found) {
-                    float distance = 0;1
-                   boost::add_edge(
-                      r_vd, vd, EdgeProperty(distance), this->graph);
+                    Eigen::Vector4f n_centroid = supervoxel_clusters.at(
+                        adjacent_itr->second)->centroid_.getVector4fMap();
+                    Eigen::Vector4f n_normal = this->cloudMeanNormal(
+                        supervoxel_clusters.at(adjacent_itr->second)->normals_);
+                    float weight = this->localVoxelConvexityCriteria(
+                        c_centroid, c_normal, n_centroid, n_normal);
+                    boost::add_edge(supervoxel_label,
+                                    adjacent_itr->second,
+                                    EdgeProperty(static_cast<float>(weight)),
+                                    this->graph);
                 }
-             }
-          }
-       }
-    } else {
-       ROS_WARN("Elements not same size..");
+            }
+            label_itr++;
+        }
+        std::cout << std::endl;
     }
 }
 
-/*
+float RegionAdjacencyGraph::localVoxelConvexityCriteria(
+    Eigen::Vector4f c_centroid, Eigen::Vector4f c_normal,
+    Eigen::Vector4f n_centroid, Eigen::Vector4f n_normal) {
+    c_centroid(3) = 0.0f;
+    c_normal(3) = 0.0f;
+    if ((n_centroid - c_centroid).dot(n_normal) > 0) {
+        return 1.0f;
+    } else {
+        return -1.0f;
+    }
+}
+
+Eigen::Vector4f RegionAdjacencyGraph::cloudMeanNormal(
+    const pcl::PointCloud<pcl::Normal>::Ptr normal,
+    bool isnorm) {
+
+    if (normal->empty()) {
+        return Eigen::Vector4f(0, 0, 0, 0);
+    }
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+    int icounter = 0;
+    for (int i = 0; i < normal->size(); i++) {
+        if ((!isnan(normal->points[i].normal_x)) &&
+            (!isnan(normal->points[i].normal_y)) &&
+            (!isnan(normal->points[i].normal_z))) {
+            x += normal->points[i].normal_x;
+            y += normal->points[i].normal_y;
+            z += normal->points[i].normal_z;
+            icounter++;
+        }
+    }
+    Eigen::Vector4f n_mean = Eigen::Vector4f(
+        x/static_cast<float>(icounter),
+        y/static_cast<float>(icounter),
+        z/static_cast<float>(icounter),
+        0.0f);
+    if (isnorm) {
+        n_mean.normalize();
+    }
+    return n_mean;
+}
+
 void RegionAdjacencyGraph::splitMergeRAG(
-    const std::vector<pcl::PointCloud<PointT>::Ptr> &c_clusters,
-    const std::vector<pcl::PointCloud<pcl::Normal>::Ptr>  &n_clusters,
-    const int edge_weight_criteria,
     const int _threshold) {
     if (num_vertices(this->graph) == 0) {
        ROS_ERROR("ERROR: Cannot Merge Empty RAG ...");
        return;
     }
-    std::vector<pcl::PointCloud<PointT>::Ptr> cloud_clusters;
-    cloud_clusters.clear();
-    cloud_clusters.insert(
-       cloud_clusters.end(), c_clusters.begin(), c_clusters.end());
-    std::vector<pcl::PointCloud<pcl::Normal>::Ptr> normal_clusters;
-    normal_clusters.clear();
-    normal_clusters.insert(
-       normal_clusters.end(), n_clusters.begin(), n_clusters.end());
-
-    
     IndexMap index_map = get(boost::vertex_index, this->graph);
     EdgePropertyAccess edge_weights = get(boost::edge_weight, this->graph);
     VertexIterator i, end;
     int label = -1;
      
-   for (tie(i, end) = vertices(this->graph); i != end; i++) {
+    for (tie(i, end) = vertices(this->graph); i != end; i++) {
         if (this->graph[*i].v_label == -1) {
-           graph[*i].v_label = ++label;
+            graph
+                [*i].v_label = ++label;
         }
         AdjacencyIterator ai, a_end;
         tie(ai, a_end) = boost::adjacent_vertices(*i, this->graph);
@@ -122,49 +179,46 @@ void RegionAdjacencyGraph::splitMergeRAG(
 
         bool vertex_has_neigbor = true;
         if (ai == a_end) {
-           vertex_has_neigbor = false;
-           std::cout << CYAN << "NOT VERTEX " << CYAN << RESET << std::endl;
+            vertex_has_neigbor = false;
+            std::cout << CYAN << "NOT VERTEX " << CYAN << RESET << std::endl;
         }
-        
-        // while (vertex_has_neigbor) {
         for (; ai != a_end; ai++) {
            
-           int neigbours_index = static_cast<int>(*ai);
+            int neigbours_index = static_cast<int>(*ai);
               
-           std::cout << BLUE << "\t Neigbour Node: " << *ai
-                     << "\t " << neigbours_index
-                     << BLUE << RESET  << std::endl;
+            std::cout << BLUE << "\t Neigbour Node: " << *ai
+                      << "\t " << neigbours_index
+                      << BLUE << RESET  << std::endl;
            
-           bool found = false;
-           EdgeDescriptor e_descriptor;
-           tie(e_descriptor, found) = boost::edge(
-              *i, neigbours_index, this->graph);
-           if (found) {
-              EdgeValue edge_val = boost::get(
-                 boost::edge_weight, this->graph, e_descriptor);
-              float weights_ = edge_val;
-              if (weights_ < _threshold) {
-                 boost::remove_edge(e_descriptor, this->graph);
-              } else {
-                 if ((this->graph[neigbours_index].v_label == -1)) {  // ||
-                    // (this->graph[neigbours_index].v_label !=
-                    //  this->graph[*i].v_label)) {
-                    this->graph[neigbours_index].v_label =
-                       this->graph[*i].v_label;
-                 }
-              }
-           }
+            bool found = false;
+            EdgeDescriptor e_descriptor;
+            tie(e_descriptor, found) = boost::edge(
+                *i, neigbours_index, this->graph);
+            if (found) {
+                EdgeValue edge_val = boost::get(
+                    boost::edge_weight, this->graph, e_descriptor);
+                float weights_ = edge_val;
+                if (weights_ < _threshold) {
+                    boost::remove_edge(e_descriptor, this->graph);
+                } else {
+                    if ((this->graph[neigbours_index].v_label == -1)) {
+                        this->graph[neigbours_index].v_label =
+                            this->graph[*i].v_label;
+                    }
+                }
+            }
         }
-     }
+    }
     this->total_label = label + sizeof(char); // change to getter
 #ifdef DEBUG
     // this->printGraph(this->graph);
     std::cout << MAGENTA << "\nPRINT INFO. \n --Graph Size: "
               << num_vertices(graph) << RESET <<
-       std::endl << "--Total Label: " << label << "\n\n";
+        std::endl << "--Total Label: " << label << "\n\n";
 #endif  // DEBUG
 }
-
+ 
+/*
 void RegionAdjacencyGraph::getCloudClusterLabels(
     std::vector<int> &labelMD) {
     labelMD.clear();
@@ -173,14 +227,17 @@ void RegionAdjacencyGraph::getCloudClusterLabels(
        labelMD.push_back(static_cast<int>(this->graph[*i].v_label));
     }
 }
+*/
 
-void RegionAdjacencyGraph::printGraph(
-    const Graph &_graph) {
+void RegionAdjacencyGraph::printGraph() {
     VertexIterator i, end;
-    for (tie(i, end) = vertices(_graph); i != end; ++i) {
+    for (tie(i, end) = vertices(this->graph); i != end; ++i) {
        AdjacencyIterator ai, a_end;
-       tie(ai, a_end) = adjacent_vertices(*i, _graph);
-       std::cout << *i << "\t" << _graph[*i].v_label << std::endl;
+       tie(ai, a_end) = adjacent_vertices(*i, this->graph);
+       std::cout << *i << "\t" << this->graph[*i].v_label  << "\t"
+                 << this->graph[*i].v_index << "\t "
+                 << num_vertices(this->graph)<< std::endl;
+       
     }
 }
-*/
+
