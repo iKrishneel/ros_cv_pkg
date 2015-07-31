@@ -489,6 +489,32 @@ void MultilayerObjectTracking::computeCloudClusterRPYHistogram(
        ROS_ERROR("ERROR: Empty Input");
        return;
     }
+    /*
+    pcl::PointCloud<pcl::PointXYZL>::Ptr object(
+       new pcl::PointCloud<pcl::PointXYZL>);
+    for (int i = 0; i < cloud->size(); i++) {
+       pcl::PointXYZL pt;
+       pt.x = cloud->points[i].x;
+       pt.y = cloud->points[i].y;
+       pt.z = cloud->points[i].z;
+       pt.label = 1;
+       object->push_back(pt);
+    }
+    pcl::GFPFHEstimation<
+       pcl::PointXYZL, pcl::PointXYZL, pcl::GFPFHSignature16> gfpfh;
+    gfpfh.setInputCloud(object);
+    gfpfh.setInputLabels(object);
+    gfpfh.setOctreeLeafSize(0.01);
+    gfpfh.setNumberOfClasses(1);
+    pcl::PointCloud<pcl::GFPFHSignature16>::Ptr descriptor(
+       new pcl::PointCloud<pcl::GFPFHSignature16>);
+    gfpfh.compute(*descriptor);
+    histogram = cv::Mat(sizeof(char), 16, CV_32F);
+    for (int i = 0; i < histogram.cols; i++) {
+       histogram.at<float>(0, i) = descriptor->points[0].histogram[i];
+    }
+    cv::normalize(histogram, histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+    */
     pcl::VFHEstimation<PointT,
                        pcl::Normal,
                        pcl::VFHSignature308> vfh;

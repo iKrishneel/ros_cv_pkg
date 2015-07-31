@@ -53,6 +53,7 @@
 #include <pcl/tracking/tracking.h>
 #include <pcl/common/common.h>
 #include <pcl/registration/distances.h>
+#include <pcl/features/gfpfh.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -185,8 +186,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     void computeColorHistogram(
        const pcl::PointCloud<PointT>::Ptr,
        cv::Mat &,
-       const int = 16,
-       const int = 16,
+       const int = 16/2,
+       const int = 16/2,
        bool = true) const;
     void computePointFPFH(
        const pcl::PointCloud<PointT>::Ptr,
