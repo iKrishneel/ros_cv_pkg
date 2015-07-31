@@ -121,9 +121,10 @@ void MultilayerObjectTracking::processDecomposedCloud(
        return;
     }
     models = ModelsPtr(new Models);
+    int icounter = 0;
     for (std::multimap<uint32_t, uint32_t>::const_iterator label_itr =
             supervoxel_adjacency.begin(); label_itr !=
-            supervoxel_adjacency.end(); label_itr++) {
+            supervoxel_adjacency.end();) {
        ReferenceModel ref_model;
        ref_model.flag = true;
        uint32_t supervoxel_label = label_itr->first;
@@ -142,6 +143,8 @@ void MultilayerObjectTracking::processDecomposedCloud(
                  min_cluster_size_) {
                 adjacent_voxels.push_back(adjacent_itr->second);
              }
+             label_itr++;
+             icounter++;
           }
           AdjacentInfo a_info;
           a_info.adjacent_voxel_indices[supervoxel_label] =
@@ -172,9 +175,14 @@ void MultilayerObjectTracking::processDecomposedCloud(
                 supervoxel->centroid_.getVector4fMap();
           }
           ref_model.flag = false;
+       } else {
+          label_itr++;
        }
        models->push_back(ref_model);
     }
+    std::cout << "OBJECT MODEL SIZE: " << models->size()
+              << "\t" << supervoxel_clusters.size() << "\t" << icounter
+              << std::endl;
 }
 
 void MultilayerObjectTracking::globalLayerPointCloudProcessing(
