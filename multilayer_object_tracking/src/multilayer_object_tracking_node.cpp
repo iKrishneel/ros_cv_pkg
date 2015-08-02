@@ -302,6 +302,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              c_centroid, c_normal, cv::Scalar(255, 0, 0)));
        
        // neigbour voxel convex relationship
+       // TODO(CHECK) - if neigbour already added than no convexity..
        for (std::multimap<uint32_t, uint32_t>::iterator itr = ret.first;
             itr != ret.second; itr++) {
            if (!supervoxel_clusters.at(itr->second)->voxels_->empty()) {
