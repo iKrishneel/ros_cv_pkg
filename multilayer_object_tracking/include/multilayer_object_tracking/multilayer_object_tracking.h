@@ -112,6 +112,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     ros::Publisher pub_sindices_;
     ros::Publisher pub_scloud_;
     ros::Publisher pub_normal_;
+    ros::Publisher pub_tdp_;
     
     // object model params
     int init_counter_;

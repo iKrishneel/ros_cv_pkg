@@ -25,6 +25,10 @@ void MultilayerObjectTracking::onInit() {
 
     this->pub_normal_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
         "/multilayer_object_tracking/output/normal", sizeof(char));
+
+    this->pub_tdp_ = this->pnh_.advertise<
+       jsk_recognition_msgs::ClusterPointIndices>(
+          "/multilayer_object_tracking/supervoxel/tdp_indices", 1);
 }
 
 void MultilayerObjectTracking::subscribe() {
@@ -287,6 +291,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
 
     // get the neigbours of best match index
     pcl::PointCloud<PointT>::Ptr output(new pcl::PointCloud<PointT>);
+    std::vector<uint32_t> neigb_lookup;
     for (std::vector<uint32_t>::iterator it = best_match_index.begin();
          it != best_match_index.end(); it++) {
        std::pair<std::multimap<uint32_t, uint32_t>::iterator,
@@ -302,25 +307,34 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              c_centroid, c_normal, cv::Scalar(255, 0, 0)));
        
        // neigbour voxel convex relationship
-       // TODO(CHECK) - if neigbour already added than no convexity..
+       neigb_lookup.push_back(*it);
        for (std::multimap<uint32_t, uint32_t>::iterator itr = ret.first;
             itr != ret.second; itr++) {
-           if (!supervoxel_clusters.at(itr->second)->voxels_->empty()) {
-               
-             Eigen::Vector4f n_centroid = supervoxel_clusters.at(
-                itr->second)->centroid_.getVector4fMap();
-             Eigen::Vector4f n_normal = this->cloudMeanNormal(
-                supervoxel_clusters.at(itr->second)->normals_);
-             float convx_weight = this->localVoxelConvexityLikelihood<float>(
-                c_centroid, c_normal, n_centroid, n_normal);
-             if (convx_weight != 0.0f) {
+          bool is_process_neigh = true;
+          for (std::vector<uint32_t>::iterator lup_it = neigb_lookup.begin();
+               lup_it != neigb_lookup.end(); lup_it++) {
+             if (*lup_it == itr->second) {
+                is_process_neigh = false;
+                break;
+             }
+          }
+          if (!supervoxel_clusters.at(itr->second)->voxels_->empty() &&
+             is_process_neigh) {
+             neigb_lookup.push_back(itr->second);
+              Eigen::Vector4f n_centroid = supervoxel_clusters.at(
+                 itr->second)->centroid_.getVector4fMap();
+              Eigen::Vector4f n_normal = this->cloudMeanNormal(
+                 supervoxel_clusters.at(itr->second)->normals_);
+              float convx_weight = this->localVoxelConvexityLikelihood<float>(
+                 c_centroid, c_normal, n_centroid, n_normal);
+              if (convx_weight > 0.0f) {
                  *output = *output + *supervoxel_clusters.at(
-                 itr->second)->voxels_;
+                    itr->second)->voxels_;
                  centroid_normal->push_back(
                     this->convertVector4fToPointXyzRgbNormal(
                        n_centroid, n_normal, cv::Scalar(0, 255, 0)));
-             }
-             std::cout << convx_weight << "\t";
+              }
+              std::cout << convx_weight << "\t";
                
                /*
              // ------------------------------------------
@@ -385,6 +399,12 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     }
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
+
+    /* indices of tdp */
+    jsk_recognition_msgs::ClusterPointIndices tdp_indices;
+    this->targetDescriptiveSurfelsIndices(
+       supervoxel_clusters, neigb_lookup, tdp_indices, header);
+    this->pub_tdp_.publish(tdp_indices);
     
     /* for visualization of supervoxel */
     sensor_msgs::PointCloud2 ros_svcloud;

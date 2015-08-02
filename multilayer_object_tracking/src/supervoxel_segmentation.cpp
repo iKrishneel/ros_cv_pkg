@@ -61,6 +61,30 @@ void SupervoxelSegmentation::publishSupervoxel(
     ros_cloud.header = header;
 }
 
+void SupervoxelSegmentation::targetDescriptiveSurfelsIndices(
+    const std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters,
+    const std::vector<uint32_t> &tdp_list,
+    jsk_recognition_msgs::ClusterPointIndices &ros_indices,
+    const std_msgs::Header &header) {
+       pcl::PointCloud<PointT>::Ptr output (new pcl::PointCloud<PointT>);
+    pcl::PointIndices indices;
+    for (std::vector<uint32_t>::const_iterator it = tdp_list.begin();
+         it != tdp_list.end(); it++) {
+       for (size_t i = 0; i < supervoxel_clusters.at(
+               *it)->voxels_->size(); i++) {
+          indices.indices.push_back(i + output->points.size());
+       }
+       *output = *output + *supervoxel_clusters.at(*it)->voxels_;
+    }
+    std::vector<pcl::PointIndices> all_indices;
+    all_indices.push_back(indices);
+    
+    ros_indices.cluster_indices.clear();
+    ros_indices.cluster_indices = this->convertToROSPointIndices(
+       all_indices, header);
+    ros_indices.header = header;
+}
+
 std::vector<pcl_msgs::PointIndices>
 SupervoxelSegmentation::convertToROSPointIndices(
     const std::vector<pcl::PointIndices> cluster_indices,
