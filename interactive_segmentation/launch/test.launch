@@ -1,0 +1,13 @@
+<launch>
+  <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch" />
+  <node pkg="interactive_segmentation" name="interactive_segmentation"
+	type="interactive_segmentation_node" output="screen">
+    <remap from="input_image" to="/camera/rgb/image_rect_color" />
+    <remap from="input_edge" to="/camera/rgb/image_rect_color" />
+    <remap from="input_cloud" to="/pcl_filter_utils/output/cloud" />
+
+    <!--<remap from="input_image" to="/camera/rgb/image_rect_color" />
+    <remap from="input_edge" to="/edge/image" />
+    <remap from="input_cloud" to="/plane_extraction/output_nonplane_cloud" /> -->
+  </node>
+</launch>
