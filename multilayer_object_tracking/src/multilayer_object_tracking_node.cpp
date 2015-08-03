@@ -266,7 +266,9 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           // :just for visualization
           pcl::PointCloud<PointT>::Ptr match_cloud(new pcl::PointCloud<PointT>);
           *match_cloud = *target_voxels[itr->second].cluster_cloud;
-          
+
+
+          // collect the neigbours here instead of next for loop
           for (std::vector<uint32_t>::iterator it =
                   neigb.find(v_ind)->second.begin();
                it != neigb.find(v_ind)->second.end(); it++) {
@@ -294,6 +296,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     // get the neigbours of best match index
     pcl::PointCloud<PointT>::Ptr output(new pcl::PointCloud<PointT>);
     std::vector<uint32_t> neigb_lookup;
+    neigb_lookup = best_match_index;   // copy the best set to tthe initial
     for (std::vector<uint32_t>::iterator it = best_match_index.begin();
          it != best_match_index.end(); it++) {
        std::pair<std::multimap<uint32_t, uint32_t>::iterator,
@@ -309,7 +312,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              c_centroid, c_normal, cv::Scalar(255, 0, 0)));
        
        // neigbour voxel convex relationship
-       neigb_lookup.push_back(*it);
+       // neigb_lookup.push_back(*it);
        for (std::multimap<uint32_t, uint32_t>::iterator itr = ret.first;
             itr != ret.second; itr++) {
           bool is_process_neigh = true;
@@ -459,7 +462,7 @@ T MultilayerObjectTracking::targetCandidateToReferenceLikelihood(
        cv::compareHist(color_hist,
                        reference_model.cluster_color_hist,
                        CV_COMP_BHATTACHARYYA));
-    T probability = std::exp(-1 * dist_vfh) * std::exp(-1 * dist_col);
+    T probability = std::exp(-1 * dist_vfh) /* std::exp(-1 * dist_col)*/;
     return probability;
 }
 
@@ -717,6 +720,33 @@ Eigen::Vector4f MultilayerObjectTracking::cloudMeanNormal(
        n_mean.normalize();
     }
     return n_mean;
+}
+
+void MultilayerObjectTracking::computeScatterMatrix(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const Eigen::Vector4f centroid) {
+    if (cloud->empty()) {
+       ROS_ERROR("Empty input for computing Scatter Matrix");
+       return;
+    }
+    const int rows = 3;
+    const int cols = 3;
+    Eigen::MatrixXf scatter_matrix = Eigen::Matrix3f::Zero(cols, rows);
+    for (int i = 0; i < cloud->size(); i++) {
+       Eigen::Vector3f de_mean = Eigen::Vector3f();
+       de_mean(0) = cloud->points[i].x - centroid(0);
+       de_mean(1) = cloud->points[i].y - centroid(1);
+       de_mean(2) = cloud->points[i].z - centroid(2);
+       Eigen::Vector3f t_de_mean = de_mean.transpose();
+       for (int y = 0; y < rows; y++) {
+          for (int x = 0; x < cols; x++) {
+             scatter_matrix(y, x) += de_mean(y) * t_de_mean(x);
+          }
+       }
+    }
+    Eigen::EigenSolver<Eigen::MatrixXf> eigen_solver(scatter_matrix, true);
+    // Eigen::complex<float> eigen_values;
+    
 }
 
 float MultilayerObjectTracking::computeCoherency(
