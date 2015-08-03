@@ -400,11 +400,19 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
 
-    /* indices of tdp */
+    
+    pcl::PointIndices tdp_ind;
+    for (int i = 0; i < cloud->size(); i++) {
+       tdp_ind.indices.push_back(i);
+    }
+    std::vector<pcl::PointIndices> all_indices;
+    all_indices.push_back(tdp_ind);
     jsk_recognition_msgs::ClusterPointIndices tdp_indices;
-    this->targetDescriptiveSurfelsIndices(
-       supervoxel_clusters, neigb_lookup, tdp_indices, header);
+    tdp_indices.cluster_indices = this->convertToROSPointIndices(
+       all_indices, header);
+    tdp_indices.header = header;
     this->pub_tdp_.publish(tdp_indices);
+
     
     /* for visualization of supervoxel */
     sensor_msgs::PointCloud2 ros_svcloud;
@@ -413,6 +421,13 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
         supervoxel_clusters, ros_svcloud, ros_svindices, header);
     pub_scloud_.publish(ros_svcloud);
     pub_sindices_.publish(ros_svindices);
+
+
+    /* indices of tdp 
+    jsk_recognition_msgs::ClusterPointIndices tdp_indices;
+    this->targetDescriptiveSurfelsIndices(
+       ros_svindices, neigb_lookup, tdp_indices);
+    this->pub_tdp_.publish(tdp_indices);
 
     /* for visualization of normal */
     sensor_msgs::PointCloud2 rviz_normal;

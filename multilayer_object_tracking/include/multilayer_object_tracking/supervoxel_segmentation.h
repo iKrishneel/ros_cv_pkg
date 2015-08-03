@@ -44,10 +44,9 @@ class SupervoxelSegmentation {
        const std::vector<pcl::PointIndices>,
        const std_msgs::Header &);
     void targetDescriptiveSurfelsIndices(
-       const std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr>,
-       const std::vector<uint32_t> &,
-       jsk_recognition_msgs::ClusterPointIndices &,
-       const std_msgs::Header &);
+           const jsk_recognition_msgs::ClusterPointIndices &,
+           const std::vector<uint32_t> &,
+           jsk_recognition_msgs::ClusterPointIndices &);
    
    
  private:
