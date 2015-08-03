@@ -292,6 +292,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
        for (std::multimap<uint32_t, uint32_t>::iterator itr = ret.first;
             itr != ret.second; itr++) {
            if (!supervoxel_clusters.at(itr->second)->voxels_->empty()) {
+               
              Eigen::Vector4f n_centroid = supervoxel_clusters.at(
                 itr->second)->centroid_.getVector4fMap();
              Eigen::Vector4f n_normal = this->cloudMeanNormal(
@@ -300,12 +301,69 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                 c_centroid, c_normal, n_centroid, n_normal);
              if (convx_weight != 0.0f) {
                  *output = *output + *supervoxel_clusters.at(
-                     itr->second)->voxels_;
+                 itr->second)->voxels_;
                  centroid_normal->push_back(
                     this->convertVector4fToPointXyzRgbNormal(
                        n_centroid, n_normal, cv::Scalar(0, 255, 0)));
              }
              std::cout << convx_weight << "\t";
+               
+               /*
+             // ------------------------------------------
+             // get the common neigbor to both
+             std::pair<std::multimap<uint32_t, uint32_t>::iterator,
+                       std::multimap<uint32_t, uint32_t>::iterator> comm_neigb;
+             comm_neigb = supervoxel_adjacency.equal_range(itr->second);
+             uint32_t common_neigbour_index = 0;
+             for (std::multimap<uint32_t, uint32_t>::iterator c_itr =
+                      comm_neigb.first; c_itr != comm_neigb.second; c_itr++) {
+                 if (!supervoxel_clusters.at(c_itr->second)->voxels_->empty()) {
+                     bool is_common_neigh = false;
+                     for (std::map<uint32_t, uint32_t>::iterator itr_ret =
+                              supervoxel_adjacency.equal_range(c_itr->first).
+                              first; itr_ret != supervoxel_adjacency.equal_range(
+                                  c_itr->first).second; itr_ret++) {
+                         if (itr_ret->second == *it) {
+                             is_common_neigh = true;
+                             common_neigbour_index = c_itr->second;  //check ?
+                             break;
+                         }
+                     }
+                     if (is_common_neigh) {
+                         std::cout << "Common Neigbor exists..." << std::endl;
+                         break;
+                     }
+                 }
+             }
+             if (common_neigbour_index > 0) {
+                 Eigen::Vector4f n_centroid_b = supervoxel_clusters.at(
+                     itr->second)->centroid_.getVector4fMap();
+                 Eigen::Vector4f n_normal_b = this->cloudMeanNormal(
+                     supervoxel_clusters.at(itr->second)->normals_);
+                 Eigen::Vector4f n_centroid_c = supervoxel_clusters.at(
+                     common_neigbour_index)->centroid_.getVector4fMap();
+                 Eigen::Vector4f n_normal_c = this->cloudMeanNormal(
+                     supervoxel_clusters.at(common_neigbour_index)->normals_);
+                 float convx_weight_ab = this->localVoxelConvexityLikelihood<
+                     float>(c_centroid, c_normal, n_centroid_b, n_normal_b);
+                 float convx_weight_ac = this->localVoxelConvexityLikelihood<
+                     float>(c_centroid, c_normal, n_centroid_c, n_normal_c);
+                 float convx_weight_bc = this->localVoxelConvexityLikelihood<
+                     float>(n_centroid_b, n_normal_b, n_centroid_c, n_normal_c);
+                 
+                 if (convx_weight_ab != 0.0f &&
+                     convx_weight_ac != 0.0f &&
+                     convx_weight_bc != 0.0f) {
+                     *output = *output + *supervoxel_clusters.at(
+                         itr->second)->voxels_;
+                     centroid_normal->push_back(
+                         this->convertVector4fToPointXyzRgbNormal(
+                             n_centroid_b, n_normal_b, cv::Scalar(0, 255, 0)));
+                 }
+                 // std::cout << convx_weight_ab << "\t";
+             }
+             // ------------------------------------------
+             */
            }
        }
        *output = *output + *supervoxel_clusters.at(*it)->voxels_;

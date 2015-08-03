@@ -2,7 +2,8 @@
 #include <interactive_segmentation/interactive_segmentation.h>
 #include <vector>
 
-InteractiveSegmentation::InteractiveSegmentation() {
+InteractiveSegmentation::InteractiveSegmentation():
+    min_cluster_size_(50) {
     this->subscribe();
     this->onInit();
 }
@@ -39,11 +40,11 @@ void InteractiveSegmentation::callback(
        image_msg, image_msg->encoding)->image;
     cv::Mat edge_img = cv_bridge::toCvShare(
        edge_msg, edge_msg->encoding)->image;
-    pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
+    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     
-    this->pointCloudEdge(cloud, image, edge_img, 10);
-    
+    // this->pointCloudEdge(cloud, image, edge_img, 10);
+    PointCloudSurfels surfels = this->decomposePointCloud2Voxels(cloud);
     
     cv_bridge::CvImage pub_img(
        image_msg->header, sensor_msgs::image_encodings::BGR8, image);
@@ -53,6 +54,76 @@ void InteractiveSegmentation::callback(
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
+}
+
+InteractiveSegmentation::PointCloudSurfels
+InteractiveSegmentation::decomposePointCloud2Voxels(
+    const pcl::PointCloud<PointT>::Ptr cloud) {
+    if (cloud->empty()) {
+        ROS_ERROR("Error: empty point cloud");
+        return PointCloudSurfels();
+    }
+    std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters;
+    std::multimap<uint32_t, uint32_t> supervoxel_adjacency;
+    this->supervoxelSegmentation(cloud,
+                                 supervoxel_clusters,
+                                 supervoxel_adjacency);
+    RegionAdjacencyGraph *rag = new RegionAdjacencyGraph();
+    rag->generateRAG(supervoxel_clusters, supervoxel_adjacency);
+    // rag->splitMergeRAG(0.0f);
+    // rag->printGraph();
+    free(rag);
+    
+    
+    std::cout << "\t\tSize: " << supervoxel_clusters.size()  << std::endl;
+    
+    PointCloudSurfels surfels;
+    return surfels;
+}
+
+bool InteractiveSegmentation::localVoxelConvexityCriteria(
+    Eigen::Vector4f c_centroid, Eigen::Vector4f c_normal,
+    Eigen::Vector4f n_centroid, Eigen::Vector4f n_normal,
+    const float threshold) {
+    c_centroid(3) = 0.0f;
+    c_normal(3) = 0.0f;
+    if ((n_centroid - c_centroid).dot(n_normal) > 0) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+Eigen::Vector4f InteractiveSegmentation::cloudMeanNormal(
+    const pcl::PointCloud<pcl::Normal>::Ptr normal,
+    bool isnorm) {
+
+    if (normal->empty()) {
+        return Eigen::Vector4f(0, 0, 0, 0);
+    }
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+    int icounter = 0;
+    for (int i = 0; i < normal->size(); i++) {
+        if ((!isnan(normal->points[i].normal_x)) &&
+            (!isnan(normal->points[i].normal_y)) &&
+            (!isnan(normal->points[i].normal_z))) {
+            x += normal->points[i].normal_x;
+            y += normal->points[i].normal_y;
+            z += normal->points[i].normal_z;
+            icounter++;
+        }
+    }
+    Eigen::Vector4f n_mean = Eigen::Vector4f(
+        x/static_cast<float>(icounter),
+        y/static_cast<float>(icounter),
+        z/static_cast<float>(icounter),
+        0.0f);
+    if (isnorm) {
+        n_mean.normalize();
+    }
+    return n_mean;
 }
 
 void InteractiveSegmentation::pointCloudEdge(
@@ -86,7 +157,7 @@ void InteractiveSegmentation::pointCloudEdge(
     
     cv::imshow("Contours", cont_img);
     cv::waitKey(3);
-
+    
     // pcl::PointCloud<pcl::Normal>::Ptr normals(
     //    new pcl::PointCloud<pcl::Normal>);
     // this->estimatePointCloudNormals(cloud, normals, 0.03f, false);
@@ -101,17 +172,15 @@ void InteractiveSegmentation::pointCloudEdge(
           int ept_index = e_pt.x + (e_pt.y * image.cols);
           int pt1_index = n_pt1.x + (n_pt1.y * image.cols);
           int pt2_index = n_pt2.x + (n_pt2.y * image.cols);
-
-          // std::cout << "Index: " << ept_index << "\t "
-          //           << pt1_index << "\t" << pt2_index<< std::endl;
+          
           if (pt1_index > -1 && pt2_index > -1 &&  ept_index > -1 &&
-             pt1_index <= 307200 && pt2_index <= 307200 &&
-              ept_index <= 307200) {
+              pt1_index < static_cast<int>(cloud->size() + 1) &&
+              pt2_index < static_cast<int>(cloud->size() + 1) &&
+              ept_index < static_cast<int>(cloud->size() + 1)) {
              Eigen::Vector3f ne_pt1 = cloud->points[pt1_index].getVector3fMap();
              Eigen::Vector3f ne_pt2 = cloud->points[pt2_index].getVector3fMap();
              Eigen::Vector3f ne_cntr = ((ne_pt1 - ne_pt2) / 2) + ne_pt2;
              Eigen::Vector3f e_pt = cloud->points[ept_index].getVector3fMap();
-
 
              PointT pt = cloud->points[ept_index];
              if (ne_cntr(2) < e_pt(2) - 0.005f) {
@@ -119,9 +188,7 @@ void InteractiveSegmentation::pointCloudEdge(
                 pt.b = 0;
                 pt.g = 255;
                 concave_cloud->push_back(pt);
-             }
-
-             
+             }             
              /*
              pcl::Normal n1 = normals->points[pt1_index];
              pcl::Normal n2 = normals->points[pt2_index];
