@@ -245,6 +245,8 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           }
        }
     }
+    // NOTE: if the VFH matches are on the BG than perfrom
+    // backprojection to confirm the match thru motion and VFH
     // set of patches that match the trajectory
     std::vector<uint32_t> best_match_index;
     for (std::map<int, int>::iterator itr = matching_indices.begin();
@@ -285,7 +287,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
        }
     }
 
-    // :for visualization of normals on rviz
+    // for visualization of normals on rviz
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
         new pcl::PointCloud<pcl::PointXYZRGBNormal>);
 
