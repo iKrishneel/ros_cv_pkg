@@ -7,7 +7,7 @@
 MultilayerObjectTracking::MultilayerObjectTracking() :
     init_counter_(0),
     min_cluster_size_(20),
-    radius_search_(0.03f) {
+    threshold_(0.4f) {
     this->object_reference_ = ModelsPtr(new Models);
     this->subscribe();
     this->onInit();
@@ -284,10 +284,12 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              // *output = *output + *supervoxel_clusters.at(*it)->voxels_;
           }
           // best match local convexity
-          std::cout << "Probability: " << probability << std::endl;
-          best_match_index.push_back(bm_index);
-          *match_cloud = *supervoxel_clusters.at(bm_index)->voxels_;
-          // *output = *output + *match_cloud;
+          if (probability > threshold_) {
+              std::cout << "Probability: " << probability << std::endl;
+              best_match_index.push_back(bm_index);
+              *match_cloud = *supervoxel_clusters.at(bm_index)->voxels_;
+              // *output = *output + *match_cloud;
+          }
        }
     }
 
@@ -341,9 +343,8 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                     this->convertVector4fToPointXyzRgbNormal(
                        n_centroid, n_normal, cv::Scalar(0, 255, 0)));
               }
-              std::cout << convx_weight << "\t";
-               
-               /*
+              // std::cout << convx_weight << "\t";
+              
              // ------------------------------------------
              // get the common neigbor to both
              std::pair<std::multimap<uint32_t, uint32_t>::iterator,
@@ -365,7 +366,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                          }
                      }
                      if (is_common_neigh) {
-                         std::cout << "Common Neigbor exists..." << std::endl;
+                         // std::cout << "Common Neigbor exists..." << std::endl;
                          break;
                      }
                  }
@@ -398,11 +399,10 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                  // std::cout << convx_weight_ab << "\t";
              }
              // ------------------------------------------
-             */
            }
        }
        *output = *output + *supervoxel_clusters.at(*it)->voxels_;
-       std::cout << std::endl;
+       // std::cout << std::endl;
     }
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
@@ -464,7 +464,7 @@ T MultilayerObjectTracking::targetCandidateToReferenceLikelihood(
        cv::compareHist(color_hist,
                        reference_model.cluster_color_hist,
                        CV_COMP_BHATTACHARYYA));
-    T probability = std::exp(-1 * dist_vfh) * std::exp(-1 * dist_col);
+    T probability = std::exp(-0.7 * dist_vfh) * std::exp(-0.7 * dist_col);
     return probability;
 }
 

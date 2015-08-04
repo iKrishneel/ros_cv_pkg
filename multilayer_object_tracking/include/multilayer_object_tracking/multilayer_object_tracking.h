@@ -120,8 +120,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     int min_cluster_size_;
     ModelsPtr object_reference_;
    
-    // global setup variable
-    float radius_search_;
+    float threshold_;
 
     // motion previous
     MotionHistory motion_history_;
