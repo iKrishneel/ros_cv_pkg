@@ -91,8 +91,7 @@ void MultilayerObjectTracking::callback(
        ROS_WARN("No Model To Track Selected");
        return;
     }
-    std::cout << "RUNNING CALLBACK---" << std::endl;
-
+    ROS_INFO("\n\t---RUNNING CALLBACK---");
     ros::Time begin = ros::Time::now();
     
     // get PF pose of time t
@@ -104,12 +103,12 @@ void MultilayerObjectTracking::callback(
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
-    std::cout << "PROCESSING CLOUD....." << std::endl;
+    ROS_INFO("PROCESSING CLOUD.....");
     this->globalLayerPointCloudProcessing(
         cloud, motion_displacement, cloud_msg->header);
-    std::cout << "CLOUD PROCESSED AND PUBLISHED" << std::endl;
+    ROS_INFO("CLOUD PROCESSED AND PUBLISHED");
 
-    ros::Time end = ros::Time::now();
+    ros::Time end = ros::Time::now();    
     std::cout << "Processing Time: " << end - begin << std::endl;
     
     sensor_msgs::PointCloud2 ros_cloud;
@@ -154,6 +153,9 @@ void MultilayerObjectTracking::processDecomposedCloud(
              if (neighbor_supervoxel->voxels_->size() >
                  min_cluster_size_) {
                 adjacent_voxels.push_back(adjacent_itr->second);
+
+                // compute neigbour coherency
+                
              }
              icounter++;
           }
@@ -267,8 +269,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           pcl::PointCloud<PointT>::Ptr match_cloud(new pcl::PointCloud<PointT>);
           *match_cloud = *target_voxels[itr->second].cluster_cloud;
 
-
-          // collect the neigbours here instead of next for loop
+          // TODO collect the neigbours here instead of next for loop
           for (std::vector<uint32_t>::iterator it =
                   neigb.find(v_ind)->second.begin();
                it != neigb.find(v_ind)->second.end(); it++) {
@@ -283,6 +284,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              // *output = *output + *supervoxel_clusters.at(*it)->voxels_;
           }
           // best match local convexity
+          std::cout << "Probability: " << probability << std::endl;
           best_match_index.push_back(bm_index);
           *match_cloud = *supervoxel_clusters.at(bm_index)->voxels_;
           // *output = *output + *match_cloud;
@@ -462,7 +464,7 @@ T MultilayerObjectTracking::targetCandidateToReferenceLikelihood(
        cv::compareHist(color_hist,
                        reference_model.cluster_color_hist,
                        CV_COMP_BHATTACHARYYA));
-    T probability = std::exp(-1 * dist_vfh) /* std::exp(-1 * dist_col)*/;
+    T probability = std::exp(-1 * dist_vfh) * std::exp(-1 * dist_col);
     return probability;
 }
 
@@ -530,20 +532,50 @@ void MultilayerObjectTracking::computeCloudClusterRPYHistogram(
        ROS_ERROR("ERROR: Empty Input");
        return;
     }
-    pcl::VFHEstimation<PointT,
-                       pcl::Normal,
-                       pcl::VFHSignature308> vfh;
-    vfh.setInputCloud(cloud);
-    vfh.setInputNormals(normal);
-    pcl::search::KdTree<PointT>::Ptr tree(
-       new pcl::search::KdTree<PointT>);
-    vfh.setSearchMethod(tree);
-    pcl::PointCloud<pcl::VFHSignature308>::Ptr vfhs(
-       new pcl::PointCloud<pcl::VFHSignature308>());
-    vfh.compute(*vfhs);
-    histogram = cv::Mat(sizeof(char), 308, CV_32F);
-    for (int i = 0; i < histogram.cols; i++) {
-       histogram.at<float>(0, i) = vfhs->points[0].histogram[i];
+    bool is_gfpfh = false;
+    bool is_vfh = true;
+    if (is_gfpfh) {
+        pcl::PointCloud<pcl::PointXYZL>::Ptr object(
+            new pcl::PointCloud<pcl::PointXYZL>);
+        for (int i = 0; i < cloud->size(); i++) {
+            pcl::PointXYZL pt;
+            pt.x = cloud->points[i].x;
+            pt.y = cloud->points[i].y;
+            pt.z = cloud->points[i].z;
+            pt.label = 1;
+            object->push_back(pt);
+        }
+        pcl::GFPFHEstimation<
+            pcl::PointXYZL, pcl::PointXYZL, pcl::GFPFHSignature16> gfpfh;
+        gfpfh.setInputCloud(object);
+        gfpfh.setInputLabels(object);
+        gfpfh.setOctreeLeafSize(0.01);
+        gfpfh.setNumberOfClasses(1);
+        pcl::PointCloud<pcl::GFPFHSignature16>::Ptr descriptor(
+            new pcl::PointCloud<pcl::GFPFHSignature16>);
+        gfpfh.compute(*descriptor);
+        histogram = cv::Mat(sizeof(char), 16, CV_32F);
+        for (int i = 0; i < histogram.cols; i++) {
+            histogram.at<float>(0, i) = descriptor->points[0].histogram[i];
+
+        }
+    }
+    if (is_vfh) {
+        pcl::VFHEstimation<PointT,
+                           pcl::Normal,
+                           pcl::VFHSignature308> vfh;
+        vfh.setInputCloud(cloud);
+        vfh.setInputNormals(normal);
+        pcl::search::KdTree<PointT>::Ptr tree(
+            new pcl::search::KdTree<PointT>);
+        vfh.setSearchMethod(tree);
+        pcl::PointCloud<pcl::VFHSignature308>::Ptr vfhs(
+            new pcl::PointCloud<pcl::VFHSignature308>());
+        vfh.compute(*vfhs);
+        histogram = cv::Mat(sizeof(char), 308, CV_32F);
+        for (int i = 0; i < histogram.cols; i++) {
+            histogram.at<float>(0, i) = vfhs->points[0].histogram[i];
+        }
     }
     cv::normalize(histogram, histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
 }
