@@ -81,7 +81,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        AdjacentInfo cluster_neigbors;
        pcl::PointCloud<pcl::Normal>::Ptr cluster_normals;
        Eigen::Vector4f cluster_centroid;
-       bool flag;
+        cv::Mat neigbour_normal_orientations;  // encodes effect of neibour
+        bool flag;
     };
     typedef std::vector<ReferenceModel> Models;
     typedef boost::shared_ptr<Models> ModelsPtr;
@@ -121,7 +122,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     ModelsPtr object_reference_;
    
     float threshold_;
-
+    const int bin_size_;
+    
     // motion previous
     MotionHistory motion_history_;
     
@@ -150,7 +152,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> &,
        const std::multimap<uint32_t, uint32_t> &,
        std::vector<AdjacentInfo> &,
-       ModelsPtr &, bool = true, bool = true, bool = true);
+       ModelsPtr &, bool = true, bool = true, bool = true, bool = false);
 
    /*
     std::vector<AdjacentInfo> voxelAdjacencyList(
