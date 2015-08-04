@@ -207,6 +207,12 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
         const Eigen::Vector4f &,
         const Eigen::Vector4f &,
         const cv::Scalar);
+
+
+    void computeScatterMatrix(
+       const pcl::PointCloud<PointT>::Ptr,
+       const Eigen::Vector4f);
+   
 };
 
 #endif  // _MULTILAYER_OBJECT_TRACKING_H_

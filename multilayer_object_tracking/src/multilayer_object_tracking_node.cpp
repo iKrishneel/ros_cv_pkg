@@ -746,7 +746,6 @@ void MultilayerObjectTracking::computeScatterMatrix(
     }
     Eigen::EigenSolver<Eigen::MatrixXf> eigen_solver(scatter_matrix, true);
     // Eigen::complex<float> eigen_values;
-    
 }
 
 float MultilayerObjectTracking::computeCoherency(
