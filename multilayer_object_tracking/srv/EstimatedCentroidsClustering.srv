@@ -1,0 +1,5 @@
+geometry_msgs/Pose[] estimated_centroids
+float64 max_distance
+int64 min_samples
+---
+int64[] labels
