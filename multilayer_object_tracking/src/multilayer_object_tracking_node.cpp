@@ -9,6 +9,9 @@ MultilayerObjectTracking::MultilayerObjectTracking() :
     min_cluster_size_(20),
     threshold_(0.4f) {
     this->object_reference_ = ModelsPtr(new Models);
+    this->clustering_client_ = this->pnh_.serviceClient<
+       multilayer_object_tracking::EstimatedCentroidsClustering>(
+          "estimated_centroids_clustering");
     this->onInit();
 }
 
@@ -300,10 +303,6 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
               pt.z = estimated_position(2);
               pt.r = 255;
               estimate_cloud->push_back(pt);
-              
-              // std::cout << "Estimated: " << estimated_position(0)
-              //           << "\t" << estimated_position(1) << "\t"
-              //           << "\t" << estimated_position(2) << std::endl;
           }
        }
     }
@@ -820,6 +819,37 @@ void MultilayerObjectTracking::getRotationMatrixFromRPY(
     rotation.template block<3, 3>(0, 0) =
         quaternion.normalized().toRotationMatrix();
 }
+
+void MultilayerObjectTracking::estimatedCentroidClustering(
+    const std::vector<Eigen::Vector3f> &estimated_centroids,
+    std::vector<int> &labels,
+    const float max_distance,
+    const int min_samples) {
+    if (estimated_centroids.empty()) {
+       return;
+    }
+    multilayer_object_tracking::EstimatedCentroidsClustering ecc_srv;
+    for (std::vector<Eigen::Vector3f>::const_iterator it =
+            estimated_centroids.begin();
+         it != estimated_centroids.end(); it++) {
+       geometry_msgs::Pose pose;
+       pose.position.x = (*it)(0);
+       pose.position.y = (*it)(1);
+       pose.position.z = (*it)(2);
+       ecc_srv.request.estimated_centroids.push_back(pose);
+    }
+    ecc_srv.request.max_distance = max_distance;
+    ecc_srv.request.min_samples = min_samples;
+    if (this->clustering_client_.call(ecc_srv)) {
+       for (int i = 0; i < ecc_srv.response.labels.size(); i++) {
+          labels.push_back(ecc_srv.response.labels[i]);
+       }
+    } else {
+       ROS_ERROR("ERROR! Failed to call Clustering Module");
+       return;
+    }
+}
+
 
 void MultilayerObjectTracking::adjacentVoxelCoherencey(
     const Models &ref_model, const int index,
