@@ -99,13 +99,36 @@ void MultilayerObjectTracking::callback(
     this->estimatedPFPose(pose_msg, motion_displacement);
     std::cout << "Motion Displacement: " << motion_displacement << std::endl;
     
+    // get the rotation matrix from RPY
+
+
+    // template<typename T>
+    // void getRotationMatrixFromRPY(const PointXYZRPY &motion_displacement,
+    //                               Eigen::Matrix<float, 3, 3> rotation) {
+        tf::Quaternion tf_quaternion;
+        tf_quaternion.setEulerZYX(motion_displacement.yaw,
+                                  motion_displacement.pitch,
+                                  motion_displacement.roll);
+        Eigen::Quaternion<float> quaternion = Eigen::Quaternion<float>(
+            tf_quaternion.w(), tf_quaternion.x(),
+            tf_quaternion.y(), tf_quaternion.z());
+        Eigen::Matrix<float, 3, 3> rotation =
+            quaternion.normalized().toRotationMatrix();
+        std::cout << rotation << std::endl;
+        std::cout << " \t\tANGLE: " << quaternion.x()  << "\t"
+                  << quaternion.y() << "\t" << quaternion.z()<< std::endl;
+        // }
+    
+
+    
+    
     // get the input cloud at time t
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
     ROS_INFO("PROCESSING CLOUD.....");
-    this->globalLayerPointCloudProcessing(
-        cloud, motion_displacement, cloud_msg->header);
+    // this->globalLayerPointCloudProcessing(
+    //     cloud, motion_displacement, cloud_msg->header);
     ROS_INFO("CLOUD PROCESSED AND PUBLISHED");
 
     ros::Time end = ros::Time::now();
@@ -218,7 +241,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
        cloud, supervoxel_clusters, supervoxel_adjacency,
        supervoxel_list, t_voxels, true, false, true);
     Models target_voxels = *t_voxels;
-    std::map<int, int> matching_indices;
+    std::map<int, int> matching_indices;  // hold the query and test case
     // increase to neigbours neigbour incase of poor result
     for (int j = 0; j < obj_ref.size(); j++) {
        if (!obj_ref[j].flag) {
@@ -230,7 +253,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           obj_centroid(2) = obj_ref[j].cluster_centroid(2) + motion_disp.z;
           obj_centroid(3) = 0.0f;
           for (int i = 0; i < target_voxels.size(); i++) {
-             if (!target_voxels[i].flag) {
+              if (!target_voxels[i].flag) {
                 Eigen::Vector4f t_centroid =
                    target_voxels[i].cluster_centroid;
                 t_centroid(3) = 0.0f;
@@ -693,6 +716,12 @@ void MultilayerObjectTracking::estimatedPFPose(
              this->motion_history_[last_index].y;
           motion_displacement.z = current_pose.z -
              this->motion_history_[last_index].z;
+          motion_displacement.roll = current_pose.roll -
+             this->motion_history_[last_index].roll;
+          motion_displacement.pitch = current_pose.pitch -
+              this->motion_history_[last_index].pitch;
+          motion_displacement.yaw = current_pose.yaw -
+              this->motion_history_[last_index].yaw;
        } else {
           this->motion_history_.push_back(current_pose);
        }

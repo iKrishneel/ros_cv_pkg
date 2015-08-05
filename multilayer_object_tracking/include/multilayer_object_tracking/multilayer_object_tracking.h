@@ -55,6 +55,8 @@
 #include <pcl/registration/distances.h>
 #include <pcl/features/gfpfh.h>
 
+#include <tf/transform_listener.h>
+
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <std_msgs/Header.h>
