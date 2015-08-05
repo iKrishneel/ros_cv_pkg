@@ -210,7 +210,11 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
         const Eigen::Vector4f &,
         const cv::Scalar);
 
-
+    template<typename T>
+    void getRotationMatrixFromRPY(
+        const PointXYZRPY &,
+        Eigen::Matrix<T, 3, 3> &);
+        
     void computeScatterMatrix(
        const pcl::PointCloud<PointT>::Ptr,
        const Eigen::Vector4f);
