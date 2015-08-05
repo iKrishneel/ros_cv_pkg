@@ -53,6 +53,9 @@
 #include <pcl/tracking/tracking.h>
 #include <pcl/common/common.h>
 #include <pcl/registration/distances.h>
+#include <pcl/features/gfpfh.h>
+
+#include <tf/transform_listener.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -119,8 +122,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     int min_cluster_size_;
     ModelsPtr object_reference_;
    
-    // global setup variable
-    float radius_search_;
+    float threshold_;
 
     // motion previous
     MotionHistory motion_history_;
@@ -186,8 +188,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     void computeColorHistogram(
        const pcl::PointCloud<PointT>::Ptr,
        cv::Mat &,
-       const int = 16,
-       const int = 16,
+       const int = 8,
+       const int = 8,
        bool = true) const;
     void computePointFPFH(
        const pcl::PointCloud<PointT>::Ptr,
@@ -207,6 +209,16 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
         const Eigen::Vector4f &,
         const Eigen::Vector4f &,
         const cv::Scalar);
+
+    template<typename T>
+    void getRotationMatrixFromRPY(
+        const PointXYZRPY &,
+        Eigen::Matrix<T, 3, 3> &);
+        
+    void computeScatterMatrix(
+       const pcl::PointCloud<PointT>::Ptr,
+       const Eigen::Vector4f);
+   
 };
 
 #endif  // _MULTILAYER_OBJECT_TRACKING_H_

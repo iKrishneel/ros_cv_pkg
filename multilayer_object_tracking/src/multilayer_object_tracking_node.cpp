@@ -7,13 +7,13 @@
 MultilayerObjectTracking::MultilayerObjectTracking() :
     init_counter_(0),
     min_cluster_size_(20),
-    radius_search_(0.03f) {
+    threshold_(0.4f) {
     this->object_reference_ = ModelsPtr(new Models);
-    this->subscribe();
     this->onInit();
 }
 
 void MultilayerObjectTracking::onInit() {
+    this->subscribe();
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/multilayer_object_tracking/output/cloud", 1);
 
@@ -91,8 +91,7 @@ void MultilayerObjectTracking::callback(
        ROS_WARN("No Model To Track Selected");
        return;
     }
-    std::cout << "RUNNING CALLBACK---" << std::endl;
-
+    ROS_INFO("\n\t---RUNNING CALLBACK---");
     ros::Time begin = ros::Time::now();
     
     // get PF pose of time t
@@ -104,10 +103,10 @@ void MultilayerObjectTracking::callback(
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
-    std::cout << "PROCESSING CLOUD....." << std::endl;
-    this->globalLayerPointCloudProcessing(
-        cloud, motion_displacement, cloud_msg->header);
-    std::cout << "CLOUD PROCESSED AND PUBLISHED" << std::endl;
+    ROS_INFO("PROCESSING CLOUD.....");
+    // this->globalLayerPointCloudProcessing(
+    //     cloud, motion_displacement, cloud_msg->header);
+    ROS_INFO("CLOUD PROCESSED AND PUBLISHED");
 
     ros::Time end = ros::Time::now();
     std::cout << "Processing Time: " << end - begin << std::endl;
@@ -130,10 +129,7 @@ void MultilayerObjectTracking::processDecomposedCloud(
        return;
     }
     models = ModelsPtr(new Models);
-    int icounter = 0;
-    // for (std::multimap<uint32_t, uint32_t>::const_iterator label_itr =
-    //         supervoxel_adjacency.begin(); label_itr !=
-    //         supervoxel_adjacency.end();) {
+    int icounter = 0;    
     for (std::multimap<uint32_t, pcl::Supervoxel<PointT>::Ptr>::const_iterator
             label_itr = supervoxel_clusters.begin(); label_itr !=
             supervoxel_clusters.end(); label_itr++) {
@@ -154,6 +150,9 @@ void MultilayerObjectTracking::processDecomposedCloud(
              if (neighbor_supervoxel->voxels_->size() >
                  min_cluster_size_) {
                 adjacent_voxels.push_back(adjacent_itr->second);
+
+                // compute neigbour coherency
+                
              }
              icounter++;
           }
@@ -209,6 +208,9 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     this->supervoxelSegmentation(cloud,
                                  supervoxel_clusters,
                                  supervoxel_adjacency);
+    Eigen::Matrix<float, 3, 3> rotation_matrix;
+    this->getRotationMatrixFromRPY<float>(motion_disp, rotation_matrix);
+    
     // TODO(remove below): REF: 2304893
     std::vector<AdjacentInfo> supervoxel_list;
     ModelsPtr t_voxels = ModelsPtr(new Models);
@@ -216,7 +218,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
        cloud, supervoxel_clusters, supervoxel_adjacency,
        supervoxel_list, t_voxels, true, false, true);
     Models target_voxels = *t_voxels;
-    std::map<int, int> matching_indices;
+    std::map<int, int> matching_indices;  // hold the query and test case
     // increase to neigbours neigbour incase of poor result
     for (int j = 0; j < obj_ref.size(); j++) {
        if (!obj_ref[j].flag) {
@@ -228,7 +230,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           obj_centroid(2) = obj_ref[j].cluster_centroid(2) + motion_disp.z;
           obj_centroid(3) = 0.0f;
           for (int i = 0; i < target_voxels.size(); i++) {
-             if (!target_voxels[i].flag) {
+              if (!target_voxels[i].flag) {
                 Eigen::Vector4f t_centroid =
                    target_voxels[i].cluster_centroid;
                 t_centroid(3) = 0.0f;
@@ -242,9 +244,12 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           }
           if (nearest_index != -1) {
              matching_indices[j] = nearest_index;
+             // TODO(.): move next loop here
           }
        }
     }
+    // NOTE: if the VFH matches are on the BG than perfrom
+    // backprojection to confirm the match thru motion and VFH
     // set of patches that match the trajectory
     std::vector<uint32_t> best_match_index;
     for (std::map<int, int>::iterator itr = matching_indices.begin();
@@ -261,10 +266,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              target_voxels[itr->second].cluster_normals,
              target_voxels[itr->second].cluster_centroid);
 
-          // :just for visualization
-          pcl::PointCloud<PointT>::Ptr match_cloud(new pcl::PointCloud<PointT>);
-          *match_cloud = *target_voxels[itr->second].cluster_cloud;
-          
+          // TODO(.) collect the neigbours here instead of next for loop
           for (std::vector<uint32_t>::iterator it =
                   neigb.find(v_ind)->second.begin();
                it != neigb.find(v_ind)->second.end(); it++) {
@@ -276,22 +278,26 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                  probability = prob;
                 bm_index = *it;
              }
-             // *output = *output + *supervoxel_clusters.at(*it)->voxels_;
           }
-          // best match local convexity
-          best_match_index.push_back(bm_index);
-          *match_cloud = *supervoxel_clusters.at(bm_index)->voxels_;
-          // *output = *output + *match_cloud;
+          if (probability > threshold_) {
+              std::cout << "Probability: " << probability << std::endl;
+              best_match_index.push_back(bm_index);
+
+              // TODO(add here): voting for centroid
+              
+              
+          }
        }
     }
 
-    // :for visualization of normals on rviz
+    // for visualization of normals on rviz
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
-        new pcl::PointCloud<pcl::PointXYZRGBNormal>);
+       new pcl::PointCloud<pcl::PointXYZRGBNormal>);
 
     // get the neigbours of best match index
     pcl::PointCloud<PointT>::Ptr output(new pcl::PointCloud<PointT>);
     std::vector<uint32_t> neigb_lookup;
+    neigb_lookup = best_match_index;   // copy the best set to tthe initial
     for (std::vector<uint32_t>::iterator it = best_match_index.begin();
          it != best_match_index.end(); it++) {
        std::pair<std::multimap<uint32_t, uint32_t>::iterator,
@@ -307,7 +313,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              c_centroid, c_normal, cv::Scalar(255, 0, 0)));
        
        // neigbour voxel convex relationship
-       neigb_lookup.push_back(*it);
+       // neigb_lookup.push_back(*it);
        for (std::multimap<uint32_t, uint32_t>::iterator itr = ret.first;
             itr != ret.second; itr++) {
           bool is_process_neigh = true;
@@ -319,24 +325,23 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              }
           }
           if (!supervoxel_clusters.at(itr->second)->voxels_->empty() &&
-             is_process_neigh) {
+              is_process_neigh) {
              neigb_lookup.push_back(itr->second);
-              Eigen::Vector4f n_centroid = supervoxel_clusters.at(
-                 itr->second)->centroid_.getVector4fMap();
-              Eigen::Vector4f n_normal = this->cloudMeanNormal(
-                 supervoxel_clusters.at(itr->second)->normals_);
-              float convx_weight = this->localVoxelConvexityLikelihood<float>(
-                 c_centroid, c_normal, n_centroid, n_normal);
-              if (convx_weight > 0.0f) {
-                 *output = *output + *supervoxel_clusters.at(
-                    itr->second)->voxels_;
-                 centroid_normal->push_back(
-                    this->convertVector4fToPointXyzRgbNormal(
-                       n_centroid, n_normal, cv::Scalar(0, 255, 0)));
-              }
-              std::cout << convx_weight << "\t";
-               
-               /*
+             Eigen::Vector4f n_centroid = supervoxel_clusters.at(
+                itr->second)->centroid_.getVector4fMap();
+             Eigen::Vector4f n_normal = this->cloudMeanNormal(
+                supervoxel_clusters.at(itr->second)->normals_);
+             float convx_weight = this->localVoxelConvexityLikelihood<float>(
+                c_centroid, c_normal, n_centroid, n_normal);
+             if (convx_weight > 0.0f) {
+                *output = *output + *supervoxel_clusters.at(
+                   itr->second)->voxels_;
+                centroid_normal->push_back(
+                   this->convertVector4fToPointXyzRgbNormal(
+                      n_centroid, n_normal, cv::Scalar(0, 255, 0)));
+             }
+             // std::cout << convx_weight << "\t";
+              
              // ------------------------------------------
              // get the common neigbor to both
              std::pair<std::multimap<uint32_t, uint32_t>::iterator,
@@ -344,58 +349,57 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              comm_neigb = supervoxel_adjacency.equal_range(itr->second);
              uint32_t common_neigbour_index = 0;
              for (std::multimap<uint32_t, uint32_t>::iterator c_itr =
-                      comm_neigb.first; c_itr != comm_neigb.second; c_itr++) {
-                 if (!supervoxel_clusters.at(c_itr->second)->voxels_->empty()) {
-                     bool is_common_neigh = false;
-                     for (std::map<uint32_t, uint32_t>::iterator itr_ret =
-                              supervoxel_adjacency.equal_range(c_itr->first).
-                              first; itr_ret != supervoxel_adjacency.equal_range(
-                                  c_itr->first).second; itr_ret++) {
-                         if (itr_ret->second == *it) {
-                             is_common_neigh = true;
-                             common_neigbour_index = c_itr->second;  //check ?
-                             break;
-                         }
-                     }
-                     if (is_common_neigh) {
-                         std::cout << "Common Neigbor exists..." << std::endl;
+                     comm_neigb.first; c_itr != comm_neigb.second; c_itr++) {
+                if (!supervoxel_clusters.at(c_itr->second)->voxels_->empty()) {
+                   bool is_common_neigh = false;
+                   for (std::map<uint32_t, uint32_t>::iterator itr_ret =
+                           supervoxel_adjacency.equal_range(c_itr->first).
+                           first; itr_ret != supervoxel_adjacency.equal_range(
+                              c_itr->first).second; itr_ret++) {
+                      if (itr_ret->second == *it) {
+                         is_common_neigh = true;
+                         common_neigbour_index = c_itr->second;  // check ?
                          break;
-                     }
-                 }
+                      }
+                   }
+                   if (is_common_neigh) {
+                      // std::cout << "Common Neigbor exists..." << std::endl;
+                      break;
+                   }
+                }
              }
              if (common_neigbour_index > 0) {
-                 Eigen::Vector4f n_centroid_b = supervoxel_clusters.at(
-                     itr->second)->centroid_.getVector4fMap();
-                 Eigen::Vector4f n_normal_b = this->cloudMeanNormal(
-                     supervoxel_clusters.at(itr->second)->normals_);
-                 Eigen::Vector4f n_centroid_c = supervoxel_clusters.at(
-                     common_neigbour_index)->centroid_.getVector4fMap();
-                 Eigen::Vector4f n_normal_c = this->cloudMeanNormal(
-                     supervoxel_clusters.at(common_neigbour_index)->normals_);
-                 float convx_weight_ab = this->localVoxelConvexityLikelihood<
-                     float>(c_centroid, c_normal, n_centroid_b, n_normal_b);
-                 float convx_weight_ac = this->localVoxelConvexityLikelihood<
-                     float>(c_centroid, c_normal, n_centroid_c, n_normal_c);
-                 float convx_weight_bc = this->localVoxelConvexityLikelihood<
-                     float>(n_centroid_b, n_normal_b, n_centroid_c, n_normal_c);
+                Eigen::Vector4f n_centroid_b = supervoxel_clusters.at(
+                   itr->second)->centroid_.getVector4fMap();
+                Eigen::Vector4f n_normal_b = this->cloudMeanNormal(
+                   supervoxel_clusters.at(itr->second)->normals_);
+                Eigen::Vector4f n_centroid_c = supervoxel_clusters.at(
+                   common_neigbour_index)->centroid_.getVector4fMap();
+                Eigen::Vector4f n_normal_c = this->cloudMeanNormal(
+                   supervoxel_clusters.at(common_neigbour_index)->normals_);
+                float convx_weight_ab = this->localVoxelConvexityLikelihood<
+                   float>(c_centroid, c_normal, n_centroid_b, n_normal_b);
+                float convx_weight_ac = this->localVoxelConvexityLikelihood<
+                   float>(c_centroid, c_normal, n_centroid_c, n_normal_c);
+                float convx_weight_bc = this->localVoxelConvexityLikelihood<
+                   float>(n_centroid_b, n_normal_b, n_centroid_c, n_normal_c);
                  
-                 if (convx_weight_ab != 0.0f &&
-                     convx_weight_ac != 0.0f &&
-                     convx_weight_bc != 0.0f) {
-                     *output = *output + *supervoxel_clusters.at(
-                         itr->second)->voxels_;
-                     centroid_normal->push_back(
-                         this->convertVector4fToPointXyzRgbNormal(
-                             n_centroid_b, n_normal_b, cv::Scalar(0, 255, 0)));
-                 }
-                 // std::cout << convx_weight_ab << "\t";
+                if (convx_weight_ab != 0.0f &&
+                    convx_weight_ac != 0.0f &&
+                    convx_weight_bc != 0.0f) {
+                   *output = *output + *supervoxel_clusters.at(
+                      itr->second)->voxels_;
+                   centroid_normal->push_back(
+                      this->convertVector4fToPointXyzRgbNormal(
+                         n_centroid_b, n_normal_b, cv::Scalar(0, 255, 0)));
+                }
+                // std::cout << convx_weight_ab << "\t";
              }
              // ------------------------------------------
-             */
-           }
+          }
        }
        *output = *output + *supervoxel_clusters.at(*it)->voxels_;
-       std::cout << std::endl;
+       // std::cout << std::endl;
     }
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
@@ -418,18 +422,18 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     sensor_msgs::PointCloud2 ros_svcloud;
     jsk_recognition_msgs::ClusterPointIndices ros_svindices;
     this->publishSupervoxel(
-        supervoxel_clusters, ros_svcloud, ros_svindices, header);
+       supervoxel_clusters, ros_svcloud, ros_svindices, header);
     pub_scloud_.publish(ros_svcloud);
     pub_sindices_.publish(ros_svindices);
 
 
     /* indices of tdp 
-    jsk_recognition_msgs::ClusterPointIndices tdp_indices;
-    this->targetDescriptiveSurfelsIndices(
+       jsk_recognition_msgs::ClusterPointIndices tdp_indices;
+       this->targetDescriptiveSurfelsIndices(
        ros_svindices, neigb_lookup, tdp_indices);
-    this->pub_tdp_.publish(tdp_indices);
+       this->pub_tdp_.publish(tdp_indices);
 
-    /* for visualization of normal */
+       /* for visualization of normal */
     sensor_msgs::PointCloud2 rviz_normal;
     pcl::toROSMsg(*centroid_normal, rviz_normal);
     rviz_normal.header = header;
@@ -457,7 +461,7 @@ T MultilayerObjectTracking::targetCandidateToReferenceLikelihood(
        cv::compareHist(color_hist,
                        reference_model.cluster_color_hist,
                        CV_COMP_BHATTACHARYYA));
-    T probability = std::exp(-1 * dist_vfh) * std::exp(-1 * dist_col);
+    T probability = std::exp(-0.7 * dist_vfh) * std::exp(-0.7 * dist_col);
     return probability;
 }
 
@@ -525,20 +529,50 @@ void MultilayerObjectTracking::computeCloudClusterRPYHistogram(
        ROS_ERROR("ERROR: Empty Input");
        return;
     }
-    pcl::VFHEstimation<PointT,
-                       pcl::Normal,
-                       pcl::VFHSignature308> vfh;
-    vfh.setInputCloud(cloud);
-    vfh.setInputNormals(normal);
-    pcl::search::KdTree<PointT>::Ptr tree(
-       new pcl::search::KdTree<PointT>);
-    vfh.setSearchMethod(tree);
-    pcl::PointCloud<pcl::VFHSignature308>::Ptr vfhs(
-       new pcl::PointCloud<pcl::VFHSignature308>());
-    vfh.compute(*vfhs);
-    histogram = cv::Mat(sizeof(char), 308, CV_32F);
-    for (int i = 0; i < histogram.cols; i++) {
-       histogram.at<float>(0, i) = vfhs->points[0].histogram[i];
+    bool is_gfpfh = false;
+    bool is_vfh = true;
+    if (is_gfpfh) {
+        pcl::PointCloud<pcl::PointXYZL>::Ptr object(
+            new pcl::PointCloud<pcl::PointXYZL>);
+        for (int i = 0; i < cloud->size(); i++) {
+            pcl::PointXYZL pt;
+            pt.x = cloud->points[i].x;
+            pt.y = cloud->points[i].y;
+            pt.z = cloud->points[i].z;
+            pt.label = 1;
+            object->push_back(pt);
+        }
+        pcl::GFPFHEstimation<
+            pcl::PointXYZL, pcl::PointXYZL, pcl::GFPFHSignature16> gfpfh;
+        gfpfh.setInputCloud(object);
+        gfpfh.setInputLabels(object);
+        gfpfh.setOctreeLeafSize(0.01);
+        gfpfh.setNumberOfClasses(1);
+        pcl::PointCloud<pcl::GFPFHSignature16>::Ptr descriptor(
+            new pcl::PointCloud<pcl::GFPFHSignature16>);
+        gfpfh.compute(*descriptor);
+        histogram = cv::Mat(sizeof(char), 16, CV_32F);
+        for (int i = 0; i < histogram.cols; i++) {
+            histogram.at<float>(0, i) = descriptor->points[0].histogram[i];
+
+        }
+    }
+    if (is_vfh) {
+        pcl::VFHEstimation<PointT,
+                           pcl::Normal,
+                           pcl::VFHSignature308> vfh;
+        vfh.setInputCloud(cloud);
+        vfh.setInputNormals(normal);
+        pcl::search::KdTree<PointT>::Ptr tree(
+            new pcl::search::KdTree<PointT>);
+        vfh.setSearchMethod(tree);
+        pcl::PointCloud<pcl::VFHSignature308>::Ptr vfhs(
+            new pcl::PointCloud<pcl::VFHSignature308>());
+        vfh.compute(*vfhs);
+        histogram = cv::Mat(sizeof(char), 308, CV_32F);
+        for (int i = 0; i < histogram.cols; i++) {
+            histogram.at<float>(0, i) = vfhs->points[0].histogram[i];
+        }
     }
     cv::normalize(histogram, histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
 }
@@ -663,6 +697,12 @@ void MultilayerObjectTracking::estimatedPFPose(
              this->motion_history_[last_index].y;
           motion_displacement.z = current_pose.z -
              this->motion_history_[last_index].z;
+          motion_displacement.roll = current_pose.roll -
+             this->motion_history_[last_index].roll;
+          motion_displacement.pitch = current_pose.pitch -
+              this->motion_history_[last_index].pitch;
+          motion_displacement.yaw = current_pose.yaw -
+              this->motion_history_[last_index].yaw;
        } else {
           this->motion_history_.push_back(current_pose);
        }
@@ -717,6 +757,32 @@ Eigen::Vector4f MultilayerObjectTracking::cloudMeanNormal(
     return n_mean;
 }
 
+void MultilayerObjectTracking::computeScatterMatrix(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const Eigen::Vector4f centroid) {
+    if (cloud->empty()) {
+       ROS_ERROR("Empty input for computing Scatter Matrix");
+       return;
+    }
+    const int rows = 3;
+    const int cols = 3;
+    Eigen::MatrixXf scatter_matrix = Eigen::Matrix3f::Zero(cols, rows);
+    for (int i = 0; i < cloud->size(); i++) {
+       Eigen::Vector3f de_mean = Eigen::Vector3f();
+       de_mean(0) = cloud->points[i].x - centroid(0);
+       de_mean(1) = cloud->points[i].y - centroid(1);
+       de_mean(2) = cloud->points[i].z - centroid(2);
+       Eigen::Vector3f t_de_mean = de_mean.transpose();
+       for (int y = 0; y < rows; y++) {
+          for (int x = 0; x < cols; x++) {
+             scatter_matrix(y, x) += de_mean(y) * t_de_mean(x);
+          }
+       }
+    }
+    Eigen::EigenSolver<Eigen::MatrixXf> eigen_solver(scatter_matrix, true);
+    // Eigen::complex<float> eigen_values;
+}
+
 float MultilayerObjectTracking::computeCoherency(
     const float dist, const float weight) {
     if (isnan(dist)) {
@@ -741,6 +807,21 @@ MultilayerObjectTracking::convertVector4fToPointXyzRgbNormal(
      pt.normal_y = normal(1);
      pt.normal_z = normal(2);
      return pt;
+}
+
+template<typename T>
+void MultilayerObjectTracking::getRotationMatrixFromRPY(
+    const PointXYZRPY &motion_displacement,
+    Eigen::Matrix<T, 3, 3> &rotation) {
+    tf::Quaternion tf_quaternion;
+    tf_quaternion.setEulerZYX(motion_displacement.yaw,
+                              motion_displacement.pitch,
+                              motion_displacement.roll);
+    Eigen::Quaternion<float> quaternion = Eigen::Quaternion<float>(
+        tf_quaternion.w(), tf_quaternion.x(),
+        tf_quaternion.y(), tf_quaternion.z());
+    rotation.template block<3, 3>(0, 0) =
+        quaternion.normalized().toRotationMatrix();
 }
 
 void MultilayerObjectTracking::adjacentVoxelCoherencey(
