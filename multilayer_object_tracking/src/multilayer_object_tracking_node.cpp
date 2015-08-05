@@ -9,11 +9,11 @@ MultilayerObjectTracking::MultilayerObjectTracking() :
     min_cluster_size_(20),
     threshold_(0.4f) {
     this->object_reference_ = ModelsPtr(new Models);
-    this->subscribe();
     this->onInit();
 }
 
 void MultilayerObjectTracking::onInit() {
+    this->subscribe();
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/multilayer_object_tracking/output/cloud", 1);
 
@@ -208,8 +208,9 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     this->supervoxelSegmentation(cloud,
                                  supervoxel_clusters,
                                  supervoxel_adjacency);
-    Eigen::Matrix<float, 3, 3> rotation;
-    this->getRotationMatrixFromRPY<float>(motion_disp, rotation);
+    Eigen::Matrix<float, 3, 3> rotation_matrix;
+    this->getRotationMatrixFromRPY<float>(motion_disp, rotation_matrix);
+    
     // TODO(remove below): REF: 2304893
     std::vector<AdjacentInfo> supervoxel_list;
     ModelsPtr t_voxels = ModelsPtr(new Models);
@@ -281,6 +282,10 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           if (probability > threshold_) {
               std::cout << "Probability: " << probability << std::endl;
               best_match_index.push_back(bm_index);
+
+              // TODO(add here): voting for centroid
+              
+              
           }
        }
     }
