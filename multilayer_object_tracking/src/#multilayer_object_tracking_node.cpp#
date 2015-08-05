@@ -300,10 +300,6 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
               pt.z = estimated_position(2);
               pt.r = 255;
               estimate_cloud->push_back(pt);
-              
-              // std::cout << "Estimated: " << estimated_position(0)
-              //           << "\t" << estimated_position(1) << "\t"
-              //           << "\t" << estimated_position(2) << std::endl;
           }
        }
     }

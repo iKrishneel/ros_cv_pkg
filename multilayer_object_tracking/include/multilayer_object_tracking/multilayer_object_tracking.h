@@ -83,6 +83,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        AdjacentInfo cluster_neigbors;
        pcl::PointCloud<pcl::Normal>::Ptr cluster_normals;
        Eigen::Vector4f cluster_centroid;
+       Eigen::Vector3f centroid_distance;
        bool flag;
     };
     typedef std::vector<ReferenceModel> Models;
