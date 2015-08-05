@@ -9,6 +9,9 @@ MultilayerObjectTracking::MultilayerObjectTracking() :
     min_cluster_size_(20),
     threshold_(0.4f) {
     this->object_reference_ = ModelsPtr(new Models);
+    this->clustering_client_ = this->pnh_.serviceClient<
+       multilayer_object_tracking::EstimatedCentroidsClustering>(
+          "estimated_centroids_clustering");
     this->onInit();
 }
 
@@ -104,8 +107,8 @@ void MultilayerObjectTracking::callback(
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
     ROS_INFO("PROCESSING CLOUD.....");
-    // this->globalLayerPointCloudProcessing(
-    //     cloud, motion_displacement, cloud_msg->header);
+    this->globalLayerPointCloudProcessing(
+       cloud, motion_displacement, cloud_msg->header);
     ROS_INFO("CLOUD PROCESSED AND PUBLISHED");
 
     ros::Time end = ros::Time::now();
@@ -129,7 +132,7 @@ void MultilayerObjectTracking::processDecomposedCloud(
        return;
     }
     models = ModelsPtr(new Models);
-    int icounter = 0;    
+    int icounter = 0;
     for (std::multimap<uint32_t, pcl::Supervoxel<PointT>::Ptr>::const_iterator
             label_itr = supervoxel_clusters.begin(); label_itr !=
             supervoxel_clusters.end(); label_itr++) {
@@ -151,7 +154,7 @@ void MultilayerObjectTracking::processDecomposedCloud(
                  min_cluster_size_) {
                 adjacent_voxels.push_back(adjacent_itr->second);
 
-                // compute neigbour coherency
+                // compute neigbour structure coherency
                 
              }
              icounter++;
@@ -188,9 +191,8 @@ void MultilayerObjectTracking::processDecomposedCloud(
        }
        models->push_back(ref_model);
     }
-    std::cout << "OBJECT MODEL SIZE: " << models->size()
-              << "\t" << supervoxel_clusters.size() << "\t" << icounter
-              << std::endl;
+    // ROS_INFO("OBJECT MODEL SIZE: %d  %d", models->size(),
+    //          supervoxel_clusters.size());
 }
 
 void MultilayerObjectTracking::globalLayerPointCloudProcessing(
@@ -244,13 +246,21 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           }
           if (nearest_index != -1) {
              matching_indices[j] = nearest_index;
-             // TODO(.): move next loop here
+             // TODO(.): >>> move next loop here <<<<
           }
+          const int motion_hist_index = this->motion_history_.size() - 1;
+          obj_ref[j].centroid_distance(0) = obj_ref[j].cluster_centroid(0) -
+             this->motion_history_[motion_hist_index].x;
+          obj_ref[j].centroid_distance(1) = obj_ref[j].cluster_centroid(1) -
+             this->motion_history_[motion_hist_index].y;
+          obj_ref[j].centroid_distance(2) = obj_ref[j].cluster_centroid(2) -
+             this->motion_history_[motion_hist_index].z;
        }
     }
     // NOTE: if the VFH matches are on the BG than perfrom
     // backprojection to confirm the match thru motion and VFH
     // set of patches that match the trajectory
+    pcl::PointCloud<PointT>::Ptr estimate_cloud(new pcl::PointCloud<PointT>);
     std::vector<uint32_t> best_match_index;
     for (std::map<int, int>::iterator itr = matching_indices.begin();
          itr != matching_indices.end(); itr++) {
@@ -283,9 +293,16 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
               std::cout << "Probability: " << probability << std::endl;
               best_match_index.push_back(bm_index);
 
-              // TODO(add here): voting for centroid
-              
-              
+              // voting for centroid
+              Eigen::Vector3f estimated_position = supervoxel_clusters.at(
+                 bm_index)->centroid_.getVector3fMap() - rotation_matrix *
+                 obj_ref[itr->first].centroid_distance;
+              PointT pt;
+              pt.x = estimated_position(0);
+              pt.y = estimated_position(1);
+              pt.z = estimated_position(2);
+              pt.r = 255;
+              estimate_cloud->push_back(pt);
           }
        }
     }
@@ -402,7 +419,8 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
        // std::cout << std::endl;
     }
     cloud->clear();
-    pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
+    // pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
+    pcl::copyPointCloud<PointT, PointT>(*estimate_cloud, *cloud);
 
     
     pcl::PointIndices tdp_ind;
@@ -653,28 +671,6 @@ MultilayerObjectTracking::clusterPointIndicesToPointIndices(
     return ret;
 }
 
-/*
-std::vector<MultilayerObjectTracking::AdjacentInfo>
-MultilayerObjectTracking::voxelAdjacencyList(
-    const jsk_recognition_msgs::AdjacencyList &adjacency_list) {
-    std::vector<AdjacentInfo> supervoxel_list;
-    AdjacentInfo tmp_list;
-    for (int i = 0; i < adjacency_list.vertices.size(); i++) {
-       int vertex_index = adjacency_list.vertices[i];
-       float dist = static_cast<float>(adjacency_list.edge_weight[i]);
-       if (vertex_index == -1) {
-          supervoxel_list.push_back(tmp_list);
-          tmp_list.adjacent_indices.clear();
-          tmp_list.adjacent_distances.clear();
-       } else {
-          tmp_list.adjacent_indices.push_back(vertex_index);
-          tmp_list.adjacent_distances.push_back(dist);
-       }
-    }
-    return supervoxel_list;
-}
-*/
-
 void MultilayerObjectTracking::estimatedPFPose(
     const geometry_msgs::PoseStamped::ConstPtr &pose_msg,
     PointXYZRPY &motion_displacement) {
@@ -823,6 +819,37 @@ void MultilayerObjectTracking::getRotationMatrixFromRPY(
     rotation.template block<3, 3>(0, 0) =
         quaternion.normalized().toRotationMatrix();
 }
+
+void MultilayerObjectTracking::estimatedCentroidClustering(
+    const std::vector<Eigen::Vector3f> &estimated_centroids,
+    std::vector<int> &labels,
+    const float max_distance,
+    const int min_samples) {
+    if (estimated_centroids.empty()) {
+       return;
+    }
+    multilayer_object_tracking::EstimatedCentroidsClustering ecc_srv;
+    for (std::vector<Eigen::Vector3f>::const_iterator it =
+            estimated_centroids.begin();
+         it != estimated_centroids.end(); it++) {
+       geometry_msgs::Pose pose;
+       pose.position.x = (*it)(0);
+       pose.position.y = (*it)(1);
+       pose.position.z = (*it)(2);
+       ecc_srv.request.estimated_centroids.push_back(pose);
+    }
+    ecc_srv.request.max_distance = max_distance;
+    ecc_srv.request.min_samples = min_samples;
+    if (this->clustering_client_.call(ecc_srv)) {
+       for (int i = 0; i < ecc_srv.response.labels.size(); i++) {
+          labels.push_back(ecc_srv.response.labels[i]);
+       }
+    } else {
+       ROS_ERROR("ERROR! Failed to call Clustering Module");
+       return;
+    }
+}
+
 
 void MultilayerObjectTracking::adjacentVoxelCoherencey(
     const Models &ref_model, const int index,
