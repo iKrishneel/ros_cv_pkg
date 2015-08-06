@@ -248,6 +248,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              matching_indices[j] = nearest_index;
              // TODO(.): >>> move next loop here <<<<
           }
+          // computing the model object cluster centroid-centroid ratio
           const int motion_hist_index = this->motion_history_.size() - 1;
           obj_ref[j].centroid_distance(0) = obj_ref[j].cluster_centroid(0) -
              this->motion_history_[motion_hist_index].x;
@@ -261,6 +262,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     // backprojection to confirm the match thru motion and VFH
     // set of patches that match the trajectory
     pcl::PointCloud<PointT>::Ptr estimate_cloud(new pcl::PointCloud<PointT>);
+    std::map<uint32_t, Eigen::Vector3f> estimated_centroids;
     std::vector<uint32_t> best_match_index;
     for (std::map<int, int>::iterator itr = matching_indices.begin();
          itr != matching_indices.end(); itr++) {
@@ -290,13 +292,15 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              }
           }
           if (probability > threshold_) {
-              std::cout << "Probability: " << probability << std::endl;
+              // std::cout << "Probability: " << probability << std::endl;
               best_match_index.push_back(bm_index);
 
               // voting for centroid
               Eigen::Vector3f estimated_position = supervoxel_clusters.at(
                  bm_index)->centroid_.getVector3fMap() - rotation_matrix *
-                 obj_ref[itr->first].centroid_distance;
+                  obj_ref[itr->first].centroid_distance;
+              estimated_centroids[bm_index] = estimated_position;
+              
               PointT pt;
               pt.x = estimated_position(0);
               pt.y = estimated_position(1);
@@ -306,6 +310,13 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           }
        }
     }
+
+    // centroid votes clustering
+    float max_distance_eps = 0.04f;
+    int min_samples_eps = 3;
+    std::cout << "TOTAL POINTS: " << estimated_centroids.size() << std::endl;
+    this->estimatedCentroidClustering(
+        estimated_centroids, max_distance_eps, min_samples_eps);
 
     // for visualization of normals on rviz
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
@@ -821,65 +832,42 @@ void MultilayerObjectTracking::getRotationMatrixFromRPY(
 }
 
 void MultilayerObjectTracking::estimatedCentroidClustering(
-    const std::vector<Eigen::Vector3f> &estimated_centroids,
-    std::vector<int> &labels,
+    const std::map<uint32_t, Eigen::Vector3f> &estimated_centroids,
     const float max_distance,
     const int min_samples) {
-    if (estimated_centroids.empty()) {
-       return;
+    if (estimated_centroids.size() < min_samples + sizeof(char)) {
+        ROS_WARN("Too Little Points for Clustering\n");
+        return;
     }
     multilayer_object_tracking::EstimatedCentroidsClustering ecc_srv;
-    for (std::vector<Eigen::Vector3f>::const_iterator it =
-            estimated_centroids.begin();
+    for (std::map<uint32_t, Eigen::Vector3f>::const_iterator it =
+             estimated_centroids.begin();
          it != estimated_centroids.end(); it++) {
-       geometry_msgs::Pose pose;
-       pose.position.x = (*it)(0);
-       pose.position.y = (*it)(1);
-       pose.position.z = (*it)(2);
-       ecc_srv.request.estimated_centroids.push_back(pose);
+        geometry_msgs::Pose pose;
+        pose.position.x = it->second(0);
+        pose.position.y = it->second(1);
+        pose.position.z = it->second(2);
+        ecc_srv.request.estimated_centroids.push_back(pose);
+
+        std::cout << it->first << "\t" << it->second << "\n" << std::endl;
     }
     ecc_srv.request.max_distance = max_distance;
     ecc_srv.request.min_samples = min_samples;
     if (this->clustering_client_.call(ecc_srv)) {
-       for (int i = 0; i < ecc_srv.response.labels.size(); i++) {
-          labels.push_back(ecc_srv.response.labels[i]);
-       }
+        std::vector<int> labels;
+        std::vector<int> indices;
+        std::vector<int> elements;
+        for (int i = 0; i < ecc_srv.response.labels.size(); i++) {
+            labels.push_back(ecc_srv.response.labels[i]);
+            indices.push_back(ecc_srv.response.indices[i]);
+        }
+        for (int i = 0; i < ecc_srv.response.elements.size(); i++) {
+            elements.push_back(ecc_srv.response.elements[i]);
+        }
     } else {
-       ROS_ERROR("ERROR! Failed to call Clustering Module");
+       ROS_ERROR("ERROR! Failed to call Clustering Module\n");
        return;
     }
-}
-
-
-void MultilayerObjectTracking::adjacentVoxelCoherencey(
-    const Models &ref_model, const int index,
-    float &dist_weight, float &angle_weight) {
-    ReferenceModel object_model = ref_model[index];
-    if (object_model.flag) {
-       return;
-    }
-    /*
-    AdjacentInfo adjacent_info = object_model.cluster_neigbors;
-    dist_weight = 0.0f;
-    angle_weight = 0.0f;
-    Eigen::Vector4f c_mean = this->cloudMeanNormal(
-       object_model.cluster_normals);
-    int icounter = 0;
-    for (int i = 1; i < adjacent_info.adjacent_indices.size(); i++) {
-       int nidx = adjacent_info.adjacent_indices[i] - 1;
-       if (!ref_model[nidx].flag && nidx < ref_model.size()) {
-          Eigen::Vector4f n_mean = this->cloudMeanNormal(
-             ref_model[nidx].cluster_normals);
-          float dist = adjacent_info.adjacent_distances[i];
-          dist_weight += this->computeCoherency(dist, 1.0f);
-          float theta = static_cast<float>(pcl::getAngle3D(c_mean, n_mean));
-          angle_weight += this->computeCoherency(theta, 1.0f);
-          icounter++;
-       }
-    }
-    dist_weight /= static_cast<float>(icounter);
-    angle_weight /= static_cast<float>(icounter);
-    */
 }
 
 int main(int argc, char *argv[]) {

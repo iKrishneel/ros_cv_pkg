@@ -205,8 +205,6 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        Eigen::Vector4f &) const;
     Eigen::Vector4f cloudMeanNormal(
        const pcl::PointCloud<pcl::Normal>::Ptr, bool = true);
-    void adjacentVoxelCoherencey(
-       const Models &, const int, float &, float &);
     float computeCoherency(
        const float, const float);
     pcl::PointXYZRGBNormal
@@ -220,8 +218,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
         const PointXYZRPY &,
         Eigen::Matrix<T, 3, 3> &);
     void estimatedCentroidClustering(
-       const std::vector<Eigen::Vector3f> &,
-       std::vector<int> &,
+        const std::map<uint32_t, Eigen::Vector3f> &,
        const float,
        const int);
 
