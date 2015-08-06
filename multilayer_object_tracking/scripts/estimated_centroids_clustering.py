@@ -20,8 +20,8 @@ def convert_pose_to_array(centroids):
 def run_clustering(centroids, max_distance, min_sample):
     datapoints = convert_pose_to_array(centroids)
     
-    print datapoints
-    print "Input Points ", datapoints.shape
+    #print datapoints
+    #print "Input Points ", datapoints.shape
 
     db = DBSCAN(eps=max_distance, min_samples=min_sample).fit(datapoints)
     labels = db.labels_
