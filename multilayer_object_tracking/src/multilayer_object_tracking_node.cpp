@@ -160,17 +160,10 @@ void MultilayerObjectTracking::processDecomposedCloud(
              icounter++;
           }
           AdjacentInfo a_info;
-          a_info.adjacent_voxel_indices[supervoxel_label] =
-             adjacent_voxels;          
+          a_info.adjacent_voxel_indices[supervoxel_label] = adjacent_voxels;
           supervoxel_list.push_back(a_info);
           a_info.voxel_index = supervoxel_label;
-          ref_model.cluster_neigbors = a_info;
-
-          std::cout << "VOXEL EMPTY: " <<
-              ref_model.cluster_neigbors.adjacent_voxel_indices.size()
-                    << "\t Neibour: " << adjacent_voxels.size()
-                    << std::endl;
-          
+          ref_model.cluster_neigbors = a_info;          
           ref_model.cluster_cloud = pcl::PointCloud<PointT>::Ptr(
              new pcl::PointCloud<PointT>);
           ref_model.cluster_cloud = supervoxel->voxels_;
@@ -194,127 +187,26 @@ void MultilayerObjectTracking::processDecomposedCloud(
                 supervoxel->centroid_.getVector4fMap();
           }
           ref_model.flag = false;
+          models->push_back(ref_model);
        }
-       models->push_back(ref_model);
     }
     std::cout << "Model size: "  << models->size() << std::endl;
 
     // compute the local pfh
-    Models object_ref = *models;
     if (neigh_pfh) {
-        for (int i = 0; i < object_ref.size(); i++) {
-            cv::Mat histogram_phf;
+       for (int i = 0; i < models->size(); i++) {
             this->computeLocalPairwiseFeautures(
                 supervoxel_clusters,
-                object_ref[i].cluster_neigbors.adjacent_voxel_indices,
-                histogram_phf);
-            cv::normalize(histogram_phf, histogram_phf,
-                          0, 1, cv::NORM_MINMAX, -1, cv::Mat());
-            // std::cout << histogram_phf << std::endl;
-
-            std::cout << i << "\t" <<
-                object_ref[i].cluster_neigbors.adjacent_voxel_indices.size()
-                      << std::endl;
-        }
-    }
-    
-}
-
-void MultilayerObjectTracking::computeLocalPairwiseFeautures(
-    const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> &supervoxel_clusters,
-    const std::map<uint32_t, std::vector<uint32_t> > &adjacency_list,
-    cv::Mat &histogram, const int feature_count) {
-    if (supervoxel_clusters.empty() || adjacency_list.empty()) {
-        std::cout << supervoxel_clusters.size()  << "\t"
-                  << adjacency_list.size() << std::endl;
-        ROS_ERROR("ERROR: empty data returing no local feautures");
-        return;
-    }
-    float d_pi = 1.0f / (2.0f * static_cast<float> (M_PI));
-    histogram = cv::Mat::zeros(1, this->bin_size_ * feature_count, CV_32F);
-    for (std::map<uint32_t, std::vector<uint32_t> >::const_iterator it =
-             adjacency_list.begin(); it != adjacency_list.end(); it++) {
-        pcl::Supervoxel<PointT>::Ptr supervoxel =
-            supervoxel_clusters.at(it->first);
-        Eigen::Vector4f c_normal = this->cloudMeanNormal(supervoxel->normals_);
-        std::map<uint32_t, Eigen::Vector4f> cache_normals;
-        int icounter = 0;
-        for (std::vector<uint32_t>::const_iterator itr = it->second.begin();
-             itr != it->second.end(); itr++) {
-            pcl::Supervoxel<PointT>::Ptr neighbor_supervoxel =
-                supervoxel_clusters.at(*itr);
-            Eigen::Vector4f n_normal = this->cloudMeanNormal(
-                neighbor_supervoxel->normals_);
-            float alpha;
-            float phi;
-            float theta;
-            float distance;
-            pcl::computePairFeatures(
-                supervoxel->centroid_.getVector4fMap(), c_normal,
-                neighbor_supervoxel->centroid_.getVector4fMap(),
-                n_normal, alpha, phi, theta, distance);
-            int bin_index[feature_count];
-            bin_index[0] = static_cast<int>(
-                std::floor(this->bin_size_ * ((alpha + M_PI) * d_pi)));
-            bin_index[1] = static_cast<int>(
-                std::floor(this->bin_size_ * ((phi + 1.0f) * 0.5f)));
-            bin_index[2] = static_cast<int>(
-                std::floor(this->bin_size_ * ((theta + 1.0f) * 0.5f)));
-            for (int i = 0; i < feature_count; i++) {
-                if (bin_index[i] < 0) {
-                    bin_index[i] = 0;
-                }
-                if (bin_index[i] >= bin_size_) {
-                    bin_index[i] = bin_size_ - sizeof(char);
-                }
-                // h_index += h_p + bin_index[i];
-                // h_p *= this->bin_size_;
-                histogram.at<float>(
-                    0, bin_index[i] + (i * this->bin_size_)) += 1;
-            }
-            cache_normals[*itr] = n_normal;
-            icounter++;
-        }
-        std::cout << "Total Neigbours" << icounter << std::endl;
-        // neigbour-neigbour phf
-        for (std::vector<uint32_t>::const_iterator itr = it->second.begin();
-             itr != it->second.end(); itr++) {
-            cache_normals.find(*itr)->second;
-            for (std::vector<uint32_t>::const_iterator itr_in =
-                     it->second.begin(); itr_in != it->second.end(); itr_in++) {
-                if (*itr != *itr_in) {
-                    float alpha;
-                    float phi;
-                    float theta;
-                    float distance;
-                    pcl::computePairFeatures(
-                        supervoxel_clusters.at(*itr)->centroid_.getVector4fMap(),
-                        cache_normals.find(*itr)->second, supervoxel_clusters.at(
-                            *itr_in)->centroid_.getVector4fMap(),
-                        cache_normals.find(*itr_in)->second,
-                        alpha, phi, theta, distance);
-                    int bin_index[feature_count];
-                    bin_index[0] = static_cast<int>(
-                        std::floor(this->bin_size_ * ((alpha + M_PI) * d_pi)));
-                    bin_index[1] = static_cast<int>(
-                        std::floor(this->bin_size_ * ((phi + 1.0f) * 0.5f)));
-                    bin_index[2] = static_cast<int>(
-                        std::floor(this->bin_size_ * ((theta + 1.0f) * 0.5f)));
-                    for (int i = 0; i < feature_count; i++) {
-                        if (bin_index[i] < 0) {
-                            bin_index[i] = 0;
-                        }
-                        if (bin_index[i] >= bin_size_) {
-                            bin_index[i] = bin_size_ - sizeof(char);
-                        }
-                        histogram.at<float>(
-                            0, bin_index[i] + (i * this->bin_size_)) += 1;
-                    }
-                }
-            }
+                models->operator[](i).cluster_neigbors.adjacent_voxel_indices,
+                models->operator[](i).neigbour_pfh);
+            // std::cout << models->operator[](i).neigbour_pfh << std::endl;
+            // std::cout <<
+            // models->operator[](i).neigbour_pfh.size()<< std::endl;
         }
     }
 }
+
+
 
 void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     pcl::PointCloud<PointT>::Ptr cloud,
@@ -959,6 +851,104 @@ void MultilayerObjectTracking::getRotationMatrixFromRPY(
         tf_quaternion.y(), tf_quaternion.z());
     rotation.template block<3, 3>(0, 0) =
         quaternion.normalized().toRotationMatrix();
+}
+
+void MultilayerObjectTracking::computeLocalPairwiseFeautures(
+    const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> &
+    supervoxel_clusters, const std::map<uint32_t, std::vector<uint32_t> > &
+    adjacency_list, cv::Mat &histogram, const int feature_count) {
+    if (supervoxel_clusters.empty() || adjacency_list.empty()) {
+       std::cout << supervoxel_clusters.size()  << "\t"
+                 << adjacency_list.size() << std::endl;
+       ROS_ERROR("ERROR: empty data returing no local feautures");
+       return;
+    }
+    float d_pi = 1.0f / (2.0f * static_cast<float> (M_PI));
+    histogram = cv::Mat::zeros(1, this->bin_size_ * feature_count, CV_32F);
+    for (std::map<uint32_t, std::vector<uint32_t> >::const_iterator it =
+            adjacency_list.begin(); it != adjacency_list.end(); it++) {
+       pcl::Supervoxel<PointT>::Ptr supervoxel =
+          supervoxel_clusters.at(it->first);
+       Eigen::Vector4f c_normal = this->cloudMeanNormal(supervoxel->normals_);
+       std::map<uint32_t, Eigen::Vector4f> cache_normals;
+       int icounter = 0;
+       for (std::vector<uint32_t>::const_iterator itr = it->second.begin();
+            itr != it->second.end(); itr++) {
+          pcl::Supervoxel<PointT>::Ptr neighbor_supervoxel =
+             supervoxel_clusters.at(*itr);
+          Eigen::Vector4f n_normal = this->cloudMeanNormal(
+             neighbor_supervoxel->normals_);
+          float alpha;
+          float phi;
+          float theta;
+          float distance;
+          pcl::computePairFeatures(
+             supervoxel->centroid_.getVector4fMap(), c_normal,
+             neighbor_supervoxel->centroid_.getVector4fMap(),
+             n_normal, alpha, phi, theta, distance);
+          int bin_index[feature_count];
+          bin_index[0] = static_cast<int>(
+             std::floor(this->bin_size_ * ((alpha + M_PI) * d_pi)));
+          bin_index[1] = static_cast<int>(
+             std::floor(this->bin_size_ * ((phi + 1.0f) * 0.5f)));
+          bin_index[2] = static_cast<int>(
+             std::floor(this->bin_size_ * ((theta + 1.0f) * 0.5f)));
+          for (int i = 0; i < feature_count; i++) {
+             if (bin_index[i] < 0) {
+                bin_index[i] = 0;
+             }
+             if (bin_index[i] >= bin_size_) {
+                bin_index[i] = bin_size_ - sizeof(char);
+             }
+             // h_index += h_p + bin_index[i];
+             // h_p *= this->bin_size_;
+             histogram.at<float>(
+                0, bin_index[i] + (i * this->bin_size_)) += 1;
+          }
+          cache_normals[*itr] = n_normal;
+          icounter++;
+       }
+       std::cout << "Total Neigbours" << icounter << std::endl;
+       // neigbour-neigbour phf
+       for (std::vector<uint32_t>::const_iterator itr = it->second.begin();
+            itr != it->second.end(); itr++) {
+          cache_normals.find(*itr)->second;
+          for (std::vector<uint32_t>::const_iterator itr_in =
+                  it->second.begin(); itr_in != it->second.end(); itr_in++) {
+             if (*itr != *itr_in) {
+                float alpha;
+                float phi;
+                float theta;
+                float distance;
+                pcl::computePairFeatures(
+                   supervoxel_clusters.at(*itr)->centroid_.getVector4fMap(),
+                   cache_normals.find(*itr)->second, supervoxel_clusters.at(
+                      *itr_in)->centroid_.getVector4fMap(),
+                   cache_normals.find(*itr_in)->second,
+                   alpha, phi, theta, distance);
+                int bin_index[feature_count];
+                bin_index[0] = static_cast<int>(
+                   std::floor(this->bin_size_ * ((alpha + M_PI) * d_pi)));
+                bin_index[1] = static_cast<int>(
+                   std::floor(this->bin_size_ * ((phi + 1.0f) * 0.5f)));
+                bin_index[2] = static_cast<int>(
+                   std::floor(this->bin_size_ * ((theta + 1.0f) * 0.5f)));
+                for (int i = 0; i < feature_count; i++) {
+                   if (bin_index[i] < 0) {
+                      bin_index[i] = 0;
+                   }
+                   if (bin_index[i] >= bin_size_) {
+                      bin_index[i] = bin_size_ - sizeof(char);
+                   }
+                   histogram.at<float>(
+                      0, bin_index[i] + (i * this->bin_size_)) += 1;
+                }
+             }
+          }
+       }
+       cv::normalize(
+          histogram, histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+    }
 }
 
 void MultilayerObjectTracking::estimatedCentroidClustering(
