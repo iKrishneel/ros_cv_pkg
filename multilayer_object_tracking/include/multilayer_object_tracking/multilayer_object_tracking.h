@@ -221,7 +221,10 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        const std::multimap<uint32_t, Eigen::Vector3f> &,
        const float,
        const int);
-
+    void computeLocalPairwiseFeautures(
+        const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> &,
+        const std::map<uint32_t, std::vector<uint32_t> >&,
+        cv::Mat &, const int = 3);
    
     void computeScatterMatrix(
        const pcl::PointCloud<PointT>::Ptr,
