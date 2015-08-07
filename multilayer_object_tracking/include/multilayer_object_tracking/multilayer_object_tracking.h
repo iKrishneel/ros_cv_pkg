@@ -33,9 +33,6 @@
 #include <pcl/io/pcd_io.h>
 #include <pcl/correspondence.h>
 #include <pcl/features/normal_3d_omp.h>
-#include <pcl/features/shot_omp.h>
-#include <pcl/features/board.h>
-#include <pcl/keypoints/uniform_sampling.h>
 #include <pcl/recognition/cg/hough_3d.h>
 #include <pcl/recognition/cg/geometric_consistency.h>
 #include <pcl/kdtree/kdtree_flann.h>
@@ -50,10 +47,11 @@
 #include <pcl/common/centroid.h>
 #include <pcl/features/fpfh_omp.h>
 #include <pcl/features/vfh.h>
+#include <pcl/features/gfpfh.h>
+#include <pcl/features/pfh.h>
 #include <pcl/tracking/tracking.h>
 #include <pcl/common/common.h>
 #include <pcl/registration/distances.h>
-#include <pcl/features/gfpfh.h>
 
 #include <tf/transform_listener.h>
 #include <dynamic_reconfigure/server.h>
@@ -87,6 +85,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        pcl::PointCloud<pcl::Normal>::Ptr cluster_normals;
        Eigen::Vector4f cluster_centroid;
        Eigen::Vector3f centroid_distance;
+        cv::Mat neigbour_pfh;
        bool flag;
     };
     typedef std::vector<ReferenceModel> Models;
@@ -128,6 +127,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     ModelsPtr object_reference_;
    
     float threshold_;
+    float bin_size_;
 
     // motion previous
     MotionHistory motion_history_;
@@ -157,7 +157,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> &,
        const std::multimap<uint32_t, uint32_t> &,
        std::vector<AdjacentInfo> &,
-       ModelsPtr &, bool = true, bool = true, bool = true);
+       ModelsPtr &, bool = true, bool = true, bool = true, bool = false);
 
    /*
     std::vector<AdjacentInfo> voxelAdjacencyList(
@@ -221,7 +221,10 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        const std::multimap<uint32_t, Eigen::Vector3f> &,
        const float,
        const int);
-
+    void computeLocalPairwiseFeautures(
+        const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> &,
+        const std::map<uint32_t, std::vector<uint32_t> >&,
+        cv::Mat &, const int = 3);
    
     void computeScatterMatrix(
        const pcl::PointCloud<PointT>::Ptr,
