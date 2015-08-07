@@ -84,7 +84,7 @@ void MultilayerObjectTracking::objInitCallback(
        this->object_reference_ = ModelsPtr(new Models);
        this->processDecomposedCloud(
           cloud, supervoxel_clusters, supervoxel_adjacency,
-          supervoxel_list, this->object_reference_);
+          supervoxel_list, this->object_reference_, true, true, true, true);
     }
 }
 
@@ -206,8 +206,6 @@ void MultilayerObjectTracking::processDecomposedCloud(
     }
 }
 
-
-
 void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     pcl::PointCloud<PointT>::Ptr cloud,
     const MultilayerObjectTracking::PointXYZRPY &motion_disp,
@@ -291,8 +289,16 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              obj_ref[itr->first], target_voxels[itr->second].cluster_cloud,
              target_voxels[itr->second].cluster_normals,
              target_voxels[itr->second].cluster_centroid);
+          
+          // TODO(.) collect the neigbours here instead of next for
+          // loop
 
-          // TODO(.) collect the neigbours here instead of next for loop
+          // TODO(add the method for local structure) : here
+          cv::Mat histogram_phf;
+          this->computeLocalPairwiseFeautures(
+             supervoxel_clusters, neigb, histogram_phf);
+          // ------------------------------------
+          float local_weight = 1.0f; // use to weight the center transformation
           for (std::vector<uint32_t>::iterator it =
                   neigb.find(v_ind)->second.begin();
                it != neigb.find(v_ind)->second.end(); it++) {
@@ -300,20 +306,44 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                 obj_ref[itr->first], supervoxel_clusters.at(*it)->voxels_,
                 supervoxel_clusters.at(*it)->normals_,
                 supervoxel_clusters.at(*it)->centroid_.getVector4fMap());
+
+             // ---- computation of local neigbour orientations-----
+             std::map<uint32_t, std::vector<uint32_t> > local_adjacency;
+             std::vector<uint32_t> list_adj;
+             for (std::multimap<uint32_t, uint32_t>::const_iterator
+                     adjacent_itr = supervoxel_adjacency.equal_range(
+                        *it).first; adjacent_itr !=
+                     supervoxel_adjacency.equal_range(*it).second;
+                  ++adjacent_itr) {
+                list_adj.push_back(adjacent_itr->second);
+             }
+             local_adjacency[*it] = list_adj;
+             cv::Mat local_phf;
+             this->computeLocalPairwiseFeautures(
+                supervoxel_clusters, local_adjacency, local_phf);
+             float dist_phf = static_cast<float>(
+                cv::compareHist(obj_ref[itr->first].neigbour_pfh,
+                                local_phf, CV_COMP_BHATTACHARYYA));
+             float phf_prob = std::exp(-1 * dist_phf);
+             // std::cout << phf_prob << "  ";
+             // prob *= phf_prob;
+             // -----------------------------------------------------
+
              if (prob > probability) {
                  probability = prob;
                 bm_index = *it;
+                local_weight = phf_prob;
              }
           }
+          
           if (probability > threshold_) {
-              // std::cout << "Probability: " << probability << std::endl;
+             std::cout << "Probability: " << local_weight << std::endl;
               best_match_index.push_back(bm_index);
 
               // voting for centroid
               Eigen::Vector3f estimated_position = supervoxel_clusters.at(
                  bm_index)->centroid_.getVector3fMap() - rotation_matrix *
-                  obj_ref[itr->first].centroid_distance;
-              // estimated_centroids[bm_index] = estimated_position;
+                  obj_ref[itr->first].centroid_distance * local_weight;
               estimated_centroids.insert(std::pair<
                  uint32_t, Eigen::Vector3f>(bm_index, estimated_position));
               
@@ -908,7 +938,7 @@ void MultilayerObjectTracking::computeLocalPairwiseFeautures(
           cache_normals[*itr] = n_normal;
           icounter++;
        }
-       std::cout << "Total Neigbours" << icounter << std::endl;
+       // std::cout << "Total Neigbours" << icounter << std::endl;
        // neigbour-neigbour phf
        for (std::vector<uint32_t>::const_iterator itr = it->second.begin();
             itr != it->second.end(); itr++) {

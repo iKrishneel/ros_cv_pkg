@@ -157,7 +157,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> &,
        const std::multimap<uint32_t, uint32_t> &,
        std::vector<AdjacentInfo> &,
-       ModelsPtr &, bool = true, bool = true, bool = true, bool = true);
+       ModelsPtr &, bool = true, bool = true, bool = true, bool = false);
 
    /*
     std::vector<AdjacentInfo> voxelAdjacencyList(
