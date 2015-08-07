@@ -7,7 +7,8 @@
 MultilayerObjectTracking::MultilayerObjectTracking() :
     init_counter_(0),
     min_cluster_size_(20),
-    threshold_(0.4f) {
+    threshold_(0.4f),
+    bin_size_(18) {
     this->object_reference_ = ModelsPtr(new Models);
     this->clustering_client_ = this->pnh_.serviceClient<
        multilayer_object_tracking::EstimatedCentroidsClustering>(
@@ -127,7 +128,7 @@ void MultilayerObjectTracking::processDecomposedCloud(
     const std::multimap<uint32_t, uint32_t> &supervoxel_adjacency,
     std::vector<AdjacentInfo> &supervoxel_list,
     MultilayerObjectTracking::ModelsPtr &models,
-    bool norm_flag, bool feat_flag, bool cent_flag) {
+    bool norm_flag, bool feat_flag, bool cent_flag, bool neigh_pfh) {
     if (cloud->empty() || supervoxel_clusters.empty()) {
        return;
     }
@@ -141,6 +142,14 @@ void MultilayerObjectTracking::processDecomposedCloud(
        uint32_t supervoxel_label = label_itr->first;
        pcl::Supervoxel<PointT>::Ptr supervoxel =
           supervoxel_clusters.at(supervoxel_label);
+
+       
+       Eigen::Vector4f c_normal = Eigen::Vector4f();
+       if (neigh_pfh) {
+           c_normal = this->cloudMeanNormal(supervoxel->normals_);
+           ref_model.neigbour_pfh = cv::Mat::zeros(
+               sizeof(char), this->bin_size_ * 3, CV_32F);
+       }
        if (supervoxel->voxels_->size() > min_cluster_size_) {
           std::vector<uint32_t> adjacent_voxels;
           for (std::multimap<uint32_t, uint32_t>::const_iterator
@@ -155,10 +164,46 @@ void MultilayerObjectTracking::processDecomposedCloud(
                 adjacent_voxels.push_back(adjacent_itr->second);
 
                 // compute neigbour structure coherency
-                
+                if (neigh_pfh) {
+                    Eigen::Vector4f n_normal = this->cloudMeanNormal(
+                        neighbor_supervoxel->normals_);
+                    float alpha;
+                    float phi;
+                    float theta;
+                    float distance;
+                    pcl::computePairFeatures(
+                        supervoxel->centroid_.getVector4fMap(), c_normal,
+                        neighbor_supervoxel->centroid_.getVector4fMap(),
+                        n_normal, alpha, phi, theta, distance);
+                    float d_pi = 1.0f / (2.0f * static_cast<float> (M_PI));
+                    const int num_features = 3;
+                    int bin_index[num_features];
+                    bin_index[0] = static_cast<int>(
+                        std::floor(this->bin_size_ * ((alpha + M_PI) * d_pi)));
+                    bin_index[1] = static_cast<int>(
+                        std::floor(this->bin_size_ * ((phi + 1.0f) * 0.5f)));
+                    bin_index[2] = static_cast<int>(
+                        std::floor(this->bin_size_ * ((theta + 1.0f) * 0.5f)));
+                    for (int i = 0; i < num_features; i++) {
+                        if (bin_index[i] < 0) {
+                            bin_index[i] = 0;
+                        }
+                        if (bin_index[i] >= bin_size_) {
+                            bin_index[i] = bin_size_ - sizeof(char);
+                        }
+                        // h_index += h_p + bin_index[i];
+                        // h_p *= this->bin_size_;
+                        ref_model.neigbour_pfh.at<float>(
+                            0, bin_index[i] + (i * this->bin_size_)) += 1;
+                    }
+                }
              }
              icounter++;
           }
+          cv::normalize(ref_model.neigbour_pfh, ref_model.neigbour_pfh,
+                        0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+          std::cout << ref_model.neigbour_pfh << std::endl;
+          
           AdjacentInfo a_info;
           a_info.adjacent_voxel_indices[supervoxel_label] =
              adjacent_voxels;
@@ -191,9 +236,36 @@ void MultilayerObjectTracking::processDecomposedCloud(
        }
        models->push_back(ref_model);
     }
-    // ROS_INFO("OBJECT MODEL SIZE: %d  %d", models->size(),
-    //          supervoxel_clusters.size());
+
+    // compute the local pfh
+    if (neigh_pfh) {
+        for (int i = 0; i < models->size(); i++) {
+        
+        }
+    }
+    
 }
+/*
+void computeLocalPairwiseFeautures(
+    const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> &supervoxel_clusters,
+    const std::map<uint32_t, std:::vector<uint32_t> & adjacency_list,
+    cv::Mat &histogram, const int feature_count) {
+    if (supervoxel_clusters.empty() || adjacency_list.empty()) {
+        ROS_ERROR("ERROR: empty data returing no local feautures");
+        return;
+    }
+    histogram = cv::Mat::zeros(sizeof(char), this->bin_size_ * feature_count);
+    for (std::map<uint32_t, std::vector<uint32_t>::const_iterator it =
+             adjacency_list.begin(); it != adjacency_list.end(); it++) {
+        
+        for (std::vector<uint32_t>::const_iterator itr = it->second.begin();
+             itr != it->second.end(); itr++) {
+            
+        }
+    }
+}
+*/
+
 
 void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     pcl::PointCloud<PointT>::Ptr cloud,
