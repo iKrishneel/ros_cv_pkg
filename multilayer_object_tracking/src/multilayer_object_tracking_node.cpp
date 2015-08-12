@@ -7,7 +7,7 @@
 MultilayerObjectTracking::MultilayerObjectTracking() :
     init_counter_(0),
     min_cluster_size_(20),
-    threshold_(0.4f),
+    threshold_(0.3f),
     bin_size_(18) {
     this->object_reference_ = ModelsPtr(new Models);
     this->clustering_client_ = this->pnh_.serviceClient<
@@ -272,6 +272,10 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     // NOTE: if the VFH matches are on the BG than perfrom
     // backprojection to confirm the match thru motion and VFH
     // set of patches that match the trajectory
+
+    std::ofstream outfile;
+    outfile.open("/home/krishneel/Desktop/est.txt", std::ios::out);
+    
     int counter = 0;
     pcl::PointCloud<PointT>::Ptr estimate_cloud(new pcl::PointCloud<PointT>);
     std::multimap<uint32_t, Eigen::Vector3f> estimated_centroids;
@@ -298,7 +302,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           this->computeLocalPairwiseFeautures(
              supervoxel_clusters, neigb, histogram_phf);
           // ------------------------------------
-          float local_weight = 1.0f; // use to weight the center transformation
+          float local_weight = 1.0f;  // use to weight the center transformation
           for (std::vector<uint32_t>::iterator it =
                   neigb.find(v_ind)->second.begin();
                it != neigb.find(v_ind)->second.end(); it++) {
@@ -326,7 +330,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                                 local_phf, CV_COMP_BHATTACHARYYA));
              float phf_prob = std::exp(-1 * dist_phf);
              // std::cout << phf_prob << "  ";
-             // prob *= phf_prob;
+             prob *= phf_prob;
              // -----------------------------------------------------
 
              if (prob > probability) {
@@ -343,10 +347,9 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
               // voting for centroid
               Eigen::Vector3f estimated_position = supervoxel_clusters.at(
                  bm_index)->centroid_.getVector3fMap() - rotation_matrix *
-                  obj_ref[itr->first].centroid_distance * local_weight;
+                 obj_ref[itr->first].centroid_distance * local_weight;
               estimated_centroids.insert(std::pair<
                  uint32_t, Eigen::Vector3f>(bm_index, estimated_position));
-              
               
               PointT pt;
               pt.x = estimated_position(0);
@@ -355,9 +358,14 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
               pt.r = 255;
               estimate_cloud->push_back(pt);
               counter++;
+
+              outfile << estimated_position(0) << " " << estimated_position(1)
+                      << " " << estimated_position(2) << std::endl;
           }
        }
     }
+
+    outfile.close();
 
     // centroid votes clustering
     float max_distance_eps = 0.04f;
