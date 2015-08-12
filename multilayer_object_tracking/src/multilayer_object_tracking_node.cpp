@@ -272,6 +272,10 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     // NOTE: if the VFH matches are on the BG than perfrom
     // backprojection to confirm the match thru motion and VFH
     // set of patches that match the trajectory
+
+    std::ofstream outfile;
+    outfile.open("/home/krishneel/Desktop/est.txt", std::ios::out);
+    
     int counter = 0;
     pcl::PointCloud<PointT>::Ptr estimate_cloud(new pcl::PointCloud<PointT>);
     std::multimap<uint32_t, Eigen::Vector3f> estimated_centroids;
@@ -326,7 +330,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                                 local_phf, CV_COMP_BHATTACHARYYA));
              float phf_prob = std::exp(-1 * dist_phf);
              // std::cout << phf_prob << "  ";
-             // prob *= phf_prob;
+             prob *= phf_prob;
              // -----------------------------------------------------
 
              if (prob > probability) {
@@ -347,7 +351,6 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
               estimated_centroids.insert(std::pair<
                  uint32_t, Eigen::Vector3f>(bm_index, estimated_position));
               
-              
               PointT pt;
               pt.x = estimated_position(0);
               pt.y = estimated_position(1);
@@ -355,9 +358,14 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
               pt.r = 255;
               estimate_cloud->push_back(pt);
               counter++;
+
+              outfile << estimated_position(0) << " " << estimated_position(1)
+                      << " " << estimated_position(2) << std::endl;
           }
        }
     }
+
+    outfile.close();
 
     // centroid votes clustering
     float max_distance_eps = 0.04f;

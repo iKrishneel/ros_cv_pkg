@@ -40,6 +40,9 @@ def estimated_centroid_clustering_server():
                       EstimatedCentroidsClustering,
                       estimated_centroids_clustering_handler)
     rospy.spin()
+
+def main():
+    estimated_centroid_clustering_server()
     
 if __name__ == "__main__":
-    estimated_centroid_clustering_server()
+    main()
