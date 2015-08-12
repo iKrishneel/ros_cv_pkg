@@ -7,7 +7,7 @@
 MultilayerObjectTracking::MultilayerObjectTracking() :
     init_counter_(0),
     min_cluster_size_(20),
-    threshold_(0.4f),
+    threshold_(0.3f),
     bin_size_(18) {
     this->object_reference_ = ModelsPtr(new Models);
     this->clustering_client_ = this->pnh_.serviceClient<
@@ -298,7 +298,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           this->computeLocalPairwiseFeautures(
              supervoxel_clusters, neigb, histogram_phf);
           // ------------------------------------
-          float local_weight = 1.0f; // use to weight the center transformation
+          float local_weight = 1.0f;  // use to weight the center transformation
           for (std::vector<uint32_t>::iterator it =
                   neigb.find(v_ind)->second.begin();
                it != neigb.find(v_ind)->second.end(); it++) {
@@ -343,7 +343,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
               // voting for centroid
               Eigen::Vector3f estimated_position = supervoxel_clusters.at(
                  bm_index)->centroid_.getVector3fMap() - rotation_matrix *
-                  obj_ref[itr->first].centroid_distance * local_weight;
+                 obj_ref[itr->first].centroid_distance * local_weight;
               estimated_centroids.insert(std::pair<
                  uint32_t, Eigen::Vector3f>(bm_index, estimated_position));
               
