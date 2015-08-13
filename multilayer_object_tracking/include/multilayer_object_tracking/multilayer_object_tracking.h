@@ -118,6 +118,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     ros::Publisher pub_normal_;
     ros::Publisher pub_tdp_;
     ros::Publisher pub_inliers_;
+    ros::Publisher pub_centroids_;
     ros::ServiceClient clustering_client_;
     
     // object model params

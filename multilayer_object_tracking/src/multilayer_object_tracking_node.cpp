@@ -33,6 +33,9 @@ void MultilayerObjectTracking::onInit() {
 
     this->pub_inliers_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/multilayer_object_tracking/output/inliers", 1);
+
+    this->pub_centroids_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+        "/multilayer_object_tracking/output/centroids", 1);
 }
 
 void MultilayerObjectTracking::subscribe() {
@@ -274,7 +277,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     // backprojection to confirm the match thru motion and VFH
     // set of patches that match the trajectory    
     int counter = 0;
-    pcl::PointCloud<PointT>::Ptr estimate_cloud(new pcl::PointCloud<PointT>);
+    pcl::PointCloud<PointT>::Ptr est_centroid_cloud(new pcl::PointCloud<PointT>);
     std::multimap<uint32_t, Eigen::Vector3f> estimated_centroids;
     std::vector<uint32_t> best_match_index;
     for (std::map<int, int>::iterator itr = matching_indices.begin();
@@ -326,7 +329,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                                 local_phf, CV_COMP_BHATTACHARYYA));
              float phf_prob = std::exp(-1 * dist_phf);
              // std::cout << phf_prob << "  ";
-             // prob *= phf_prob;
+             prob *= phf_prob;
              // -----------------------------------------------------
 
              if (prob > probability) {
@@ -342,7 +345,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
               // voting for centroid
               Eigen::Vector3f estimated_position = supervoxel_clusters.at(
                  bm_index)->centroid_.getVector3fMap() - rotation_matrix *
-                 obj_ref[itr->first].centroid_distance * local_weight;
+                 obj_ref[itr->first].centroid_distance /* local_weight*/;
               estimated_centroids.insert(std::pair<
                  uint32_t, Eigen::Vector3f>(bm_index, estimated_position));
               
@@ -351,7 +354,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
               pt.y = estimated_position(1);
               pt.z = estimated_position(2);
               pt.r = 255;
-              estimate_cloud->push_back(pt);
+              est_centroid_cloud->push_back(pt);
               counter++;
           }
        }
@@ -363,7 +366,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     
     // -----
     std::cout << "TOTAL POINTS: " << estimated_centroids.size() << std::endl;
-    std::cout << "Cloud Size: " << estimate_cloud->size() << "\t"
+    std::cout << "Cloud Size: " << est_centroid_cloud->size() << "\t"
               << inliers->size() << "\t" << 
        counter << "\t Best Match: " << best_match_index.size() << std::endl;
     // -----
@@ -375,7 +378,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     // get the neigbours of best match index
     pcl::PointCloud<PointT>::Ptr output(new pcl::PointCloud<PointT>);
     std::vector<uint32_t> neigb_lookup;
-    neigb_lookup = best_match_index;   // copy the best set to tthe initial
+    neigb_lookup = best_match_index;   // copy the best set to the initial
     for (std::vector<uint32_t>::iterator it = best_match_index.begin();
          it != best_match_index.end(); it++) {
        std::pair<std::multimap<uint32_t, uint32_t>::iterator,
@@ -478,9 +481,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
        // std::cout << std::endl;
     }
     cloud->clear();
-    // pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
-    pcl::copyPointCloud<PointT, PointT>(*estimate_cloud, *cloud);
-
+    pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
     
     pcl::PointIndices tdp_ind;
     for (int i = 0; i < cloud->size(); i++) {
@@ -508,6 +509,12 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     pcl::toROSMsg(*inliers, ros_inliers);
     ros_inliers.header = header;
     this->pub_inliers_.publish(ros_inliers);
+
+    /* for visualization of initial centroids */
+    sensor_msgs::PointCloud2 ros_centroids;
+    pcl::toROSMsg(*est_centroid_cloud, ros_centroids);
+    ros_centroids.header = header;
+    this->pub_centroids_.publish(ros_centroids);
     
     /* for visualization of normal */
     if (!centroid_normal->empty()) {
@@ -1011,10 +1018,16 @@ void MultilayerObjectTracking::estimatedCentroidClustering(
              pt.b = 255;
              inliers->push_back(pt);
              bmi.push_back(best_match_index[i]);
+          } else {
+              PointT pt;
+              pt.x = ecc_srv.request.estimated_centroids[i].position.x;
+             pt.y = ecc_srv.request.estimated_centroids[i].position.y;
+             pt.z = ecc_srv.request.estimated_centroids[i].position.z;
+             pt.r = 255;
+             pt.b = 255;
+             inliers->push_back(pt);
           }
        }
-       std::cout << "Matching Index: " << best_match_index.size() << std::endl;
-       std::cout << "Index: " << bmi.size() << std::endl;
        best_match_index.clear();
        best_match_index.insert(best_match_index.end(), bmi.begin(), bmi.end());
     } else {
