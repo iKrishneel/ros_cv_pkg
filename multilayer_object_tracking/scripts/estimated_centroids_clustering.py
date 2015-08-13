@@ -4,6 +4,7 @@ from multilayer_object_tracking.srv import *
 from geometry_msgs.msg import Pose
 import rospy
 
+import numpy as numpy
 import numpy as np
 from sklearn.cluster import DBSCAN
 from sklearn.cluster import AgglomerativeClustering
@@ -35,12 +36,18 @@ def dbscan_clustering(centroids, max_distance, min_sample):
     labels = db.labels_
     label, indices, counts = np.unique(
         labels, return_inverse=True, return_counts=True)
-    count = np.argmax(counts)
+    count = 0
+    for k in range(len(counts)):
+        if label[k] != -1:
+            if counts[k] > count:
+                count = k
+    if len(counts) == 1 and label[0] == -1:
+        count = -1
     return (labels, indices, count)
 
 def estimated_centroids_clustering_handler(req):
-    # labels, indices, elements = dbscan_clustering(req.estimated_centroids, req.max_distance, req.min_samples)
-    labels, indices, elements = agglomerative_clustering(req.estimated_centroids, req.min_samples)
+    labels, indices, elements = dbscan_clustering(req.estimated_centroids, req.max_distance, req.min_samples)
+    #labels, indices, elements = agglomerative_clustering(req.estimated_centroids, req.min_samples)
     print labels, "\t", elements
     return EstimatedCentroidsClusteringResponse(labels, indices, elements)
 
