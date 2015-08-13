@@ -5,10 +5,7 @@
 #include <map>
 
 MultilayerObjectTracking::MultilayerObjectTracking() :
-    init_counter_(0),
-    min_cluster_size_(20),
-    threshold_(0.3f),
-    bin_size_(18) {
+    init_counter_(0) {
     this->object_reference_ = ModelsPtr(new Models);
     this->clustering_client_ = this->pnh_.serviceClient<
        multilayer_object_tracking::EstimatedCentroidsClustering>(
@@ -33,9 +30,13 @@ void MultilayerObjectTracking::onInit() {
     this->pub_tdp_ = this->pnh_.advertise<
        jsk_recognition_msgs::ClusterPointIndices>(
           "/multilayer_object_tracking/supervoxel/tdp_indices", 1);
+
+    this->pub_inliers_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+       "/multilayer_object_tracking/output/inliers", 1);
 }
 
 void MultilayerObjectTracking::subscribe() {
+   
     this->sub_obj_cloud_.subscribe(this->pnh_, "input_obj_cloud", 1);
     this->sub_obj_pose_.subscribe(this->pnh_, "input_obj_pose", 1);
     this->obj_sync_ = boost::make_shared<message_filters::Synchronizer<
@@ -271,7 +272,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     }
     // NOTE: if the VFH matches are on the BG than perfrom
     // backprojection to confirm the match thru motion and VFH
-    // set of patches that match the trajectory
+    // set of patches that match the trajectory    
     int counter = 0;
     pcl::PointCloud<PointT>::Ptr estimate_cloud(new pcl::PointCloud<PointT>);
     std::multimap<uint32_t, Eigen::Vector3f> estimated_centroids;
@@ -347,7 +348,6 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
               estimated_centroids.insert(std::pair<
                  uint32_t, Eigen::Vector3f>(bm_index, estimated_position));
               
-              
               PointT pt;
               pt.x = estimated_position(0);
               pt.y = estimated_position(1);
@@ -360,12 +360,14 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     }
 
     // centroid votes clustering
-    float max_distance_eps = 0.04f;
-    int min_samples_eps = 3;
+    float max_distance_eps = this->eps_distance_;
+    int min_samples_eps = this->eps_min_samples_;
+    pcl::PointCloud<PointT>::Ptr inliers(new pcl::PointCloud<PointT>);
     this->estimatedCentroidClustering(
-        estimated_centroids, max_distance_eps, min_samples_eps);
+       estimated_centroids, inliers, max_distance_eps, min_samples_eps);
     std::cout << "TOTAL POINTS: " << estimated_centroids.size() << std::endl;
-    std::cout << "Cloud Size: " << estimate_cloud->size() << "\t" <<
+    std::cout << "Cloud Size: " << estimate_cloud->size() << "\t"
+              << inliers->size() << "\t" << 
        counter << "\t Best Match: " << best_match_index.size() << std::endl;
 
     
@@ -505,14 +507,13 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     pub_scloud_.publish(ros_svcloud);
     pub_sindices_.publish(ros_svindices);
 
-
-    /* indices of tdp 
-       jsk_recognition_msgs::ClusterPointIndices tdp_indices;
-       this->targetDescriptiveSurfelsIndices(
-       ros_svindices, neigb_lookup, tdp_indices);
-       this->pub_tdp_.publish(tdp_indices);
-
-       /* for visualization of normal */
+    /* for visualization of inliers */
+    sensor_msgs::PointCloud2 ros_inliers;
+    pcl::toROSMsg(*inliers, ros_inliers);
+    ros_inliers.header = header;
+    this->pub_inliers_.publish(ros_inliers);
+    
+    /* for visualization of normal */
     if (!centroid_normal->empty()) {
        sensor_msgs::PointCloud2 rviz_normal;
        pcl::toROSMsg(*centroid_normal, rviz_normal);
@@ -983,6 +984,7 @@ void MultilayerObjectTracking::computeLocalPairwiseFeautures(
 
 void MultilayerObjectTracking::estimatedCentroidClustering(
     const std::multimap<uint32_t, Eigen::Vector3f> &estimated_centroids,
+    pcl::PointCloud<PointT>::Ptr inliers,
     const float max_distance,
     const int min_samples) {
     if (estimated_centroids.size() < min_samples + sizeof(char)) {
@@ -1002,16 +1004,18 @@ void MultilayerObjectTracking::estimatedCentroidClustering(
     ecc_srv.request.max_distance = max_distance;
     ecc_srv.request.min_samples = min_samples;
     if (this->clustering_client_.call(ecc_srv)) {
-        std::vector<int> labels;
-        std::vector<int> indices;
-        std::vector<int> elements;
-        for (int i = 0; i < ecc_srv.response.labels.size(); i++) {
-            labels.push_back(ecc_srv.response.labels[i]);
-            indices.push_back(ecc_srv.response.indices[i]);
-        }
-        for (int i = 0; i < ecc_srv.response.elements.size(); i++) {
-            elements.push_back(ecc_srv.response.elements[i]);
-        }
+       int max_label = ecc_srv.response.argmax_label;
+       for (int i = 0; i < ecc_srv.response.labels.size(); i++) {
+          if (ecc_srv.response.indices[i] == max_label) {
+             PointT pt;
+             pt.x = ecc_srv.request.estimated_centroids[i].position.x;
+             pt.y = ecc_srv.request.estimated_centroids[i].position.y;
+             pt.z = ecc_srv.request.estimated_centroids[i].position.z;
+             pt.g = 255;
+             pt.b = 255;
+             inliers->push_back(pt);
+          }
+       }
     } else {
        ROS_ERROR("ERROR! Failed to call Clustering Module\n");
        return;

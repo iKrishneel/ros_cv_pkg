@@ -4,4 +4,4 @@ int64 min_samples
 ---
 int64[] labels
 int64[] indices
-int64[] elements
+int64 argmax_label

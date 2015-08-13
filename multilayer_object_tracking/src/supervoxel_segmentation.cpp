@@ -90,10 +90,16 @@ SupervoxelSegmentation::convertToROSPointIndices(
 void SupervoxelSegmentation::configCallback(
     Config &config, uint32_t level) {
     boost::mutex::scoped_lock lock(mutex_);
-    color_importance_ = config.color_importance;
-    spatial_importance_ = config.spatial_importance;
-    normal_importance_ = config.normal_importance;
-    voxel_resolution_ = config.voxel_resolution;
-    seed_resolution_ = config.seed_resolution;
-    use_transform_ = config.use_transform;
+    this->color_importance_ = config.color_importance;
+    this->spatial_importance_ = config.spatial_importance;
+    this->normal_importance_ = config.normal_importance;
+    this->voxel_resolution_ = config.voxel_resolution;
+    this->seed_resolution_ = config.seed_resolution;
+    this->use_transform_ = config.use_transform;
+
+    this->min_cluster_size_ = static_cast<int>(config.min_cluster_size);
+    this->threshold_ = static_cast<float>(config.threshold);
+    this->bin_size_ = static_cast<int>(config.bin_size);
+    this->eps_distance_ = static_cast<float>(config.eps_distance);
+    this->eps_min_samples_ = static_cast<float>(config.eps_min_samples);
 }
