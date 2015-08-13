@@ -24,6 +24,12 @@ class SupervoxelSegmentation {
     double voxel_resolution_;
     double seed_resolution_;
     bool use_transform_;
+
+    int min_cluster_size_;
+    float threshold_;
+    int bin_size_;
+    float eps_distance_;
+    int eps_min_samples_;
     boost::mutex mutex_;
    
  public:
@@ -46,8 +52,7 @@ class SupervoxelSegmentation {
     void targetDescriptiveSurfelsIndices(
            const jsk_recognition_msgs::ClusterPointIndices &,
            const std::vector<uint32_t> &,
-           jsk_recognition_msgs::ClusterPointIndices &);
-   
+           jsk_recognition_msgs::ClusterPointIndices &);   
    
  private:
     typedef multilayer_object_tracking::SupervoxelSegmentationConfig Config;

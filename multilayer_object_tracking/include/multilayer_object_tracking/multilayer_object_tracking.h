@@ -54,8 +54,6 @@
 #include <pcl/registration/distances.h>
 
 #include <tf/transform_listener.h>
-#include <dynamic_reconfigure/server.h>
-
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -63,6 +61,7 @@
 
 #include <multilayer_object_tracking/supervoxel_segmentation.h>
 #include <multilayer_object_tracking/EstimatedCentroidsClustering.h>
+#include <multilayer_object_tracking/MultilayerObjectTrackingConfig.h>
 #include <map>
 
 class MultilayerObjectTracking: public SupervoxelSegmentation {
@@ -119,15 +118,12 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     ros::Publisher pub_scloud_;
     ros::Publisher pub_normal_;
     ros::Publisher pub_tdp_;
+    ros::Publisher pub_inliers_;
     ros::ServiceClient clustering_client_;
     
     // object model params
     int init_counter_;
-    int min_cluster_size_;
     ModelsPtr object_reference_;
-   
-    float threshold_;
-    float bin_size_;
 
     // motion previous
     MotionHistory motion_history_;
@@ -136,7 +132,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     void onInit();
     void subscribe();
     void unsubscribe();
-
+   
  public:
     MultilayerObjectTracking();
     virtual void callback(
@@ -219,6 +215,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
         Eigen::Matrix<T, 3, 3> &);
     void estimatedCentroidClustering(
        const std::multimap<uint32_t, Eigen::Vector3f> &,
+       pcl::PointCloud<PointT>::Ptr,
        const float,
        const int);
     void computeLocalPairwiseFeautures(

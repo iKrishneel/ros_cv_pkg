@@ -6,6 +6,7 @@ import rospy
 
 import numpy as np
 from sklearn.cluster import DBSCAN
+from sklearn.cluster import AgglomerativeClustering
 from sklearn import metrics
 
 def convert_pose_to_array(centroids):
@@ -17,21 +18,31 @@ def convert_pose_to_array(centroids):
         datapoints.append(pos)
     return np.array(datapoints)
 
-def run_clustering(centroids, max_distance, min_sample):
+def agglomerative_clustering(centroids):
+    cluster = 2
     datapoints = convert_pose_to_array(centroids)
-    
-    #print datapoints
-    #print "Input Points ", datapoints.shape
+    aggloc = AgglomerativeClustering(
+        linkage = 'average', n_clusters = cluster).fit(datapoints)
+    labels = aggloc.labels_
+    label, indices, counts = np.unique(
+        labels, return_inverse=True, return_counts=True)
+    count = np.argmax(counts)
+    return (labels, indices, count)
 
+def dbscan_clustering(centroids, max_distance, min_sample):
+    datapoints = convert_pose_to_array(centroids)
     db = DBSCAN(eps=max_distance, min_samples=min_sample).fit(datapoints)
     labels = db.labels_
-    label, indices = np.unique(labels, return_inverse=True)
-    return (labels, indices, label)
+    label, indices, counts = np.unique(
+        labels, return_inverse=True, return_counts=True)
+    count = np.argmax(counts)
+    return (labels, indices, count)
 
 def estimated_centroids_clustering_handler(req):
-    labels, indices, elements = run_clustering(
+    labels, indices, elements = dbscan_clustering(
         req.estimated_centroids, req.max_distance, req.min_samples)
-    print labels
+    # labels, indices, elements = agglomerative_clustering(req.estimated_centroids)
+    print labels, "\t", elements
     return EstimatedCentroidsClusteringResponse(labels, indices, elements)
 
 def estimated_centroid_clustering_server():
