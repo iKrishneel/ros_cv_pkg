@@ -467,7 +467,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                       this->convertVector4fToPointXyzRgbNormal(
                           n_centroid_b, n_normal_b, cv::Scalar(0, 255, 0)));
                    
-                   /* -add the surfels to the model (obj_ref) */
+                   /* -add the surfels to the model (obj_ref) *//*
                    if (supervoxel_clusters.at(
                            itr->second)->voxels_->size() > this->min_cluster_size_) {
                        ReferenceModel ref_model;
@@ -509,6 +509,11 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                            supervoxel_clusters, local_adj, ref_model.neigbour_pfh);
                        this->object_reference_->push_back(ref_model);
                    }
+                   */
+                   ReferenceModel ref_model;
+                   this->processVoxelForReferenceModel(supervoxel_clusters,
+                       supervoxel_adjacency, itr->second, ref_model);
+                   this->object_reference_->push_back(ref_model);
                    //------- end add to model --------
                 }
                 // std::cout << convx_weight_ab << "\t";
@@ -561,6 +566,54 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
        pcl::toROSMsg(*centroid_normal, rviz_normal);
        rviz_normal.header = header;
        this->pub_normal_.publish(rviz_normal);
+    }
+}
+
+void MultilayerObjectTracking::processVoxelForReferenceModel(
+    const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters,
+    const std::multimap<uint32_t, uint32_t> supervoxel_adjacency,
+    const uint32_t match_index,
+    MultilayerObjectTracking::ReferenceModel &ref_model) {
+    if (supervoxel_clusters.empty() || supervoxel_adjacency.empty()) {
+        ROS_ERROR("ERROR: empty data for updating voxel ref model");
+        return;
+    }
+    if (supervoxel_clusters.at(
+            match_index)->voxels_->size() > this->min_cluster_size_) {
+        ref_model.flag = false;
+        ref_model.cluster_cloud = supervoxel_clusters.at(
+            match_index)->voxels_;
+        ref_model.cluster_normals = supervoxel_clusters.at(
+            match_index)->normals_;
+        ref_model.cluster_centroid = supervoxel_clusters.at(
+            match_index)->centroid_.getVector4fMap();
+        this->computeCloudClusterRPYHistogram(
+            ref_model.cluster_cloud,
+            ref_model.cluster_normals,
+            ref_model.cluster_vfh_hist);
+        this->computeColorHistogram(
+            ref_model.cluster_cloud,
+            ref_model.cluster_color_hist);
+        std::vector<uint32_t> adjacent_voxels;
+        for (std::multimap<uint32_t, uint32_t>::const_iterator adjacent_itr =
+                 supervoxel_adjacency.equal_range(match_index).first;
+             adjacent_itr != supervoxel_adjacency.equal_range(
+                 match_index).second; ++adjacent_itr) {
+            pcl::Supervoxel<PointT>::Ptr neighbor_supervoxel =
+                supervoxel_clusters.at(adjacent_itr->second);
+            if (neighbor_supervoxel->voxels_->size() >
+                min_cluster_size_) {
+                adjacent_voxels.push_back(adjacent_itr->second);
+            }
+        }
+        AdjacentInfo a_info;
+        a_info.adjacent_voxel_indices[match_index] = adjacent_voxels;
+        a_info.voxel_index = match_index;
+        ref_model.cluster_neigbors = a_info;
+        std::map<uint32_t, std::vector<uint32_t> > local_adj;
+        local_adj[match_index] = adjacent_voxels;
+        this->computeLocalPairwiseFeautures(
+            supervoxel_clusters, local_adj, ref_model.neigbour_pfh);
     }
 }
 
