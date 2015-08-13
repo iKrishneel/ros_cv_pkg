@@ -215,8 +215,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     void estimatedCentroidClustering(
        const std::multimap<uint32_t, Eigen::Vector3f> &,
        pcl::PointCloud<PointT>::Ptr,
-       const float,
-       const int);
+       std::vector<uint32_t> &);
+    
     void computeLocalPairwiseFeautures(
         const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> &,
         const std::map<uint32_t, std::vector<uint32_t> >&,

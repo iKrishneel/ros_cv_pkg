@@ -293,8 +293,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           
           // TODO(.) collect the neigbours here instead of next for
           // loop
-
-          // TODO(add the method for local structure) : here
+          
           cv::Mat histogram_phf;
           this->computeLocalPairwiseFeautures(
              supervoxel_clusters, neigb, histogram_phf);
@@ -336,7 +335,6 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                 local_weight = phf_prob;
              }
           }
-          
           if (probability > threshold_) {
              std::cout << "Probability: " << local_weight << std::endl;
               best_match_index.push_back(bm_index);
@@ -358,18 +356,17 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           }
        }
     }
-
     // centroid votes clustering
-    float max_distance_eps = this->eps_distance_;
-    int min_samples_eps = this->eps_min_samples_;
     pcl::PointCloud<PointT>::Ptr inliers(new pcl::PointCloud<PointT>);
     this->estimatedCentroidClustering(
-       estimated_centroids, inliers, max_distance_eps, min_samples_eps);
+        estimated_centroids, inliers, best_match_index);
+    
+    // -----
     std::cout << "TOTAL POINTS: " << estimated_centroids.size() << std::endl;
     std::cout << "Cloud Size: " << estimate_cloud->size() << "\t"
               << inliers->size() << "\t" << 
        counter << "\t Best Match: " << best_match_index.size() << std::endl;
-
+    // -----
     
     // for visualization of normals on rviz
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
@@ -394,7 +391,6 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              c_centroid, c_normal, cv::Scalar(255, 0, 0)));
        
        // neigbour voxel convex relationship
-       // neigb_lookup.push_back(*it);
        for (std::multimap<uint32_t, uint32_t>::iterator itr = ret.first;
             itr != ret.second; itr++) {
           bool is_process_neigh = true;
@@ -983,12 +979,11 @@ void MultilayerObjectTracking::computeLocalPairwiseFeautures(
 }
 
 void MultilayerObjectTracking::estimatedCentroidClustering(
-    const std::multimap<uint32_t, Eigen::Vector3f> &estimated_centroids,
+    const std::multimap<uint32_t, Eigen::Vector3f> &estimated_centroids,    
     pcl::PointCloud<PointT>::Ptr inliers,
-    const float max_distance,
-    const int min_samples) {
-    if (estimated_centroids.size() < min_samples + sizeof(char)) {
-        ROS_WARN("Too Little Points for Clustering\n");
+    std::vector<uint32_t> &best_match_index) {
+    if (estimated_centroids.size() < this->eps_min_samples_ + sizeof(char)) {
+        ROS_WARN("Too Little Points for Clustering\n ...Skipping...\n");
         return;
     }
     multilayer_object_tracking::EstimatedCentroidsClustering ecc_srv;
@@ -1001,10 +996,11 @@ void MultilayerObjectTracking::estimatedCentroidClustering(
         pose.position.z = it->second(2);
         ecc_srv.request.estimated_centroids.push_back(pose);
     }
-    ecc_srv.request.max_distance = max_distance;
-    ecc_srv.request.min_samples = min_samples;
+    ecc_srv.request.max_distance = static_cast<float>(this->eps_distance_);
+    ecc_srv.request.min_samples = static_cast<int>(this->eps_min_samples_);
     if (this->clustering_client_.call(ecc_srv)) {
        int max_label = ecc_srv.response.argmax_label;
+       std::vector<uint32_t> bmi;
        for (int i = 0; i < ecc_srv.response.labels.size(); i++) {
           if (ecc_srv.response.indices[i] == max_label) {
              PointT pt;
@@ -1014,8 +1010,13 @@ void MultilayerObjectTracking::estimatedCentroidClustering(
              pt.g = 255;
              pt.b = 255;
              inliers->push_back(pt);
+             bmi.push_back(best_match_index[i]);
           }
        }
+       std::cout << "Matching Index: " << best_match_index.size() << std::endl;
+       std::cout << "Index: " << bmi.size() << std::endl;
+       best_match_index.clear();
+       best_match_index.insert(best_match_index.end(), bmi.begin(), bmi.end());
     } else {
        ROS_ERROR("ERROR! Failed to call Clustering Module\n");
        return;
