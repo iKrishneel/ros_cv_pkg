@@ -61,7 +61,6 @@
 
 #include <multilayer_object_tracking/supervoxel_segmentation.h>
 #include <multilayer_object_tracking/EstimatedCentroidsClustering.h>
-#include <multilayer_object_tracking/MultilayerObjectTrackingConfig.h>
 #include <map>
 
 class MultilayerObjectTracking: public SupervoxelSegmentation {

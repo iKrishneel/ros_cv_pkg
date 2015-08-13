@@ -31,7 +31,7 @@ def agglomerative_clustering(centroids):
 
 def dbscan_clustering(centroids, max_distance, min_sample):
     datapoints = convert_pose_to_array(centroids)
-    db = DBSCAN(eps=max_distance, min_samples=min_sample).fit(datapoints)
+    db = DBSCAN(eps=max_distance, min_samples=min_sample, algorithm='kd_tree').fit(datapoints)
     labels = db.labels_
     label, indices, counts = np.unique(
         labels, return_inverse=True, return_counts=True)

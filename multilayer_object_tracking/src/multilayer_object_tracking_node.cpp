@@ -327,7 +327,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                                 local_phf, CV_COMP_BHATTACHARYYA));
              float phf_prob = std::exp(-1 * dist_phf);
              // std::cout << phf_prob << "  ";
-             prob *= phf_prob;
+             // prob *= phf_prob;
              // -----------------------------------------------------
 
              if (prob > probability) {
@@ -344,7 +344,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
               // voting for centroid
               Eigen::Vector3f estimated_position = supervoxel_clusters.at(
                  bm_index)->centroid_.getVector3fMap() - rotation_matrix *
-                 obj_ref[itr->first].centroid_distance;
+                 obj_ref[itr->first].centroid_distance * local_weight;
               estimated_centroids.insert(std::pair<
                  uint32_t, Eigen::Vector3f>(bm_index, estimated_position));
               
@@ -1011,7 +1011,7 @@ void MultilayerObjectTracking::estimatedCentroidClustering(
              pt.x = ecc_srv.request.estimated_centroids[i].position.x;
              pt.y = ecc_srv.request.estimated_centroids[i].position.y;
              pt.z = ecc_srv.request.estimated_centroids[i].position.z;
-             pt.r = 255;
+             pt.g = 255;
              pt.b = 255;
              inliers->push_back(pt);
           }
