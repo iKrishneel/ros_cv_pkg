@@ -464,7 +464,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                     convx_weight_ac != 0.0f &&
                     convx_weight_bc != 0.0f) {
                    *output = *output + *supervoxel_clusters.at(
-                      itr->second)->voxels_;
+                      itr- >second)->voxels_;
                    centroid_normal->push_back(
                       this->convertVector4fToPointXyzRgbNormal(
                           n_centroid_b, n_normal_b, cv::Scalar(0, 255, 0)));
