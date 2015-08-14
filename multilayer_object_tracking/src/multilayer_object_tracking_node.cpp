@@ -342,7 +342,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
               // voting for centroid
               Eigen::Vector3f estimated_position = supervoxel_clusters.at(
                  bm_index)->centroid_.getVector3fMap() - rotation_matrix *
-                  obj_ref[itr->first].centroid_distance * local_weight;
+                  obj_ref[itr->first].centroid_distance /* local_weight*/;
               estimated_centroids.insert(std::pair<
                  uint32_t, Eigen::Vector3f>(bm_index, estimated_position));
               
@@ -375,7 +375,8 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     // get the neigbours of best match index
     pcl::PointCloud<PointT>::Ptr output(new pcl::PointCloud<PointT>);
     std::vector<uint32_t> neigb_lookup;
-    neigb_lookup = best_match_index;   // copy the best set to the initial
+    neigb_lookup = best_match_index;   // copy the best set
+    ModelsPtr update_ref_model(new Models);
     for (std::vector<uint32_t>::iterator it = best_match_index.begin();
          it != best_match_index.end(); it++) {
        std::pair<std::multimap<uint32_t, uint32_t>::iterator,
@@ -389,6 +390,12 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
        centroid_normal->push_back(
           this->convertVector4fToPointXyzRgbNormal(
              c_centroid, c_normal, cv::Scalar(255, 0, 0)));
+
+       // update the reference models with direct match voxels
+       ReferenceModel ref_model;
+       this->processVoxelForReferenceModel(supervoxel_clusters,
+           supervoxel_adjacency, *it, ref_model);
+       update_ref_model->push_back(ref_model);
        
        // neigbour voxel convex relationship
        for (std::multimap<uint32_t, uint32_t>::iterator itr = ret.first;
@@ -403,7 +410,8 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           }
           if (!supervoxel_clusters.at(itr->second)->voxels_->empty() &&
               is_process_neigh) {
-             neigb_lookup.push_back(itr->second);
+              /*
+                neigb_lookup.push_back(itr->second);
              Eigen::Vector4f n_centroid = supervoxel_clusters.at(
                 itr->second)->centroid_.getVector4fMap();
              Eigen::Vector4f n_normal = this->cloudMeanNormal(
@@ -417,6 +425,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                    this->convertVector4fToPointXyzRgbNormal(
                       n_centroid, n_normal, cv::Scalar(0, 255, 0)));
              }
+              */
              // std::cout << convx_weight << "\t";
              // ------------------------------------------
              // get the common neigbor to both
@@ -468,14 +477,14 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                    centroid_normal->push_back(
                       this->convertVector4fToPointXyzRgbNormal(
                           n_centroid_b, n_normal_b, cv::Scalar(0, 255, 0)));
-                   
+                   neigb_lookup.push_back(itr->second);
                    // add the surfels to the model (obj_ref)
-                   /*
+                   
                    ReferenceModel ref_model;
                    this->processVoxelForReferenceModel(supervoxel_clusters,
                        supervoxel_adjacency, itr->second, ref_model);
-                   this->object_reference_->push_back(ref_model);
-                   */
+                   update_ref_model->push_back(ref_model);
+                   
                 }
                 // std::cout << convx_weight_ab << "\t";
              }
@@ -484,6 +493,11 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
        }
        *output = *output + *supervoxel_clusters.at(*it)->voxels_;
     }
+    if (update_ref_model->size() > 5) {
+        this->object_reference_->clear();
+        this->object_reference_ = update_ref_model;
+    }
+    
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
     
