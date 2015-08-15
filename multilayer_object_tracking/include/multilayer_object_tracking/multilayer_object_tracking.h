@@ -76,7 +76,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        pcl::PointCloud<pcl::Normal>::Ptr cluster_normals;
        Eigen::Vector4f cluster_centroid;
        Eigen::Vector3f centroid_distance;
-        cv::Mat neigbour_pfh;
+       cv::Mat neigbour_pfh;
+       int query_index;  // used for holding test-target match index
        bool flag;
     };
     typedef std::vector<ReferenceModel> Models;
@@ -161,7 +162,9 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        const ReferenceModel &,
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr,
-       const Eigen::Vector4f &);
+       const Eigen::Vector4f &,
+       ReferenceModel * = NULL);
+   
     template<class T>
     T localVoxelConvexityLikelihood(
        Eigen::Vector4f,

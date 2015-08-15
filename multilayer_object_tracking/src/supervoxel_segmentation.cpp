@@ -102,4 +102,7 @@ void SupervoxelSegmentation::configCallback(
     this->bin_size_ = static_cast<int>(config.bin_size);
     this->eps_distance_ = static_cast<float>(config.eps_distance);
     this->eps_min_samples_ = static_cast<float>(config.eps_min_samples);
+    this->vfh_scaling_ = static_cast<float>(config.vfh_scaling);
+    this->color_scaling_ = static_cast<float>(config.color_scaling);
+    this->update_tracker_reference_ = config.update_tracker_reference;
 }
