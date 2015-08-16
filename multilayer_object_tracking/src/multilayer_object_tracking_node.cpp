@@ -520,22 +520,27 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
 // TODO(here): add the updated histograms to the appropriate voxel
        
        // adapt using second order autoregressive model
-       const float updating_factor = 0.95f;
+       const float adaptive_factor = 0.95f;
        ModelsPtr nModel(new Models);
        
        for (std::vector<uint32_t>::iterator it = best_match_index.begin();
             it != best_match_index.end(); it++) {
+          
+          std::cout << "DEBUG: " << *it << std::endl;
+          
           std::pair<std::multimap<uint32_t, ReferenceModel*>::iterator,
                      std::multimap<uint32_t, ReferenceModel*>::iterator> ret;
           ret = estimated_match_info.equal_range(*it);
           for (std::multimap<uint32_t, ReferenceModel*>::iterator itr =
                   ret.first; itr != ret.second; ++itr) {
+             std::cout << "-- Value: " << itr->first << std::endl;
+             
              cv::Mat nvfh_hist = cv::Mat::zeros(
                 itr->second->cluster_vfh_hist.size(), CV_32F);
              for (int i = 0; i < itr->second->cluster_vfh_hist.rows; i++) {
                 for (int j = 0; j < itr->second->cluster_vfh_hist.cols; j++) {
                    nvfh_hist.at<float>(i, j) = itr->second->cluster_vfh_hist.at<
-                      float>(i, j) * updating_factor + (1 - updating_factor) *
+                      float>(i, j) * adaptive_factor + (1 - adaptive_factor) *
                       obj_ref[itr->second->query_index].cluster_vfh_hist.at<
                          float>(i, j);
                 }
@@ -546,7 +551,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              for (int i = 0; i < col_hist.rows; i++) {
                 for (int j = 0; j < col_hist.cols; j++) {
                    ncolor_hist.at<float>(i, j) = col_hist.at<float>(i, j) *
-                      updating_factor + (1 - updating_factor) * obj_ref[
+                      adaptive_factor + (1 - adaptive_factor) * obj_ref[
                          itr->second->query_index].cluster_color_hist.at<float>(
                             i, j);
                 }
