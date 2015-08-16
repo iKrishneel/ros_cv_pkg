@@ -107,6 +107,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        message_filters::Synchronizer<ObjectSyncPolicy> >obj_sync_;
    
     ros::Publisher pub_cloud_;
+    ros::Publisher pub_templ_;
     ros::Publisher pub_sindices_;
     ros::Publisher pub_scloud_;
     ros::Publisher pub_normal_;
@@ -185,8 +186,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     void computeColorHistogram(
        const pcl::PointCloud<PointT>::Ptr,
        cv::Mat &,
-       const int = 10,
-       const int = 10,
+       const int = 16,
+       const int = 16,
        bool = true) const;
     void computePointFPFH(
        const pcl::PointCloud<PointT>::Ptr,
@@ -212,6 +213,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     void estimatedCentroidClustering(
        const std::multimap<uint32_t, Eigen::Vector3f> &,
        pcl::PointCloud<PointT>::Ptr,
+       std::vector<uint32_t> &,
        std::vector<uint32_t> &);
     
     void computeLocalPairwiseFeautures(
