@@ -185,8 +185,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     void computeColorHistogram(
        const pcl::PointCloud<PointT>::Ptr,
        cv::Mat &,
-       const int = 8,
-       const int = 8,
+       const int = 10,
+       const int = 10,
        bool = true) const;
     void computePointFPFH(
        const pcl::PointCloud<PointT>::Ptr,

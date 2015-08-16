@@ -165,7 +165,7 @@ void MultilayerObjectTracking::processDecomposedCloud(
           a_info.adjacent_voxel_indices[supervoxel_label] = adjacent_voxels;
           supervoxel_list.push_back(a_info);
           a_info.voxel_index = supervoxel_label;
-          ref_model.cluster_neigbors = a_info;          
+          ref_model.cluster_neigbors = a_info;
           ref_model.cluster_cloud = pcl::PointCloud<PointT>::Ptr(
              new pcl::PointCloud<PointT>);
           ref_model.cluster_cloud = supervoxel->voxels_;
@@ -205,6 +205,7 @@ void MultilayerObjectTracking::processDecomposedCloud(
     }
 }
 
+// estimatedTargetDescriptiveSurfelsAndUpdate
 void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     pcl::PointCloud<PointT>::Ptr cloud,
     const MultilayerObjectTracking::PointXYZRPY &motion_disp,
@@ -295,10 +296,18 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           voxel_model->query_index = itr->first;
           // TODO(.) collect the neigbours here instead of next for
           // loop
-          
+
+
+          /* - local structure info ---
           cv::Mat histogram_phf;
           this->computeLocalPairwiseFeautures(
              supervoxel_clusters, neigb, histogram_phf);
+          float dist_phf = static_cast<float>(
+             cv::compareHist(obj_ref[itr->first].neigbour_pfh,
+                             histogram_phf, CV_COMP_BHATTACHARYYA));
+          // probability *= std::exp(-1 * dist_phf);
+          */
+          
           // ------------------------------------
           float local_weight = 0.0f;  // use to weight the center transformation
           for (std::vector<uint32_t>::iterator it =
@@ -312,7 +321,8 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                 voxel_mod);
              voxel_mod->query_index = itr->first;
 
-             // computation of local neigbour connectivity orientations
+             /*
+             // --computation of local neigbour connectivity orientations
              std::map<uint32_t, std::vector<uint32_t> > local_adjacency;
              std::vector<uint32_t> list_adj;
              for (std::multimap<uint32_t, uint32_t>::const_iterator
@@ -326,16 +336,16 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              cv::Mat local_phf;
              this->computeLocalPairwiseFeautures(
                 supervoxel_clusters, local_adjacency, local_phf);
-
-             /*
-             float dist_phf = static_cast<float>(
+             
+             dist_phf = static_cast<float>(
                 cv::compareHist(obj_ref[itr->first].neigbour_pfh,
                                 local_phf, CV_COMP_BHATTACHARYYA));
              float phf_prob = std::exp(-1 * dist_phf);
              local_weight = phf_prob;
-             */
-             // std::cout << phf_prob << "  ";
+
              // prob *= phf_prob;
+             // std::cout << prob << "  ";
+             */
              // -----------------------------------------------------
 
              if (prob > probability) {
@@ -345,7 +355,8 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              }
           }
           if (probability > threshold_) {
-             std::cout << "Probability: " << probability << std::endl;
+             std::cout << "Probability: " << probability << "\t"
+                       << local_weight << std::endl;
              best_match_index.push_back(bm_index);
 
              // voting for centroid
@@ -561,6 +572,8 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
        this->object_reference_->clear();
        this->object_reference_ = update_ref_model;
     }
+
+    // pcl::io::savePCDFileASCII("track.pcd", *output);
     
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
@@ -680,6 +693,20 @@ T MultilayerObjectTracking::targetCandidateToReferenceLikelihood(
                        CV_COMP_BHATTACHARYYA));
     T probability = std::exp(-1 * this->vfh_scaling_ * dist_vfh) *
        std::exp(-1 * this->color_scaling_ * dist_col);
+
+    /* -- check the convex/concave relation */
+    bool convex_weight = false;
+    if (convx_weight) {
+       Eigen::Vector4f n_normal = this->cloudMeanNormal(normal);
+       Eigen::Vector4f n_centroid = centroid;
+       Eigen::Vector4f c_normal = this->cloudMeanNormal(
+          reference_model.cluster_normals);
+       Eigen::Vector4f c_centroid = reference_model.cluster_centroid;
+       float convx_prob = this->localVoxelConvexityLikelihood<float>(
+          c_centroid, c_normal, n_centroid, n_normal);
+       probability * convx_prob;
+    }
+    
     voxel_model->cluster_vfh_hist = vfh_hist.clone();
     voxel_model->cluster_color_hist = color_hist.clone();
     return probability;
