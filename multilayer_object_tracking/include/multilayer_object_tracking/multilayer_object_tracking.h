@@ -75,7 +75,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        AdjacentInfo cluster_neigbors;
        pcl::PointCloud<pcl::Normal>::Ptr cluster_normals;
        Eigen::Vector4f cluster_centroid;
-       Eigen::Vector3f centroid_distance;
+        Eigen::Vector3f centroid_distance;  // not used in ref model
        cv::Mat neigbour_pfh;
        int query_index;  // used for holding test-target match index
        bool flag;
@@ -126,6 +126,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     // hold current position
     Eigen::Vector4f current_position_;
     Eigen::Vector4f previous_centroid_;
+    PointXYZRPY tracker_pose_;  // temp variable remove later
     
  protected:
     void onInit();

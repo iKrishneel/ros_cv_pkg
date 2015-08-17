@@ -269,7 +269,8 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              // TODO(.): >>> move next loop here <<<<
           }
           // computing the model object cluster centroid-centroid ratio
-          const int motion_hist_index = this->motion_history_.size() - 1;
+          // const int motion_hist_index = this->motion_history_.size() - 1;
+          const int motion_hist_index = 0;
           obj_ref[j].centroid_distance(0) = obj_ref[j].cluster_centroid(0) -
              this->motion_history_[motion_hist_index].x;
           obj_ref[j].centroid_distance(1) = obj_ref[j].cluster_centroid(1) -
@@ -289,7 +290,6 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     std::multimap<uint32_t, float> estimated_match_prob;  // probability holder
     std::multimap<uint32_t, ReferenceModel*> estimated_match_info;
     std::vector<uint32_t> best_match_index;
-    std::multimap<uint32_t, int> test_query_info;
     for (std::map<int, int>::iterator itr = matching_indices.begin();
          itr != matching_indices.end(); itr++) {
        if (!target_voxels[itr->second].flag) {
@@ -312,6 +312,8 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           cv::Mat histogram_phf;
           this->computeLocalPairwiseFeautures(
              supervoxel_clusters, neigb, histogram_phf);
+          voxel_model->cluster_neigbors.adjacent_voxel_indices = neigb;
+          voxel_model->neigbour_pfh = histogram_phf.clone();
           float dist_phf = static_cast<float>(
              cv::compareHist(obj_ref[itr->first].neigbour_pfh,
                              histogram_phf, CV_COMP_BHATTACHARYYA));
@@ -340,10 +342,12 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                   ++adjacent_itr) {
                 list_adj.push_back(adjacent_itr->second);
              }
-             local_adjacency[*it] = list_adj;
+             local_adjacency[*it] = list_adj;             
              cv::Mat local_phf;
              this->computeLocalPairwiseFeautures(
                 supervoxel_clusters, local_adjacency, local_phf);
+             voxel_mod->neigbour_pfh = local_phf.clone();
+             voxel_mod->cluster_neigbors.adjacent_voxel_indices = local_adjacency;
              
              dist_phf = static_cast<float>(
                 cv::compareHist(obj_ref[itr->first].neigbour_pfh,
@@ -397,10 +401,6 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                 // holds the matching voxel info
                 estimated_match_info.insert(
                    std::pair<uint32_t, ReferenceModel*>(bm_index, voxel_model));
-
-                // hold test-query match
-                test_query_info.insert((std::pair<uint32_t, int>(
-                                            bm_index, itr->first)));
                 
                 // for visualization
                 PointT pt;
@@ -440,7 +440,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
         demean_pts(0) = cur_pt(0) - this->current_position_(0);
         demean_pts(1) = cur_pt(1) - this->current_position_(1);
         demean_pts(2) = cur_pt(2) - this->current_position_(2);
-        int query_idx = test_query_info.find(*it)->second;
+        int query_idx = estimated_match_info.find(*it)->second->query_index;        
         Eigen::Vector3f abs_position = -(inv_rotation_matrix * demean_pts) +
             obj_ref[query_idx].cluster_centroid.head<3>();
         Eigen::Vector4f prev_vote = Eigen::Vector4f(
@@ -615,19 +615,13 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
        // adapt using second order autoregressive model
        const float adaptive_factor = 0.95f;
        ModelsPtr nModel(new Models);
-       
        for (std::vector<uint32_t>::iterator it = best_match_index.begin();
             it != best_match_index.end(); it++) {
-          
-          std::cout << "DEBUG: " << *it << std::endl;
-          
           std::pair<std::multimap<uint32_t, ReferenceModel*>::iterator,
                      std::multimap<uint32_t, ReferenceModel*>::iterator> ret;
           ret = estimated_match_info.equal_range(*it);
           for (std::multimap<uint32_t, ReferenceModel*>::iterator itr =
                   ret.first; itr != ret.second; ++itr) {
-             std::cout << "-- Value: " << itr->first << std::endl;
-             
              cv::Mat nvfh_hist = cv::Mat::zeros(
                 itr->second->cluster_vfh_hist.size(), CV_32F);
              for (int i = 0; i < itr->second->cluster_vfh_hist.rows; i++) {
@@ -638,6 +632,8 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                          float>(i, j);
                 }
              }
+             cv::normalize(nvfh_hist, nvfh_hist, 0, 1,
+                           cv::NORM_MINMAX, -1, cv::Mat());
              cv::Mat col_hist = itr->second->cluster_color_hist.clone();
              cv::Mat ncolor_hist = cv::Mat::zeros(
                 col_hist.size(), col_hist.type());
@@ -649,13 +645,38 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                             i, j);
                 }
              }
+             cv::normalize(ncolor_hist, ncolor_hist, 0, 1,
+                           cv::NORM_MINMAX, -1, cv::Mat());
+             cv::Mat local_phf = cv::Mat::zeros(
+                 itr->second->neigbour_pfh.size(), itr->second->neigbour_pfh.type());
+             for (int j = 0; j < local_phf.rows; j++) {
+                 for (int i = 0; i < local_phf.cols; i++) {
+                     local_phf.at<float>(j, i) = itr->second->neigbour_pfh.at<
+                         float>(j, i) * adaptive_factor + (1 - adaptive_factor) *
+                         obj_ref[itr->second->query_index].neigbour_pfh.at<
+                             float>(j, i);
+                 }
+             }
+             cv::normalize(local_phf, local_phf, 0, 1,
+                           cv::NORM_MINMAX, -1, cv::Mat());
+             int query_idx = estimated_match_info.find(*it)->second->query_index;
+             obj_ref[query_idx].cluster_cloud = supervoxel_clusters.at(*it)->voxels_;
+             obj_ref[query_idx].cluster_vfh_hist = nvfh_hist.clone();
+             obj_ref[query_idx].cluster_color_hist = ncolor_hist.clone();
+             obj_ref[query_idx].cluster_normals = supervoxel_clusters.at(
+                 *it)->normals_;
+             obj_ref[query_idx].cluster_centroid = supervoxel_clusters.at(
+                 *it)->centroid_.getVector4fMap();
+             obj_ref[query_idx].neigbour_pfh = local_phf.clone();
+             obj_ref[query_idx].flag = false;
+             this->object_reference_->operator[](query_idx) = obj_ref[query_idx];
           }
        }
-       this->object_reference_->clear();
-       this->object_reference_ = update_ref_model;
+       this->motion_history_.push_back(this->tracker_pose_);
+       this->previous_centroid_ = this->current_position_;
     }
 
-    // pcl::io::savePCDFileASCII("track.pcd", *output);
+    std::cout << "\n -- Motion history: " << motion_history_.size() << std::endl;
     
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
@@ -666,27 +687,31 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     }
 
     /* visualization of tracking template */
-    sensor_msgs::PointCloud2 ros_templ;
-    pcl::toROSMsg(*template_cloud, ros_templ);
-    ros_templ.header = header;
-    this->pub_templ_.publish(ros_templ);
+    if (!template_cloud->empty()) {
+        sensor_msgs::PointCloud2 ros_templ;
+        pcl::toROSMsg(*template_cloud, ros_templ);
+        ros_templ.header = header;
+        this->pub_templ_.publish(ros_templ);
+    }
     
     /* visualization of target surfels */
     std::vector<pcl::PointIndices> all_indices;
     all_indices.push_back(tdp_ind);
-    jsk_recognition_msgs::ClusterPointIndices tdp_indices;
-    tdp_indices.cluster_indices = this->convertToROSPointIndices(
-       all_indices, header);
-    tdp_indices.header = header;
-    this->pub_tdp_.publish(tdp_indices);
+    if (!all_indices.empty()) {
+        jsk_recognition_msgs::ClusterPointIndices tdp_indices;
+        tdp_indices.cluster_indices = this->convertToROSPointIndices(
+            all_indices, header);
+        tdp_indices.header = header;
+        this->pub_tdp_.publish(tdp_indices);
+    }
     
     /* for visualization of supervoxel */
     sensor_msgs::PointCloud2 ros_svcloud;
     jsk_recognition_msgs::ClusterPointIndices ros_svindices;
     this->publishSupervoxel(
        supervoxel_clusters, ros_svcloud, ros_svindices, header);
-    pub_scloud_.publish(ros_svcloud);
-    pub_sindices_.publish(ros_svindices);
+    // pub_scloud_.publish(ros_svcloud);
+    // pub_sindices_.publish(ros_svindices);
 
     /* for visualization of inliers */
     if (!inliers->empty()) {
@@ -697,10 +722,12 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     }
     
     /* for visualization of initial centroids */
-    sensor_msgs::PointCloud2 ros_centroids;
-    pcl::toROSMsg(*est_centroid_cloud, ros_centroids);
-    ros_centroids.header = header;
-    this->pub_centroids_.publish(ros_centroids);
+    if (!est_centroid_cloud->empty()) {
+        sensor_msgs::PointCloud2 ros_centroids;
+        pcl::toROSMsg(*est_centroid_cloud, ros_centroids);
+        ros_centroids.header = header;
+        this->pub_centroids_.publish(ros_centroids);
+    }
     
     /* for visualization of normal */
     if (!centroid_normal->empty()) {
@@ -1002,15 +1029,16 @@ void MultilayerObjectTracking::estimatedPFPose(
     current_pose.pitch = pose_msg->pose.orientation.y;
     current_pose.yaw = pose_msg->pose.orientation.z;
     current_pose.weight = pose_msg->pose.orientation.w;
-    current_position_(0) = current_pose.x;
-    current_position_(1) = current_pose.y;
-    current_position_(2) = current_pose.z;
-    current_position_(3) = 0.0f;
+    this->tracker_pose_ = current_pose;
+    this->current_position_(0) = current_pose.x;
+    this->current_position_(1) = current_pose.y;
+    this->current_position_(2) = current_pose.z;
+    this->current_position_(3) = 0.0f;
     if (!isnan(current_pose.x) && !isnan(current_pose.y) &&
         !isnan(current_pose.z)) {
        if (!this->motion_history_.empty()) {
           int last_index = static_cast<int>(
-             this->motion_history_.size()) - 1;
+              this->motion_history_.size()) - 1;
           motion_displacement.x = current_pose.x -
              this->motion_history_[last_index].x;
           motion_displacement.y = current_pose.y -
