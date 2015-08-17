@@ -82,6 +82,10 @@ void MultilayerObjectTracking::objInitCallback(
        this->motion_history_.clear();
        PointXYZRPY motion_displacement;  // fix this
        this->estimatedPFPose(pose_msg, motion_displacement);
+
+       // start up centroid when intialized
+       this->previous_centroid_ = this->current_position_;
+       
        
        std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters;
        std::multimap<uint32_t, uint32_t> supervoxel_adjacency;
@@ -326,17 +330,6 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                 supervoxel_clusters.at(*it)->centroid_.getVector4fMap(),
                 voxel_mod);
              voxel_mod->query_index = itr->first;
-             
-             float dist = static_cast<float>(
-                pcl::distances::l2(
-                   supervoxel_clusters.at(v_ind)->centroid_.getVector4fMap(),
-                   supervoxel_clusters.at(*it)->centroid_.getVector4fMap()));
-
-             if (dist > 0.08f) {
-                prob = 0.0f;
-             }
-             std::cout << "Matching Distance: " << dist << std::endl;
-             
              /*
              // --computation of local neigbour connectivity orientations
              std::map<uint32_t, std::vector<uint32_t> > local_adjacency;
@@ -373,31 +366,44 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           if (probability > threshold_) {
              std::cout << "Probability: " << probability << "\t"
                        << local_weight << std::endl;
-             best_match_index.push_back(bm_index);
-
+             
              // voting for centroid
              Eigen::Vector3f estimated_position = supervoxel_clusters.at(
                 bm_index)->centroid_.getVector3fMap() - rotation_matrix *
                 obj_ref[itr->first].centroid_distance /* local_weight*/;
-             estimated_centroids.insert(std::pair<uint32_t, Eigen::Vector3f>(
-                   bm_index, estimated_position));
 
-             // matching probability holder
-             estimated_match_prob.insert(
-                std::pair<uint32_t, float>(bm_index, probability));
+             // >> <<
+             Eigen::Vector4f estimated_pos = Eigen::Vector4f(
+                estimated_position(0), estimated_position(1),
+                estimated_position(2), 0.0f);
+             float match_dist = static_cast<float>(
+                pcl::distances::l2(estimated_pos, current_position_));
 
-             // holds the matching voxel info
-             estimated_match_info.insert(
-                std::pair<uint32_t, ReferenceModel*>(bm_index, voxel_model));
+             if (match_dist < this->eps_distance_) {
+                // std::cout << "Match: " << match_dist << "\t"
+                //           << this->eps_distance_ << std::endl;
+                
+                best_match_index.push_back(bm_index);
+                estimated_centroids.insert(std::pair<uint32_t, Eigen::Vector3f>(
+                                              bm_index, estimated_position));
+
+                // matching probability holder
+                estimated_match_prob.insert(
+                   std::pair<uint32_t, float>(bm_index, probability));
+
+                // holds the matching voxel info
+                estimated_match_info.insert(
+                   std::pair<uint32_t, ReferenceModel*>(bm_index, voxel_model));
              
-             // for visualization
-             PointT pt;
-             pt.x = estimated_position(0);
-             pt.y = estimated_position(1);
-             pt.z = estimated_position(2);
-             pt.r = 255;
-             est_centroid_cloud->push_back(pt);
-             counter++;
+                // for visualization
+                PointT pt;
+                pt.x = estimated_position(0);
+                pt.y = estimated_position(1);
+                pt.z = estimated_position(2);
+                pt.r = 255;
+                est_centroid_cloud->push_back(pt);
+                counter++;
+             }
           }
        }
     }
@@ -946,6 +952,10 @@ void MultilayerObjectTracking::estimatedPFPose(
     current_pose.pitch = pose_msg->pose.orientation.y;
     current_pose.yaw = pose_msg->pose.orientation.z;
     current_pose.weight = pose_msg->pose.orientation.w;
+    current_position_(0) = current_pose.x;
+    current_position_(1) = current_pose.y;
+    current_position_(2) = current_pose.z;
+    current_position_(3) = 0.0f;
     if (!isnan(current_pose.x) && !isnan(current_pose.y) &&
         !isnan(current_pose.z)) {
        if (!this->motion_history_.empty()) {

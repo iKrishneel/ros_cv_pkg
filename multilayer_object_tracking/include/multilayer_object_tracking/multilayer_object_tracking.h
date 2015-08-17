@@ -122,6 +122,10 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
 
     // motion previous
     MotionHistory motion_history_;
+
+    // hold current position
+    Eigen::Vector4f current_position_;
+    Eigen::Vector4f previous_centroid_;
     
  protected:
     void onInit();
