@@ -307,19 +307,17 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
           // TODO(.) collect the neigbours here instead of next for
           // loop
 
-
-          /* - local structure info ---
+          /* - local structure info --- */
           cv::Mat histogram_phf;
           this->computeLocalPairwiseFeautures(
              supervoxel_clusters, neigb, histogram_phf);
           float dist_phf = static_cast<float>(
              cv::compareHist(obj_ref[itr->first].neigbour_pfh,
                              histogram_phf, CV_COMP_BHATTACHARYYA));
-          // probability *= std::exp(-1 * dist_phf);
-          */
-          
+          const float phf_scaling = 0.5;
+          float local_weight = std::exp(-1 * phf_scaling * dist_phf);
           // ------------------------------------
-          float local_weight = 0.0f;  // use to weight the center transformation
+
           for (std::vector<uint32_t>::iterator it =
                   neigb.find(v_ind)->second.begin();
                it != neigb.find(v_ind)->second.end(); it++) {
@@ -330,7 +328,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                 supervoxel_clusters.at(*it)->centroid_.getVector4fMap(),
                 voxel_mod);
              voxel_mod->query_index = itr->first;
-             /*
+          
              // --computation of local neigbour connectivity orientations
              std::map<uint32_t, std::vector<uint32_t> > local_adjacency;
              std::vector<uint32_t> list_adj;
@@ -348,15 +346,19 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              
              dist_phf = static_cast<float>(
                 cv::compareHist(obj_ref[itr->first].neigbour_pfh,
-                                local_phf, CV_COMP_BHATTACHARYYA));
-             float phf_prob = std::exp(-1 * dist_phf);
+                                local_phf, CV_COMP_BHATTACHARYYA));  
+             float phf_prob = std::exp(-1 * phf_scaling * dist_phf);
              local_weight = phf_prob;
-
              // prob *= phf_prob;
-             // std::cout << prob << "  ";
-             */
+             // std::cout << "Distance: " << dist_phf << ", "<< phf_prob << " \n ";
              // -----------------------------------------------------
-
+             
+             float matching_dist = static_cast<float>(pcl::distances::l2(
+                     supervoxel_clusters.at(v_ind)->centroid_.getVector4fMap(),
+                     supervoxel_clusters.at(*it)->centroid_.getVector4fMap()));
+             if (matching_dist > this->seed_resolution_) {
+                 prob *= 0.5f;
+             }
              if (prob > probability) {
                 probability = prob;
                 bm_index = *it;
@@ -370,7 +372,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              // voting for centroid
              Eigen::Vector3f estimated_position = supervoxel_clusters.at(
                 bm_index)->centroid_.getVector3fMap() - rotation_matrix *
-                obj_ref[itr->first].centroid_distance /* local_weight*/;
+                obj_ref[itr->first].centroid_distance * local_weight;
 
              // >> <<
              Eigen::Vector4f estimated_pos = Eigen::Vector4f(
@@ -379,9 +381,9 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              float match_dist = static_cast<float>(
                 pcl::distances::l2(estimated_pos, current_position_));
 
-             if (match_dist < this->eps_distance_) {
-                // std::cout << "Match: " << match_dist << "\t"
-                //           << this->eps_distance_ << std::endl;
+             if (match_dist < this->seed_resolution_) {
+                 std::cout << "Match: " << match_dist << "\t"
+                           << this->eps_distance_ << std::endl;
                 
                 best_match_index.push_back(bm_index);
                 estimated_centroids.insert(std::pair<uint32_t, Eigen::Vector3f>(
@@ -403,6 +405,8 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                 pt.r = 255;
                 est_centroid_cloud->push_back(pt);
                 counter++;
+             } else {
+                 ROS_WARN("-- Outlier not added...");
              }
           }
        }
@@ -412,6 +416,29 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     std::vector<uint32_t> outlier_index;
     // this->estimatedCentroidClustering(
     //    estimated_centroids, inliers, best_match_index, outlier_index);
+
+    
+    // filter outliers via backprojection
+    Eigen::Matrix<float, 3, 3> inv_rotation_matrix = rotation_matrix.inverse();
+    for (std::vector<uint32_t>::iterator it = best_match_index.begin();
+         it != best_match_index.end(); it++) {
+        Eigen::Vector4f cur_pt = supervoxel_clusters.at(
+            *it)->centroid_.getVector4fMap();
+        Eigen::Vector3f demean_pts = Eigen::Vector3f();
+        demean_pts(0) = cur_pt(0) - this->current_position_(0);
+        demean_pts(1) = cur_pt(1) - this->current_position_(1);
+        demean_pts(2) = cur_pt(2) - this->current_position_(2);
+        Eigen::Vector3f abs_position = (
+            inv_rotation_matrix * demean_pts) + this->previous_centroid_.head<3>();
+
+        PointT pt;
+        pt.x = abs_position(0);
+        pt.y = abs_position(1);
+        pt.z = abs_position(2);
+        pt.r = 255;
+        inliers->push_back(pt);
+    }
+
     
     // -----
     std::cout << "TOTAL POINTS: " << estimated_centroids.size() << std::endl;
@@ -562,7 +589,8 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     if (update_ref_model->size() > 5 && this->update_tracker_reference_) {
        ROS_INFO("Updating Tracking Reference Model \n");
 
-// TODO(here): add the updated histograms to the appropriate voxel
+       // TODO(here): add the updated histograms to the appropriate voxel
+       // update the previous position and the motion history of the PF
        
        // adapt using second order autoregressive model
        const float adaptive_factor = 0.95f;
@@ -641,11 +669,13 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     pub_sindices_.publish(ros_svindices);
 
     /* for visualization of inliers */
-    sensor_msgs::PointCloud2 ros_inliers;
-    pcl::toROSMsg(*inliers, ros_inliers);
-    ros_inliers.header = header;
-    this->pub_inliers_.publish(ros_inliers);
-
+    if (!inliers->empty()) {
+        sensor_msgs::PointCloud2 ros_inliers;
+        pcl::toROSMsg(*inliers, ros_inliers);
+        ros_inliers.header = header;
+        this->pub_inliers_.publish(ros_inliers);
+    }
+    
     /* for visualization of initial centroids */
     sensor_msgs::PointCloud2 ros_centroids;
     pcl::toROSMsg(*est_centroid_cloud, ros_centroids);
