@@ -421,7 +421,6 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     std::vector<uint32_t> outlier_index;
     // this->estimatedCentroidClustering(
     //    estimated_centroids, inliers, best_match_index, outlier_index);
-
     
     // filter outliers via backprojection
     Eigen::Matrix<float, 3, 3> inv_rotation_matrix = rotation_matrix.inverse();
@@ -461,7 +460,6 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
         }
         inliers->push_back(pt);
     }
-
     
     // -----
     std::cout << "TOTAL POINTS: " << estimated_centroids.size() << std::endl;
@@ -487,7 +485,6 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
              c_centroid, c_normal, cv::Scalar(0, 0, 255)));
     }
     //----------------------------------------------
-
 
     
     // get the neigbours of best match index
