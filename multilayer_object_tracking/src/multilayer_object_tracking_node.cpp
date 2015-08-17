@@ -606,6 +606,12 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
        }
        *output = *output + *supervoxel_clusters.at(*it)->voxels_;
     }
+    ModelsPtr transform_model (new Models);
+    this->transformModelPrimitives(
+        this->object_reference_, transform_model, rotation_matrix, motion_disp);
+    obj_ref.clear();
+    obj_ref = *transform_model;
+    
     if (update_ref_model->size() > 5 && this->update_tracker_reference_) {
        ROS_INFO("Updating Tracking Reference Model \n");
 
@@ -1328,6 +1334,33 @@ void MultilayerObjectTracking::estimatedCentroidClustering(
     } else {
        ROS_ERROR("ERROR! Failed to call Clustering Module\n");
        return;
+    }
+}
+
+void MultilayerObjectTracking::transformModelPrimitives(
+    const ModelsPtr &obj_ref,
+    ModelsPtr trans_models,
+    const Eigen::Matrix<float, 3, 3> &rotation,
+    const PointXYZRPY &motion_disp) {
+    if (obj_ref->empty()) {
+        ROS_ERROR("ERROR! No Object Model to Transform");
+        return;
+    }
+    Eigen::Affine3f transform_model = Eigen::Affine3f::Identity();
+    transform_model.translation() << motion_disp.x,
+        motion_disp.y, motion_disp.z;
+    transform_model.rotate(rotation);
+    for (int i = 0; i < obj_ref->size(); i++) {
+        pcl::PointCloud<PointT>::Ptr trans_cloud(
+            new pcl::PointCloud<PointT>);
+        pcl::transformPointCloud(*(obj_ref->operator[](i).cluster_cloud),
+                                 *trans_cloud, transform_model);
+        Eigen::Vector4f trans_centroid = Eigen::Vector4f();
+        pcl::compute3DCentroid<PointT, float>(
+            *trans_cloud, trans_centroid);
+        trans_models->push_back(obj_ref->operator[](i));
+        trans_models->operator[](i).cluster_cloud = trans_cloud;
+        trans_models->operator[](i).cluster_centroid = trans_centroid;
     }
 }
 

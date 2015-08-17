@@ -229,6 +229,11 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
         const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr>,
         const std::multimap<uint32_t, uint32_t>,
         const uint32_t, MultilayerObjectTracking::ReferenceModel &);
+    void transformModelPrimitives(
+        const ModelsPtr &,
+        ModelsPtr,
+        const Eigen::Matrix<float, 3, 3> &,
+        const PointXYZRPY &);
     
     void computeScatterMatrix(
        const pcl::PointCloud<PointT>::Ptr,
