@@ -80,12 +80,16 @@ void MultilayerObjectTracking::objInitCallback(
     }
     if (!cloud->empty()) {
        this->motion_history_.clear();
+       prev_quaternion_copy = Eigen::Quaternion<float>(0.0f, 0.0f, 0.0f, 0.0f);
        PointXYZRPY motion_displacement;  // fix this
        this->estimatedPFPose(pose_msg, motion_displacement);
-
+       prev_quaternion = prev_quaternion_copy;
+       
+       
+       
        // start up centroid when intialized
        this->previous_centroid_ = this->current_position_;
-       
+       this->previous_pose_ = this->tracker_pose_;
        
        std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters;
        std::multimap<uint32_t, uint32_t> supervoxel_adjacency;
@@ -113,16 +117,40 @@ void MultilayerObjectTracking::callback(
     // get PF pose of time t
     PointXYZRPY motion_displacement;
     this->estimatedPFPose(pose_msg, motion_displacement);
-    std::cout << "Motion Displacement: " << motion_displacement << std::endl;
+    // std::cout << "Motion Displacement: " << motion_displacement << std::endl;
+    std::cout << "Motion Displacement: " << tracker_pose_ << std::endl;
     
     // get the input cloud at time t
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
-    ROS_INFO("PROCESSING CLOUD.....");
-    this->globalLayerPointCloudProcessing(
-       cloud, motion_displacement, cloud_msg->header);
-    ROS_INFO("CLOUD PROCESSED AND PUBLISHED");
+    
+    Eigen::Matrix<float, 3, 3> rotation_matrix;
+    this->getRotationMatrixFromRPY<float>(motion_displacement, rotation_matrix);
+    Eigen::Matrix<float, 3, 3> rotation_matrix_prev;
+    this->getRotationMatrixFromRPY<float>(previous_pose_, rotation_matrix_prev);
+    Eigen::Matrix<float, 3, 3> rotation;
+    rotation = rotation_matrix; // rotation_matrix_prev;
+
+    
+    PointXYZRPY pose_diff = tracker_pose_ - previous_pose_;
+    ModelsPtr transform_model (new Models);
+    this->transformModelPrimitives(
+        this->object_reference_, transform_model, rotation, motion_displacement);
+    // object_reference_->clear();
+    // *object_reference_ = *transform_model;
+
+    cloud->clear();
+    for (int i = 0; i < object_reference_->size(); i++) {
+        *cloud = *cloud + *(transform_model->operator[](i).cluster_cloud);
+    }
+    // previous_pose_ = tracker_pose_;
+
+    
+    // ROS_INFO("PROCESSING CLOUD.....");
+    // this->globalLayerPointCloudProcessing(
+    //    cloud, motion_displacement, cloud_msg->header);
+    // ROS_INFO("CLOUD PROCESSED AND PUBLISHED");
 
     ros::Time end = ros::Time::now();
     std::cout << "Processing Time: " << end - begin << std::endl;
@@ -1043,8 +1071,8 @@ void MultilayerObjectTracking::estimatedPFPose(
     if (!isnan(current_pose.x) && !isnan(current_pose.y) &&
         !isnan(current_pose.z)) {
        if (!this->motion_history_.empty()) {
-          int last_index = static_cast<int>(
-              this->motion_history_.size()) - 1;
+           int last_index = static_cast<int>(
+               this->motion_history_.size()) - 1;
           motion_displacement.x = current_pose.x -
              this->motion_history_[last_index].x;
           motion_displacement.y = current_pose.y -
@@ -1057,6 +1085,9 @@ void MultilayerObjectTracking::estimatedPFPose(
               this->motion_history_[last_index].pitch;
           motion_displacement.yaw = current_pose.yaw -
               this->motion_history_[last_index].yaw;
+
+          // this->motion_history_.push_back(current_pose);
+          
        } else {
           this->motion_history_.push_back(current_pose);
        }
@@ -1174,6 +1205,13 @@ void MultilayerObjectTracking::getRotationMatrixFromRPY(
     Eigen::Quaternion<float> quaternion = Eigen::Quaternion<float>(
         tf_quaternion.w(), tf_quaternion.x(),
         tf_quaternion.y(), tf_quaternion.z());
+
+    quaternion.w() -= prev_quaternion.w();
+    quaternion.x() -= prev_quaternion.x();
+    quaternion.y() -= prev_quaternion.y();
+    quaternion.z() -= prev_quaternion.z();
+    
+    prev_quaternion_copy = quaternion;
     rotation.template block<3, 3>(0, 0) =
         quaternion.normalized().toRotationMatrix();
 }
@@ -1362,6 +1400,8 @@ void MultilayerObjectTracking::transformModelPrimitives(
         trans_models->operator[](i).cluster_cloud = trans_cloud;
         trans_models->operator[](i).cluster_centroid = trans_centroid;
     }
+    std::cout << trans_models->size() << std::endl;
+    std::cout << "Transform: \n" << transform_model.matrix() << std::endl;
 }
 
 int main(int argc, char *argv[]) {
