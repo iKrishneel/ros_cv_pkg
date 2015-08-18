@@ -80,12 +80,9 @@ void MultilayerObjectTracking::objInitCallback(
     }
     if (!cloud->empty()) {
        this->motion_history_.clear();
-       prev_quaternion_copy = Eigen::Quaternion<float>(0.0f, 0.0f, 0.0f, 0.0f);
        PointXYZRPY motion_displacement;  // fix this
        this->estimatedPFPose(pose_msg, motion_displacement);
-       prev_quaternion = prev_quaternion_copy;
-       
-       
+       prev_quaternion = Eigen::Quaternion<float>(0.0f, 0.0f, 0.0f, 0.0f);
        
        // start up centroid when intialized
        this->previous_centroid_ = this->current_position_;
@@ -130,13 +127,13 @@ void MultilayerObjectTracking::callback(
     Eigen::Matrix<float, 3, 3> rotation_matrix_prev;
     this->getRotationMatrixFromRPY<float>(previous_pose_, rotation_matrix_prev);
     Eigen::Matrix<float, 3, 3> rotation;
-    rotation = rotation_matrix; // rotation_matrix_prev;
+    rotation = rotation_matrix; // * rotation_matrix_prev.inverse();
 
     
     PointXYZRPY pose_diff = tracker_pose_ - previous_pose_;
     ModelsPtr transform_model (new Models);
     this->transformModelPrimitives(
-        this->object_reference_, transform_model, rotation, motion_displacement);
+        this->object_reference_, transform_model, rotation, tracker_pose_);
     // object_reference_->clear();
     // *object_reference_ = *transform_model;
 
@@ -1211,7 +1208,6 @@ void MultilayerObjectTracking::getRotationMatrixFromRPY(
     quaternion.y() -= prev_quaternion.y();
     quaternion.z() -= prev_quaternion.z();
     
-    prev_quaternion_copy = quaternion;
     rotation.template block<3, 3>(0, 0) =
         quaternion.normalized().toRotationMatrix();
 }
