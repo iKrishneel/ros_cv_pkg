@@ -121,14 +121,14 @@ void MultilayerObjectTracking::callback(
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
-    
+
+    /*
     Eigen::Matrix<float, 3, 3> rotation_matrix;
     this->getRotationMatrixFromRPY<float>(motion_displacement, rotation_matrix);
     Eigen::Matrix<float, 3, 3> rotation_matrix_prev;
     this->getRotationMatrixFromRPY<float>(previous_pose_, rotation_matrix_prev);
     Eigen::Matrix<float, 3, 3> rotation;
     rotation = rotation_matrix; // * rotation_matrix_prev.inverse();
-
     
     PointXYZRPY pose_diff = tracker_pose_ - previous_pose_;
     ModelsPtr transform_model (new Models);
@@ -142,7 +142,63 @@ void MultilayerObjectTracking::callback(
         *cloud = *cloud + *(transform_model->operator[](i).cluster_cloud);
     }
     // previous_pose_ = tracker_pose_;
+    */
+    
+    tf::TransformListener tf_listener;
+    tf::StampedTransform transform;
+    ros::Time now = ros::Time(0);
+    // std::string parent_frame = "/camera_rgb_optical_frame";
+    // std::string child_frame = "/track_result";
+    std::string child_frame = "/camera_rgb_optical_frame";
+    std::string parent_frame = "/track_result";
+    tf_listener.waitForTransform(
+        child_frame, parent_frame, now, ros::Duration(2.0f));
+    tf_listener.lookupTransform(
+        child_frame, parent_frame, now, transform);
+    
+    std::cout << "\nTF INFO---\n" << std::endl;
+    tf::Quaternion tf_quaternion =  transform.getRotation();
+    std::cout << tf_quaternion.w() << "\t" << tf_quaternion.x() << "\t"
+              << tf_quaternion.y() << "\t" << tf_quaternion.z() << std::endl;
+    
+    std::cout << "\nRPY INFO--" << std::endl;
+    tf::Matrix3x3 m(tf_quaternion);
+    double r, p, y;
+    m.getRPY(r, p, y);
+    std::cout << "RPY: " << r << ", " << p << ", " << y << std::endl;
+    std::cout << "Translation: " << -transform.getOrigin().getX() << ", "
+              << -transform.getOrigin().getY() << ", "
+              << -transform.getOrigin().getZ() << std::endl;
 
+    Eigen::Affine3f transform_model = Eigen::Affine3f::Identity();    
+    // transform_model.translation() << transform.getOrigin().getX(),
+    //     transform.getOrigin().getY(),
+    //     transform.getOrigin().getZ();
+    // transform_model.inverse();
+    
+    transform_model.translation() << motion_displacement.x,
+        motion_displacement.y, motion_displacement.z;
+    transform_model.inverse();
+    
+    Eigen::Quaternion<float> quaternion = Eigen::Quaternion<float>(
+        tf_quaternion.w(), tf_quaternion.x(),
+        tf_quaternion.y(), tf_quaternion.z());
+    transform_model.rotate(quaternion);
+    
+
+    std::cout << "Tranform: \n"  << transform_model.matrix() << std::endl;
+    
+    ModelsPtr obj_ref = object_reference_;
+    cloud->clear();
+    for (int i = 0; i < obj_ref->size(); i++) {
+        pcl::PointCloud<PointT>::Ptr trans_cloud(
+            new pcl::PointCloud<PointT>);
+        pcl::transformPointCloud(*(obj_ref->operator[](i).cluster_cloud),
+                                 *trans_cloud, transform_model);
+        *cloud = *cloud + *trans_cloud;
+    }
+
+    std::cout << "Base: " << cloud_msg->header.frame_id<< std::endl;
     
     // ROS_INFO("PROCESSING CLOUD.....");
     // this->globalLayerPointCloudProcessing(
@@ -154,7 +210,8 @@ void MultilayerObjectTracking::callback(
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
-    ros_cloud.header = cloud_msg->header;
+    ros_cloud.header.stamp = cloud_msg->header.stamp;
+    ros_cloud.header.frame_id = child_frame;
     this->pub_cloud_.publish(ros_cloud);
 }
 
@@ -1202,12 +1259,6 @@ void MultilayerObjectTracking::getRotationMatrixFromRPY(
     Eigen::Quaternion<float> quaternion = Eigen::Quaternion<float>(
         tf_quaternion.w(), tf_quaternion.x(),
         tf_quaternion.y(), tf_quaternion.z());
-
-    quaternion.w() -= prev_quaternion.w();
-    quaternion.x() -= prev_quaternion.x();
-    quaternion.y() -= prev_quaternion.y();
-    quaternion.z() -= prev_quaternion.z();
-    
     rotation.template block<3, 3>(0, 0) =
         quaternion.normalized().toRotationMatrix();
 }
