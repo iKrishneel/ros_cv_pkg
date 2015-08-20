@@ -82,7 +82,6 @@ void MultilayerObjectTracking::objInitCallback(
        this->motion_history_.clear();
        PointXYZRPY motion_displacement;  // fix this
        this->estimatedPFPose(pose_msg, motion_displacement);
-       prev_quaternion = Eigen::Quaternion<float>(0.0f, 0.0f, 0.0f, 0.0f);
        
        // start up centroid when intialized
        this->previous_centroid_ = this->current_position_;
@@ -114,35 +113,12 @@ void MultilayerObjectTracking::callback(
     // get PF pose of time t
     PointXYZRPY motion_displacement;
     this->estimatedPFPose(pose_msg, motion_displacement);
-    // std::cout << "Motion Displacement: " << motion_displacement << std::endl;
-    std::cout << "Motion Displacement: " << tracker_pose_ << std::endl;
+    std::cout << "Motion Displacement: " << motion_displacement << std::endl;
     
     // get the input cloud at time t
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
-
-    /*
-    Eigen::Matrix<float, 3, 3> rotation_matrix;
-    this->getRotationMatrixFromRPY<float>(motion_displacement, rotation_matrix);
-    Eigen::Matrix<float, 3, 3> rotation_matrix_prev;
-    this->getRotationMatrixFromRPY<float>(previous_pose_, rotation_matrix_prev);
-    Eigen::Matrix<float, 3, 3> rotation;
-    rotation = rotation_matrix; // * rotation_matrix_prev.inverse();
-    
-    PointXYZRPY pose_diff = tracker_pose_ - previous_pose_;
-    ModelsPtr transform_model (new Models);
-    this->transformModelPrimitives(
-        this->object_reference_, transform_model, rotation, tracker_pose_);
-    // object_reference_->clear();
-    // *object_reference_ = *transform_model;
-
-    cloud->clear();
-    for (int i = 0; i < object_reference_->size(); i++) {
-        *cloud = *cloud + *(transform_model->operator[](i).cluster_cloud);
-    }
-    // previous_pose_ = tracker_pose_;
-    */
     
     tf::TransformListener tf_listener;
     tf::StampedTransform transform;
@@ -156,48 +132,62 @@ void MultilayerObjectTracking::callback(
     tf_listener.lookupTransform(
         child_frame, parent_frame, now, transform);
     
-    std::cout << "\nTF INFO---\n" << std::endl;
-    tf::Quaternion tf_quaternion =  transform.getRotation();
-    std::cout << tf_quaternion.w() << "\t" << tf_quaternion.x() << "\t"
-              << tf_quaternion.y() << "\t" << tf_quaternion.z() << std::endl;
     
     std::cout << "\nRPY INFO--" << std::endl;
     tf::Matrix3x3 m(tf_quaternion);
     double r, p, y;
     m.getRPY(r, p, y);
     std::cout << "RPY: " << r << ", " << p << ", " << y << std::endl;
-    std::cout << "Translation: " << -transform.getOrigin().getX() << ", "
-              << -transform.getOrigin().getY() << ", "
-              << -transform.getOrigin().getZ() << std::endl;
 
+    
     Eigen::Affine3f transform_model = Eigen::Affine3f::Identity();    
-    // transform_model.translation() << transform.getOrigin().getX(),
-    //     transform.getOrigin().getY(),
-    //     transform.getOrigin().getZ();
+    transform_model.translation() <<
+        -transform.getOrigin().getX(),
+        -transform.getOrigin().getY(),
+        -transform.getOrigin().getZ();
     // transform_model.inverse();
-    
-    transform_model.translation() << motion_displacement.x,
-        motion_displacement.y, motion_displacement.z;
-    transform_model.inverse();
-    
+    motion_displacement = tracker_pose_;
+    // transform_model.translation() << motion_displacement.x,
+    //     motion_displacement.y, motion_displacement.z;    
     Eigen::Quaternion<float> quaternion = Eigen::Quaternion<float>(
         tf_quaternion.w(), tf_quaternion.x(),
         tf_quaternion.y(), tf_quaternion.z());
     transform_model.rotate(quaternion);
+    // transform_model.inverse();
     
-
     std::cout << "Tranform: \n"  << transform_model.matrix() << std::endl;
     
     ModelsPtr obj_ref = object_reference_;
     cloud->clear();
+    pcl::PointCloud<PointT>::Ptr inliers(new pcl::PointCloud<PointT>);
+
+    Eigen::Affine3f transform_ref = Eigen::Affine3f::Identity();    
+    transform_ref.translation() <<
+        motion_history_[0].x, motion_history_[0].y, motion_history_[0].z;
     for (int i = 0; i < obj_ref->size(); i++) {
         pcl::PointCloud<PointT>::Ptr trans_cloud(
             new pcl::PointCloud<PointT>);
         pcl::transformPointCloud(*(obj_ref->operator[](i).cluster_cloud),
                                  *trans_cloud, transform_model);
         *cloud = *cloud + *trans_cloud;
-    }
 
+        pcl::PointCloud<PointT>::Ptr trans_model(new pcl::PointCloud<PointT>);
+        pcl::transformPointCloud(*(obj_ref->operator[](i).cluster_cloud),
+                                 *trans_model, transform_ref.inverse());
+        *inliers = *inliers + *trans_model;
+    }
+    // Eigen::Vector4f trans_centroid;
+    // pcl::compute3DCentroid(*cloud, trans_centroid);
+    // transform_model = Eigen::Affine3f::Identity();
+    // transform_model.translation() <<
+    //     trans_centroid(0), trans_centroid(1), trans_centroid(2);
+    // transform_model.inverse();
+    // pcl::PointCloud<PointT>::Ptr trans_cloud(new pcl::PointCloud<PointT>);
+    // pcl::transformPointCloud(*cloud, *trans_cloud, transform_model);
+    // cloud->clear();
+    // cloud = trans_cloud;
+    
+    std::cout << "\n\n Translation: \n" << transform_model.matrix() << std::endl;
     std::cout << "Base: " << cloud_msg->header.frame_id<< std::endl;
     
     // ROS_INFO("PROCESSING CLOUD.....");
@@ -207,6 +197,12 @@ void MultilayerObjectTracking::callback(
 
     ros::Time end = ros::Time::now();
     std::cout << "Processing Time: " << end - begin << std::endl;
+
+
+    sensor_msgs::PointCloud2 ros_inliers;
+    pcl::toROSMsg(*inliers, ros_inliers);
+    ros_inliers.header = cloud_msg->header;
+    this->pub_inliers_.publish(ros_inliers);
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
