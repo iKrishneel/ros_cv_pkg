@@ -152,13 +152,8 @@ void MultilayerObjectTracking::callback(
     Eigen::Affine3f transform_reference = Eigen::Affine3f::Identity();
     transform_reference.translation() <<
        motion_history_[0].x, motion_history_[0].y, motion_history_[0].z;
-    // transform_reference = transform_reference.inverse();
-    
-    std::cout << "Ref \n" << transform_reference.matrix() << std::endl;
-    
-
     transform_model = transform_model * transform_reference.inverse();
-    
+    transformation_matrix
     
     ModelsPtr obj_ref = object_reference_;
     cloud->clear();
