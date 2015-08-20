@@ -127,13 +127,14 @@ void MultilayerObjectTracking::callback(
     Eigen::Matrix<float, 3, 3> rotation_matrix_prev;
     this->getRotationMatrixFromRPY<float>(previous_pose_, rotation_matrix_prev);
     Eigen::Matrix<float, 3, 3> rotation;
-    rotation = rotation_matrix; // * rotation_matrix_prev.inverse();
+    rotation = rotation_matrix;   // * rotation_matrix_prev.inverse();
 
     
-    PointXYZRPY pose_diff = tracker_pose_ - previous_pose_;
+    // PointXYZRPY pose_diff = tracker_pose_ - previous_pose_;
     ModelsPtr transform_model (new Models);
     this->transformModelPrimitives(
-        this->object_reference_, transform_model, rotation, tracker_pose_);
+        this->object_reference_, transform_model,
+        rotation, motion_displacement);
     // object_reference_->clear();
     // *object_reference_ = *transform_model;
 
@@ -1381,8 +1382,8 @@ void MultilayerObjectTracking::transformModelPrimitives(
         return;
     }
     Eigen::Affine3f transform_model = Eigen::Affine3f::Identity();
-    transform_model.translation() << motion_disp.x,
-        motion_disp.y, motion_disp.z;
+    // transform_model.translation() << motion_disp.x,
+    //     motion_disp.y, motion_disp.z;
     transform_model.rotate(rotation);
     for (int i = 0; i < obj_ref->size(); i++) {
         pcl::PointCloud<PointT>::Ptr trans_cloud(
