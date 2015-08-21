@@ -126,10 +126,9 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     MotionHistory motion_history_;
 
     // hold current position
-    Eigen::Vector4f current_position_;
-    Eigen::Vector4f previous_centroid_;
+    Eigen::Vector4f current_pose_;
+    Eigen::Vector4f previous_pose_;
     PointXYZRPY tracker_pose_;  // temp variable remove later
-    PointXYZRPY previous_pose_;  // temp variable remove later
     Eigen::Quaternion<float> prev_quaternion;
     
  protected:

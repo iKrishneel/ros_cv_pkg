@@ -84,8 +84,7 @@ void MultilayerObjectTracking::objInitCallback(
        this->estimatedPFPose(pose_msg, motion_displacement);
        
        // start up centroid when intialized
-       this->previous_centroid_ = this->current_position_;
-       this->previous_pose_ = this->tracker_pose_;
+       this->previous_pose_ = this->current_pose_;
        
        std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters;
        std::multimap<uint32_t, uint32_t> supervoxel_adjacency;
@@ -140,8 +139,12 @@ void MultilayerObjectTracking::callback(
     transform_model.rotate(quaternion);
     
     Eigen::Affine3f transform_reference = Eigen::Affine3f::Identity();
+    const int motion_hist_index = static_cast<int>(
+        this->motion_history_.size()) - 1;
     transform_reference.translation() <<
-       motion_history_[0].x, motion_history_[0].y, motion_history_[0].z;
+        motion_history_[motion_hist_index].x,
+        motion_history_[motion_hist_index].y,
+        motion_history_[motion_hist_index].z;
     Eigen::Affine3f transformation_matrix = transform_model *
        transform_reference.inverse();
 
@@ -399,7 +402,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
              float matching_dist = static_cast<float>(pcl::distances::l2(
                      supervoxel_clusters.at(v_ind)->centroid_.getVector4fMap(),
                      supervoxel_clusters.at(*it)->centroid_.getVector4fMap()));
-             if (matching_dist > this->seed_resolution_ ) {
+             if (matching_dist > this->seed_resolution_ / 2) {
                  prob *= 0.5f;
              }
              if (prob > probability) {
@@ -423,9 +426,9 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                   estimated_position(0), estimated_position(1),
                   estimated_position(2), 0.0f);
               float match_dist = static_cast<float>(
-                  pcl::distances::l2(estimated_pos, current_position_));
+                  pcl::distances::l2(estimated_pos, current_pose_));
 
-              if (match_dist < this->seed_resolution_) {
+              if (match_dist < this->seed_resolution_ / 2) {
                   std::cout << "Match: " << match_dist << "\t"
                             << this->eps_distance_ << std::endl;
                 
@@ -465,9 +468,9 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     // filter outliers via backprojection
     Eigen::Matrix<float, 3, 3> inv_rotation_matrix = rotation_matrix.inverse();
     PointT ptt;
-    ptt.x = previous_centroid_(0);
-    ptt.y = previous_centroid_(1);
-    ptt.z = previous_centroid_(2);
+    ptt.x = previous_pose_(0);
+    ptt.y = previous_pose_(1);
+    ptt.z = previous_pose_(2);
     ptt.b = 255;
     inliers->push_back(ptt);
     std::vector<uint32_t> matching_indx = best_match_index;
@@ -477,22 +480,22 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
         Eigen::Vector4f cur_pt = supervoxel_clusters.at(
             *it)->centroid_.getVector4fMap();
         Eigen::Vector3f demean_pts = Eigen::Vector3f();
-        demean_pts(0) = cur_pt(0) - this->current_position_(0);
-        demean_pts(1) = cur_pt(1) - this->current_position_(1);
-        demean_pts(2) = cur_pt(2) - this->current_position_(2);
+        demean_pts(0) = cur_pt(0) - this->current_pose_(0);
+        demean_pts(1) = cur_pt(1) - this->current_pose_(1);
+        demean_pts(2) = cur_pt(2) - this->current_pose_(2);
         int query_idx = estimated_match_info.find(*it)->second->query_index;        
         Eigen::Vector3f abs_position = -(inv_rotation_matrix * demean_pts) +
             obj_ref[query_idx].cluster_centroid.head<3>();
         Eigen::Vector4f prev_vote = Eigen::Vector4f(
             abs_position(0), abs_position(1), abs_position(2), 0.0f);
         float matching_dist = static_cast<float>(
-            pcl::distances::l2(prev_vote, this->previous_centroid_));
+            pcl::distances::l2(prev_vote, this->previous_pose_));
 
         PointT pt;
         pt.x = abs_position(0);
         pt.y = abs_position(1);
         pt.z = abs_position(2);
-        if (matching_dist <= this->seed_resolution_) {
+        if (matching_dist <= this->seed_resolution_ / 2) {
             best_match_index.push_back(*it);
             pt.r = 255;
         } else {
@@ -650,6 +653,11 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
         this->object_reference_, transform_model, transformation_matrix);
     obj_ref.clear();
     obj_ref = *transform_model;
+
+    template_cloud->clear();
+    for (int i = 0; i < obj_ref.size(); i++) {
+        *template_cloud = *template_cloud + *(obj_ref[i].cluster_cloud);
+    }
     
     if (update_ref_model->size() > 5 && this->update_tracker_reference_) {
        ROS_INFO("Updating Tracking Reference Model \n");
@@ -718,9 +726,11 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
           }
        }
        this->motion_history_.push_back(this->tracker_pose_);
-       this->previous_centroid_ = this->current_position_;
+       this->previous_pose_ = this->current_pose_;
+    } else {
+        ROS_WARN("\nTRACKING MODEL CURRENTLY SET TO STATIC\n");
     }
-    // std::cout << "\n -- Motion history: " << motion_history_.size() << std::endl;
+    std::cout << "\n -- Motion history: " << motion_history_.size() << std::endl;
 
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
@@ -1074,10 +1084,10 @@ void MultilayerObjectTracking::estimatedPFPose(
     current_pose.yaw = pose_msg->pose.orientation.z;
     current_pose.weight = pose_msg->pose.orientation.w;
     this->tracker_pose_ = current_pose;
-    this->current_position_(0) = current_pose.x;
-    this->current_position_(1) = current_pose.y;
-    this->current_position_(2) = current_pose.z;
-    this->current_position_(3) = 0.0f;
+    this->current_pose_(0) = current_pose.x;
+    this->current_pose_(1) = current_pose.y;
+    this->current_pose_(2) = current_pose.z;
+    this->current_pose_(3) = 0.0f;
     if (!isnan(current_pose.x) && !isnan(current_pose.y) &&
         !isnan(current_pose.z)) {
        if (!this->motion_history_.empty()) {
