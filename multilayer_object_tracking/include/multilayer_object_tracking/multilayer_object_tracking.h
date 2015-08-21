@@ -17,14 +17,7 @@
 #include <cv_bridge/cv_bridge.h>
 
 #include <opencv2/core/core.hpp>
-#include <opencv2/features2d/features2d.hpp>
-#include <opencv2/nonfree/features2d.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/nonfree/nonfree.hpp>
 #include <opencv2/opencv.hpp>
-#include <opencv2/video/video.hpp>
-#include <opencv2/video/background_segm.hpp>
-
 #include <boost/thread/mutex.hpp>
 
 #include <pcl_conversions/pcl_conversions.h>
@@ -54,6 +47,8 @@
 #include <pcl/registration/distances.h>
 
 #include <tf/transform_listener.h>
+#include <tf/transform_broadcaster.h>
+#include <tf_conversions/tf_eigen.h>
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -82,8 +77,9 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        AdjacentInfo cluster_neigbors;
        pcl::PointCloud<pcl::Normal>::Ptr cluster_normals;
        Eigen::Vector4f cluster_centroid;
-       Eigen::Vector3f centroid_distance;
-        cv::Mat neigbour_pfh;
+        Eigen::Vector3f centroid_distance;  // not used in ref model
+       cv::Mat neigbour_pfh;
+       int query_index;  // used for holding test-target match index
        bool flag;
     };
     typedef std::vector<ReferenceModel> Models;
@@ -113,11 +109,13 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        message_filters::Synchronizer<ObjectSyncPolicy> >obj_sync_;
    
     ros::Publisher pub_cloud_;
+    ros::Publisher pub_templ_;
     ros::Publisher pub_sindices_;
     ros::Publisher pub_scloud_;
     ros::Publisher pub_normal_;
     ros::Publisher pub_tdp_;
     ros::Publisher pub_inliers_;
+    ros::Publisher pub_centroids_;
     ros::ServiceClient clustering_client_;
     
     // object model params
@@ -126,6 +124,13 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
 
     // motion previous
     MotionHistory motion_history_;
+
+    // hold current position
+    Eigen::Vector4f current_position_;
+    Eigen::Vector4f previous_centroid_;
+    PointXYZRPY tracker_pose_;  // temp variable remove later
+    PointXYZRPY previous_pose_;  // temp variable remove later
+    Eigen::Quaternion<float> prev_quaternion;
     
  protected:
     void onInit();
@@ -160,6 +165,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
    */
     void globalLayerPointCloudProcessing(
        pcl::PointCloud<PointT>::Ptr,
+       const Eigen::Affine3f &,
        const MultilayerObjectTracking::PointXYZRPY &,
        const std_msgs::Header);
     template<class T>
@@ -167,7 +173,9 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        const ReferenceModel &,
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr,
-       const Eigen::Vector4f &);
+       const Eigen::Vector4f &,
+       ReferenceModel * = NULL);
+   
     template<class T>
     T localVoxelConvexityLikelihood(
        Eigen::Vector4f,
@@ -188,8 +196,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     void computeColorHistogram(
        const pcl::PointCloud<PointT>::Ptr,
        cv::Mat &,
-       const int = 8,
-       const int = 8,
+       const int = 16,
+       const int = 16,
        bool = true) const;
     void computePointFPFH(
        const pcl::PointCloud<PointT>::Ptr,
@@ -215,13 +223,22 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     void estimatedCentroidClustering(
        const std::multimap<uint32_t, Eigen::Vector3f> &,
        pcl::PointCloud<PointT>::Ptr,
-       const float,
-       const int);
+       std::vector<uint32_t> &,
+       std::vector<uint32_t> &);
+    
     void computeLocalPairwiseFeautures(
         const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> &,
         const std::map<uint32_t, std::vector<uint32_t> >&,
         cv::Mat &, const int = 3);
-   
+    void processVoxelForReferenceModel(
+        const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr>,
+        const std::multimap<uint32_t, uint32_t>,
+        const uint32_t, MultilayerObjectTracking::ReferenceModel &);
+    void transformModelPrimitives(
+        const ModelsPtr &,
+        ModelsPtr,
+        const Eigen::Affine3f &);
+    
     void computeScatterMatrix(
        const pcl::PointCloud<PointT>::Ptr,
        const Eigen::Vector4f);

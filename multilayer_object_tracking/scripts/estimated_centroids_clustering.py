@@ -4,6 +4,7 @@ from multilayer_object_tracking.srv import *
 from geometry_msgs.msg import Pose
 import rospy
 
+import numpy as numpy
 import numpy as np
 from sklearn.cluster import DBSCAN
 from sklearn.cluster import AgglomerativeClustering
@@ -18,11 +19,11 @@ def convert_pose_to_array(centroids):
         datapoints.append(pos)
     return np.array(datapoints)
 
-def agglomerative_clustering(centroids):
+def agglomerative_clustering(centroids, min_samples):
     cluster = 2
     datapoints = convert_pose_to_array(centroids)
     aggloc = AgglomerativeClustering(
-        linkage = 'average', n_clusters = cluster).fit(datapoints)
+        linkage = 'ward', n_clusters = cluster, n_components = min_samples).fit(datapoints)
     labels = aggloc.labels_
     label, indices, counts = np.unique(
         labels, return_inverse=True, return_counts=True)
@@ -31,17 +32,22 @@ def agglomerative_clustering(centroids):
 
 def dbscan_clustering(centroids, max_distance, min_sample):
     datapoints = convert_pose_to_array(centroids)
-    db = DBSCAN(eps=max_distance, min_samples=min_sample, algorithm='kd_tree').fit(datapoints)
+    db = DBSCAN(eps=max_distance, min_samples=min_sample, algorithm='auto').fit(datapoints)
     labels = db.labels_
     label, indices, counts = np.unique(
         labels, return_inverse=True, return_counts=True)
-    count = np.argmax(counts)
+    count = 0
+    for k in range(len(counts)):
+        if label[k] != -1:
+            if counts[k] > count:
+                count = k
+    if len(counts) == 1 and label[0] == -1:
+        count = -1
     return (labels, indices, count)
 
 def estimated_centroids_clustering_handler(req):
-    labels, indices, elements = dbscan_clustering(
-        req.estimated_centroids, req.max_distance, req.min_samples)
-    # labels, indices, elements = agglomerative_clustering(req.estimated_centroids)
+    labels, indices, elements = dbscan_clustering(req.estimated_centroids, req.max_distance, req.min_samples)
+    #labels, indices, elements = agglomerative_clustering(req.estimated_centroids, req.min_samples)
     print labels, "\t", elements
     return EstimatedCentroidsClusteringResponse(labels, indices, elements)
 
