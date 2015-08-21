@@ -129,7 +129,6 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     Eigen::Vector4f current_pose_;
     Eigen::Vector4f previous_pose_;
     PointXYZRPY tracker_pose_;  // temp variable remove later
-    Eigen::Quaternion<float> prev_quaternion;
     
  protected:
     void onInit();
@@ -158,10 +157,6 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        std::vector<AdjacentInfo> &,
        ModelsPtr &, bool = true, bool = true, bool = true, bool = false);
 
-   /*
-    std::vector<AdjacentInfo> voxelAdjacencyList(
-       const jsk_recognition_msgs::AdjacencyList &);
-   */
     void targetDescriptiveSurfelsEstimationAndUpdate(
        pcl::PointCloud<PointT>::Ptr,
        const Eigen::Affine3f &,

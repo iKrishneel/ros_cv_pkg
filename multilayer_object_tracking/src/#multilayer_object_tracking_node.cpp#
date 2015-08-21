@@ -628,7 +628,8 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                    float convx_weight_ac = this->localVoxelConvexityLikelihood<
                       float>(c_centroid, c_normal, n_centroid_c, n_normal_c);
                    float convx_weight_bc = this->localVoxelConvexityLikelihood<
-                      float>(n_centroid_b, n_normal_b, n_centroid_c, n_normal_c);
+                      float>(n_centroid_b, n_normal_b, n_centroid_c,
+                             n_normal_c);
                    if (convx_weight_ab != 0.0f &&
                        convx_weight_ac != 0.0f &&
                        convx_weight_bc != 0.0f) {
