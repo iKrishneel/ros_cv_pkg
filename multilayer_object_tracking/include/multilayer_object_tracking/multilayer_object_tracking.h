@@ -126,10 +126,9 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     MotionHistory motion_history_;
 
     // hold current position
-    Eigen::Vector4f current_position_;
-    Eigen::Vector4f previous_centroid_;
+    Eigen::Vector4f current_pose_;
+    Eigen::Vector4f previous_pose_;
     PointXYZRPY tracker_pose_;  // temp variable remove later
-    PointXYZRPY previous_pose_;  // temp variable remove later
     Eigen::Quaternion<float> prev_quaternion;
     
  protected:
@@ -152,7 +151,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     void estimatedPFPose(
        const geometry_msgs::PoseStamped::ConstPtr &, PointXYZRPY &);
 
-    void processDecomposedCloud(
+    void voxelizeAndProcessPointCloud(
        const pcl::PointCloud<PointT>::Ptr cloud,
        const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> &,
        const std::multimap<uint32_t, uint32_t> &,
@@ -163,7 +162,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     std::vector<AdjacentInfo> voxelAdjacencyList(
        const jsk_recognition_msgs::AdjacencyList &);
    */
-    void globalLayerPointCloudProcessing(
+    void targetDescriptiveSurfelsEstimationAndUpdate(
        pcl::PointCloud<PointT>::Ptr,
        const Eigen::Affine3f &,
        const MultilayerObjectTracking::PointXYZRPY &,
