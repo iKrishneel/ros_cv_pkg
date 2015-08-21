@@ -118,13 +118,10 @@ void MultilayerObjectTracking::callback(
     // get the input cloud at time t
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-
     
     tf::TransformListener tf_listener;
     tf::StampedTransform transform;
     ros::Time now = ros::Time(0);
-    // std::string parent_frame = "/camera_rgb_optical_frame";
-    // std::string child_frame = "/track_result";
     std::string child_frame = "/camera_rgb_optical_frame";
     std::string parent_frame = "/track_result";
     tf_listener.waitForTransform(
@@ -160,8 +157,8 @@ void MultilayerObjectTracking::callback(
     }
         
     // ROS_INFO("PROCESSING CLOUD.....");
-    // this->globalLayerPointCloudProcessing(
-    //    cloud, motion_displacement, cloud_msg->header);
+    this->globalLayerPointCloudProcessing(
+       cloud, transformation_matrix, motion_displacement, cloud_msg->header);
     // ROS_INFO("CLOUD PROCESSED AND PUBLISHED");
 
     ros::Time end = ros::Time::now();
@@ -257,6 +254,7 @@ void MultilayerObjectTracking::processDecomposedCloud(
 // estimatedTargetDescriptiveSurfelsAndUpdate
 void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     pcl::PointCloud<PointT>::Ptr cloud,
+    const Eigen::Affine3f &transformation_matrix,
     const MultilayerObjectTracking::PointXYZRPY &motion_disp,
     const std_msgs::Header header) {
     if (cloud->empty()) {
@@ -271,7 +269,9 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
                                  supervoxel_clusters,
                                  supervoxel_adjacency);
     Eigen::Matrix<float, 3, 3> rotation_matrix;
-    this->getRotationMatrixFromRPY<float>(motion_disp, rotation_matrix);
+    // TODO(change): use transformation matrix instead
+    // this->getRotationMatrixFromRPY<float>(motion_disp, rotation_matrix);
+
     
     // TODO(remove below): REF: 2304893
     std::vector<AdjacentInfo> supervoxel_list;
@@ -1384,16 +1384,11 @@ void MultilayerObjectTracking::estimatedCentroidClustering(
 void MultilayerObjectTracking::transformModelPrimitives(
     const ModelsPtr &obj_ref,
     ModelsPtr trans_models,
-    const Eigen::Matrix<float, 3, 3> &rotation,
-    const PointXYZRPY &motion_disp) {
+    const Eigen::Affine3f &transform_model) {
     if (obj_ref->empty()) {
         ROS_ERROR("ERROR! No Object Model to Transform");
         return;
     }
-    Eigen::Affine3f transform_model = Eigen::Affine3f::Identity();
-    transform_model.translation() << motion_disp.x,
-        motion_disp.y, motion_disp.z;
-    transform_model.rotate(rotation);
     for (int i = 0; i < obj_ref->size(); i++) {
         pcl::PointCloud<PointT>::Ptr trans_cloud(
             new pcl::PointCloud<PointT>);
@@ -1406,8 +1401,6 @@ void MultilayerObjectTracking::transformModelPrimitives(
         trans_models->operator[](i).cluster_cloud = trans_cloud;
         trans_models->operator[](i).cluster_centroid = trans_centroid;
     }
-    std::cout << trans_models->size() << std::endl;
-    std::cout << "Transform: \n" << transform_model.matrix() << std::endl;
 }
 
 int main(int argc, char *argv[]) {

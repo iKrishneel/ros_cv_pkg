@@ -165,6 +165,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
    */
     void globalLayerPointCloudProcessing(
        pcl::PointCloud<PointT>::Ptr,
+       const Eigen::Affine3f &,
        const MultilayerObjectTracking::PointXYZRPY &,
        const std_msgs::Header);
     template<class T>
@@ -236,8 +237,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     void transformModelPrimitives(
         const ModelsPtr &,
         ModelsPtr,
-        const Eigen::Matrix<float, 3, 3> &,
-        const PointXYZRPY &);
+        const Eigen::Affine3f &);
     
     void computeScatterMatrix(
        const pcl::PointCloud<PointT>::Ptr,
