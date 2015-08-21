@@ -157,8 +157,8 @@ void MultilayerObjectTracking::callback(
     }
         
     // ROS_INFO("PROCESSING CLOUD.....");
-    this->globalLayerPointCloudProcessing(
-       cloud, transformation_matrix, motion_displacement, cloud_msg->header);
+    // this->globalLayerPointCloudProcessing(
+    //    cloud, transformation_matrix, motion_displacement, cloud_msg->header);
     // ROS_INFO("CLOUD PROCESSED AND PUBLISHED");
 
     ros::Time end = ros::Time::now();
@@ -649,7 +649,7 @@ void MultilayerObjectTracking::globalLayerPointCloudProcessing(
     }
     ModelsPtr transform_model (new Models);
     this->transformModelPrimitives(
-        this->object_reference_, transform_model, rotation_matrix, motion_disp);
+        this->object_reference_, transform_model, transformation_matrix);
     obj_ref.clear();
     obj_ref = *transform_model;
     
