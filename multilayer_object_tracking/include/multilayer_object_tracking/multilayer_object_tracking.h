@@ -151,7 +151,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     void estimatedPFPose(
        const geometry_msgs::PoseStamped::ConstPtr &, PointXYZRPY &);
 
-    void processDecomposedCloud(
+    void voxelizeAndProcessPointCloud(
        const pcl::PointCloud<PointT>::Ptr cloud,
        const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> &,
        const std::multimap<uint32_t, uint32_t> &,
