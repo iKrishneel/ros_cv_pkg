@@ -33,9 +33,10 @@
       publish_tf: true
     </rosparam>
   </node>-->
-  <!--<node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer" 
+  
+  <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer" 
 	name="supervoxel_segmentation_decomposer" output="screen">
     <remap from="~input" to="/multilayer_object_tracking/supervoxel/cloud" />
     <remap from="~target" to="/multilayer_object_tracking/supervoxel/indices" />
-  </node>-->
+  </node>
 </launch>

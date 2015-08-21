@@ -163,7 +163,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     std::vector<AdjacentInfo> voxelAdjacencyList(
        const jsk_recognition_msgs::AdjacencyList &);
    */
-    void globalLayerPointCloudProcessing(
+    void targetDescriptiveSurfelsEstimationAndUpdate(
        pcl::PointCloud<PointT>::Ptr,
        const Eigen::Affine3f &,
        const MultilayerObjectTracking::PointXYZRPY &,
