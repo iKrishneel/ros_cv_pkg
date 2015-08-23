@@ -121,6 +121,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     // object model params
     int init_counter_;
     ModelsPtr object_reference_;
+    ModelsPtr convex_local_voxels_;
 
     // motion previous
     MotionHistory motion_history_;

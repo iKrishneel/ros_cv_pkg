@@ -7,6 +7,7 @@
 MultilayerObjectTracking::MultilayerObjectTracking() :
     init_counter_(0) {
     this->object_reference_ = ModelsPtr(new Models);
+    this->convex_local_voxels_ = ModelsPtr(new Models);
     this->clustering_client_ = this->pnh_.serviceClient<
        multilayer_object_tracking::EstimatedCentroidsClustering>(
           "estimated_centroids_clustering");
@@ -628,7 +629,8 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                    float convx_weight_ac = this->localVoxelConvexityLikelihood<
                       float>(c_centroid, c_normal, n_centroid_c, n_normal_c);
                    float convx_weight_bc = this->localVoxelConvexityLikelihood<
-                      float>(n_centroid_b, n_normal_b, n_centroid_c, n_normal_c);
+                      float>(n_centroid_b, n_normal_b, n_centroid_c,
+                             n_normal_c);
                    if (convx_weight_ab != 0.0f &&
                        convx_weight_ac != 0.0f &&
                        convx_weight_bc != 0.0f) {
@@ -652,6 +654,28 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        }
        *output = *output + *supervoxel_clusters.at(*it)->voxels_;
     }
+
+    // <<<<<<<<<<<< >>>>>>>>>>>>>>>>>>>>>>
+    // check the convex related voxel if on object in last frame
+    // TODO(move): move to the inner last loop
+    this->convex_local_voxels_->clear();
+    for (int i = 0; i < local_convex_voxels->size(); i++) {
+       Eigen::Vector4f convx_centroid = transformation_matrix.inverse() *
+          local_convex_voxels->operator[](i).cluster_centroid;
+       for (int j = 0; j < this->object_reference_->size(); j++) {
+          float rev_match_dist = static_cast<float>(pcl::distances::l2(
+                convx_centroid, this->object_reference_->operator[](
+                   j).cluster_centroid));
+          if (rev_match_dist < this->seed_resolution_) {
+             update_ref_model->push_back(local_convex_voxels->operator[](i));
+          } else {
+             this->convex_local_voxels_->push_back(   // check next time step?
+                local_convex_voxels->operator[](i));
+          }
+       }
+    }
+    // <<<<<<<<<<<< >>>>>>>>>>>>>>>>>>>>>>
+    
     ModelsPtr transform_model (new Models);
     this->transformModelPrimitives(
        this->object_reference_, transform_model, transformation_matrix);
