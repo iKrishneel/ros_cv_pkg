@@ -231,7 +231,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     void processVoxelForReferenceModel(
         const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr>,
         const std::multimap<uint32_t, uint32_t>,
-        const uint32_t, MultilayerObjectTracking::ReferenceModel &);
+        const uint32_t, MultilayerObjectTracking::ReferenceModel *);
     void transformModelPrimitives(
         const ModelsPtr &,
         ModelsPtr,
