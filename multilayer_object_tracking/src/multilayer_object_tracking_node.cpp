@@ -290,10 +290,14 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
           float distance = FLT_MAX;
           int nearest_index = -1;
           Eigen::Vector4f obj_centroid;
-          obj_centroid(0) = obj_ref[j].cluster_centroid(0) + motion_disp.x;
-          obj_centroid(1) = obj_ref[j].cluster_centroid(1) + motion_disp.y;
-          obj_centroid(2) = obj_ref[j].cluster_centroid(2) + motion_disp.z;
-          obj_centroid(3) = 0.0f;
+          // obj_centroid(0) = obj_ref[j].cluster_centroid(0) + motion_disp.x;
+          // obj_centroid(1) = obj_ref[j].cluster_centroid(1) + motion_disp.y;
+          // obj_centroid(2) = obj_ref[j].cluster_centroid(2) + motion_disp.z;
+          // obj_centroid(3) = 0.0f;
+
+          obj_centroid = transformation_matrix * obj_ref[j].cluster_centroid;
+          
+          
           for (int i = 0; i < target_voxels.size(); i++) {
               if (!target_voxels[i].flag) {
                 Eigen::Vector4f t_centroid =
@@ -351,19 +355,22 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
           // TODO(.) collect the neigbours here instead of next for
           // loop
 
-          /* - local structure info --- */
-          cv::Mat histogram_phf;
-          this->computeLocalPairwiseFeautures(
-             supervoxel_clusters, neigb, histogram_phf);
-          voxel_model->cluster_neigbors.adjacent_voxel_indices = neigb;
-          voxel_model->neigbour_pfh = histogram_phf.clone();
-          float dist_phf = static_cast<float>(
-             cv::compareHist(obj_ref[itr->first].neigbour_pfh,
-                             histogram_phf, CV_COMP_BHATTACHARYYA));
-          const float phf_scaling = 0.5;
-          float local_weight = std::exp(-1 * phf_scaling * dist_phf);
+          // - local structure info
+          bool is_voxel_adjacency_info = true;
+          float local_weight = 0.0f;
+          if (is_voxel_adjacency_info) {
+             cv::Mat histogram_phf;
+             this->computeLocalPairwiseFeautures(
+                supervoxel_clusters, neigb, histogram_phf);
+             voxel_model->cluster_neigbors.adjacent_voxel_indices = neigb;
+             voxel_model->neigbour_pfh = histogram_phf.clone();
+             float dist_phf = static_cast<float>(
+                cv::compareHist(obj_ref[itr->first].neigbour_pfh,
+                                histogram_phf, CV_COMP_BHATTACHARYYA));
+             local_weight = std::exp(-this->structure_scaling_ * dist_phf);
+             probability *= local_weight;
+          }
           // ------------------------------------
-
           for (std::vector<uint32_t>::iterator it =
                   neigb.find(v_ind)->second.begin();
                it != neigb.find(v_ind)->second.end(); it++) {
@@ -374,30 +381,30 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                 supervoxel_clusters.at(*it)->centroid_.getVector4fMap(),
                 voxel_mod);
              voxel_mod->query_index = itr->first;
-          
-             // --computation of local neigbour connectivity orientations
-             std::map<uint32_t, std::vector<uint32_t> > local_adjacency;
-             std::vector<uint32_t> list_adj;
-             for (std::multimap<uint32_t, uint32_t>::const_iterator
-                     adjacent_itr = supervoxel_adjacency.equal_range(
-                        *it).first; adjacent_itr !=
-                     supervoxel_adjacency.equal_range(*it).second;
-                  ++adjacent_itr) {
-                list_adj.push_back(adjacent_itr->second);
+             if (is_voxel_adjacency_info) {
+                std::map<uint32_t, std::vector<uint32_t> > local_adjacency;
+                std::vector<uint32_t> list_adj;
+                for (std::multimap<uint32_t, uint32_t>::const_iterator
+                        adjacent_itr = supervoxel_adjacency.equal_range(
+                           *it).first; adjacent_itr !=
+                        supervoxel_adjacency.equal_range(*it).second;
+                     ++adjacent_itr) {
+                   list_adj.push_back(adjacent_itr->second);
+                }
+                local_adjacency[*it] = list_adj;
+                cv::Mat local_phf;
+                this->computeLocalPairwiseFeautures(
+                   supervoxel_clusters, local_adjacency, local_phf);
+                voxel_mod->neigbour_pfh = local_phf.clone();
+                voxel_mod->cluster_neigbors.adjacent_voxel_indices =
+                   local_adjacency;
+                float dist_phf = static_cast<float>(
+                   cv::compareHist(obj_ref[itr->first].neigbour_pfh,
+                                   local_phf, CV_COMP_BHATTACHARYYA));
+                float phf_prob = std::exp(-this->structure_scaling_ * dist_phf);
+                local_weight = phf_prob;
+                prob *= phf_prob;
              }
-             local_adjacency[*it] = list_adj;
-             cv::Mat local_phf;
-             this->computeLocalPairwiseFeautures(
-                supervoxel_clusters, local_adjacency, local_phf);
-             voxel_mod->neigbour_pfh = local_phf.clone();
-             voxel_mod->cluster_neigbors.adjacent_voxel_indices =
-                local_adjacency;
-             dist_phf = static_cast<float>(
-                cv::compareHist(obj_ref[itr->first].neigbour_pfh,
-                                local_phf, CV_COMP_BHATTACHARYYA));
-             float phf_prob = std::exp(-1 * phf_scaling * dist_phf);
-             local_weight = phf_prob;
-             // prob *= phf_prob;
              // -----------------------------------------------------
              float matching_dist = static_cast<float>(pcl::distances::l2(
                      supervoxel_clusters.at(v_ind)->centroid_.getVector4fMap(),
@@ -656,7 +663,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     }
 
     // <<<<<<<<<<<< >>>>>>>>>>>>>>>>>>>>>>
-    // check the convex related voxel if on object in last frame
+    // check the convex related voxel if on object in (t-1) frame
     // TODO(move): move to the inner last loop
     this->convex_local_voxels_->clear();
     for (int i = 0; i < local_convex_voxels->size(); i++) {
@@ -684,7 +691,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
 
     template_cloud->clear();
     for (int i = 0; i < obj_ref.size(); i++) {
-        *template_cloud = *template_cloud + *(obj_ref[i].cluster_cloud);
+       *template_cloud = *template_cloud + *(obj_ref[i].cluster_cloud);
     }
     
     if (update_ref_model->size() > 5 && this->update_tracker_reference_) {
