@@ -81,6 +81,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        cv::Mat neigbour_pfh;
        int query_index;  // used for holding test-target match index
        bool flag;
+
+        std::vector<int> history_window;
     };
     typedef std::vector<ReferenceModel> Models;
     typedef boost::shared_ptr<Models> ModelsPtr;
@@ -125,7 +127,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
 
     // motion previous
     MotionHistory motion_history_;
-
+    int history_window_size_;
+    
     // hold current position
     Eigen::Vector4f current_pose_;
     Eigen::Vector4f previous_pose_;
