@@ -8,7 +8,7 @@
   </node>node>
   
   <node pkg="multilayer_object_tracking" type="multilayer_object_tracking_node"
-	name="multilayer_object_tracking" output="screen" >
+	name="multilayer_object_tracking" output="screen" respawn="false">
     <!--<remap from="input_cloud" to="/camera/depth_registered/points" />-->
     <remap from="input_cloud" to="/pcl_filter_utils/output/cloud" />
     <remap from="input_obj_cloud" to="/object_model/output/cloud" />

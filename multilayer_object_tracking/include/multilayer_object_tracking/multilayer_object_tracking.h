@@ -123,7 +123,6 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     // object model params
     int init_counter_;
     ModelsPtr object_reference_;
-    ModelsPtr convex_local_voxels_;
 
     // motion previous
     MotionHistory motion_history_;
@@ -236,7 +235,9 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
         const ModelsPtr &,
         ModelsPtr,
         const Eigen::Affine3f &);
-    
+    float templateCloudFilterLenght(
+        const pcl::PointCloud<PointT>::Ptr);
+        
     void computeScatterMatrix(
        const pcl::PointCloud<PointT>::Ptr,
        const Eigen::Vector4f);
