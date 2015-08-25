@@ -161,12 +161,12 @@ void MultilayerObjectTracking::callback(
     */
 
     bool is_cloud_exist = this->filterPointCloud(
-        cloud, this->current_pose_, this->object_reference_, 1.0f);
+        cloud, this->current_pose_, this->object_reference_, 1.5f);
     if (is_cloud_exist) {
         this->targetDescriptiveSurfelsEstimationAndUpdate(
-            cloud, transformation_matrix, motion_displacement, cloud_msg->header);
+           cloud, transformation_matrix, motion_displacement,
+           cloud_msg->header);
     }
-
     ros::Time end = ros::Time::now();
     std::cout << "Processing Time: " << end - begin << std::endl;
 
@@ -659,45 +659,46 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                       ReferenceModel *ref_model = new ReferenceModel;
                       this->processVoxelForReferenceModel(
                          supervoxel_clusters, supervoxel_adjacency,
-                         itr->second, ref_model);                      
-                      
-                       // check the convex voxel if on object in (t-1) frame
-                       Eigen::Vector4f convx_centroid = Eigen::Vector4f();
-                       convx_centroid = transformation_matrix.inverse() *
-                           ref_model->cluster_centroid;
-                       for (int j = 0; j < this->object_reference_->size(); j++) {
-                           float rev_match_dist = static_cast<float>(
+                         itr->second, ref_model);
+                      if (!ref_model->flag) {                      
+                         // check the convex voxel if on object in (t-1) frame
+                         Eigen::Vector4f convx_centroid = Eigen::Vector4f();
+                         convx_centroid = transformation_matrix.inverse() *
+                            ref_model->cluster_centroid;
+                         for (int j = 0; j < this->object_reference_->size(); j++) {
+                            float rev_match_dist = static_cast<float>(
                                pcl::distances::l2(convx_centroid,
-                                   this->object_reference_->operator[](
-                                       j).cluster_centroid));
-                           if (rev_match_dist < this->seed_resolution_) {
+                                  this->object_reference_->operator[](
+                                     j).cluster_centroid));
+                            if (rev_match_dist < this->seed_resolution_) {
                                float convx_dist = static_cast<float>(
-                                   cv::compareHist(ref_model->cluster_vfh_hist,
-                                       object_reference_->operator[](
-                                           j).cluster_vfh_hist,
-                                       CV_COMP_BHATTACHARYYA));
+                                  cv::compareHist(ref_model->cluster_vfh_hist,
+                                                  object_reference_->operator[](
+                                                     j).cluster_vfh_hist,
+                                                  CV_COMP_BHATTACHARYYA));
                                float convx_prob = std::exp(
-                                   -1 * this->vfh_scaling_ * convx_dist);
+                                  -1 * this->vfh_scaling_ * convx_dist);
                                if (convx_prob > this->threshold_) {
-                                   ref_model->query_index = static_cast<int>(j);
-                                   estimated_match_info.insert(std::pair<
-                                       uint32_t, ReferenceModel*>(
-                                           itr->second, ref_model));
-                                   convex_ok.push_back(itr->second);
-                                   estimated_match_prob.insert(std::pair<
-                                       uint32_t, float>(itr->second, convx_prob));
+                                  ref_model->query_index = static_cast<int>(j);
+                                  estimated_match_info.insert(
+                                     std::pair<int32_t, ReferenceModel*>(
+                                        itr->second, ref_model));
+                                  convex_ok.push_back(itr->second);
+                                  estimated_match_prob.insert(
+                                     std::pair<uint32_t, float>(
+                                        itr->second, convx_prob));
 
-                                   centroid_normal->push_back(
-                                       this->convertVector4fToPointXyzRgbNormal(
-                                           n_centroid_b, n_normal_b,
-                                           cv::Scalar(255, 0, 255)));
-                                   break;
+                                  centroid_normal->push_back(
+                                     this->convertVector4fToPointXyzRgbNormal(
+                                        n_centroid_b, n_normal_b,
+                                        cv::Scalar(255, 0, 255)));
+                                  break;
                                }
-                           } else {  // check next time step?
-                               // ROS_WARN("\033[36mADDING CONVEX UNKNOWN\033[0m");
+                            } else {
                                convex_local_voxels->push_back(*ref_model);
-                           }
-                       }
+                            }
+                         }
+                      }
                    }
                 }
                 // ------------------------------------------
@@ -891,6 +892,12 @@ void MultilayerObjectTracking::processVoxelForReferenceModel(
             ref_model->cluster_cloud,
             ref_model->cluster_normals,
             ref_model->cluster_vfh_hist);
+
+        std::cout << "\033[34mVFH: \n" << match_index << "\t"
+                  << ref_model->cluster_vfh_hist.size() << "\t"
+                  << ref_model->cluster_vfh_hist.type()
+                  << "\033[0m"<< std::endl;
+        
         this->computeColorHistogram(
             ref_model->cluster_cloud,
             ref_model->cluster_color_hist);
@@ -914,6 +921,8 @@ void MultilayerObjectTracking::processVoxelForReferenceModel(
         local_adj[match_index] = adjacent_voxels;
         this->computeLocalPairwiseFeautures(
             supervoxel_clusters, local_adj, ref_model->neigbour_pfh);
+    } else {
+       ref_model->flag = true;
     }
 }
 
@@ -1471,9 +1480,10 @@ float MultilayerObjectTracking::templateCloudFilterLenght(
         return -1.0f;
     }
     Eigen::Vector4f pivot_pt;
-    pcl::compute3DCentroid<PointT, float>(*cloud, pivot_pt);    
+    pcl::compute3DCentroid<PointT, float>(*cloud, pivot_pt);
     Eigen::Vector4f max_pt;
     pcl::getMaxDistance<PointT>(*cloud, pivot_pt, max_pt);
+    pivot_pt(3) = 0.0f;
     max_pt(3) = 0.0f;
     float dist = static_cast<float>(pcl::distances::l2(max_pt, pivot_pt));
     return (dist);
