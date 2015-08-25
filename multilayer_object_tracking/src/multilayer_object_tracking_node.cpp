@@ -159,11 +159,13 @@ void MultilayerObjectTracking::callback(
         *cloud = *cloud + *trans_cloud;
     }
     */
-        
-    // ROS_INFO("PROCESSING CLOUD.....");
-    this->targetDescriptiveSurfelsEstimationAndUpdate(
-        cloud, transformation_matrix, motion_displacement, cloud_msg->header);
-    // ROS_INFO("CLOUD PROCESSED AND PUBLISHED");
+
+    bool is_cloud_exist = this->filterPointCloud(
+        cloud, this->current_pose_, this->object_reference_, 1.0f);
+    if (is_cloud_exist) {
+        this->targetDescriptiveSurfelsEstimationAndUpdate(
+            cloud, transformation_matrix, motion_displacement, cloud_msg->header);
+    }
 
     ros::Time end = ros::Time::now();
     std::cout << "Processing Time: " << end - begin << std::endl;
@@ -1466,14 +1468,62 @@ float MultilayerObjectTracking::templateCloudFilterLenght(
     const pcl::PointCloud<PointT>::Ptr cloud) {
     if (cloud->empty()) {
         ROS_ERROR("ERROR! Input Cloud is Empty");
-        return;
+        return -1.0f;
     }
     Eigen::Vector4f pivot_pt;
-    pcl::compute3DCentroid<PointT, float>(*cloud, pivot_pt);
+    pcl::compute3DCentroid<PointT, float>(*cloud, pivot_pt);    
     Eigen::Vector4f max_pt;
-    pcl::getMaxDistance(cloud, pivot_pt, max_pt);
+    pcl::getMaxDistance<PointT>(*cloud, pivot_pt, max_pt);
+    max_pt(3) = 0.0f;
     float dist = static_cast<float>(pcl::distances::l2(max_pt, pivot_pt));
-    return dist * 2;
+    return (dist);
+}
+
+bool MultilayerObjectTracking::filterPointCloud(
+    pcl::PointCloud<PointT>::Ptr cloud,
+    const Eigen::Vector4f tracker_position,
+    const ModelsPtr template_model,
+    const float scaling_factor) {
+    if (cloud->empty() || template_model->empty()) {
+        ROS_ERROR("ERROR! Input data is empty is Empty");
+        return false;
+    }
+    pcl::PointCloud<PointT>::Ptr template_cloud(new pcl::PointCloud<PointT>);
+    for (int i = 0; i < template_model->size(); i++) {
+        *template_cloud = *template_cloud + *(
+            template_model->operator[](i).cluster_cloud);
+    }
+    float filter_distance = this->templateCloudFilterLenght(template_cloud);
+    filter_distance *= scaling_factor;
+    if (filter_distance < 0.05f) {
+        return false;
+    }
+    pcl::PointCloud<PointT>::Ptr cloud_filter(new pcl::PointCloud<PointT>);
+    pcl::PassThrough<PointT> pass;
+    pass.setInputCloud(cloud);
+    pass.setFilterFieldName("x");
+    float min_x = tracker_position(0) - filter_distance;
+    float max_x = tracker_position(0) + filter_distance;
+    pass.setFilterLimits(min_x, max_x);
+    pass.filter(*cloud_filter);
+    pass.setInputCloud(cloud_filter);
+    pass.setFilterFieldName("y");
+    float min_y = tracker_position(1) - filter_distance;
+    float max_y = tracker_position(1) + filter_distance;
+    pass.setFilterLimits(min_y, max_y);
+    pass.filter(*cloud_filter);
+    pass.setInputCloud(cloud_filter);
+    pass.setFilterFieldName("z");
+    float min_z = tracker_position(2) - filter_distance;
+    float max_z = tracker_position(2) + filter_distance;
+    pass.setFilterLimits(min_z, max_z);
+    pass.filter(*cloud_filter);
+    if (cloud_filter->empty()) {
+        return false;
+    }
+    cloud->empty();
+    pcl::copyPointCloud<PointT, PointT>(*cloud_filter, *cloud);
+    return true;
 }
 
 void MultilayerObjectTracking::transformModelPrimitives(

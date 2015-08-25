@@ -45,6 +45,7 @@
 #include <pcl/tracking/tracking.h>
 #include <pcl/common/common.h>
 #include <pcl/registration/distances.h>
+#include <pcl/filters/passthrough.h>
 
 #include <tf/transform_listener.h>
 #include <tf/transform_broadcaster.h>
@@ -237,7 +238,12 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
         const Eigen::Affine3f &);
     float templateCloudFilterLenght(
         const pcl::PointCloud<PointT>::Ptr);
-        
+    bool filterPointCloud(
+        pcl::PointCloud<PointT>::Ptr,
+        const Eigen::Vector4f,
+        const ModelsPtr,
+        const float);
+    
     void computeScatterMatrix(
        const pcl::PointCloud<PointT>::Ptr,
        const Eigen::Vector4f);
