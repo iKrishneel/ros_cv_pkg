@@ -657,21 +657,8 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                       ReferenceModel *ref_model = new ReferenceModel;
                       this->processVoxelForReferenceModel(
                          supervoxel_clusters, supervoxel_adjacency,
-                         itr->second, ref_model);
-
+                         itr->second, ref_model);                      
                       
-                      std::cout << "\033[36m--DEBUGGER" << std::endl;
-                      std::cout << ref_model->cluster_vfh_hist.size() << std::endl;
-                      
-                      
-                      // local_convex_voxels->push_back(*ref_model);
-
-                       // hold the convex related voxels
-                       // template_convex_ref.insert(
-                       //     std::pair<uint32_t, ReferenceModel*>(
-                       //         itr->second, ref_model));
-
-                       // <<<<<<<<<<<< >>>>>>>>>>>>>>>>>>>>>>
                        // check the convex voxel if on object in (t-1) frame
                        Eigen::Vector4f convx_centroid = Eigen::Vector4f();
                        convx_centroid = transformation_matrix.inverse() *
@@ -697,14 +684,13 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                                    convex_ok.push_back(itr->second);
                                    estimated_match_prob.insert(std::pair<
                                        uint32_t, float>(itr->second, convx_prob));
-                                   std::cout << "Matching: "<< j << std::endl;
+                                   // std::cout << "Matching: "<< j << std::endl;
                                    break;
                                }
                            } else {  // check next time step?
                                this->convex_local_voxels_->push_back(*ref_model);
                            }
                        }
-                       // <<<<<<<<<<<< >>>>>>>>>>>>>>>>>>>>>>
                    }
                 }
                 // ------------------------------------------
@@ -716,38 +702,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     for (int i = 0; i < convex_ok.size(); i++) {
         best_match_index.push_back(convex_ok[i]);
     }
-
-    
-    /*
-    // check the convex related voxel if on object in (t-1) frame
-    // TODO(move): move to the inner last loop
-    this->convex_local_voxels_->clear();
-
-    for (int i = 0; i < local_convex_voxels->size(); i++) {
-        Eigen::Vector4f convx_centroid = transformation_matrix.inverse() *
-          local_convex_voxels->operator[](i).cluster_centroid;
-        for (int j = 0; j < this->object_reference_->size(); j++) {
-          float rev_match_dist = static_cast<float>(pcl::distances::l2(
-                convx_centroid, this->object_reference_->operator[](
-                    j).cluster_centroid));
-          if (rev_match_dist < this->seed_resolution_) {
-              // update_ref_model->push_back(local_convex_voxels->operator[](i));
-
-              float convx_dist = static_cast<float>(cv::compareHist(
-                      local_convex_voxels->operator[](i).cluster_vfh_hist,
-                      object_reference_->operator[](j).cluster_vfh_hist,
-                      CV_COMP_BHATTACHARYYA));
-              float convx_prob = std::exp(-1 * this->vfh_scaling_ * convx_dist);
-              if (convx_prob > this->threshold_) {
-                  // best_match_index.push_back()
-              }
-          } else {
-             this->convex_local_voxels_->push_back(   // check next time step?
-                local_convex_voxels->operator[](i));
-          }
-       }
-    }
-    */
     
     // transformation
     ModelsPtr transform_model (new Models);
@@ -817,7 +771,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                          float>(j, i);
                 }
              }
-             /*
              // cv::normalize(local_phf, local_phf, 0, 1,
              //               cv::NORM_MINMAX, -1, cv::Mat());
              int query_idx = estimated_match_info.find(
@@ -834,7 +787,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
              obj_ref[query_idx].flag = false;
              this->object_reference_->operator[](query_idx) =
                 obj_ref[query_idx];
-             */
           }
        }
        this->motion_history_.push_back(this->tracker_pose_);
