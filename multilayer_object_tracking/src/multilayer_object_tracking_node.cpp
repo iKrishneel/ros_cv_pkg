@@ -697,8 +697,8 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     template_cloud->clear();
     for (int i = 0; i < obj_ref.size(); i++) {
        *template_cloud = *template_cloud + *(obj_ref[i].cluster_cloud);
-       this->object_reference_->operator[](i).cluster_cloud =
-           obj_ref[i].cluster_cloud;
+       // this->object_reference_->operator[](i).cluster_cloud =
+       //     obj_ref[i].cluster_cloud;
 
        // check matching history
        /*
