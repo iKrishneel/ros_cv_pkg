@@ -32,6 +32,7 @@ class SupervoxelSegmentation {
     int eps_min_samples_;
     float vfh_scaling_;
     float color_scaling_;
+    float structure_scaling_;
     bool update_tracker_reference_;
     boost::mutex mutex_;
    

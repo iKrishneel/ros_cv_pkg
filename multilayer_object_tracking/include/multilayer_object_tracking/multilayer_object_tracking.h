@@ -45,6 +45,7 @@
 #include <pcl/tracking/tracking.h>
 #include <pcl/common/common.h>
 #include <pcl/registration/distances.h>
+#include <pcl/filters/passthrough.h>
 
 #include <tf/transform_listener.h>
 #include <tf/transform_broadcaster.h>
@@ -81,6 +82,9 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        cv::Mat neigbour_pfh;
        int query_index;  // used for holding test-target match index
        bool flag;
+
+        std::vector<int> history_window;
+        int match_counter;
     };
     typedef std::vector<ReferenceModel> Models;
     typedef boost::shared_ptr<Models> ModelsPtr;
@@ -124,12 +128,13 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
 
     // motion previous
     MotionHistory motion_history_;
-
+    int history_window_size_;
+    int update_counter_;
+    
     // hold current position
     Eigen::Vector4f current_pose_;
     Eigen::Vector4f previous_pose_;
     PointXYZRPY tracker_pose_;  // temp variable remove later
-    Eigen::Quaternion<float> prev_quaternion;
     
  protected:
     void onInit();
@@ -158,10 +163,6 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        std::vector<AdjacentInfo> &,
        ModelsPtr &, bool = true, bool = true, bool = true, bool = false);
 
-   /*
-    std::vector<AdjacentInfo> voxelAdjacencyList(
-       const jsk_recognition_msgs::AdjacencyList &);
-   */
     void targetDescriptiveSurfelsEstimationAndUpdate(
        pcl::PointCloud<PointT>::Ptr,
        const Eigen::Affine3f &,
@@ -232,11 +233,18 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     void processVoxelForReferenceModel(
         const std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr>,
         const std::multimap<uint32_t, uint32_t>,
-        const uint32_t, MultilayerObjectTracking::ReferenceModel &);
+        const uint32_t, MultilayerObjectTracking::ReferenceModel *);
     void transformModelPrimitives(
         const ModelsPtr &,
         ModelsPtr,
         const Eigen::Affine3f &);
+    float templateCloudFilterLenght(
+        const pcl::PointCloud<PointT>::Ptr);
+    bool filterPointCloud(
+        pcl::PointCloud<PointT>::Ptr,
+        const Eigen::Vector4f,
+        const ModelsPtr,
+        const float);
     
     void computeScatterMatrix(
        const pcl::PointCloud<PointT>::Ptr,
