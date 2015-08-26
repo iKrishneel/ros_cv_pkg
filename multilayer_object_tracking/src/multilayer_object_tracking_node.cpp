@@ -696,9 +696,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                                   break;
                                }
                             } else {
-                                // convex_local_voxels->push_back(*ref_model);
                                convex_local_voxels[itr->second] = ref_model;
-                               std::cout << "\033[31m " << itr->second << std::endl;
                             }
                          }
                       }
@@ -728,9 +726,9 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     }
     std::cout <<"Estimate Size: " << estimated_match_prob.size() << std::endl;
 
-    std::cout << "\033[036m REFERENCE INFO \033[0m"  << object_reference_->size()
-              << "\t" << convex_local_voxels.size() 
-              << std::endl;
+    std::cout << "\033[036m REFERENCE INFO \033[0m"
+              << object_reference_->size() << "\t"
+              << convex_local_voxels.size() << std::endl;
     
     if (best_match_index.size() > 2 && this->update_tracker_reference_) {
        ROS_INFO("\n\033[32mUpdating Tracking Reference Model\033[0m \n");
