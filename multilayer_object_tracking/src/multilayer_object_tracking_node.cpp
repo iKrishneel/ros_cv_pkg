@@ -307,6 +307,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
           // obj_centroid(2) = obj_ref[j].cluster_centroid(2) + motion_disp.z;
           // obj_centroid(3) = 0.0f;
           obj_centroid = transformation_matrix * obj_ref[j].cluster_centroid;
+          
           for (int i = 0; i < target_voxels.size(); i++) {
               if (!target_voxels[i].flag) {
                 Eigen::Vector4f t_centroid =
@@ -340,7 +341,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     // set of patches that match the trajectory
     ROS_INFO("\033[35m MATCHING THROUGH NIEGBOUR SEARCH \033[0m");
     int counter = 0;
-    float connectivity_lenght = 1.0f;
+    float connectivity_lenght = 1.5f;
     pcl::PointCloud<PointT>::Ptr est_centroid_cloud(
        new pcl::PointCloud<PointT>);
     std::multimap<uint32_t, Eigen::Vector3f> estimated_centroids;
@@ -525,8 +526,10 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
         if (matching_dist < this->seed_resolution_ / connectivity_lenght) {
             best_match_index.push_back(*it);
             pt.r = 255;
+            pt.b = 255;
         } else {
             pt.g = 255;
+            pt.b = 255;
         }
         inliers->push_back(pt);
     }
@@ -1053,7 +1056,7 @@ void MultilayerObjectTracking::computeCloudClusterRPYHistogram(
        return;
     }
     bool is_gfpfh = false;
-    bool is_vfh = true;
+    bool is_vfh = !is_gfpfh;
     if (is_gfpfh) {
         pcl::PointCloud<pcl::PointXYZL>::Ptr object(
             new pcl::PointCloud<pcl::PointXYZL>);
