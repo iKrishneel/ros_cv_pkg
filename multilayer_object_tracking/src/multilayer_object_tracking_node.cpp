@@ -98,6 +98,12 @@ void MultilayerObjectTracking::objInitCallback(
        this->voxelizeAndProcessPointCloud(
           cloud, supervoxel_clusters, supervoxel_adjacency,
           supervoxel_list, this->object_reference_, true, true, true, true);
+
+       // publish selected object for PF init
+       sensor_msgs::PointCloud2 ros_templ;
+       pcl::toROSMsg(*cloud, ros_templ);
+       ros_templ.header = cloud_msg->header;
+       this->pub_templ_.publish(ros_templ);
     }
 }
 
@@ -719,11 +725,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     obj_ref.clear();
     obj_ref = *transform_model;
 
-    // copy
-    template_cloud->clear();
-    for (int i = 0; i < obj_ref.size(); i++) {
-       *template_cloud = *template_cloud + *(obj_ref[i].cluster_cloud);
-    }
+
     std::cout <<"Estimate Size: " << estimated_match_prob.size() << std::endl;
 
     std::cout << "\033[036m REFERENCE INFO \033[0m"
@@ -791,13 +793,12 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
 
        // this->object_reference_->clear();
        std::cout << "Updating Ref Model: " << matching_surfels.size()
-                 << "\t Convex: " << convex_local_voxels.size() 
+                 << "\t Convex: " << convex_local_voxels.size()
                  << std::endl;
        
-       for (std::map<int, ReferenceModel>::iterator it = matching_surfels.begin();
-            it != matching_surfels.end(); it++) {
+       for (std::map<int, ReferenceModel>::iterator it =
+               matching_surfels.begin(); it != matching_surfels.end(); it++) {
            this->object_reference_->operator[](it->first) = it->second;
-           //  this->object_reference_->push_back(it->second);
        }
        
        // for (int k = 0; k < convex_local_voxels->size(); k++) {
@@ -828,11 +829,17 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     } else {
        ROS_WARN("TRACKING MODEL CURRENTLY SET TO STATIC\n");
     }
+    template_cloud->clear();
+    for (int i = 0; i < this->object_reference_->size(); i++) {
+       *template_cloud = *template_cloud + *(
+          this->object_reference_->operator[](i).cluster_cloud);
+    }
+
+    
     // std::cout << "\n -- Motion history: " << motion_history_.size()
     //           << std::endl;
-
-    std::cout << "\033[038m REFERENCE INFO \033[0m"  << object_reference_->size()
-              << std::endl;
+    std::cout << "\033[038m REFERENCE INFO \033[0m"
+              << object_reference_->size() << std::endl;
     
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
@@ -844,10 +851,13 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
 
     // visualization of tracking template
 
-    sensor_msgs::PointCloud2 ros_templ;
-    pcl::toROSMsg(*template_cloud, ros_templ);
-    ros_templ.header = header;
-    this->pub_templ_.publish(ros_templ);
+    if (this->update_filter_template_) {
+       sensor_msgs::PointCloud2 ros_templ;
+       pcl::toROSMsg(*template_cloud, ros_templ);
+       ros_templ.header = header;
+       this->pub_templ_.publish(ros_templ);
+    }
+    
     
     // visualization of target surfels
     std::vector<pcl::PointIndices> all_indices;

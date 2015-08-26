@@ -106,4 +106,5 @@ void SupervoxelSegmentation::configCallback(
     this->color_scaling_ = static_cast<float>(config.color_scaling);
     this->structure_scaling_ = static_cast<float>(config.structure_scaling);
     this->update_tracker_reference_ = config.update_tracker_reference;
+    this->update_filter_template_ = config.update_filter_template;
 }
