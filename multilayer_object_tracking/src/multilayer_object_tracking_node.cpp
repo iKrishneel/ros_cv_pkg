@@ -660,7 +660,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                       this->processVoxelForReferenceModel(
                          supervoxel_clusters, supervoxel_adjacency,
                          itr->second, ref_model);
-                      if (!ref_model->flag) {                      
+                      if (!ref_model->flag) {
                          // check the convex voxel if on object in (t-1) frame
                          Eigen::Vector4f convx_centroid = Eigen::Vector4f();
                          convx_centroid = transformation_matrix.inverse() *
@@ -991,6 +991,7 @@ T MultilayerObjectTracking::localVoxelConvexityLikelihood(
     */
     if ((n_centroid - c_centroid).dot(n_normal) > 0) {
        weight = static_cast<T>(std::pow(1 - (c_normal.dot(n_normal)), 2));
+       std::cout << "Convexity Weight: " << weight << std::endl;
        return 1.0f;
     } else {
        // weight = static_cast<T>(1 - (c_normal.dot(n_normal)));
