@@ -84,6 +84,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        bool flag;
 
         std::vector<int> history_window;
+        int match_counter;
     };
     typedef std::vector<ReferenceModel> Models;
     typedef boost::shared_ptr<Models> ModelsPtr;
@@ -128,6 +129,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     // motion previous
     MotionHistory motion_history_;
     int history_window_size_;
+    int update_counter_;
     
     // hold current position
     Eigen::Vector4f current_pose_;

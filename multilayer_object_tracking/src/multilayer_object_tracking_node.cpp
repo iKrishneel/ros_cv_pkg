@@ -5,7 +5,9 @@
 #include <map>
 
 MultilayerObjectTracking::MultilayerObjectTracking() :
-    init_counter_(0), history_window_size_(5) {
+    init_counter_(0),
+    history_window_size_(5),
+    update_counter_(0) {
     this->object_reference_ = ModelsPtr(new Models);
     this->clustering_client_ = this->pnh_.serviceClient<
        multilayer_object_tracking::EstimatedCentroidsClustering>(
@@ -241,6 +243,7 @@ void MultilayerObjectTracking::voxelizeAndProcessPointCloud(
                 supervoxel->centroid_.getVector4fMap();
           }
           ref_model.flag = false;
+          ref_model.match_counter = 0;
           models->push_back(ref_model);
        }
     }
@@ -293,11 +296,11 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
           float distance = FLT_MAX;
           int nearest_index = -1;
           Eigen::Vector4f obj_centroid;
-          obj_centroid(0) = obj_ref[j].cluster_centroid(0) + motion_disp.x;
-          obj_centroid(1) = obj_ref[j].cluster_centroid(1) + motion_disp.y;
-          obj_centroid(2) = obj_ref[j].cluster_centroid(2) + motion_disp.z;
-          obj_centroid(3) = 0.0f;
-          // obj_centroid = transformation_matrix * obj_ref[j].cluster_centroid;
+          // obj_centroid(0) = obj_ref[j].cluster_centroid(0) + motion_disp.x;
+          // obj_centroid(1) = obj_ref[j].cluster_centroid(1) + motion_disp.y;
+          // obj_centroid(2) = obj_ref[j].cluster_centroid(2) + motion_disp.z;
+          // obj_centroid(3) = 0.0f;
+          obj_centroid = transformation_matrix * obj_ref[j].cluster_centroid;
           for (int i = 0; i < target_voxels.size(); i++) {
               if (!target_voxels[i].flag) {
                 Eigen::Vector4f t_centroid =
@@ -331,7 +334,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     // set of patches that match the trajectory
     ROS_INFO("\033[35m MATCHING THROUGH NIEGBOUR SEARCH \033[0m");
     int counter = 0;
-    float connectivity_lenght = 2.0f;
+    float connectivity_lenght = 1.0f;
     pcl::PointCloud<PointT>::Ptr est_centroid_cloud(
        new pcl::PointCloud<PointT>);
     std::multimap<uint32_t, Eigen::Vector3f> estimated_centroids;
@@ -553,7 +556,10 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     std::vector<uint32_t> neigb_lookup;
     neigb_lookup = best_match_index;   // copy the best set
     std::vector<uint32_t> convex_ok;   // hold the added convex voxel
-    ModelsPtr convex_local_voxels(new Models);
+    // ModelsPtr convex_local_voxels(new Models);
+
+    std::map<uint32_t, ReferenceModel*> convex_local_voxels;
+    
     for (std::vector<uint32_t>::iterator it = best_match_index.begin();
          it != best_match_index.end(); it++) {
        std::pair<std::multimap<uint32_t, uint32_t>::iterator,
@@ -567,12 +573,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        centroid_normal->push_back(
           this->convertVector4fToPointXyzRgbNormal(
              c_centroid, c_normal, cv::Scalar(255, 0, 0)));
-       
-       // update the reference models with direct match voxels
-       // ReferenceModel ref_model;
-       // this->processVoxelForReferenceModel(
-       //    supervoxel_clusters, supervoxel_adjacency, *it, ref_model);
-       // update_ref_model->push_back(ref_model);
        
        // neigbour voxel convex relationship
        for (std::multimap<uint32_t, uint32_t>::iterator itr = ret.first;
@@ -599,6 +599,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                 if (convx_weight > 0.0f) {
                    *output = *output + *supervoxel_clusters.at(
                       itr->second)->voxels_;
+                   
                    centroid_normal->push_back(
                       this->convertVector4fToPointXyzRgbNormal(
                          n_centroid, n_normal, cv::Scalar(0, 255, 0)));
@@ -695,13 +696,15 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                                   break;
                                }
                             } else {
-                               convex_local_voxels->push_back(*ref_model);
+                                // convex_local_voxels->push_back(*ref_model);
+                               convex_local_voxels[itr->second] = ref_model;
+                               std::cout << "\033[31m " << itr->second << std::endl;
                             }
                          }
                       }
                    }
                 }
-                // ------------------------------------------
+                // ------------------ ------------------------
              }
           }
        }
@@ -723,16 +726,15 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     for (int i = 0; i < obj_ref.size(); i++) {
        *template_cloud = *template_cloud + *(obj_ref[i].cluster_cloud);
     }
-
-    std::cout << "CONVEX SIZE: " << convex_local_voxels->size() << std::endl;
     std::cout <<"Estimate Size: " << estimated_match_prob.size() << std::endl;
-    
-    if (best_match_index.size() > 3 && this->update_tracker_reference_) {
-       ROS_INFO("\n\033[32mUpdating Tracking Reference Model\033[0m \n");
 
+    std::cout << "\033[036m REFERENCE INFO \033[0m"  << object_reference_->size()
+              << "\t" << convex_local_voxels.size() 
+              << std::endl;
+    
+    if (best_match_index.size() > 2 && this->update_tracker_reference_) {
+       ROS_INFO("\n\033[32mUpdating Tracking Reference Model\033[0m \n");
        std::map<int, ReferenceModel> matching_surfels;
-       
-       // adapt using second order autoregressive model       
        for (std::vector<uint32_t>::iterator it = best_match_index.begin();
             it != best_match_index.end(); it++) {
            float adaptive_factor = estimated_match_prob.find(*it)->second;
@@ -743,42 +745,27 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                   ret.first; itr != ret.second; ++itr) {
               cv::Mat nvfh_hist = cv::Mat::zeros(
                 itr->second->cluster_vfh_hist.size(), CV_32F);
-             for (int i = 0; i < itr->second->cluster_vfh_hist.rows; i++) {
-                for (int j = 0; j < itr->second->cluster_vfh_hist.cols; j++) {
-                   nvfh_hist.at<float>(i, j) = itr->second->cluster_vfh_hist.at<
-                      float>(i, j) * adaptive_factor + (1 - adaptive_factor) *
-                      obj_ref[itr->second->query_index].cluster_vfh_hist.at<
-                         float>(i, j);
-                }
-             }
-             // cv::normalize(nvfh_hist, nvfh_hist, 0, 1,
-             //               cv::NORM_MINMAX, -1, cv::Mat());
-             cv::Mat col_hist = itr->second->cluster_color_hist.clone();
+              nvfh_hist = itr->second->cluster_vfh_hist * adaptive_factor +
+                  obj_ref[itr->second->query_index].cluster_vfh_hist *
+                  (1 - adaptive_factor);
+             cv::normalize(nvfh_hist, nvfh_hist, 0, 1,
+                           cv::NORM_MINMAX, -1, cv::Mat());
              cv::Mat ncolor_hist = cv::Mat::zeros(
-                col_hist.size(), col_hist.type());
-             for (int i = 0; i < col_hist.rows; i++) {
-                for (int j = 0; j < col_hist.cols; j++) {
-                   ncolor_hist.at<float>(i, j) = col_hist.at<float>(i, j) *
-                      adaptive_factor + (1 - adaptive_factor) * obj_ref[
-                         itr->second->query_index].cluster_color_hist.at<float>(
-                            i, j);
-                }
-             }
-             // cv::normalize(ncolor_hist, ncolor_hist, 0, 1,
-             //               cv::NORM_MINMAX, -1, cv::Mat());
+                itr->second->cluster_color_hist.size(),
+                itr->second->cluster_color_hist.type());
+             ncolor_hist = itr->second->cluster_color_hist * adaptive_factor +
+                 obj_ref[itr->second->query_index].cluster_color_hist *
+                 (1 - adaptive_factor);
+             cv::normalize(ncolor_hist, ncolor_hist, 0, 1,
+                           cv::NORM_MINMAX, -1, cv::Mat());
              cv::Mat local_phf = cv::Mat::zeros(
                 itr->second->neigbour_pfh.size(),
                 itr->second->neigbour_pfh.type());
-             for (int j = 0; j < local_phf.rows; j++) {
-                for (int i = 0; i < local_phf.cols; i++) {
-                   local_phf.at<float>(j, i) = itr->second->neigbour_pfh.at<
-                      float>(j, i) * adaptive_factor + (1 - adaptive_factor) *
-                       obj_ref[itr->second->query_index].neigbour_pfh.at<
-                         float>(j, i);
-                }
-             }
-             // cv::normalize(local_phf, local_phf, 0, 1,
-             //               cv::NORM_MINMAX, -1, cv::Mat());
+             local_phf = itr->second->neigbour_pfh * adaptive_factor +
+                 obj_ref[itr->second->query_index].neigbour_pfh *
+                 (1 - adaptive_factor);
+             cv::normalize(local_phf, local_phf, 0, 1,
+                           cv::NORM_MINMAX, -1, cv::Mat());
              int query_idx = estimated_match_info.find(
                 *it)->second->query_index;
              obj_ref[query_idx].cluster_cloud = supervoxel_clusters.at(
@@ -792,7 +779,11 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
              obj_ref[query_idx].neigbour_pfh = local_phf.clone();
              obj_ref[query_idx].flag = false;
              matching_surfels[query_idx] = obj_ref[query_idx];
+
+             obj_ref[query_idx].match_counter++;
              
+             
+             // std::cout << "\033[32mReplacing: " << query_idx << std::endl;
              // this->object_reference_->operator[](query_idx) =
              //     obj_ref[query_idx];
           }
@@ -800,18 +791,44 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        this->motion_history_.push_back(this->tracker_pose_);
        this->previous_pose_ = this->current_pose_;
 
-       this->object_reference_->clear();
-       std::cout << "Updating Ref Model: " << matching_surfels.size() << std::endl;
+       // this->object_reference_->clear();
+       std::cout << "Updating Ref Model: " << matching_surfels.size()
+                 << "\t Convex: " << convex_local_voxels.size() 
+                 << std::endl;
+       
        for (std::map<int, ReferenceModel>::iterator it = matching_surfels.begin();
             it != matching_surfels.end(); it++) {
-           this->object_reference_->push_back(it->second);
+           this->object_reference_->operator[](it->first) = it->second;
+           //  this->object_reference_->push_back(it->second);
        }
-       for (int k = 0; k < convex_local_voxels->size(); k++) {
-           this->object_reference_->push_back(
-               convex_local_voxels->operator[](k));
+       
+       // for (int k = 0; k < convex_local_voxels->size(); k++) {
+       //     this->object_reference_->push_back(
+       //         convex_local_voxels->operator[](k));
+       // }
+       
+       for (std::map<uint32_t, ReferenceModel*>::iterator it =
+                convex_local_voxels.begin(); it != convex_local_voxels.begin();
+            it++) {
+           this->object_reference_->push_back(*(it->second));
        }
+       
+       ModelsPtr tmp_model(new Models);
+       if (this->update_counter_++ == this->history_window_size_) {
+           for (int i = 0; i < this->object_reference_->size(); i++) {
+               if (this->object_reference_->operator[](i).match_counter > 0) {
+                   tmp_model->push_back(this->object_reference_->operator[](i));
+               } else {
+                   std::cout << "\033[033m OUTDATED MODEL \033[0m" << std::endl;
+               }
+           }
+           this->update_counter_ = 0;
+           this->object_reference_->clear();
+           this->object_reference_ = tmp_model;
+       }
+       
     } else {
-       ROS_WARN("\nTRACKING MODEL CURRENTLY SET TO STATIC\n");
+       ROS_WARN("TRACKING MODEL CURRENTLY SET TO STATIC\n");
     }
     // std::cout << "\n -- Motion history: " << motion_history_.size()
     //           << std::endl;
@@ -891,13 +908,7 @@ void MultilayerObjectTracking::processVoxelForReferenceModel(
         this->computeCloudClusterRPYHistogram(
             ref_model->cluster_cloud,
             ref_model->cluster_normals,
-            ref_model->cluster_vfh_hist);
-
-        std::cout << "\033[34mVFH: \n" << match_index << "\t"
-                  << ref_model->cluster_vfh_hist.size() << "\t"
-                  << ref_model->cluster_vfh_hist.type()
-                  << "\033[0m"<< std::endl;
-        
+            ref_model->cluster_vfh_hist);        
         this->computeColorHistogram(
             ref_model->cluster_cloud,
             ref_model->cluster_color_hist);
@@ -991,7 +1002,6 @@ T MultilayerObjectTracking::localVoxelConvexityLikelihood(
     */
     if ((n_centroid - c_centroid).dot(n_normal) > 0) {
        weight = static_cast<T>(std::pow(1 - (c_normal.dot(n_normal)), 2));
-       std::cout << "Convexity Weight: " << weight << std::endl;
        return 1.0f;
     } else {
        // weight = static_cast<T>(1 - (c_normal.dot(n_normal)));
