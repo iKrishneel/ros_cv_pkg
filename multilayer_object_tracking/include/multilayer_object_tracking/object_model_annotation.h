@@ -80,6 +80,10 @@ class ObjectModelAnnotation {
     void compute3DCentroids(
        const pcl::PointCloud<PointT>::Ptr,
        Eigen::Vector4f &);
+    void backgroundPointCloudIndices(
+        pcl::PointCloud<PointT>::Ptr,
+        const cv::Mat &image,
+        const cv::Size, const cv::Rect_<int>);
 };
 
 

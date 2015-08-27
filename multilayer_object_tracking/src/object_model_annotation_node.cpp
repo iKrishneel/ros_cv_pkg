@@ -2,12 +2,11 @@
 #include <multilayer_object_tracking/object_model_annotation.h>
 
 ObjectModelAnnotation::ObjectModelAnnotation() {
-
-    this->subscribe();
     this->onInit();
 }
 
 void ObjectModelAnnotation::onInit() {
+    this->subscribe();
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/object_model/output/cloud", 1);
     this->pub_image_ = this->pnh_.advertise<sensor_msgs::Image>(
@@ -49,12 +48,16 @@ void ObjectModelAnnotation::callback(
     }
     cv::Mat image = cv_bridge::toCvShare(
        image_msg, image_msg->encoding)->image;
-    
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-
+    pcl::PointCloud<PointT>::Ptr bg_cloud(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*cloud, *bg_cloud);
+    
     this->getAnnotatedObjectCloud(cloud, image, screen_rect);
 
+    this->backgroundPointCloudIndices(cloud, image, image.size(), screen_rect);
+    
+    
     Eigen::Vector4f centroid;
     this->compute3DCentroids(cloud, centroid);
     geometry_msgs::PoseStamped ros_pose;
@@ -144,6 +147,52 @@ void ObjectModelAnnotation::imageToPointCloudIndices(
           cloud->points[i] = pt;
        }
     }
+}
+
+void ObjectModelAnnotation::backgroundPointCloudIndices(
+    pcl::PointCloud<PointT>::Ptr cloud,
+    const cv::Mat &img,
+    const cv::Size size, const cv::Rect_<int> rect) {
+    if (cloud->empty()) {
+        ROS_ERROR("-- Cannot Process Empty Cloud");
+        return;
+    }
+    int lenght = std::max(rect.width, rect.height);
+    int center_x = rect.x + rect.width/2;
+    int center_y = rect.y + rect.height/2;
+    
+    int min_x = center_x - lenght;
+    min_x = ((min_x < 0) ? 0 : min_x);
+    int min_y = center_y - lenght;
+    min_y = ((min_y < 0) ? 0 : min_y);
+    int n_width = 2 * lenght;
+    n_width = ((n_width + min_x > size.width) ? size.width - min_x : n_width);
+    int n_height = 2 * lenght;
+    n_height = ((n_height + min_y > size.height) ?  size.height - min_y : n_height);
+
+    cv::Mat image = img.clone();
+    cv::Rect_<int> mask_rect = cv::Rect_<int>(
+        min_x, min_y, n_width, n_height);
+    cv::rectangle(image, mask_rect, cv::Scalar(255, 0, 0), 2);
+
+    std::cout << mask_rect << "\n" << rect
+              << "\n Lenght: " << lenght << std::endl;
+    
+    cv::imshow("image", image);
+    cv::waitKey(0);
+    
+    
+    /*
+    for (int j = rect.y; j < (rect.y + rect.height); j++) {
+        for (int i = rect.x; i < (rect.x + rect.width); i++) {
+            int index = i + (j * size.width);
+            PointT pt = cloud->points[index];
+            if (!isnan(pt.x) && !isnan(pt.y) && !isnan(pt.z)) {
+                indices->indices.push_back(index);
+            }
+        }
+    }
+    */
 }
 
 void ObjectModelAnnotation::compute3DCentroids(
