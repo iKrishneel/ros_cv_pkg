@@ -6,10 +6,9 @@
 
 MultilayerObjectTracking::MultilayerObjectTracking() :
     init_counter_(0),
-    history_window_size_(5),
     update_counter_(0) {
     this->object_reference_ = ModelsPtr(new Models);
-    this->clustering_client_ = this->pnh_.serviceClient<
+    this->clustering_hhclient_ = this->pnh_.serviceClient<
        multilayer_object_tracking::EstimatedCentroidsClustering>(
           "estimated_centroids_clustering");
     this->onInit();
@@ -1056,7 +1055,8 @@ void MultilayerObjectTracking::computeCloudClusterRPYHistogram(
        return;
     }
     bool is_gfpfh = false;
-    bool is_vfh = !is_gfpfh;
+    bool is_vfh = false;
+    bool is_cvfh = true;
     if (is_gfpfh) {
         pcl::PointCloud<pcl::PointXYZL>::Ptr object(
             new pcl::PointCloud<pcl::PointXYZL>);
@@ -1100,7 +1100,27 @@ void MultilayerObjectTracking::computeCloudClusterRPYHistogram(
             histogram.at<float>(0, i) = vfhs->points[0].histogram[i];
         }
     }
-    cv::normalize(histogram, histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+    if (is_cvfh) {
+        pcl::CVFHEstimation<PointT,
+                            pcl::Normal,
+                            pcl::VFHSignature308> cvfh;
+        cvfh.setInputCloud(cloud);
+        cvfh.setInputNormals(normal);
+        pcl::search::KdTree<PointT>::Ptr tree(
+            new pcl::search::KdTree<PointT>);
+        cvfh.setSearchMethod(tree);
+        cvfh.setEPSAngleThreshold(5.0f / 180.0f * M_PI);
+        cvfh.setCurvatureThreshold(1.0f);
+        cvfh.setNormalizeBins(false);
+        pcl::PointCloud<pcl::VFHSignature308>::Ptr cvfhs(
+            new pcl::PointCloud<pcl::VFHSignature308>());
+        cvfh.compute(*cvfhs);
+        histogram = cv::Mat(sizeof(char), 308, CV_32F);
+        for (int i = 0; i < histogram.cols; i++) {
+            histogram.at<float>(0, i) = cvfhs->points[0].histogram[i];
+        }
+    }
+    // cv::normalize(histogram, histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
 }
 
 void MultilayerObjectTracking::computeColorHistogram(
