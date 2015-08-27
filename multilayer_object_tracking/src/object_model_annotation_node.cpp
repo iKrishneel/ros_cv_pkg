@@ -1,5 +1,8 @@
+// Copyright (C) 2015 by Krishneel Chaudhary @ JSK Lab, The University
+// of Tokyo, Japan
 
 #include <multilayer_object_tracking/object_model_annotation.h>
+#include <algorithm>
 
 ObjectModelAnnotation::ObjectModelAnnotation() {
     this->onInit();
@@ -9,6 +12,8 @@ void ObjectModelAnnotation::onInit() {
     this->subscribe();
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/object_model/output/cloud", 1);
+    this->pub_background_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+       "/object_model/output/bkgd_cloud", 1);
     this->pub_image_ = this->pnh_.advertise<sensor_msgs::Image>(
        "/object_model/output/image", 1);
     this->pub_pose_ = this->pnh_.advertise<geometry_msgs::PoseStamped>(
@@ -36,7 +41,7 @@ void ObjectModelAnnotation::callback(
     const sensor_msgs::Image::ConstPtr &image_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
     const geometry_msgs::PolygonStampedConstPtr &screen_msg) {
-   // boost::mutex::scoped_lock lock(this->mutex_);
+    // boost::mutex::scoped_lock lock(this->mutex_);
     int x = screen_msg->polygon.points[0].x;
     int y = screen_msg->polygon.points[0].y;
     int width = screen_msg->polygon.points[1].x - x;
@@ -52,14 +57,11 @@ void ObjectModelAnnotation::callback(
     pcl::fromROSMsg(*cloud_msg, *cloud);
     pcl::PointCloud<PointT>::Ptr bg_cloud(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*cloud, *bg_cloud);
-    
     this->getAnnotatedObjectCloud(cloud, image, screen_rect);
-
-    this->backgroundPointCloudIndices(cloud, image, image.size(), screen_rect);
-    
-    
     Eigen::Vector4f centroid;
     this->compute3DCentroids(cloud, centroid);
+    this->backgroundPointCloudIndices(
+       bg_cloud, cloud, centroid, image.size(), screen_rect);
     geometry_msgs::PoseStamped ros_pose;
     ros_pose.pose.position.x = centroid(0);
     ros_pose.pose.position.y = centroid(1);
@@ -76,10 +78,15 @@ void ObjectModelAnnotation::callback(
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
 
+    sensor_msgs::PointCloud2 ros_bkgd;
+    pcl::toROSMsg(*bg_cloud, ros_bkgd);
+    ros_bkgd.header = cloud_msg->header;
+
     ROS_INFO("--Publish selected object info.");
     this->pub_cloud_.publish(ros_cloud);
     this->pub_image_.publish(pub_img.toImageMsg());
     this->pub_pose_.publish(ros_pose);
+    this->pub_background_.publish(ros_bkgd);
 }
 
 void ObjectModelAnnotation::getAnnotatedObjectCloud(
@@ -151,49 +158,115 @@ void ObjectModelAnnotation::imageToPointCloudIndices(
 
 void ObjectModelAnnotation::backgroundPointCloudIndices(
     pcl::PointCloud<PointT>::Ptr cloud,
-    const cv::Mat &img,
+    const pcl::PointCloud<PointT>::Ptr template_cloud,
+    const Eigen::Vector4f centroid,
     const cv::Size size, const cv::Rect_<int> rect) {
     if (cloud->empty()) {
         ROS_ERROR("-- Cannot Process Empty Cloud");
         return;
     }
-    int lenght = std::max(rect.width, rect.height);
+    float lenght = std::max(static_cast<float>(rect.width),
+                            static_cast<float>(rect.height));
+    lenght /= 1.0f;
     int center_x = rect.x + rect.width/2;
     int center_y = rect.y + rect.height/2;
-    
     int min_x = center_x - lenght;
     min_x = ((min_x < 0) ? 0 : min_x);
     int min_y = center_y - lenght;
     min_y = ((min_y < 0) ? 0 : min_y);
     int n_width = 2 * lenght;
-    n_width = ((n_width + min_x > size.width) ? size.width - min_x : n_width);
+    n_width = ((n_width + min_x > size.width) ?
+               size.width - min_x : n_width);
     int n_height = 2 * lenght;
-    n_height = ((n_height + min_y > size.height) ?  size.height - min_y : n_height);
-
-    cv::Mat image = img.clone();
-    cv::Rect_<int> mask_rect = cv::Rect_<int>(
-        min_x, min_y, n_width, n_height);
-    cv::rectangle(image, mask_rect, cv::Scalar(255, 0, 0), 2);
-
-    std::cout << mask_rect << "\n" << rect
-              << "\n Lenght: " << lenght << std::endl;
-    
-    cv::imshow("image", image);
-    cv::waitKey(0);
-    
-    
-    /*
-    for (int j = rect.y; j < (rect.y + rect.height); j++) {
-        for (int i = rect.x; i < (rect.x + rect.width); i++) {
-            int index = i + (j * size.width);
-            PointT pt = cloud->points[index];
-            if (!isnan(pt.x) && !isnan(pt.y) && !isnan(pt.z)) {
-                indices->indices.push_back(index);
-            }
-        }
+    n_height = ((n_height + min_y > size.height) ?
+                size.height - min_y : n_height);
+    cv::Rect_<int> bkgd_rect = cv::Rect_<int>(
+       min_x, min_y, n_width, n_height);
+    pcl::PointCloud<PointT>::Ptr bkgd_cloud(new pcl::PointCloud<PointT>);
+    for (int j = bkgd_rect.y; j < (bkgd_rect.y + bkgd_rect.height); j++) {
+       for (int i = bkgd_rect.x; i < (bkgd_rect.x + bkgd_rect.width); i++) {
+          if ((j > rect.y && j < rect.y + rect.height) &&
+              (i > rect.x && i < rect.x + rect.width)) {
+             continue;
+          } else {
+             int index = i + (j * size.width);
+             PointT pt = cloud->points[index];
+             if (!isnan(pt.x) && !isnan(pt.y) && !isnan(pt.z)) {
+                bkgd_cloud->push_back(pt);
+             }
+          }
+       }
     }
-    */
+    bool is_filter = this->filterPointCloud(bkgd_cloud,
+                                            template_cloud,
+                                            centroid);
+    if (!is_filter) {
+       ROS_ERROR("FILTER ERROR");
+       return;
+    }
+    cloud->clear();
+    pcl::copyPointCloud<PointT, PointT>(*bkgd_cloud, *cloud);
 }
+
+float ObjectModelAnnotation::templateCloudFilterLenght(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const Eigen::Vector4f centroid) {
+    if (cloud->empty()) {
+        ROS_ERROR("ERROR! Input Cloud is Empty");
+        return -1.0f;
+    }
+    Eigen::Vector4f pivot_pt = centroid;
+    Eigen::Vector4f max_pt;
+    pcl::getMaxDistance<PointT>(*cloud, pivot_pt, max_pt);
+    pivot_pt(3) = 0.0f;
+    max_pt(3) = 0.0f;
+    float dist = static_cast<float>(pcl::distances::l2(max_pt, pivot_pt));
+    return (dist);
+}
+
+bool ObjectModelAnnotation::filterPointCloud(
+    pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<PointT>::Ptr template_cloud,
+    const Eigen::Vector4f centroid,
+    const float scaling_factor) {
+    if (cloud->empty() || template_cloud->empty()) {
+        ROS_ERROR("ERROR! Input data is empty is Empty");
+        return false;
+    }
+    float filter_distance = this->templateCloudFilterLenght(
+       template_cloud, centroid);
+    filter_distance *= scaling_factor;
+    if (filter_distance < 0.1f) {
+        return false;
+    }
+    pcl::PointCloud<PointT>::Ptr cloud_filter(new pcl::PointCloud<PointT>);
+    pcl::PassThrough<PointT> pass;
+    pass.setInputCloud(cloud);
+    pass.setFilterFieldName("x");
+    float min_x = centroid(0) - filter_distance;
+    float max_x = centroid(0) + filter_distance;
+    pass.setFilterLimits(min_x, max_x);
+    pass.filter(*cloud_filter);
+    pass.setInputCloud(cloud_filter);
+    pass.setFilterFieldName("y");
+    float min_y = centroid(1) - filter_distance;
+    float max_y = centroid(1) + filter_distance;
+    pass.setFilterLimits(min_y, max_y);
+    pass.filter(*cloud_filter);
+    pass.setInputCloud(cloud_filter);
+    pass.setFilterFieldName("z");
+    float min_z = centroid(2) - filter_distance;
+    float max_z = centroid(2) + filter_distance;
+    pass.setFilterLimits(min_z, max_z);
+    pass.filter(*cloud_filter);
+    if (cloud_filter->empty()) {
+        return false;
+    }
+    cloud->empty();
+    pcl::copyPointCloud<PointT, PointT>(*cloud_filter, *cloud);
+    return true;
+}
+
 
 void ObjectModelAnnotation::compute3DCentroids(
     const pcl::PointCloud<PointT>::Ptr cloud,
