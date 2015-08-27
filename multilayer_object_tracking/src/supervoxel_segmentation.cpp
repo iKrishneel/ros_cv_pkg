@@ -107,4 +107,5 @@ void SupervoxelSegmentation::configCallback(
     this->structure_scaling_ = static_cast<float>(config.structure_scaling);
     this->update_tracker_reference_ = config.update_tracker_reference;
     this->update_filter_template_ = config.update_filter_template;
+    this->history_window_size_ = static_cast<int>(config.history_window_size);
 }

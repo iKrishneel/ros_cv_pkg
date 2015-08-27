@@ -35,6 +35,7 @@ class SupervoxelSegmentation {
     float structure_scaling_;
     bool update_tracker_reference_;
     bool update_filter_template_;
+    int history_window_size_;
     boost::mutex mutex_;
    
  public:

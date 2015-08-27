@@ -25,7 +25,6 @@
 #include <pcl/point_types.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/correspondence.h>
-#include <pcl/features/normal_3d_omp.h>
 #include <pcl/recognition/cg/hough_3d.h>
 #include <pcl/recognition/cg/geometric_consistency.h>
 #include <pcl/kdtree/kdtree_flann.h>
@@ -42,6 +41,8 @@
 #include <pcl/features/vfh.h>
 #include <pcl/features/gfpfh.h>
 #include <pcl/features/pfh.h>
+#include <pcl/features/cvfh.h>
+#include <pcl/features/normal_3d_omp.h>
 #include <pcl/tracking/tracking.h>
 #include <pcl/common/common.h>
 #include <pcl/registration/distances.h>
@@ -128,7 +129,6 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
 
     // motion previous
     MotionHistory motion_history_;
-    int history_window_size_;
     int update_counter_;
     
     // hold current position
