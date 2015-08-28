@@ -8,7 +8,7 @@ MultilayerObjectTracking::MultilayerObjectTracking() :
     init_counter_(0),
     update_counter_(0) {
     this->object_reference_ = ModelsPtr(new Models);
-    this->clustering_hhclient_ = this->pnh_.serviceClient<
+    this->clustering_client_ = this->pnh_.serviceClient<
        multilayer_object_tracking::EstimatedCentroidsClustering>(
           "estimated_centroids_clustering");
     this->onInit();
