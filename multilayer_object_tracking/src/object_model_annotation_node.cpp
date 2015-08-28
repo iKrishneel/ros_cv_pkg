@@ -166,7 +166,7 @@ void ObjectModelAnnotation::backgroundPointCloudIndices(
     }
     float lenght = std::max(static_cast<float>(rect.width),
                             static_cast<float>(rect.height));
-    lenght /= 0.80f;
+    lenght /= 0.50f;
     int center_x = rect.x + rect.width/2;
     int center_y = rect.y + rect.height/2;
     int min_x = center_x - lenght;

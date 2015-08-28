@@ -103,7 +103,7 @@ void MultilayerObjectTracking::objInitCallback(
           supervoxel_list, this->object_reference_, true, true, true, true);
 
        // background model
-       std::cout << "Init" << std::endl;
+       
        
        // publish selected object for PF init
        sensor_msgs::PointCloud2 ros_templ;
