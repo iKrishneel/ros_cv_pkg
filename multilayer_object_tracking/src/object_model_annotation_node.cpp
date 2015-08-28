@@ -36,7 +36,6 @@ void ObjectModelAnnotation::unsubscribe() {
     this->sub_image_.unsubscribe();
 }
 
-
 void ObjectModelAnnotation::callback(
     const sensor_msgs::Image::ConstPtr &image_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
@@ -167,7 +166,7 @@ void ObjectModelAnnotation::backgroundPointCloudIndices(
     }
     float lenght = std::max(static_cast<float>(rect.width),
                             static_cast<float>(rect.height));
-    lenght /= 1.0f;
+    lenght /= 0.80f;
     int center_x = rect.x + rect.width/2;
     int center_y = rect.y + rect.height/2;
     int min_x = center_x - lenght;
@@ -197,9 +196,8 @@ void ObjectModelAnnotation::backgroundPointCloudIndices(
           }
        }
     }
-    bool is_filter = this->filterPointCloud(bkgd_cloud,
-                                            template_cloud,
-                                            centroid);
+    bool is_filter = this->filterPointCloud(
+        bkgd_cloud, template_cloud, centroid);
     if (!is_filter) {
        ROS_ERROR("FILTER ERROR");
        return;
@@ -266,7 +264,6 @@ bool ObjectModelAnnotation::filterPointCloud(
     pcl::copyPointCloud<PointT, PointT>(*cloud_filter, *cloud);
     return true;
 }
-
 
 void ObjectModelAnnotation::compute3DCentroids(
     const pcl::PointCloud<PointT>::Ptr cloud,

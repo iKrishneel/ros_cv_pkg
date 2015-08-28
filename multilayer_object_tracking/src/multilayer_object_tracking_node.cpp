@@ -46,13 +46,14 @@ void MultilayerObjectTracking::onInit() {
 void MultilayerObjectTracking::subscribe() {
    
     this->sub_obj_cloud_.subscribe(this->pnh_, "input_obj_cloud", 1);
+    this->sub_bkgd_cloud_.subscribe(this->pnh_, "input_bkgd_cloud", 1);
     this->sub_obj_pose_.subscribe(this->pnh_, "input_obj_pose", 1);
     this->obj_sync_ = boost::make_shared<message_filters::Synchronizer<
-       ObjectSyncPolicy> >(100);
-    this->obj_sync_->connectInput(sub_obj_cloud_, sub_obj_pose_);
+        ObjectSyncPolicy> >(100);
+    this->obj_sync_->connectInput(sub_obj_cloud_, sub_bkgd_cloud_, sub_obj_pose_);
     this->obj_sync_->registerCallback(
-       boost::bind(&MultilayerObjectTracking::objInitCallback,
-                   this, _1, _2));
+        boost::bind(&MultilayerObjectTracking::objInitCallback,
+                    this, _1, _2, _3));
     
     this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
     this->sub_pose_.subscribe(this->pnh_, "input_pose", 1);
@@ -73,13 +74,16 @@ void MultilayerObjectTracking::unsubscribe() {
 
 void MultilayerObjectTracking::objInitCallback(
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
+    const sensor_msgs::PointCloud2::ConstPtr &bkgd_msg,
     const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
+    pcl::PointCloud<PointT>::Ptr bkgd_cloud (new pcl::PointCloud<PointT>);
+    pcl::fromROSMsg(*bkgd_msg, *bkgd_cloud);
     if (this->init_counter_++ > 0) {
        ROS_WARN("Object is re-initalized! stopping & reseting...");
     }
-    if (!cloud->empty()) {
+    if (!cloud->empty() && !bkgd_cloud->empty()) {
        this->motion_history_.clear();
        PointXYZRPY motion_displacement;  // fix this
        this->estimatedPFPose(pose_msg, motion_displacement);
@@ -98,6 +102,9 @@ void MultilayerObjectTracking::objInitCallback(
           cloud, supervoxel_clusters, supervoxel_adjacency,
           supervoxel_list, this->object_reference_, true, true, true, true);
 
+       // background model
+       std::cout << "Init" << std::endl;
+       
        // publish selected object for PF init
        sensor_msgs::PointCloud2 ros_templ;
        pcl::toROSMsg(*cloud, ros_templ);
@@ -155,24 +162,12 @@ void MultilayerObjectTracking::callback(
     Eigen::Affine3f transformation_matrix = transform_model *
        transform_reference.inverse();
 
-    /*
-    ModelsPtr obj_ref = object_reference_;
-    cloud->clear();
-    for (int i = 0; i < obj_ref->size(); i++) {
-        pcl::PointCloud<PointT>::Ptr trans_cloud(
-            new pcl::PointCloud<PointT>);
-        pcl::transformPointCloud(*(obj_ref->operator[](i).cluster_cloud),
-                                 *trans_cloud, transformation_matrix);
-        *cloud = *cloud + *trans_cloud;
-    }
-    */
-
     bool is_cloud_exist = this->filterPointCloud(
         cloud, this->current_pose_, this->object_reference_, 1.5f);
     if (is_cloud_exist) {
-        this->targetDescriptiveSurfelsEstimationAndUpdate(
-           cloud, transformation_matrix, motion_displacement,
-           cloud_msg->header);
+        // this->targetDescriptiveSurfelsEstimationAndUpdate(
+        //    cloud, transformation_matrix, motion_displacement,
+        //    cloud_msg->header);
     }
     ros::Time end = ros::Time::now();
     std::cout << "Processing Time: " << end - begin << std::endl;

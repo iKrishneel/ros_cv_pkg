@@ -99,16 +99,17 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     typedef  message_filters::sync_policies::ApproximateTime<
        sensor_msgs::PointCloud2,
        geometry_msgs::PoseStamped> SyncPolicy;
-   
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
     message_filters::Subscriber<geometry_msgs::PoseStamped> sub_pose_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
     // subscribe after init
     typedef  message_filters::sync_policies::ApproximateTime<
-       sensor_msgs::PointCloud2,
-       geometry_msgs::PoseStamped> ObjectSyncPolicy;
+        sensor_msgs::PointCloud2,
+        sensor_msgs::PointCloud2,
+        geometry_msgs::PoseStamped> ObjectSyncPolicy;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_obj_cloud_;
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_bkgd_cloud_;
     message_filters::Subscriber<geometry_msgs::PoseStamped> sub_obj_pose_;
     boost::shared_ptr<
        message_filters::Synchronizer<ObjectSyncPolicy> >obj_sync_;
@@ -147,6 +148,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        const sensor_msgs::PointCloud2::ConstPtr &,
        const geometry_msgs::PoseStamped::ConstPtr &);
     virtual void objInitCallback(
+       const sensor_msgs::PointCloud2::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &,
        const geometry_msgs::PoseStamped::ConstPtr &);
    
