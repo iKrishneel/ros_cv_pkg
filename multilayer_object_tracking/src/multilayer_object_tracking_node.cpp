@@ -113,7 +113,7 @@ void MultilayerObjectTracking::callback(
        ROS_WARN("No Model To Track Selected");
        return;
     }
-    ROS_INFO("\n\n--------------RUNNING CALLBACK-------------------");
+    ROS_INFO("\n\033[1m\033[34m----------RUNNING CALLBACK------------\033[0m");
     ros::Time begin = ros::Time::now();
     
     // get PF pose of time t
@@ -490,7 +490,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     std::vector<uint32_t> outlier_index;
     // this->estimatedCentroidClustering(
     //    estimated_centroids, inliers, best_match_index, outlier_index);
-    
+
     // filter outliers via backprojection
     ROS_INFO("\033[35m OUTLIER FILTERING VIA BACKPROJECTION \033[0m");
     Eigen::Matrix<float, 3, 3> inv_rotation_matrix = rotation_matrix.inverse();
@@ -517,7 +517,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
             abs_position(0), abs_position(1), abs_position(2), 0.0f);
         float matching_dist = static_cast<float>(
             pcl::distances::l2(prev_vote, this->previous_pose_));
-
         PointT pt;
         pt.x = abs_position(0);
         pt.y = abs_position(1);
@@ -528,18 +527,16 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
             pt.b = 255;
         } else {
             pt.g = 255;
-            pt.b = 255;
         }
         inliers->push_back(pt);
     }
     
-    /*
-    std::cout << "TOTAL POINTS: " << estimated_centroids.size() << std::endl;
-    std::cout << "Cloud Size: " << est_centroid_cloud->size() << "\t"
-              << inliers->size() << "\t" << counter << "\t Best Match: "
-              << best_match_index.size() << "\t Query-Test"
-              << matching_indices.size() << std::endl;
-    */
+    // std::cout << "TOTAL POINTS: " << estimated_centroids.size() << std::endl;
+    // std::cout << "Cloud Size: " << est_centroid_cloud->size() << "\t"
+    //           << inliers->size() << "\t" << counter << "\t Best Match: "
+    //           << best_match_index.size() << "\t Query-Test"
+    //           << matching_indices.size() << std::endl;
+    
     
     // for visualization of normals on rviz
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
@@ -596,6 +593,10 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
           if (!supervoxel_clusters.at(itr->second)->voxels_->empty() &&
               is_process_neigh) {
              bool is_common_neigh = true;
+             if (best_match_index.size() < 3) {
+                ROS_INFO(" DIRECT CONVEX VOXELS");
+                is_common_neigh = false;
+             }
              if (!is_common_neigh) {
                 neigb_lookup.push_back(itr->second);
                 Eigen::Vector4f n_centroid = supervoxel_clusters.at(
@@ -674,7 +675,8 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                          Eigen::Vector4f convx_centroid = Eigen::Vector4f();
                          convx_centroid = transformation_matrix.inverse() *
                             ref_model->cluster_centroid;
-                         for (int j = 0; j < this->object_reference_->size(); j++) {
+                         for (int j = 0; j < this->object_reference_->size();
+                              j++) {
                             float rev_match_dist = static_cast<float>(
                                pcl::distances::l2(convx_centroid,
                                   this->object_reference_->operator[](
@@ -710,7 +712,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                       }
                    }
                 }
-                // ------------------ ------------------------
              }
           }
        }
@@ -781,13 +782,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
              obj_ref[query_idx].neigbour_pfh = local_phf.clone();
              obj_ref[query_idx].flag = false;
              matching_surfels[query_idx] = obj_ref[query_idx];
-
              obj_ref[query_idx].match_counter++;
-             
-             
-             // std::cout << "\033[32mReplacing: " << query_idx << std::endl;
-             // this->object_reference_->operator[](query_idx) =
-             //     obj_ref[query_idx];
           }
        }
        this->motion_history_.push_back(this->tracker_pose_);
@@ -802,11 +797,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                matching_surfels.begin(); it != matching_surfels.end(); it++) {
            this->object_reference_->operator[](it->first) = it->second;
        }
-       
-       // for (int k = 0; k < convex_local_voxels->size(); k++) {
-       //     this->object_reference_->push_back(
-       //         convex_local_voxels->operator[](k));
-       // }
        
        for (std::map<uint32_t, ReferenceModel*>::iterator it =
                 convex_local_voxels.begin(); it != convex_local_voxels.begin();
@@ -837,14 +827,35 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
           this->object_reference_->operator[](i).cluster_cloud);
     }
 
+    /*
+    // <><><><><><><><><><><TEMPLATE<>DEBUG><><><><><><><>
+    pcl::PointCloud<PointT>::Ptr test_cloud(new pcl::PointCloud<PointT>);
+    for (int i = 0; i < this->object_reference_->size(); i++) {
+       Eigen::Vector4f centroid_1 = this->object_reference_->operator[](
+          i).cluster_centroid;
+       for (int j = 0; j < this->object_reference_->size(); j++) {
+          Eigen::Vector4f centroid_2 = this->object_reference_->operator[](
+             j).cluster_centroid;
+          float dist = pcl::distances::l2(centroid_1, centroid_2);
+          
+          if (dist < (2 * this->seed_resolution_)) {
+             std::cout << "NEAR: " << dist << "\t"
+                       << i << ", " << j  << std::endl;
+          }
+       }
+    }
+    // ><><><><><><><><><><><><><><><><><><><><><><><><
+    */
     
     // std::cout << "\n -- Motion history: " << motion_history_.size()
     //           << std::endl;
     std::cout << "\033[038m REFERENCE INFO \033[0m"
               << object_reference_->size() << std::endl;
-    
+
+   
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
+   
     
     pcl::PointIndices tdp_ind;
     for (int i = 0; i < cloud->size(); i++) {
@@ -852,7 +863,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     }
 
     // visualization of tracking template
-
+    
     if (this->update_filter_template_) {
        sensor_msgs::PointCloud2 ros_templ;
        pcl::toROSMsg(*template_cloud, ros_templ);
