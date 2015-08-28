@@ -11,6 +11,7 @@
     <!--<remap from="input_cloud" to="/camera/depth_registered/points" />-->
     <remap from="input_cloud" to="/pcl_filter_utils/output/cloud" />
     <remap from="input_obj_cloud" to="/object_model/output/cloud" />
+    <remap from="input_bkgd_cloud" to="/object_model/output/bkgd_cloud" />
     <remap from="input_pose" to="/particle_filter_tracker/track_result_pose" />
     <remap from="input_obj_pose" to="/object_model/output/pose" />
   </node>
