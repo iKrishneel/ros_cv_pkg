@@ -654,6 +654,8 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                                break;
                             }
                          } else {
+                            // TODO(complete): here
+                            // mark and test on object in next (t + 1)
                             convex_local_voxels[itr->second] = ref_model;
                             centroid_normal->push_back(
                                this->convertVector4fToPointXyzRgbNormal(
@@ -917,12 +919,15 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
 
     // visualization of tracking template
     
-    if (this->update_filter_template_) {
+    if (this->update_filter_template_ && template_cloud->size() > 250) {
        sensor_msgs::PointCloud2 ros_templ;
        pcl::toROSMsg(*template_cloud, ros_templ);
+       // pcl::toROSMsg(*cloud, ros_templ);
        ros_templ.header = header;
-       this->pub_templ_.publish(ros_templ);
+       /this->pub_templ_.publish(ros_templ);
+       // this->pub_scloud_.publish(ros_templ);
     }
+
     
     
     // visualization of target surfels
@@ -939,8 +944,8 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     jsk_recognition_msgs::ClusterPointIndices ros_svindices;
     this->publishSupervoxel(
        supervoxel_clusters, ros_svcloud, ros_svindices, header);
-    pub_scloud_.publish(ros_svcloud);
-    pub_sindices_.publish(ros_svindices);
+    // pub_scloud_.publish(ros_svcloud);
+    // pub_sindices_.publish(ros_svindices);
 
     // for visualization of inliers
     sensor_msgs::PointCloud2 ros_inliers;
