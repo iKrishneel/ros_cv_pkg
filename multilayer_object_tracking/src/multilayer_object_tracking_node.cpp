@@ -50,7 +50,8 @@ void MultilayerObjectTracking::subscribe() {
     this->sub_obj_pose_.subscribe(this->pnh_, "input_obj_pose", 1);
     this->obj_sync_ = boost::make_shared<message_filters::Synchronizer<
         ObjectSyncPolicy> >(100);
-    this->obj_sync_->connectInput(sub_obj_cloud_, sub_bkgd_cloud_, sub_obj_pose_);
+    this->obj_sync_->connectInput(
+       sub_obj_cloud_, sub_bkgd_cloud_, sub_obj_pose_);
     this->obj_sync_->registerCallback(
         boost::bind(&MultilayerObjectTracking::objInitCallback,
                     this, _1, _2, _3));
@@ -103,7 +104,19 @@ void MultilayerObjectTracking::objInitCallback(
           supervoxel_list, this->object_reference_, true, true, true, true);
 
        // background model
-       
+       std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> background_sv_clusters;
+       std::multimap<uint32_t, uint32_t> background_sv_adjacency;
+       this->supervoxelSegmentation(
+          cloud, background_sv_clusters, background_sv_adjacency);
+       std::vector<AdjacentInfo> background_sv_list;
+       ModelsPtr background_reference_;
+       background_reference_ = ModelsPtr(new Models);
+       this->voxelizeAndProcessPointCloud(
+          bkgd_cloud, background_sv_clusters, background_sv_adjacency,
+          background_sv_list, background_reference_, true, true, true, true);
+
+       std::cout << "Background Size: " << background_reference_->size()
+                 << std::endl;
        
        // publish selected object for PF init
        sensor_msgs::PointCloud2 ros_templ;
@@ -120,7 +133,7 @@ void MultilayerObjectTracking::callback(
        ROS_WARN("No Model To Track Selected");
        return;
     }
-    ROS_INFO("\n\n\033[34m--------------RUNNING CALLBACK---------------\033[0m");
+    ROS_INFO("\n\n\033[34m------------RUNNING CALLBACK-------------\033[0m");
     ros::Time begin = ros::Time::now();
     
     // get PF pose of time t
