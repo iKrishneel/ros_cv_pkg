@@ -1206,7 +1206,7 @@ void MultilayerObjectTracking::computeCloudClusterRPYHistogram(
             histogram.at<float>(0, i) = cvfhs->points[0].histogram[i];
         }
     }
-    // cv::normalize(histogram, histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+    cv::normalize(histogram, histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
 }
 
 void MultilayerObjectTracking::computeColorHistogram(
