@@ -340,7 +340,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     // set of patches that match the trajectory
     ROS_INFO("\033[35m MATCHING THROUGH NIEGBOUR SEARCH \033[0m");
     int counter = 0;
-    float connectivity_lenght = 1.5f;
+    float connectivity_lenght = 1.0f;
     pcl::PointCloud<PointT>::Ptr est_centroid_cloud(
        new pcl::PointCloud<PointT>);
     std::multimap<uint32_t, Eigen::Vector3f> estimated_centroids;
@@ -598,7 +598,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                 is_common_neigh = false;
              }
              if (!is_common_neigh) {
-                neigb_lookup.push_back(itr->second);
                 Eigen::Vector4f n_centroid = supervoxel_clusters.at(
                    itr->second)->centroid_.getVector4fMap();
                 Eigen::Vector4f n_normal = this->cloudMeanNormal(
@@ -606,11 +605,64 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                 float convx_weight = this->localVoxelConvexityLikelihood<
                    float>(c_centroid, c_normal, n_centroid, n_normal);
                 if (convx_weight > 0.0f) {
+                   neigb_lookup.push_back(itr->second);
                    *output = *output + *supervoxel_clusters.at(
                       itr->second)->voxels_;
-                   centroid_normal->push_back(
-                      this->convertVector4fToPointXyzRgbNormal(
-                         n_centroid, n_normal, cv::Scalar(0, 255, 0)));
+                   
+                   // <<<<<<<<<< CHECK AND ADD >>>>>>>>>>>>
+                   // add the surfels to the model (obj_ref)
+                   ReferenceModel *ref_model = new ReferenceModel;
+                   this->processVoxelForReferenceModel(
+                      supervoxel_clusters, supervoxel_adjacency,
+                      itr->second, ref_model);
+                   if (!ref_model->flag) {
+                      // check the convex voxel if on object in (t-1) frame
+                      Eigen::Vector4f convx_centroid = Eigen::Vector4f();
+                      convx_centroid = transformation_matrix.inverse() *
+                         ref_model->cluster_centroid;
+                      for (int j = 0; j < this->object_reference_->size();
+                           j++) {
+                         float rev_match_dist = static_cast<float>(
+                            pcl::distances::l2(convx_centroid,
+                               this->object_reference_->operator[](
+                                  j).cluster_centroid));
+                         if (rev_match_dist < this->seed_resolution_) {
+                            float convx_dist = static_cast<float>(
+                               cv::compareHist(ref_model->cluster_vfh_hist,
+                                  object_reference_->operator[](
+                                     j).cluster_vfh_hist,
+                                  CV_COMP_BHATTACHARYYA));
+                            float convx_prob = std::exp(
+                               -1 * this->vfh_scaling_ * convx_dist);
+                            if (convx_prob > this->threshold_) {
+                               ref_model->query_index = static_cast<int>(j);
+                               estimated_match_info.insert(
+                                  std::pair<int32_t, ReferenceModel*>(
+                                     itr->second, ref_model));
+                               convex_ok.push_back(itr->second);
+                               estimated_match_prob.insert(
+                                  std::pair<uint32_t, float>(
+                                     itr->second, convx_prob));
+
+                               centroid_normal->push_back(
+                                  this->convertVector4fToPointXyzRgbNormal(
+                                     n_centroid, n_normal,
+                                     cv::Scalar(255, 0, 255)));
+
+                               ROS_INFO("\033[34m Added VOXEL \033[0m");
+                               
+                               break;
+                            }
+                         } else {
+                            convex_local_voxels[itr->second] = ref_model;
+                            centroid_normal->push_back(
+                               this->convertVector4fToPointXyzRgbNormal(
+                                  n_centroid, n_normal, cv::Scalar(0, 255, 0)));
+                         }
+                      }
+                   }
+                   // <<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>
+                   
                 }
              } else {  // get the common neigbor to both
                 std::pair<
@@ -721,14 +773,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
         best_match_index.push_back(convex_ok[i]);
     }
 
-    // <><><><><><
-    // bool backProjectionVoxelOnObject(
-    //    const ReferenceModel ref_model,
-    //    const ModelsPtr object_ref,
-    //    const Eigen::Vector4f prev_centroid) {
-       
-    // }
-    // <><><><><><
     
     // transformation
     ModelsPtr transform_model (new Models);
