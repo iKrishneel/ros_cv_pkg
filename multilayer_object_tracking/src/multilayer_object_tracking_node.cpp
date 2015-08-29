@@ -592,7 +592,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
           }
           if (!supervoxel_clusters.at(itr->second)->voxels_->empty() &&
               is_process_neigh) {
-             bool is_common_neigh = true;
+             bool is_common_neigh = false;
              if (best_match_index.size() < 3) {
                 ROS_INFO(" DIRECT CONVEX VOXELS");
                 is_common_neigh = false;
@@ -608,7 +608,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                 if (convx_weight > 0.0f) {
                    *output = *output + *supervoxel_clusters.at(
                       itr->second)->voxels_;
-                   
                    centroid_normal->push_back(
                       this->convertVector4fToPointXyzRgbNormal(
                          n_centroid, n_normal, cv::Scalar(0, 255, 0)));
@@ -665,6 +664,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                          this->convertVector4fToPointXyzRgbNormal(
                             n_centroid_b, n_normal_b, cv::Scalar(0, 255, 0)));
                       neigb_lookup.push_back(itr->second);
+                      
                       // add the surfels to the model (obj_ref)
                       ReferenceModel *ref_model = new ReferenceModel;
                       this->processVoxelForReferenceModel(
@@ -720,6 +720,15 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     for (int i = 0; i < convex_ok.size(); i++) {
         best_match_index.push_back(convex_ok[i]);
     }
+
+    // <><><><><><
+    // bool backProjectionVoxelOnObject(
+    //    const ReferenceModel ref_model,
+    //    const ModelsPtr object_ref,
+    //    const Eigen::Vector4f prev_centroid) {
+       
+    // }
+    // <><><><><><
     
     // transformation
     ModelsPtr transform_model (new Models);
