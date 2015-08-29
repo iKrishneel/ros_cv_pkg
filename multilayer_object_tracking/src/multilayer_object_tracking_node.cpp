@@ -293,7 +293,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        supervoxel_list, t_voxels, true, false, true);
     Models target_voxels = *t_voxels;
 
-    ROS_INFO("\033[35m MODEL TRANSITION FOR MATCHING \033[0m");    
+    ROS_INFO("\033[35m MODEL TRANSITION FOR MATCHING \033[0m");
     std::map<int, int> matching_indices;  // hold the query and test case
     pcl::PointCloud<PointT>::Ptr template_cloud(new pcl::PointCloud<PointT>);
     for (int j = 0; j < obj_ref.size(); j++) {
@@ -384,6 +384,12 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
           for (std::vector<uint32_t>::iterator it =
                   neigb.find(v_ind)->second.begin();
                it != neigb.find(v_ind)->second.end(); it++) {
+
+             
+             std::cout << "Cloud Size: " << supervoxel_clusters.at(
+                *it)->voxels_->size() << std::endl;
+
+             
              ReferenceModel *voxel_mod = new ReferenceModel;
              float prob = this->targetCandidateToReferenceLikelihood<float>(
                 obj_ref[itr->first], supervoxel_clusters.at(*it)->voxels_,
@@ -592,7 +598,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
           }
           if (!supervoxel_clusters.at(itr->second)->voxels_->empty() &&
               is_process_neigh) {
-             bool is_common_neigh = false;
+             bool is_common_neigh = true;
              if (best_match_index.size() < 3) {
                 ROS_INFO(" DIRECT CONVEX VOXELS");
                 is_common_neigh = false;
@@ -795,7 +801,9 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        std::map<int, ReferenceModel> matching_surfels;
        for (std::vector<uint32_t>::iterator it = best_match_index.begin();
             it != best_match_index.end(); it++) {
-           float adaptive_factor = estimated_match_prob.find(*it)->second;
+          // float adaptive_factor = estimated_match_prob.find(*it)->second;
+          float adaptive_factor = 1.0f;
+          
           std::pair<std::multimap<uint32_t, ReferenceModel*>::iterator,
                     std::multimap<uint32_t, ReferenceModel*>::iterator> ret;
           ret = estimated_match_info.equal_range(*it);
@@ -826,6 +834,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                            cv::NORM_MINMAX, -1, cv::Mat());
              int query_idx = estimated_match_info.find(
                 *it)->second->query_index;
+             obj_ref[query_idx].cluster_cloud->clear();
              obj_ref[query_idx].cluster_cloud = supervoxel_clusters.at(
                  *it)->voxels_;
              obj_ref[query_idx].cluster_vfh_hist = nvfh_hist.clone();
@@ -847,23 +856,36 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        std::cout << "Updating Ref Model: " << matching_surfels.size()
                  << "\t Convex: " << convex_local_voxels.size()
                  << std::endl;
-       
+
        for (std::map<int, ReferenceModel>::iterator it =
                matching_surfels.begin(); it != matching_surfels.end(); it++) {
            this->object_reference_->operator[](it->first) = it->second;
        }
+
        
        for (std::map<uint32_t, ReferenceModel*>::iterator it =
                 convex_local_voxels.begin(); it != convex_local_voxels.begin();
             it++) {
-           this->object_reference_->push_back(*(it->second));
+          if (it->second->cluster_cloud->size() > this->min_cluster_size_) {
+             this->object_reference_->push_back(*(it->second));
+          }
        }
+       
        
        ModelsPtr tmp_model(new Models);
        if (this->update_counter_++ == this->history_window_size_) {
            for (int i = 0; i < this->object_reference_->size(); i++) {
+
+              std::cout << "\033[31m Counter:  \033[0m" <<
+                        this->object_reference_->operator[](i).match_counter
+                        << std::endl;
+              
                if (this->object_reference_->operator[](i).match_counter > 0) {
-                   tmp_model->push_back(this->object_reference_->operator[](i));
+                  ReferenceModel renew_model;
+                  renew_model = this->object_reference_->operator[](i);
+                  renew_model.match_counter = 0;
+                  // tmp_model->push_back(this->object_reference_->operator[](i));
+                  tmp_model->push_back(renew_model);
                } else {
                    std::cout << "\033[033m OUTDATED MODEL \033[0m" << std::endl;
                }
@@ -872,7 +894,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
            this->object_reference_->clear();
            this->object_reference_ = tmp_model;
        }
-       
     } else {
        ROS_WARN("TRACKING MODEL CURRENTLY SET TO STATIC\n");
     }
@@ -906,7 +927,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     //           << std::endl;
     std::cout << "\033[038m REFERENCE INFO \033[0m"
               << object_reference_->size() << std::endl;
-
    
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
@@ -918,17 +938,13 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     }
 
     // visualization of tracking template
-    
-    if (this->update_filter_template_ && template_cloud->size() > 250) {
+    if (this->update_filter_template_ && !template_cloud->empty()) {
        sensor_msgs::PointCloud2 ros_templ;
        pcl::toROSMsg(*template_cloud, ros_templ);
        // pcl::toROSMsg(*cloud, ros_templ);
        ros_templ.header = header;
-       /this->pub_templ_.publish(ros_templ);
-       // this->pub_scloud_.publish(ros_templ);
+       this->pub_templ_.publish(ros_templ);
     }
-
-    
     
     // visualization of target surfels
     std::vector<pcl::PointIndices> all_indices;
@@ -944,8 +960,8 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     jsk_recognition_msgs::ClusterPointIndices ros_svindices;
     this->publishSupervoxel(
        supervoxel_clusters, ros_svcloud, ros_svindices, header);
-    // pub_scloud_.publish(ros_svcloud);
-    // pub_sindices_.publish(ros_svindices);
+    pub_scloud_.publish(ros_svcloud);
+    pub_sindices_.publish(ros_svindices);
 
     // for visualization of inliers
     sensor_msgs::PointCloud2 ros_inliers;
@@ -978,6 +994,7 @@ void MultilayerObjectTracking::processVoxelForReferenceModel(
     if (supervoxel_clusters.at(
             match_index)->voxels_->size() > this->min_cluster_size_) {
         ref_model->flag = false;
+        ref_model->match_counter = 0;
         ref_model->cluster_cloud = supervoxel_clusters.at(
             match_index)->voxels_;
         ref_model->cluster_normals = supervoxel_clusters.at(
@@ -987,7 +1004,7 @@ void MultilayerObjectTracking::processVoxelForReferenceModel(
         this->computeCloudClusterRPYHistogram(
             ref_model->cluster_cloud,
             ref_model->cluster_normals,
-            ref_model->cluster_vfh_hist);        
+            ref_model->cluster_vfh_hist);
         this->computeColorHistogram(
             ref_model->cluster_cloud,
             ref_model->cluster_color_hist);
