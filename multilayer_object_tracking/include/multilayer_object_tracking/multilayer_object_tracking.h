@@ -137,6 +137,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     Eigen::Vector4f current_pose_;
     Eigen::Vector4f previous_pose_;
     PointXYZRPY tracker_pose_;  // temp variable remove later
+
+    pcl::PointCloud<PointT>::Ptr previous_template_;
     
  protected:
     void onInit();

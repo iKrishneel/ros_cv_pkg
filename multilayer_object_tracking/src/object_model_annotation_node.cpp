@@ -164,6 +164,7 @@ void ObjectModelAnnotation::backgroundPointCloudIndices(
         ROS_ERROR("-- Cannot Process Empty Cloud");
         return;
     }
+    /*
     float lenght = std::max(static_cast<float>(rect.width),
                             static_cast<float>(rect.height));
     lenght /= 0.50f;
@@ -196,8 +197,25 @@ void ObjectModelAnnotation::backgroundPointCloudIndices(
           }
        }
     }
+    */
+    pcl::PointCloud<PointT>::Ptr bkgd_cloud(new pcl::PointCloud<PointT>);
+    for (int j = 0; j < size.height; j++) {
+        for (int i = 0; i < size.width; i++) {
+            if ((j > rect.y && j < rect.y + rect.height) &&
+                (i > rect.x && i < rect.x + rect.width)) {
+                continue;
+            } else {
+                int index = i + (j * size.width);
+                PointT pt = cloud->points[index];
+                if (!isnan(pt.x) && !isnan(pt.y) && !isnan(pt.z)) {
+                    bkgd_cloud->push_back(pt);
+                }
+            }
+        }
+    }
+
     bool is_filter = this->filterPointCloud(
-        bkgd_cloud, template_cloud, centroid);
+        bkgd_cloud, template_cloud, centroid, 3.0f);
     if (!is_filter) {
        ROS_ERROR("FILTER ERROR");
        return;
