@@ -83,7 +83,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        cv::Mat neigbour_pfh;
        int query_index;  // used for holding test-target match index
        bool flag;
-
+        uint32_t supervoxel_index;
         std::vector<int> history_window;
         int match_counter;
     };
@@ -127,7 +127,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     // object model params
     int init_counter_;
     ModelsPtr object_reference_;
-
+    ModelsPtr background_reference_;
+    
     // motion previous
     MotionHistory motion_history_;
     int update_counter_;
@@ -247,6 +248,11 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
         const Eigen::Vector4f,
         const ModelsPtr,
         const float);
+
+    void backgroundReferenceLikelihood(
+        const ModelsPtr,
+        const ModelsPtr,
+        std::map<uint32_t, float>);
     
     void computeScatterMatrix(
        const pcl::PointCloud<PointT>::Ptr,

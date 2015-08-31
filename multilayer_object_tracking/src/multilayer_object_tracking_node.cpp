@@ -8,6 +8,7 @@ MultilayerObjectTracking::MultilayerObjectTracking() :
     init_counter_(0),
     update_counter_(0) {
     this->object_reference_ = ModelsPtr(new Models);
+    this->background_reference_ = ModelsPtr(new Models);
     this->clustering_client_ = this->pnh_.serviceClient<
        multilayer_object_tracking::EstimatedCentroidsClustering>(
           "estimated_centroids_clustering");
@@ -107,9 +108,8 @@ void MultilayerObjectTracking::objInitCallback(
        std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> background_sv_clusters;
        std::multimap<uint32_t, uint32_t> background_sv_adjacency;
        this->supervoxelSegmentation(
-          cloud, background_sv_clusters, background_sv_adjacency);
+          bkgd_cloud, background_sv_clusters, background_sv_adjacency);
        std::vector<AdjacentInfo> background_sv_list;
-       ModelsPtr background_reference_;
        background_reference_ = ModelsPtr(new Models);
        this->voxelizeAndProcessPointCloud(
           bkgd_cloud, background_sv_clusters, background_sv_adjacency,
@@ -120,7 +120,7 @@ void MultilayerObjectTracking::objInitCallback(
        
        // publish selected object for PF init
        sensor_msgs::PointCloud2 ros_templ;
-       pcl::toROSMsg(*cloud, ros_templ);
+       pcl::toROSMsg(*bkgd_cloud, ros_templ);
        ros_templ.header = cloud_msg->header;
        this->pub_templ_.publish(ros_templ);
     }
@@ -178,9 +178,9 @@ void MultilayerObjectTracking::callback(
     bool is_cloud_exist = this->filterPointCloud(
         cloud, this->current_pose_, this->object_reference_, 1.5f);
     if (is_cloud_exist) {
-        // this->targetDescriptiveSurfelsEstimationAndUpdate(
-        //    cloud, transformation_matrix, motion_displacement,
-        //    cloud_msg->header);
+        this->targetDescriptiveSurfelsEstimationAndUpdate(
+            cloud, transformation_matrix, motion_displacement,
+            cloud_msg->header);
     }
     ros::Time end = ros::Time::now();
     std::cout << "Processing Time: " << end - begin << std::endl;
@@ -210,6 +210,7 @@ void MultilayerObjectTracking::voxelizeAndProcessPointCloud(
             supervoxel_clusters.end(); label_itr++) {
        ReferenceModel ref_model;
        ref_model.flag = true;
+       ref_model.supervoxel_index = label_itr->first;
        uint32_t supervoxel_label = label_itr->first;
        pcl::Supervoxel<PointT>::Ptr supervoxel =
           supervoxel_clusters.at(supervoxel_label);
@@ -291,9 +292,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                                  supervoxel_adjacency);
     Eigen::Matrix<float, 3, 3> rotation_matrix;
     rotation_matrix = transformation_matrix.rotation();
-    // this->getRotationMatrixFromRPY<float>(motion_disp, rotation_matrix);
     
-    // TODO(remove below): REF: 2304893
     std::vector<AdjacentInfo> supervoxel_list;
     ModelsPtr t_voxels = ModelsPtr(new Models);
     this->voxelizeAndProcessPointCloud(
@@ -301,6 +300,11 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        supervoxel_list, t_voxels, true, false, true);
     Models target_voxels = *t_voxels;
 
+    // background model probability estimation
+    std::map<uint32_t, float> background_probability;
+    this->backgroundReferenceLikelihood(
+        this->background_reference_, t_voxels, background_probability);
+    
     ROS_INFO("\033[35m MODEL TRANSITION FOR MATCHING \033[0m");    
     std::map<int, int> matching_indices;  // hold the query and test case
     pcl::PointCloud<PointT>::Ptr template_cloud(new pcl::PointCloud<PointT>);
@@ -370,6 +374,9 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
              target_voxels[itr->second].cluster_normals,
              target_voxels[itr->second].cluster_centroid, voxel_model);
           voxel_model->query_index = itr->first;
+          probability *= (1 - background_probability.find(
+                              target_voxels[itr->second].supervoxel_index)->second);
+          
           // TODO(.) collect the neigbours here instead of next for
           // loop
 
@@ -423,6 +430,9 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                 local_weight = phf_prob;
                 prob *= phf_prob;
              }
+
+             probability *= (1 - background_probability.find(*it)->second);
+             
              // -----------------------------------------------------
              float matching_dist = static_cast<float>(pcl::distances::l2(
                      supervoxel_clusters.at(v_ind)->centroid_.getVector4fMap(),
@@ -1030,6 +1040,32 @@ T MultilayerObjectTracking::localVoxelConvexityLikelihood(
     }
     T probability = std::exp(-1 * weight);
     return probability;
+}
+
+void MultilayerObjectTracking::backgroundReferenceLikelihood(
+    const ModelsPtr background_reference,
+    const ModelsPtr target_voxels,
+    std::map<uint32_t, float> max_prob) {
+    if (background_reference->empty() || target_voxels->empty()) {
+        ROS_ERROR("INPUT DATA IS EMPTY");
+    }
+    for (int j = 0; j < target_voxels->size(); j++) {
+        float probability = 0.0f;
+        for (int i = 0; i < background_reference->size(); i++) {
+            ReferenceModel *mod = new ReferenceModel;
+            float prob = this->targetCandidateToReferenceLikelihood<float>(
+                background_reference->operator[](i),
+                target_voxels->operator[](j).cluster_cloud,
+                target_voxels->operator[](j).cluster_normals,
+                target_voxels->operator[](j).cluster_centroid,
+                mod);
+            if (prob > probability) {
+                probability = prob;
+            }
+        }
+        // std::cout << "\033[32m Background:  \033[0m" << probability << std::endl;
+        max_prob[target_voxels->operator[](j).supervoxel_index] = probability;
+    }
 }
 
 template<class T>
