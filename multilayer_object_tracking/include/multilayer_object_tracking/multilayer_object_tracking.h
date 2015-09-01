@@ -139,6 +139,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     PointXYZRPY tracker_pose_;  // temp variable remove later
 
     pcl::PointCloud<PointT>::Ptr previous_template_;
+    float growth_rate_;
+    float previous_distance_;
     
  protected:
     void onInit();
