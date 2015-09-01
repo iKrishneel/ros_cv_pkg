@@ -119,6 +119,12 @@ void MultilayerObjectTracking::objInitCallback(
 
        this->previous_template_->clear();
        pcl::copyPointCloud<PointT, PointT>(*cloud, *previous_template_);
+
+       // publish selected object for PF init
+       sensor_msgs::PointCloud2 ros_templ;
+       pcl::toROSMsg(*cloud, ros_templ);
+       ros_templ.header = cloud_msg->header;
+       this->pub_templ_.publish(ros_templ);
     }
 }
 
@@ -330,17 +336,17 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
           }
           if (nearest_index != -1) {
              matching_indices[j] = nearest_index;
-             // }
-             // computing the model object cluster centroid-centroid ratio
-             const int motion_hist_index = this->motion_history_.size() - 1;
-             // const int motion_hist_index = 0;
-             obj_ref[j].centroid_distance(0) = obj_ref[j].cluster_centroid(0) -
-                 this->motion_history_[motion_hist_index].x;
-             obj_ref[j].centroid_distance(1) = obj_ref[j].cluster_centroid(1) -
-                 this->motion_history_[motion_hist_index].y;
-             obj_ref[j].centroid_distance(2) = obj_ref[j].cluster_centroid(2) -
-                 this->motion_history_[motion_hist_index].z;
           }
+          // computing the model object cluster centroid-centroid ratio
+          const int motion_hist_index = this->motion_history_.size() - 1;
+          // const int motion_hist_index = 0;
+          obj_ref[j].centroid_distance(0) = obj_ref[j].cluster_centroid(0) -
+              this->motion_history_[motion_hist_index].x;
+          obj_ref[j].centroid_distance(1) = obj_ref[j].cluster_centroid(1) -
+              this->motion_history_[motion_hist_index].y;
+          obj_ref[j].centroid_distance(2) = obj_ref[j].cluster_centroid(2) -
+              this->motion_history_[motion_hist_index].z;
+             
        }
        // *template_cloud = *template_cloud + *(obj_ref[j].cluster_cloud);
     }
@@ -434,8 +440,12 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
              float matching_dist = static_cast<float>(pcl::distances::l2(
                      supervoxel_clusters.at(v_ind)->centroid_.getVector4fMap(),
                      supervoxel_clusters.at(*it)->centroid_.getVector4fMap()));
+
+             std::cout << "\033[31m MATCHING DIST: " << matching_dist
+                       << std::endl;
+             
              if (matching_dist > this->seed_resolution_ / connectivity_lenght) {
-                 prob *= 0.5f;
+                 prob *= 0.0f;
              }
              if (prob > probability) {
                 probability = prob;
