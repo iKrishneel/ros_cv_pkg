@@ -107,7 +107,7 @@ void MultilayerObjectTracking::objInitCallback(
 
        this->previous_template_->clear();
        pcl::copyPointCloud<PointT, PointT>(*cloud, *previous_template_);
-
+       
        // publish selected object for PF init
        sensor_msgs::PointCloud2 ros_templ;
        pcl::toROSMsg(*cloud, ros_templ);
@@ -994,7 +994,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     std::cout << "\033[031m TEMPLATE SIZE:  \033[0m" << template_cloud->size()
               << std::endl;    
 
-    if (tmp_counter < 3) {
+    if (tmp_counter < 1) {
         template_cloud->clear();
         pcl::copyPointCloud<PointT, PointT>(*previous_template_, *template_cloud);
     } else {
