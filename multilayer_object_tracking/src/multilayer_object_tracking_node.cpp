@@ -828,8 +828,8 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        std::map<int, ReferenceModel> matching_surfels;
        for (std::vector<uint32_t>::iterator it = best_match_index.begin();
             it != best_match_index.end(); it++) {
-           // float adaptive_factor = estimated_match_prob.find(*it)->second;
-           float adaptive_factor = 1.0f;
+           float adaptive_factor = estimated_match_prob.find(*it)->second;
+           // float adaptive_factor = 1.0f;
           std::pair<std::multimap<uint32_t, ReferenceModel*>::iterator,
                     std::multimap<uint32_t, ReferenceModel*>::iterator> ret;
           ret = estimated_match_info.equal_range(*it);
@@ -989,7 +989,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     } else if (argmax_lenght < ((1 - growth_rate_) * previous_distance_)) {
         argmax_lenght = (1 - growth_rate_) * previous_distance_;
     }
-    // this->previous_distance_ = argmax_lenght;
+    this->previous_distance_ = argmax_lenght;
     
     std::cout << "\033[031m TEMPLATE SIZE:  \033[0m" << template_cloud->size()
               << std::endl;    
