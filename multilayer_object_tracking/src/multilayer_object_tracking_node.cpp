@@ -989,6 +989,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     } else if (argmax_lenght < ((1 - growth_rate_) * previous_distance_)) {
         argmax_lenght = (1 - growth_rate_) * previous_distance_;
     }
+    this->filterCloudForBoundingBoxViz(output, this->background_reference_);
     this->previous_distance_ = argmax_lenght;
     
     std::cout << "\033[031m TEMPLATE SIZE:  \033[0m" << template_cloud->size()
@@ -1235,8 +1236,7 @@ void MultilayerObjectTracking::estimatePointCloudNormals(
         ne.setKSearch(k);
     } else {
         ne.setRadiusSearch(k);
-    }
-    ne.compute(*normals);
+    }    ne.compute(*normals);
 }
 
 void MultilayerObjectTracking::computeCloudClusterRPYHistogram(
@@ -1790,6 +1790,49 @@ void MultilayerObjectTracking::transformModelPrimitives(
         trans_models->push_back(obj_ref->operator[](i));
         trans_models->operator[](i).cluster_cloud = trans_cloud;
         trans_models->operator[](i).cluster_centroid = trans_centroid;
+    }
+}
+
+void MultilayerObjectTracking::filterCloudForBoundingBoxViz(
+    pcl::PointCloud<PointT>::Ptr cloud,
+    const ModelsPtr background_reference,
+    const float threshold) {
+    if (cloud->empty() || background_reference->empty()) {
+        ROS_ERROR("ERROR! EMPTY DATA FOR BOUNDING BOX CLOUD");
+        return;
+    }
+    ModelsPtr tmp_model(new Models);
+    this->processInitCloud(cloud, tmp_model);
+    pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
+    for (int i = 0; i < tmp_model->size(); i++) {
+        Eigen::Vector4f surfel_centroid = Eigen::Vector4f();
+        surfel_centroid = tmp_model->operator[](i).cluster_centroid;
+        surfel_centroid(3) = 0.0f;
+        float surfel_dist = static_cast<float>(
+            pcl::distances::l2(surfel_centroid, current_pose_));
+        if (surfel_dist < (this->previous_distance_ * growth_rate_)) {            
+            float probability = 0.0f;
+            for (int j = 0; j < background_reference->size(); j++) {
+                ReferenceModel *r_mod = new ReferenceModel;
+                float prob = this->targetCandidateToReferenceLikelihood<float>(
+                    tmp_model->operator[](i),
+                    background_reference->operator[](j).cluster_cloud,
+                    background_reference->operator[](j).cluster_normals,
+                    background_reference->operator[](j).cluster_centroid,
+                    r_mod);
+                if (prob > probability) {
+                    probability = prob;
+                }
+            }
+            if (probability < 0.60f) {  // empirically estimated thres
+                *tmp_cloud = *tmp_cloud + *(
+                    tmp_model->operator[](i).cluster_cloud);
+            }
+        }
+    }
+    if (tmp_cloud->size() > (static_cast<int>(cloud->size() / 4))) {
+        cloud->clear();
+        pcl::copyPointCloud<PointT, PointT>(*tmp_cloud, *cloud);
     }
 }
 

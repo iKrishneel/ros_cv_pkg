@@ -259,6 +259,10 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
         const ModelsPtr,
         const ModelsPtr,
         std::map<uint32_t, float>);
+    void filterCloudForBoundingBoxViz(
+        pcl::PointCloud<PointT>::Ptr,
+        const ModelsPtr,
+        const float = 0.6f);
     
     void computeScatterMatrix(
        const pcl::PointCloud<PointT>::Ptr,
