@@ -138,26 +138,8 @@ void MultilayerObjectTracking::processInitCloud(
         for (int j = 0; j < obj_ref->size(); j++) {
             object_reference->push_back(obj_ref->operator[](j));
         }
-        /*
-        std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> background_sv_clusters;
-        std::multimap<uint32_t, uint32_t> background_sv_adjacency;
-        this->supervoxelSegmentation(bkgd_cloud,
-            background_sv_clusters, background_sv_adjacency, seed_resolution);
-        std::vector<AdjacentInfo> background_sv_list;
-        ModelsPtr bkgd_ref (new Models);
-        this->voxelizeAndProcessPointCloud(
-            bkgd_cloud, background_sv_clusters, background_sv_adjacency,
-            background_sv_list, bkgd_ref, true, true, true, true);
-        for (int j = 0; j < bkgd_ref->size(); j++) {
-            this->background_reference_->push_back(bkgd_ref->operator[](j));
-        }
-        */
         seed_resolution += seed_factor;
-
-        std::cout << "\033[34m CURRENT:  \033[0m" << obj_ref->size()
-                  << std::endl;
     }
-    std::cout << "OBJECT MODEL(PTR): " << object_reference->size() << std::endl;
 }
 
 void MultilayerObjectTracking::callback(
@@ -975,8 +957,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
         std::cout << "DISTANCE: " << surfel_dist << "\t" << previous_distance_
                   << "\t" << growth_rate_ << std::endl;
         
-        if (surfel_dist < (this->previous_distance_ * growth_rate_)) {
-            /*
+        if (surfel_dist < (this->previous_distance_ * growth_rate_)) {            
             float probability = 0.0f;
             for (int j = 0; j < this->background_reference_->size(); j++) {
                 ReferenceModel *r_mod = new ReferenceModel;
@@ -993,16 +974,12 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
             std::cout << "\033[31mProbability: \033[0m" << probability
                       << std::endl;
             if (probability < 0.60f) {
-            */
                 *template_cloud = *template_cloud + *(
-                    this->object_reference_->operator[](i).cluster_cloud);
-                
+                    this->object_reference_->operator[](i).cluster_cloud);   
                 tmp_counter++;
-                /*
             } else {
                 ROS_INFO("\033[35m SURFEL REMOVED AS BACKGRND \033[0m");
             }
-                */
         } else {
             ROS_INFO("\033[35m SURFEL REMOVED \033[0m]");
         }
@@ -1017,7 +994,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     std::cout << "\033[031m TEMPLATE SIZE:  \033[0m" << template_cloud->size()
               << std::endl;    
 
-    if (tmp_counter <= 3) {
+    if (tmp_counter < 3) {
         template_cloud->clear();
         pcl::copyPointCloud<PointT, PointT>(*previous_template_, *template_cloud);
     } else {
@@ -1025,6 +1002,9 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
         // previous_distance_ = this->templateCloudFilterLenght(template_cloud);
         // this->previous_template_->clear();
         pcl::copyPointCloud<PointT, PointT>(*template_cloud, *previous_template_);
+
+        this->object_reference_ = ModelsPtr(new Models);
+        this->processInitCloud(template_cloud, this->object_reference_);
     }
 
     std::cout << "\033[038m REFERENCE INFO \033[0m"
@@ -1043,8 +1023,8 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        sensor_msgs::PointCloud2 ros_templ;
        pcl::toROSMsg(*template_cloud, ros_templ);
        ros_templ.header = header;
-       // this->pub_templ_.publish(ros_templ);
-       pub_scloud_.publish(ros_templ);
+       this->pub_templ_.publish(ros_templ);
+       // pub_scloud_.publish(ros_templ);
     }
     
     
@@ -1062,7 +1042,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     jsk_recognition_msgs::ClusterPointIndices ros_svindices;
     this->publishSupervoxel(
        supervoxel_clusters, ros_svcloud, ros_svindices, header);
-    // pub_scloud_.publish(ros_svcloud);
+    pub_scloud_.publish(ros_svcloud);
     pub_sindices_.publish(ros_svindices);
 
     // for visualization of inliers
