@@ -252,7 +252,9 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
         const Eigen::Vector4f,
         const ModelsPtr,
         const float);
-
+    void processInitCloud(
+        const pcl::PointCloud<PointT>::Ptr,
+        ModelsPtr);
     void backgroundReferenceLikelihood(
         const ModelsPtr,
         const ModelsPtr,
