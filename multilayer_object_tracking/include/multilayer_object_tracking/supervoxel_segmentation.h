@@ -47,6 +47,10 @@ class SupervoxelSegmentation {
        const pcl::PointCloud<PointT>::Ptr,
        std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &,
        std::multimap<uint32_t, uint32_t> &);
+    void supervoxelSegmentation(
+       const pcl::PointCloud<PointT>::Ptr,
+       std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &,
+       std::multimap<uint32_t, uint32_t> &, const float);
     void publishSupervoxel(
        const std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr>,
        sensor_msgs::PointCloud2 &,

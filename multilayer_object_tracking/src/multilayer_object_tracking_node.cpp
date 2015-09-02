@@ -96,30 +96,43 @@ void MultilayerObjectTracking::objInitCallback(
        // start up centroid when intialized
        this->previous_pose_ = this->current_pose_;
        
-       std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters;
-       std::multimap<uint32_t, uint32_t> supervoxel_adjacency;
-       this->supervoxelSegmentation(cloud,
-                                    supervoxel_clusters,
-                                    supervoxel_adjacency);
-       std::vector<AdjacentInfo> supervoxel_list;
+       float seed_resolution = static_cast<float>(this->seed_resolution_) / 2.0f;
+       float seed_factor = seed_resolution;
        this->object_reference_ = ModelsPtr(new Models);
-       this->voxelizeAndProcessPointCloud(
-          cloud, supervoxel_clusters, supervoxel_adjacency,
-          supervoxel_list, this->object_reference_, true, true, true, true);
-
+       this->background_reference_ = ModelsPtr(new Models);
+       for(int i = 0; i < 3; i++) {
+           std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters;
+           std::multimap<uint32_t, uint32_t> supervoxel_adjacency;
+           this->supervoxelSegmentation(cloud,
+               supervoxel_clusters, supervoxel_adjacency, seed_resolution);
+           ModelsPtr obj_ref(new Models);
+           std::vector<AdjacentInfo> supervoxel_list;
+           this->voxelizeAndProcessPointCloud(
+               cloud, supervoxel_clusters, supervoxel_adjacency,
+               supervoxel_list, obj_ref, true, true, true, true);
+           for (int j = 0; j < obj_ref->size(); j++) {
+               this->object_reference_->push_back(obj_ref->operator[](j));
+           }
+           // background model
+           std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> background_sv_clusters;
+           std::multimap<uint32_t, uint32_t> background_sv_adjacency;
+           this->supervoxelSegmentation(bkgd_cloud,
+               background_sv_clusters, background_sv_adjacency, seed_resolution);
+           std::vector<AdjacentInfo> background_sv_list;
+           ModelsPtr bkgd_ref (new Models);
+           this->voxelizeAndProcessPointCloud(
+               bkgd_cloud, background_sv_clusters, background_sv_adjacency,
+               background_sv_list, bkgd_ref, true, true, true, true);
+           for (int j = 0; j < bkgd_ref->size(); j++) {
+               this->background_reference_->push_back(bkgd_ref->operator[](j));
+           }
+           seed_resolution += seed_factor;
+       }
+       std::cout << "OBJECT MODEL: " << object_reference_->size()
+                 << "\t" << background_reference_->size() << std::endl;
+       
        // set the further point distance as lenght
        previous_distance_ = this->templateCloudFilterLenght(cloud);
-       
-       // background model
-       std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> background_sv_clusters;
-       std::multimap<uint32_t, uint32_t> background_sv_adjacency;
-       this->supervoxelSegmentation(
-          bkgd_cloud, background_sv_clusters, background_sv_adjacency);
-       std::vector<AdjacentInfo> background_sv_list;
-       background_reference_ = ModelsPtr(new Models);
-       this->voxelizeAndProcessPointCloud(
-          bkgd_cloud, background_sv_clusters, background_sv_adjacency,
-          background_sv_list, background_reference_, true, true, true, true);
 
        this->previous_template_->clear();
        pcl::copyPointCloud<PointT, PointT>(*cloud, *previous_template_);

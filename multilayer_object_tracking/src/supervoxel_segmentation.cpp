@@ -14,6 +14,29 @@ SupervoxelSegmentation::SupervoxelSegmentation() {
 void SupervoxelSegmentation::supervoxelSegmentation(
     const pcl::PointCloud<PointT>::Ptr cloud,
     std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &supervoxel_clusters,
+    std::multimap<uint32_t, uint32_t> &supervoxel_adjacency,
+    const float seed_resolution) {
+    if (cloud->empty() || seed_resolution <= 0.0f) {
+       ROS_ERROR("ERROR: Supervoxel input cloud empty...\n Incorrect Seed");
+       return;
+    }
+    
+    boost::mutex::scoped_lock lock(mutex_);
+    pcl::SupervoxelClustering<PointT> super(voxel_resolution_,
+                                            static_cast<double>(seed_resolution),
+                                            use_transform_);
+    super.setInputCloud(cloud);
+    super.setColorImportance(color_importance_);
+    super.setSpatialImportance(spatial_importance_);
+    super.setNormalImportance(normal_importance_);
+    supervoxel_clusters.clear();
+    super.extract(supervoxel_clusters);
+    super.getSupervoxelAdjacency(supervoxel_adjacency);
+}
+
+void SupervoxelSegmentation::supervoxelSegmentation(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &supervoxel_clusters,
     std::multimap<uint32_t, uint32_t> &supervoxel_adjacency) {
     if (cloud->empty()) {
        ROS_ERROR("ERROR: Supervoxel input cloud empty...");
