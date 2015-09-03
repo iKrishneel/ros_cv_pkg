@@ -26,6 +26,7 @@
 #include <bounding_box_estimation/moment_of_inertia_estimation.h>
 #include <jsk_recognition_msgs/BoundingBox.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
+#include <geometry_msgs/PoseStamped.h>
 
 class BoundingBoxEstimation {
 
@@ -35,15 +36,20 @@ private:
     void onInit();
     void subscribe();
     
+    geometry_msgs::PoseStamped pose_;
+    
 public:
     BoundingBoxEstimation();
-    virtual void cloudCallback(
+    virtual void callback(
         const sensor_msgs::PointCloud2::ConstPtr &);
+    virtual void orientation(
+    const geometry_msgs::PoseStamped::ConstPtr &);
     
 protected:
     boost::mutex lock_;
     ros::NodeHandle pnh_;
     ros::Subscriber sub_cloud_;
+    ros::Subscriber sub_pose_;
     ros::Publisher pub_cloud_;
     ros::Publisher pub_bbox_;
 };

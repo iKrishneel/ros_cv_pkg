@@ -2,7 +2,7 @@
   <arg name="voxel_grid_filter_limit_min" default="0.0"/>
   <arg name="voxel_grid_filter_limit_max" default="5.0"/>
   <arg name="voxel_grid_filter_field_name" default="true"/>
-  <arg name="voxel_grid_leaf_size" default="0.02"/>
+  <arg name="voxel_grid_leaf_size" default="0.01"/>
   <node pkg="nodelet" type="nodelet" name="bounding_box_voxel_grid" 
 	args="standalone pcl/VoxelGrid" output="screen" >
     <remap from="~input" to="/multilayer_object_tracking/output/template"/>
@@ -15,5 +15,6 @@
   <node pkg="bounding_box_estimation" type="bounding_box_estimation_node" 
       name="bounding_box_estimation" output="screen" >
     <remap from="input" to="bounding_box_voxel_grid/output" />
+    <remap from="input_pose" to="/particle_filter_tracker/track_result_pose" />
   </node>
 </launch>

@@ -17,12 +17,14 @@ void BoundingBoxEstimation::onInit() {
 }
 
 void BoundingBoxEstimation::subscribe() {
+    // this->sub_pose_ = this->pnh_.subscribe(
+    //     "input_pose", 1, &BoundingBoxEstimation::orientation, this);
     this->sub_cloud_ = this->pnh_.subscribe(
-        "input", 1, &BoundingBoxEstimation::cloudCallback, this);
+        "input", 1, &BoundingBoxEstimation::callback, this);
 }
 
 
-void BoundingBoxEstimation::cloudCallback(
+void BoundingBoxEstimation::callback(
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
     // boost::mutex::scoped_lock lock(this->lock_);
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
@@ -83,6 +85,12 @@ void BoundingBoxEstimation::cloudCallback(
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     pub_cloud_.publish(ros_cloud);
+}
+
+void BoundingBoxEstimation::orientation(
+    const geometry_msgs::PoseStamped::ConstPtr & pose_mgs) {
+    ROS_INFO("POSE RECEIVED");
+    geometry_msgs::PoseStamped pose_ = *pose_mgs;
 }
 
 int main(int argc, char *argv[]) {
