@@ -817,11 +817,10 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     obj_ref = *transform_model;
 
 
-    std::cout <<"Estimate Size: " << estimated_match_prob.size() << std::endl;
-
-    std::cout << "\033[036m REFERENCE INFO \033[0m"
-              << object_reference_->size() << "\t"
-              << convex_local_voxels.size() << std::endl;
+    // std::cout <<"Estimate Size: " << estimated_match_prob.size() << std::endl;
+    // std::cout << "\033[036m REFERENCE INFO \033[0m"
+    //           << object_reference_->size() << "\t"
+    //           << convex_local_voxels.size() << std::endl;
     
     if (best_match_index.size() > 2 && this->update_tracker_reference_) {
        ROS_INFO("\n\033[32mUpdating Tracking Reference Model\033[0m \n");
@@ -901,9 +900,9 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        if (this->update_counter_++ == this->history_window_size_) {
            for (int i = 0; i < this->object_reference_->size(); i++) {
                
-               std::cout << "\033[31m Counter:  \033[0m" <<
-                   this->object_reference_->operator[](i).match_counter
-                         << "\t Distance: " << previous_distance_ << std::endl;
+               // std::cout << "\033[31m Counter:  \033[0m" <<
+               //     this->object_reference_->operator[](i).match_counter
+               //           << "\t Distance: " << previous_distance_ << std::endl;
                
                if (this->object_reference_->operator[](i).match_counter > 0) {
                    ReferenceModel renew_model;
@@ -953,10 +952,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
         if (surfel_dist > argmax_lenght) {
             argmax_lenght = surfel_dist;
         }
-        
-        std::cout << "DISTANCE: " << surfel_dist << "\t" << previous_distance_
-                  << "\t" << growth_rate_ << std::endl;
-        
         if (surfel_dist < (this->previous_distance_ * growth_rate_)) {            
             float probability = 0.0f;
             for (int j = 0; j < this->background_reference_->size(); j++) {
@@ -971,8 +966,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                     probability = prob;
                 }
             }
-            std::cout << "\033[31mProbability: \033[0m" << probability
-                      << std::endl;
             if (probability < 0.60f) {
                 *template_cloud = *template_cloud + *(
                     this->object_reference_->operator[](i).cluster_cloud);   
@@ -1827,6 +1820,8 @@ void MultilayerObjectTracking::filterCloudForBoundingBoxViz(
             if (probability < 0.60f) {  // empirically estimated thres
                 *tmp_cloud = *tmp_cloud + *(
                     tmp_model->operator[](i).cluster_cloud);
+            } else {   // remove this if affects the object surfels ??
+                this->object_reference_->push_back(tmp_model->operator[](i));
             }
         }
     }

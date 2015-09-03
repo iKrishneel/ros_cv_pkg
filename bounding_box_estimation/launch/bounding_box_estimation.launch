@@ -5,7 +5,7 @@
   <arg name="voxel_grid_leaf_size" default="0.01"/>
   <node pkg="nodelet" type="nodelet" name="bounding_box_voxel_grid" 
 	args="standalone pcl/VoxelGrid" output="screen" >
-    <remap from="~input" to="/multilayer_object_tracking/output/template"/>
+    <remap from="~input" to="/multilayer_object_tracking/output/cloud"/>
     <param name="filter_limit_min" value="$(arg voxel_grid_filter_limit_min)" />
     <param name="filter_limit_max" value="$(arg voxel_grid_filter_limit_max)" />
     <param name="filter_limit_field_name" value="$(arg voxel_grid_filter_field_name)" />
