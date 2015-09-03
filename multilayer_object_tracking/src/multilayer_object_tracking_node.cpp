@@ -107,6 +107,11 @@ void MultilayerObjectTracking::objInitCallback(
 
        this->previous_template_->clear();
        pcl::copyPointCloud<PointT, PointT>(*cloud, *previous_template_);
+
+
+       std::cout << "\033[32mCentroid: \033[0m" << current_pose_  << std::endl;
+       pcl::io::savePCDFileASCII ("test_pcd.pcd", *cloud);
+       
        
        // publish selected object for PF init
        sensor_msgs::PointCloud2 ros_templ;

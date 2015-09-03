@@ -31,17 +31,17 @@ void BoundingBoxEstimation::cloudCallback(
         ROS_ERROR("EMPTY INPUT CLOUD");
         return;
     }
-    pcl::MomentOfInertiaEstimation <pcl::PointXYZRGB> feature_extractor;
+    pcl::MomentOfInertiaEstimation<PointT> feature_extractor;
     feature_extractor.setInputCloud(cloud);
     feature_extractor.compute();
 
     std::vector <float> moment_of_inertia;
     std::vector <float> eccentricity;
-    pcl::PointXYZRGB min_point_AABB;
-    pcl::PointXYZRGB max_point_AABB;
-    pcl::PointXYZRGB min_point_OBB;
-    pcl::PointXYZRGB max_point_OBB;
-    pcl::PointXYZRGB position_OBB;
+    PointT min_point_AABB;
+    PointT max_point_AABB;
+    PointT min_point_OBB;
+    PointT max_point_OBB;
+    PointT position_OBB;
     Eigen::Matrix3f rotational_matrix_OBB;
     float major_value, middle_value, minor_value;
     Eigen::Vector3f major_vector, middle_vector, minor_vector;
@@ -55,8 +55,8 @@ void BoundingBoxEstimation::cloudCallback(
     feature_extractor.getEigenVectors(major_vector, middle_vector, minor_vector);
     feature_extractor.getMassCenter(mass_center);
 
-    Eigen::Vector3f position (position_OBB.x, position_OBB.y, position_OBB.z);
-    Eigen::Quaternionf quat (rotational_matrix_OBB);
+    Eigen::Vector3f position(position_OBB.x, position_OBB.y, position_OBB.z);
+    Eigen::Quaternionf quat(rotational_matrix_OBB);
     float width = max_point_OBB.x - min_point_OBB.x;
     float height = max_point_OBB.y - min_point_OBB.y;
     float depth = max_point_OBB.z - min_point_OBB.z;
@@ -72,10 +72,11 @@ void BoundingBoxEstimation::cloudCallback(
     bounding_box.dimensions.x = width;
     bounding_box.dimensions.y = height;
     bounding_box.dimensions.z = depth;
+    bounding_box.header = cloud_msg->header;
     
     jsk_recognition_msgs::BoundingBoxArray bounding_boxes;
-    bounding_boxes.header = cloud_msg->header;
     bounding_boxes.boxes.push_back(bounding_box);
+    bounding_boxes.header = cloud_msg->header;
     pub_bbox_.publish(bounding_boxes);
 
     sensor_msgs::PointCloud2 ros_cloud;
