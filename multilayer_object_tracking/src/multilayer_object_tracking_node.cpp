@@ -166,8 +166,12 @@ void MultilayerObjectTracking::callback(
     ros::Time now = ros::Time(0);
     std::string child_frame = "/camera_rgb_optical_frame";
     std::string parent_frame = "/track_result";
-    tf_listener.waitForTransform(
+    bool wft_ok = tf_listener.waitForTransform(
         child_frame, parent_frame, now, ros::Duration(2.0f));
+    if (!wft_ok) {
+        ROS_ERROR("CANNOT TRANSFORM SOURCE AND TARGET FRAMES");
+        return;
+    }
     tf_listener.lookupTransform(
         child_frame, parent_frame, now, transform);
     tf::Quaternion tf_quaternion =  transform.getRotation();
