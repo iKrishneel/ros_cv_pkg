@@ -125,7 +125,7 @@ void MultilayerObjectTracking::processInitCloud(
     }
     float seed_resolution = static_cast<float>(this->seed_resolution_) / 2.0f;
     float seed_factor = seed_resolution;
-    for(int i = 0; i < 3; i++) {
+    for (int i = 0; i < 3; i++) {
         std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters;
         std::multimap<uint32_t, uint32_t> supervoxel_adjacency;
         this->supervoxelSegmentation(cloud,
@@ -325,7 +325,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     // this->backgroundReferenceLikelihood(
     //     this->background_reference_, t_voxels, background_probability);
     
-    ROS_INFO("\033[35m MODEL TRANSITION FOR MATCHING \033[0m");    
+    ROS_INFO("\033[35m MODEL TRANSITION FOR MATCHING \033[0m");
     std::map<int, int> matching_indices;  // hold the query and test case
     pcl::PointCloud<PointT>::Ptr template_cloud(new pcl::PointCloud<PointT>);
     for (int j = 0; j < obj_ref.size(); j++) {
@@ -700,7 +700,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                                convex_local_voxels[itr->second] = ref_model;
                                centroid_normal->push_back(
                                    this->convertVector4fToPointXyzRgbNormal(
-                                       n_centroid, n_normal, cv::Scalar(0, 255, 0)));
+                                      n_centroid, n_normal, cv::Scalar(0, 255, 0)));
                            }
                        }
                    }
@@ -903,25 +903,19 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        ModelsPtr tmp_model(new Models);
        if (this->update_counter_++ == this->history_window_size_) {
            for (int i = 0; i < this->object_reference_->size(); i++) {
-               
-               // std::cout << "\033[31m Counter:  \033[0m" <<
-               //     this->object_reference_->operator[](i).match_counter
-               //           << "\t Distance: " << previous_distance_ << std::endl;
-               
-               if (this->object_reference_->operator[](i).match_counter > 0) {
+              if (this->object_reference_->operator[](i).match_counter > 0) {
                    ReferenceModel renew_model;
                    renew_model = this->object_reference_->operator[](i);
                    // renew_model.match_counter = 0;
                    tmp_model->push_back(renew_model);
-               }
-               else {
+               } else {
                    std::cout << "\033[033m OUTDATED MODEL \033[0m" << std::endl;
                }
            }
            this->update_counter_ = 0;
            this->object_reference_->clear();
            this->object_reference_ = tmp_model;
-       }       
+       }
        /*
        ModelsPtr tmp_model(new Models);
        if (this->update_counter_++ == this->history_window_size_) {
@@ -956,7 +950,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
         if (surfel_dist > argmax_lenght) {
             argmax_lenght = surfel_dist;
         }
-        if (surfel_dist < (this->previous_distance_ * growth_rate_)) {            
+        if (surfel_dist < (this->previous_distance_ * growth_rate_)) {
             float probability = 0.0f;
             for (int j = 0; j < this->background_reference_->size(); j++) {
                 ReferenceModel *r_mod = new ReferenceModel;
@@ -972,7 +966,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
             }
             if (probability < 0.60f) {
                 *template_cloud = *template_cloud + *(
-                    this->object_reference_->operator[](i).cluster_cloud);   
+                    this->object_reference_->operator[](i).cluster_cloud);
                 tmp_counter++;
             } else {
                 ROS_INFO("\033[35m SURFEL REMOVED AS BACKGRND \033[0m");
@@ -990,17 +984,18 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     this->previous_distance_ = argmax_lenght;
     
     std::cout << "\033[031m TEMPLATE SIZE:  \033[0m" << template_cloud->size()
-              << std::endl;    
+              << std::endl;
 
     if (tmp_counter < 1) {
         template_cloud->clear();
-        pcl::copyPointCloud<PointT, PointT>(*previous_template_, *template_cloud);
+        pcl::copyPointCloud<PointT, PointT>(
+           *previous_template_, *template_cloud);
     } else {
         ROS_INFO("\033[34m UPDATING INFO...\033[0m");
         // previous_distance_ = this->templateCloudFilterLenght(template_cloud);
         // this->previous_template_->clear();
-        pcl::copyPointCloud<PointT, PointT>(*template_cloud, *previous_template_);
-
+        pcl::copyPointCloud<PointT, PointT>(
+           *template_cloud, *previous_template_);
         this->object_reference_ = ModelsPtr(new Models);
         this->processInitCloud(template_cloud, this->object_reference_);
     }
@@ -1083,7 +1078,7 @@ void MultilayerObjectTracking::processVoxelForReferenceModel(
         this->computeCloudClusterRPYHistogram(
             ref_model->cluster_cloud,
             ref_model->cluster_normals,
-            ref_model->cluster_vfh_hist);        
+            ref_model->cluster_vfh_hist);
         this->computeColorHistogram(
             ref_model->cluster_cloud,
             ref_model->cluster_color_hist);
@@ -1210,7 +1205,6 @@ void MultilayerObjectTracking::backgroundReferenceLikelihood(
                 probability = prob;
             }
         }
-        // std::cout << "\033[32m Background:  \033[0m" << probability << std::endl;
         max_prob[target_voxels->operator[](j).supervoxel_index] = probability;
     }
 }
