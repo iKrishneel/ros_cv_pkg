@@ -107,6 +107,9 @@ void MultilayerObjectTracking::objInitCallback(
 
        this->previous_template_->clear();
        pcl::copyPointCloud<PointT, PointT>(*cloud, *previous_template_);
+
+       // setup tf
+       this->previous_transform_ = tf::Transform::getIdentity();
        
        // publish selected object for PF init
        sensor_msgs::PointCloud2 ros_templ;
@@ -205,6 +208,25 @@ void MultilayerObjectTracking::callback(
     ros::Time end = ros::Time::now();
     std::cout << "Processing Time: " << end - begin << std::endl;
 
+
+    // broadcast updated TF
+    tf::Transform update_transform;
+    tf::Vector3 origin = tf::Vector3(transform.getOrigin().getX(),
+                                     transform.getOrigin().getY(),
+                                     transform.getOrigin().getZ());
+    update_transform.setOrigin(origin);
+    tf::Quaternion update_quaternion = tf::Quaternion(
+        tf_quaternion.x(), tf_quaternion.y(),
+        tf_quaternion.z(), tf_quaternion.w());
+    update_transform.setRotation(update_quaternion *
+                                 this->previous_transform_.getRotation());
+    static tf::TransformBroadcaster br;
+    br.sendTransform(tf::StampedTransform(
+                         update_transform, cloud_msg->header.stamp,
+                         cloud_msg->header.frame_id, "object_pose"));
+    this->previous_transform_ = update_transform;
+
+    
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header.stamp = cloud_msg->header.stamp;
