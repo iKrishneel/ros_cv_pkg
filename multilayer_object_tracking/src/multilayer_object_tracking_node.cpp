@@ -42,9 +42,12 @@ void MultilayerObjectTracking::onInit() {
 
     this->pub_inliers_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/multilayer_object_tracking/output/inliers", 1);
-
+ 
     this->pub_centroids_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
         "/multilayer_object_tracking/output/centroids", 1);
+
+    this->pub_pose_ = this->pnh_.advertise<geometry_msgs::PoseStamped>(
+        "/multilayer_object_tracking/output/object_pose", 1);
 }
 
 void MultilayerObjectTracking::subscribe() {
@@ -208,8 +211,7 @@ void MultilayerObjectTracking::callback(
     ros::Time end = ros::Time::now();
     std::cout << "Processing Time: " << end - begin << std::endl;
 
-
-    // broadcast updated TF
+    // broadcast updated TF -----------------------
     tf::Transform update_transform;
     tf::Vector3 origin = tf::Vector3(transform.getOrigin().getX(),
                                      transform.getOrigin().getY(),
@@ -218,14 +220,20 @@ void MultilayerObjectTracking::callback(
     tf::Quaternion update_quaternion = tf::Quaternion(
         tf_quaternion.x(), tf_quaternion.y(),
         tf_quaternion.z(), tf_quaternion.w());
-    update_transform.setRotation(update_quaternion *
-                                 this->previous_transform_.getRotation());
+    update_transform.setRotation(this->previous_transform_.getRotation() *
+                                 update_quaternion);
     static tf::TransformBroadcaster br;
     br.sendTransform(tf::StampedTransform(
                          update_transform, cloud_msg->header.stamp,
                          cloud_msg->header.frame_id, "object_pose"));
     this->previous_transform_ = update_transform;
 
+    geometry_msgs::PoseStamped update_pose;
+    tf::poseTFToMsg(update_transform, update_pose.pose);
+    update_pose.header.stamp = cloud_msg->header.stamp;
+    update_pose.header.frame_id = child_frame;
+    this->pub_pose_.publish(update_pose);
+    //-------------------------------------
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
