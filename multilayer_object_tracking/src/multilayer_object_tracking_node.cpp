@@ -220,8 +220,12 @@ void MultilayerObjectTracking::callback(
     tf::Quaternion update_quaternion = tf::Quaternion(
         tf_quaternion.x(), tf_quaternion.y(),
         tf_quaternion.z(), tf_quaternion.w());
-    update_transform.setRotation(this->previous_transform_.getRotation() *
-                                 update_quaternion);
+    // update_transform.setRotation(this->previous_transform_.getRotation() *
+    //                              update_quaternion);
+
+    update_transform.setRotation(update_quaternion *
+                                 this->previous_transform_.getRotation());
+    
     static tf::TransformBroadcaster br;
     br.sendTransform(tf::StampedTransform(
                          update_transform, cloud_msg->header.stamp,
