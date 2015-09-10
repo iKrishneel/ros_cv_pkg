@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(multilayer_object_tracking)
+project(optitrack_xtion_sync)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -7,14 +7,16 @@ project(multilayer_object_tracking)
 find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   image_transport
-  pcl_conversions
   roscpp
-  rospy
   sensor_msgs
-  std_msgs
+  message_generation
 )
 
 find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msgs std_srvs geometry_msgs roscpp rospy sensor_msgs visualization_msgs message_filters message_generation jsk_pcl_ros interactive_markers pcl_conversions jsk_topic_tools rviz eigen_conversions dynamic_tf_publisher jsk_interactive_marker jsk_recognition_msgs move_base_msgs rosgraph_msgs topic_tools jsk_topic_tools jsk_ik_server pcl_msgs jsk_footstep_msgs drc_com_common jsk_perception jsk_calibration resized_image_transport smach_msgs pcl_ros nav_msgs tf dynamic_reconfigure roseus)
+
+
+## System dependencies are found with CMake's conventions
+# find_package(Boost REQUIRED COMPONENTS system)
 
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -31,10 +33,10 @@ find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msg
 ## * Let MSG_DEP_SET be the set of packages whose message types you use in
 ##   your messages/services/actions (e.g. std_msgs, actionlib_msgs, ...).
 ## * In the file package.xml:
+##   * add a build_depend tag for "message_generation"
 ##   * add a build_depend and a run_depend tag for each package in MSG_DEP_SET
-##   * If MSG_DEP_SET isn't empty the following dependencies might have been
-##     pulled in transitively but can be declared for certainty nonetheless:
-##     * add a build_depend tag for "message_generation"
+##   * If MSG_DEP_SET isn't empty the following dependency has been pulled in
+##     but can be declared for certainty nonetheless:
 ##     * add a run_depend tag for "message_runtime"
 ## * In this file (CMakeLists.txt):
 ##   * add "message_generation" and every package in MSG_DEP_SET to
@@ -46,9 +48,6 @@ find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msg
 ##   * uncomment the generate_messages entry below
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
-generate_dynamic_reconfigure_options(
-  cfg/SupervoxelSegmentation.cfg)
-
 ## Generate messages in the 'msg' folder
 # add_message_files(
 #   FILES
@@ -57,10 +56,11 @@ generate_dynamic_reconfigure_options(
 # )
 
 ## Generate services in the 'srv' folder
-add_service_files(
-  FILES
-  EstimatedCentroidsClustering.srv
-  )
+# add_service_files(
+#   FILES
+#   Service1.srv
+#   Service2.srv
+# )
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -70,10 +70,28 @@ add_service_files(
 # )
 
 ## Generate added messages and services with any dependencies listed here
-generate_messages(
-  DEPENDENCIES
-  std_msgs  # Or other packages containing msgs
-  geometry_msgs
+# generate_messages(
+#   DEPENDENCIES
+#   std_msgs  # Or other packages containing msgs
+# )
+
+################################################
+## Declare ROS dynamic reconfigure parameters ##
+################################################
+
+## To declare and build dynamic reconfigure parameters within this
+## package, follow these steps:
+## * In the file package.xml:
+##   * add a build_depend and a run_depend tag for "dynamic_reconfigure"
+## * In this file (CMakeLists.txt):
+##   * add "dynamic_reconfigure" to
+##     find_package(catkin REQUIRED COMPONENTS ...)
+##   * uncomment the "generate_dynamic_reconfigure_options" section below
+##     and list every .cfg file to be processed
+
+## Generate dynamic reconfigure parameters in the 'cfg' folder
+ generate_dynamic_reconfigure_options(
+   cfg/OptiTrackXtionSync.cfg
  )
 
 ###################################
@@ -86,10 +104,10 @@ generate_messages(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-    INCLUDE_DIRS include
-    LIBRARIES multilayer_object_tracking
-    CATKIN_DEPENDS roscpp
-    DEPENDS system_lib
+  INCLUDE_DIRS include
+  LIBRARIES optitrack_xtion_sync
+  #CATKIN_DEPENDS roscpp tf
+  DEPENDS system_lib
 )
 
 ###########
@@ -103,27 +121,27 @@ include_directories(
   include ${catkin_INCLUDE_DIRS}
 )
 
-## Declare a cpp library
-# add_library(multilayer_object_tracking
-#   src/${PROJECT_NAME}/multilayer_object_tracking.cpp
+## Declare a C++ library
+# add_library(optitrack_xtion_sync
+#   src/${PROJECT_NAME}/optitrack_xtion_sync.cpp
 # )
 
-## Declare a cpp executable
-add_executable(multilayer_object_tracking_node
-  src/multilayer_object_tracking_node.cpp
-  src/supervoxel_segmentation.cpp)
-add_executable(object_model_annotation_node src/object_model_annotation_node.cpp)
-add_executable(optitrack_to_xtion_tf_node src/optitrack_to_xtion_tf_node.cpp)
+## Add cmake target dependencies of the library
+## as an example, code may need to be generated before libraries
+## either from message generation or dynamic reconfigure
+# add_dependencies(optitrack_xtion_sync ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-## Add cmake target dependencies of the executable/library
-## as an example, message headers may need to be generated before nodes
-#add_dependencies(multilayer_object_tracking_node multilayer_object_tracking_generate_messages_cpp)
-add_dependencies(multilayer_object_tracking_node ${PROJECT_NAME}_gencfg)
+## Declare a C++ executable
+ add_executable(optitrack_xtion_sync_node src/optitrack_xtion_sync_node.cpp)
+
+## Add cmake target dependencies of the executable
+## same as for the library above
+add_dependencies(optitrack_xtion_sync_node ${PROJECT_NAME}_gencfg)
 
 ## Specify libraries to link a library or executable target against
-target_link_libraries(multilayer_object_tracking_node ${catkin_LIBRARIES})
-target_link_libraries(object_model_annotation_node ${catkin_LIBRARIES})
-target_link_libraries(optitrack_to_xtion_tf_node ${catkin_LIBRARIES})
+ target_link_libraries(optitrack_xtion_sync_node
+   ${catkin_LIBRARIES}
+ )
 
 #############
 ## Install ##
@@ -140,7 +158,7 @@ target_link_libraries(optitrack_to_xtion_tf_node ${catkin_LIBRARIES})
 # )
 
 ## Mark executables and/or libraries for installation
-# install(TARGETS multilayer_object_tracking multilayer_object_tracking_node
+# install(TARGETS optitrack_xtion_sync optitrack_xtion_sync_node
 #   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
@@ -165,7 +183,7 @@ target_link_libraries(optitrack_to_xtion_tf_node ${catkin_LIBRARIES})
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_multilayer_object_tracking.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_optitrack_xtion_sync.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()
