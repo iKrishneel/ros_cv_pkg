@@ -123,6 +123,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     ros::Publisher pub_inliers_;
     ros::Publisher pub_centroids_;
     ros::Publisher pub_pose_;
+    ros::Publisher pub_prob_;
     ros::ServiceClient clustering_client_;
     
     // object model params
@@ -271,6 +272,9 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     void computeScatterMatrix(
        const pcl::PointCloud<PointT>::Ptr,
        const Eigen::Vector4f);
+
+    template<typename T, typename U, typename V>
+    cv::Scalar plotJetColour(T, U, V);
    
 };
 
