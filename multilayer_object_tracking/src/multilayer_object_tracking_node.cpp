@@ -177,6 +177,7 @@ void MultilayerObjectTracking::callback(
     std::string child_frame = "/camera_rgb_optical_frame";
     std::string parent_frame = "/track_result";
     Eigen::Affine3f transform_model = Eigen::Affine3f::Identity();
+    tf::Transform update_transform;
     if (use_tf) {
         bool wft_ok = tf_listener.waitForTransform(
             child_frame, parent_frame, now, ros::Duration(2.0f));
@@ -196,6 +197,18 @@ void MultilayerObjectTracking::callback(
             tf_quaternion.w(), tf_quaternion.x(),
             tf_quaternion.y(), tf_quaternion.z());
         transform_model.rotate(quaternion);
+
+        tf::Vector3 origin = tf::Vector3(transform.getOrigin().getX(),
+                                         transform.getOrigin().getY(),
+                                         transform.getOrigin().getZ());
+        update_transform.setOrigin(origin);
+        // tf::Quaternion update_quaternion = tf::Quaternion(
+        //     tf_quaternion.x(), tf_quaternion.y(),
+        //     tf_quaternion.z(), tf_quaternion.w());
+        tf::Quaternion update_quaternion = tf_quaternion;
+        update_transform.setRotation(update_quaternion +
+                                     this->previous_transform_.getRotation());
+        
     } else {
         transform_model = Eigen::Affine3f::Identity();
         transform_model.translation() << pose_msg->pose.position.x,
@@ -205,8 +218,16 @@ void MultilayerObjectTracking::callback(
             pose_msg->pose.orientation.y, pose_msg->pose.orientation.z);
         transform_model.rotate(pf_quat);
         
-        std::cout << "TRANSFORMATION: " << transform_model.matrix()
-                  << std::endl;
+        tf::Vector3 origin = tf::Vector3(
+            pose_msg->pose.position.x,
+            pose_msg->pose.position.y,
+            pose_msg->pose.position.z);
+        update_transform.setOrigin(origin);
+        tf::Quaternion update_quaternion = tf::Quaternion(
+            pose_msg->pose.orientation.x, pose_msg->pose.orientation.y,
+            pose_msg->pose.orientation.z, pose_msg->pose.orientation.w);
+        update_transform.setRotation(update_quaternion *
+                                     this->previous_transform_.getRotation());
     }
     
     Eigen::Affine3f transform_reference = Eigen::Affine3f::Identity();
@@ -219,7 +240,7 @@ void MultilayerObjectTracking::callback(
     Eigen::Affine3f transformation_matrix = transform_model *
        transform_reference.inverse();
 
-
+    /*
     cloud->clear();
     for (int i = 0; i < this->object_reference_->size(); i++) {
         pcl::PointCloud<PointT>::Ptr trans_cloud(
@@ -228,36 +249,19 @@ void MultilayerObjectTracking::callback(
                                  *trans_cloud, transformation_matrix);
         *cloud += *trans_cloud;
     }
-    
+    */
     
     bool is_cloud_exist = this->filterPointCloud(
-        cloud, this->current_pose_, this->object_reference_, 5.5f);
-    if (is_cloud_exist) {
-        /*
+        cloud, this->current_pose_, this->object_reference_, 1.5f);
+    if (is_cloud_exist && this->update_filter_template_) {
         this->targetDescriptiveSurfelsEstimationAndUpdate(
             cloud, transformation_matrix, motion_displacement,
             cloud_msg->header);
-        */
     }
     ros::Time end = ros::Time::now();
     std::cout << "Processing Time: " << end - begin << std::endl;
 
-    /*
     // broadcast updated TF -----------------------
-    tf::Transform update_transform;
-    tf::Vector3 origin = tf::Vector3(transform.getOrigin().getX(),
-                                     transform.getOrigin().getY(),
-                                     transform.getOrigin().getZ());
-    update_transform.setOrigin(origin);
-    tf::Quaternion update_quaternion = tf::Quaternion(
-        tf_quaternion.x(), tf_quaternion.y(),
-        tf_quaternion.z(), tf_quaternion.w());
-    // update_transform.setRotation(this->previous_transform_.getRotation() *
-    //                              update_quaternion);
-
-    update_transform.setRotation(update_quaternion *
-                                 this->previous_transform_.getRotation());
-    
     static tf::TransformBroadcaster br;
     br.sendTransform(tf::StampedTransform(
                          update_transform, cloud_msg->header.stamp,
@@ -270,7 +274,6 @@ void MultilayerObjectTracking::callback(
     update_pose.header.frame_id = child_frame;
     this->pub_pose_.publish(update_pose);
     //-------------------------------------
-    */
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
