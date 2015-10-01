@@ -2,7 +2,7 @@
 #include <particle_filter_tracking/particle_filter_tracking.h>
 
 ParticleFilterTracking::ParticleFilterTracking() :
-    block_size_(16), hbins(10), sbins(12),
+    block_size_(8), hbins(10), sbins(12), downsize_(2),
     tracker_init_(false), threads_(8) {
     this->subscribe();
     this->onInit();
@@ -30,7 +30,8 @@ void ParticleFilterTracking::screenPointCallback(
     int y = screen_msg.polygon.points[0].y;
     int width = screen_msg.polygon.points[1].x - x;
     int height = screen_msg.polygon.points[1].y - y;
-    this->screen_rect_ = cv::Rect_<int>(x, y, width, height);
+    this->screen_rect_ = cv::Rect_<int>(
+       x/downsize_, y/downsize_, width/downsize_, height/downsize_);
     if (width > this->block_size_ && height > this->block_size_) {
        this->tracker_init_ = true;
     } else {
@@ -49,7 +50,12 @@ void ParticleFilterTracking::imageCallback(
         return;
     }
     cv::Mat image = cv_ptr->image.clone();
-
+    if (image.empty()) {
+       ROS_WARN("EMPTY INPUT IMAGE");
+    }
+    cv::resize(image, image, cv::Size(
+                  image.cols/this->downsize_, image.rows/this->downsize_));
+    
     if (this->tracker_init_) {
        ROS_INFO("Initializing Tracker");
        this->initializeTracker(image, this->screen_rect_);
@@ -58,8 +64,10 @@ void ParticleFilterTracking::imageCallback(
     }
 
     if (this->screen_rect_.width > this->block_size_) {
-       ROS_INFO("Running Tracker..");
+       // ROS_INFO("Running Tracker..");
        this->runObjectTracker(&image, this->screen_rect_);
+    } else {
+       ROS_ERROR("THE TRACKER IS NOT INITALIZEDE");
     }
     
     cv_bridge::CvImagePtr pub_msg(new cv_bridge::CvImage);
@@ -108,13 +116,19 @@ void ParticleFilterTracking::runObjectTracker(
     for (int i = 0; i < NUM_PARTICLES; i++) {
        this->prevPts.push_back(cv::Point2f(x_particle[i].x, x_particle[i].y));
     }
-    this->getOpticalFlow(image, this->prevFrame, this->prevPts);
-    std::vector<double> of_velocity;
-    for (int i = 0; i < this->prevPts.size(); i++) {
+    this->getOpticalFlow(image, this->prevFrame, prevPts);
+    std::vector<double> of_velocity(NUM_PARTICLES);
+    double *ofv_ptr = &of_velocity[0];
+
+    int i;
+#ifdef _OPENMP
+#pragma omp parallel for private(i)
+#endif
+    for (i = 0; i < NUM_PARTICLES; i++) {
         double vel_X = this->prevPts[i].x - particle_prev_position[i].x;
         double vel_Y = this->prevPts[i].y - particle_prev_position[i].y;
         double vel = sqrt((vel_X * vel_X) + (vel_Y * vel_Y));
-        of_velocity.push_back(vel);
+        ofv_ptr[i] = vel;
     }
     std::vector<cv::Mat> particle_histogram = this->particleHistogram(
        image, x_particle);
@@ -141,13 +155,20 @@ void ParticleFilterTracking::runObjectTracker(
                cv::Scalar(255, 0, 0), CV_FILLED);
     cv::rectangle(image, b_rect, cv::Scalar(255, 0, 255), 2);
     rect = b_rect;
+    cv::resize(image, image, cv::Size(
+                  image.cols * downsize_, image.rows * downsize_));
     imshow("Environmental Tracking", image);
 }
 
 std::vector<double> ParticleFilterTracking::colorHistogramLikelihood(
     std::vector<cv::Mat> &obj_patch) {
-    std::vector<double> prob_hist;
-    for (int i = 0; i < obj_patch.size(); i++) {
+    std::vector<double> prob_hist(NUM_PARTICLES);
+    double *ph_ptr = &prob_hist[0];
+    int i;
+#ifdef _OPENMP
+#pragma omp parallel for private(i)
+#endif
+    for (i = 0; i < NUM_PARTICLES; i++) {
        double dist = static_cast<double>(
           this->computeHistogramDistances(
              obj_patch[i], &this->reference_object_histogram_));
@@ -157,32 +178,10 @@ std::vector<double> ParticleFilterTracking::colorHistogramLikelihood(
         double pr = 0.0;
         if (dist < bg_dist) {
             pr = 2 * exp(-2 * dist);
-        } else {
-            pr = 0.0;
         }
-        prob_hist.push_back(pr);
+        ph_ptr[i] = pr;
     }
     return prob_hist;
-}
-
-double ParticleFilterTracking::computeHistogramDistances(
-    cv::Mat &hist, std::vector<cv::Mat> *hist_MD , cv::Mat *h_D ) {
-    double sum = 0.0;
-    double argMaxDistance = 100.0;
-    if (h_D != NULL) {
-       sum = static_cast<double>(
-          cv::compareHist(hist, *h_D, CV_COMP_BHATTACHARYYA));
-    } else if (hist_MD->size() > 0) {
-       for (int i = 0; i < hist_MD->size(); i++) {
-          double d__ = static_cast<double>(
-             cv::compareHist(hist, (*hist_MD)[i], CV_COMP_BHATTACHARYYA));
-          if (d__ < argMaxDistance) {
-             argMaxDistance = static_cast<double>(d__);
-          }
-       }
-       sum = static_cast<double>(argMaxDistance);
-    }
-    return sum;
 }
 
 std::vector<cv::Mat> ParticleFilterTracking::particleHistogram(
@@ -191,7 +190,12 @@ std::vector<cv::Mat> ParticleFilterTracking::particleHistogram(
     if (image.empty()) {
        return std::vector<cv::Mat>();
     }
-    for (int i = 0; i < NUM_PARTICLES; i++) {
+    cv::Mat obj_hist[NUM_PARTICLES];
+    int i;
+#ifdef _OPENMP
+#pragma omp parallel for private(i) shared(p, obj_hist)
+#endif
+    for (i = 0; i < NUM_PARTICLES; i++) {
        cv::Rect p_rect = cv::Rect(p[i].x - block_size_/2,
                                   p[i].y - block_size_/2,
                                   block_size_,
@@ -200,7 +204,10 @@ std::vector<cv::Mat> ParticleFilterTracking::particleHistogram(
        cv::Mat roi = image(p_rect).clone();
        cv::Mat h_D;
        this->computeHistogram(roi, h_D, true);
-       obj_histogram.push_back(h_D);
+       obj_hist[i] = h_D;
+    }
+    for (i = 0; i < NUM_PARTICLES; i++) {
+       obj_histogram.push_back(obj_hist[i]);
     }
     return obj_histogram;
 }
@@ -241,11 +248,21 @@ cv::Point2f ParticleFilterTracking::motionCovarianceEstimator(
     std::vector<cv::Point2f> &prevPts, std::vector<Particle> &x_e) {
     double sumX = 0.0;
     double sumY = 0.0;
-    for (int i = 0; i < prevPts.size(); i++) {
+    int i;
+#ifdef _OPENMP
+#pragma omp parallel for private(i) shared(sumX, sumY, prevPts, x_e)
+#endif
+    for (i = 0; i < NUM_PARTICLES; i++) {
         double v_X = static_cast<double>(abs(x_e[i].dx - prevPts[i].x));
         double v_Y = static_cast<double>(abs(x_e[i].dy - prevPts[i].y));
+#pragma omp atomic
         sumX += (v_X * v_X);
+#pragma omp_atomic
         sumY += (v_Y * v_Y);
+        if (omp_get_thread_num() == 0) {
+           std::cout << "TOTAL THREAD IS: " << omp_get_num_threads()
+                     << std::endl;
+        }
     }
     double varianceX = static_cast<double>(sumX / (prevPts.size() - 1));
     double varianceY = static_cast<double>(sumY / (prevPts.size() - 1));
@@ -255,17 +272,25 @@ cv::Point2f ParticleFilterTracking::motionCovarianceEstimator(
 std::vector<double> ParticleFilterTracking::motionLikelihood(
     std::vector<double> &prevPts, std::vector<Particle> &x_particle,
     std::vector<Particle> &particles) {
-    std::vector<double> m_prob;
-    std::vector<double> particle_vel;
-    for (int i = 0; i < x_particle.size(); i++) {
+    double particle_vel[NUM_PARTICLES];
+    int i;
+#ifdef _OPENMP
+#pragma omp parallel for private(i) shared(particle_vel)
+#endif
+    for (i = 0; i < NUM_PARTICLES; i++) {
        double x = std::sqrt((x_particle[i].dx*x_particle[i].dx) +
                             (x_particle[i].dy*x_particle[i].dy));
-        particle_vel.push_back(x);
+       particle_vel[i] = x;
     }
-    for (int i = 0; i < prevPts.size(); i++) {
+    std::vector<double> m_prob(NUM_PARTICLES);
+    double *mp_ptr = &m_prob[0];
+#ifdef _OPENMP
+#pragma omp parallel for private(i) shared(particle_vel, mp_ptr)
+#endif
+    for (i = 0; i < NUM_PARTICLES; i++) {
         double v_X = static_cast<double>(particle_vel[i] - prevPts[i]);
         double d_x = static_cast<double>(motionVelocityLikelihood(abs(v_X)));
-        m_prob.push_back(d_x);
+        mp_ptr[i] = d_x;
     }
     return m_prob;
 }

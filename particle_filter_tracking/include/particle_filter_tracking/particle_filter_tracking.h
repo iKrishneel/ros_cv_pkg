@@ -30,7 +30,6 @@
 #include <boost/thread/mutex.hpp>
 
 #include <geometry_msgs/PolygonStamped.h>
-
 #include <vector>
 
 class ParticleFilterTracking: public ParticleFilter,
@@ -50,7 +49,8 @@ class ParticleFilterTracking: public ParticleFilter,
     int width_;
     int height_;
     int block_size_;
-
+    int downsize_;
+   
     int hbins;
     int sbins;
    
@@ -81,9 +81,6 @@ class ParticleFilterTracking: public ParticleFilter,
       cv::Mat &, std::vector<Particle> &);
     std::vector<double> colorHistogramLikelihood(
        std::vector<cv::Mat> &);
-    double computeHistogramDistances(
-       cv::Mat &, std::vector<cv::Mat> *hist_MD CV_DEFAULT(NULL),
-       cv::Mat *h_D CV_DEFAULT(NULL));
     std::vector<double> motionLikelihood(
        std::vector<double> &, std::vector<Particle> &,
        std::vector<Particle> &);

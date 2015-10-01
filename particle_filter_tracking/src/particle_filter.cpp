@@ -222,7 +222,11 @@ Particle ParticleFilter::meanArr(
 
 void ParticleFilter::printParticles(
     cv::Mat &img, std::vector<Particle> &p) {
-    for (int i = 0; i < NUM_PARTICLES; i++) {
+    int i;
+#ifdef _OPENMP
+#pragma omp parallel for private(i) shared(p)
+#endif
+    for (i = 0; i < NUM_PARTICLES; i++) {
        cv::Point2f center = cv::Point2f(p[i].x, p[i].y);
        cv::circle(img, center, 3, cv::Scalar(0, 255, 255), CV_FILLED);
     }
