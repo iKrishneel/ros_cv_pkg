@@ -5,7 +5,7 @@
 #define _PARTICLE_FILTER_H_
 
 #include <opencv2/opencv.hpp>
-
+#include <omp.h>
 
 struct Particle{
     double x;
