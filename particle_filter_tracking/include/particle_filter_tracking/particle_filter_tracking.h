@@ -5,8 +5,8 @@
 #define _PARTICLE_FILTER_TRACKING_H_
 
 #include <particle_filter_tracking/particle_filter.h>
-#include <particle_filter_tracking/motion_dynamics.h>
 #include <particle_filter_tracking/color_histogram.h>
+#include <particle_filter_tracking/histogram_of_oriented_gradients.h>
 
 #include <ros/ros.h>
 #include <ros/console.h>
@@ -35,9 +35,14 @@
 #include <vector>
 
 class ParticleFilterTracking: public ParticleFilter,
-                              public MotionDynamics,
+                              public HOGFeatureDescriptor,
                               public ColorHistogram {
 
+   struct Features {
+     std::vector<cv::Mat> color;
+     std::vector<cv::Mat> hog;
+   };
+  
  private:
     virtual void onInit();
     virtual void subscribe();
@@ -59,7 +64,6 @@ class ParticleFilterTracking: public ParticleFilter,
     cv::Mat dynamics;
     std::vector<Particle> particles;
     cv::RNG randomNum;
-    std::vector<cv::Point2f> prevPts;
     std::vector<cv::Point2f> particle_prev_position;
     cv::Mat prevFrame;
 
@@ -83,14 +87,6 @@ class ParticleFilterTracking: public ParticleFilter,
       cv::Mat &, std::vector<Particle> &);
     std::vector<double> colorHistogramLikelihood(
        std::vector<cv::Mat> &);
-    std::vector<double> motionLikelihood(
-       std::vector<double> &, std::vector<Particle> &,
-       std::vector<Particle> &);
-    cv::Point2f motionCovarianceEstimator(
-       std::vector<cv::Point2f> &, std::vector<Particle> &);
-    double motionVelocityLikelihood(
-       double);
-    double gaussianNoise(double, double);
     void roiCondition(cv::Rect &, cv::Size);
    
  protected:

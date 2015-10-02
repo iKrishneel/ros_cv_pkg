@@ -40,30 +40,30 @@ void HOGFeatureDescriptor::imageGradient(
     cv::add(Iang, cv::Scalar(-180), Iang, Iang >= 180);
     cv::Mat orientation_histogram;
     for (int j = 0; j < image.rows; j += CELL) {
-        for (int i = 0; i < image.cols; i += CELL) {
+       for (int i = 0; i < image.cols; i += CELL) {
            cv::Rect rect = cv::Rect(i, j, CELL, CELL);
            if ((rect.x + rect.width <= image.cols) &&
                (rect.y + rect.height <= image.rows)) {
               cv::Mat bin = cv::Mat::zeros(1, N_BINS, CV_32F);
-                for (int y = rect.y; y < (rect.y + rect.height); y++) {
-                    for (int x = rect.x; x < (rect.x + rect.width); x++) {
-                       float angle = static_cast<float>(Iang.at<float>(y, x));
-                       int l_bin;
-                       int h_bin;
-                       this->weightedVoting(angle, l_bin, h_bin);
-                       float l_ratio = 1 - (angle - l_bin)/BINS_ANGLE;
-                       float h_ratio = 1 + (angle - h_bin)/BINS_ANGLE;
-                       int l_index = (l_bin-(BINS_ANGLE/2))/BINS_ANGLE;
-                       int h_index = (h_bin-(BINS_ANGLE/2))/BINS_ANGLE;
-                        bin.at<float>(0, l_index) +=
-                           (Imag.at<float>(y, x) * l_ratio);
-                        bin.at<float>(0, h_index) +=
-                           (Imag.at<float>(y, x) * h_ratio);
-                    }
+              for (int y = rect.y; y < (rect.y + rect.height); y++) {
+                for (int x = rect.x; x < (rect.x + rect.width); x++) {
+                  float angle = static_cast<float>(Iang.at<float>(y, x));
+                  int l_bin;
+                  int h_bin;
+                  this->weightedVoting(angle, l_bin, h_bin);
+                  float l_ratio = 1 - (angle - l_bin)/BINS_ANGLE;
+                  float h_ratio = 1 + (angle - h_bin)/BINS_ANGLE;
+                  int l_index = (l_bin-(BINS_ANGLE/2))/BINS_ANGLE;
+                  int h_index = (h_bin-(BINS_ANGLE/2))/BINS_ANGLE;
+                  bin.at<float>(0, l_index) +=
+                      (Imag.at<float>(y, x) * l_ratio);
+                  bin.at<float>(0, h_index) +=
+                      (Imag.at<float>(y, x) * h_ratio);
                 }
-                orientation_histogram.push_back(bin);
-            }
-        }
+              }
+              orientation_histogram.push_back(bin);
+           }
+       }
     }
     hog_bins = orientation_histogram.clone();
 }

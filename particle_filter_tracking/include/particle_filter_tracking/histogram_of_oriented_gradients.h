@@ -12,12 +12,14 @@
 #include <opencv2/ml/ml.hpp>
 #include <opencv2/nonfree/nonfree.hpp>
 
+#include <omp.h>
+
 #include <string>
 #include <vector>
 
 class HOGFeatureDescriptor {
 
-    //  HOG Configuration Params
+  //  HOG Configuration Params
 #define N_BINS 9
 #define ANGLE 180.0
 #define BINS_ANGLE (ANGLE / N_BINS)
@@ -39,7 +41,7 @@ class HOGFeatureDescriptor {
     T computeHOGHistogramDistances(
        const cv::Mat &, std::vector<cv::Mat> &,
        const int = CV_COMP_BHATTACHARYYA);
-   
+       
  public:
     HOGFeatureDescriptor();
     virtual cv::Mat computeHOG(
