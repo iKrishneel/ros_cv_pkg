@@ -1,3 +1,5 @@
+// Copyright (C) 2015 by Krishneel Chaudhary,
+// JSK Lab, The University of Tokyo
 
 #ifndef _PARTICLE_FILTER_TRACKING_H_
 #define _PARTICLE_FILTER_TRACKING_H_

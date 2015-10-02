@@ -1,3 +1,5 @@
+// Copyright (C) 2015 by Krishneel Chaudhary,
+// JSK Lab, The University of Tokyo
 
 #include <particle_filter_tracking/particle_filter_tracking.h>
 
@@ -55,19 +57,17 @@ void ParticleFilterTracking::imageCallback(
     }
     cv::resize(image, image, cv::Size(
                   image.cols/this->downsize_, image.rows/this->downsize_));
-    
     if (this->tracker_init_) {
        ROS_INFO("Initializing Tracker");
        this->initializeTracker(image, this->screen_rect_);
        this->tracker_init_ = false;
        this->runObjectTracker(&image, this->screen_rect_);
     }
-
     if (this->screen_rect_.width > this->block_size_) {
        // ROS_INFO("Running Tracker..");
        this->runObjectTracker(&image, this->screen_rect_);
     } else {
-       ROS_ERROR("THE TRACKER IS NOT INITALIZEDE");
+       ROS_ERROR("THE TRACKER IS NOT INITALIZED");
     }
     
     cv_bridge::CvImagePtr pub_msg(new cv_bridge::CvImage);
@@ -153,7 +153,7 @@ void ParticleFilterTracking::runObjectTracker(
        this->width_, this->height_);
     cv::circle(image, cv::Point2f(x_e.x, x_e.y), 3,
                cv::Scalar(255, 0, 0), CV_FILLED);
-    cv::rectangle(image, b_rect, cv::Scalar(255, 0, 255), 2);
+    // cv::rectangle(image, b_rect, cv::Scalar(255, 0, 255), 2);
     rect = b_rect;
     cv::resize(image, image, cv::Size(
                   image.cols * downsize_, image.rows * downsize_));
