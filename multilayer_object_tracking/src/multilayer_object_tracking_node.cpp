@@ -618,7 +618,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
         if (it->second > eps_distance_) {
             for (int i = 0; i < supervoxel_clusters.at(
                      it->first)->voxels_->size(); i++) {
-                PointT pt = supervoxel_clusters.at(it->first)->voxels_->points[i];
+               PointT pt = supervoxel_clusters.at(it->first)->voxels_->points[i];
                 // cv::Scalar j_color = this->plotJetColour<float, float, float>(
                 //     it->second, threshold_, 1.0f);
                 pt.r = 255 * it->second;
@@ -1296,7 +1296,6 @@ void MultilayerObjectTracking::backgroundReferenceLikelihood(
                 probability = prob;
             }
         }
-        // std::cout << "\033[32m Background:  \033[0m" << probability << std::endl;
         max_prob[target_voxels->operator[](j).supervoxel_index] = probability;
     }
 }
@@ -1893,7 +1892,7 @@ void MultilayerObjectTracking::filterCloudForBoundingBoxViz(
         surfel_centroid(3) = 0.0f;
         float surfel_dist = static_cast<float>(
             pcl::distances::l2(surfel_centroid, current_pose_));
-        if (surfel_dist < (this->previous_distance_ * growth_rate_)) {            
+        if (surfel_dist < (this->previous_distance_ * growth_rate_)) {
             float probability = 0.0f;
             for (int j = 0; j < background_reference->size(); j++) {
                 ReferenceModel *r_mod = new ReferenceModel;

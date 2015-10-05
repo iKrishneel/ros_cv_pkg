@@ -113,7 +113,6 @@ add_executable(multilayer_object_tracking_node
   src/multilayer_object_tracking_node.cpp
   src/supervoxel_segmentation.cpp)
 add_executable(object_model_annotation_node src/object_model_annotation_node.cpp)
-add_executable(optitrack_to_xtion_tf_node src/optitrack_to_xtion_tf_node.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
@@ -123,7 +122,6 @@ add_dependencies(multilayer_object_tracking_node ${PROJECT_NAME}_gencfg)
 ## Specify libraries to link a library or executable target against
 target_link_libraries(multilayer_object_tracking_node ${catkin_LIBRARIES})
 target_link_libraries(object_model_annotation_node ${catkin_LIBRARIES})
-target_link_libraries(optitrack_to_xtion_tf_node ${catkin_LIBRARIES})
 
 #############
 ## Install ##
