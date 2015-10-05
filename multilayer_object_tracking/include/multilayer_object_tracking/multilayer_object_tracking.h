@@ -25,7 +25,6 @@
 #include <pcl/point_types.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/correspondence.h>
-#include <pcl/features/normal_3d_omp.h>
 #include <pcl/recognition/cg/hough_3d.h>
 #include <pcl/recognition/cg/geometric_consistency.h>
 #include <pcl/kdtree/kdtree_flann.h>
@@ -42,6 +41,8 @@
 #include <pcl/features/vfh.h>
 #include <pcl/features/gfpfh.h>
 #include <pcl/features/pfh.h>
+#include <pcl/features/cvfh.h>
+#include <pcl/features/normal_3d_omp.h>
 #include <pcl/tracking/tracking.h>
 #include <pcl/common/common.h>
 #include <pcl/registration/distances.h>
@@ -82,7 +83,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        cv::Mat neigbour_pfh;
        int query_index;  // used for holding test-target match index
        bool flag;
-
+        uint32_t supervoxel_index;
         std::vector<int> history_window;
         int match_counter;
     };
@@ -98,16 +99,17 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     typedef  message_filters::sync_policies::ApproximateTime<
        sensor_msgs::PointCloud2,
        geometry_msgs::PoseStamped> SyncPolicy;
-   
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
     message_filters::Subscriber<geometry_msgs::PoseStamped> sub_pose_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
     // subscribe after init
     typedef  message_filters::sync_policies::ApproximateTime<
-       sensor_msgs::PointCloud2,
-       geometry_msgs::PoseStamped> ObjectSyncPolicy;
+        sensor_msgs::PointCloud2,
+        sensor_msgs::PointCloud2,
+        geometry_msgs::PoseStamped> ObjectSyncPolicy;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_obj_cloud_;
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_bkgd_cloud_;
     message_filters::Subscriber<geometry_msgs::PoseStamped> sub_obj_pose_;
     boost::shared_ptr<
        message_filters::Synchronizer<ObjectSyncPolicy> >obj_sync_;
@@ -120,21 +122,30 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     ros::Publisher pub_tdp_;
     ros::Publisher pub_inliers_;
     ros::Publisher pub_centroids_;
+    ros::Publisher pub_pose_;
+    ros::Publisher pub_prob_;
     ros::ServiceClient clustering_client_;
     
     // object model params
     int init_counter_;
     ModelsPtr object_reference_;
-
+    ModelsPtr background_reference_;
+    
     // motion previous
     MotionHistory motion_history_;
-    int history_window_size_;
     int update_counter_;
     
     // hold current position
     Eigen::Vector4f current_pose_;
     Eigen::Vector4f previous_pose_;
     PointXYZRPY tracker_pose_;  // temp variable remove later
+
+    // save previous tf
+    tf::Transform previous_transform_;
+
+    pcl::PointCloud<PointT>::Ptr previous_template_;
+    float growth_rate_;
+    float previous_distance_;
     
  protected:
     void onInit();
@@ -147,6 +158,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        const sensor_msgs::PointCloud2::ConstPtr &,
        const geometry_msgs::PoseStamped::ConstPtr &);
     virtual void objInitCallback(
+       const sensor_msgs::PointCloud2::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &,
        const geometry_msgs::PoseStamped::ConstPtr &);
    
@@ -245,10 +257,24 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
         const Eigen::Vector4f,
         const ModelsPtr,
         const float);
+    void processInitCloud(
+        const pcl::PointCloud<PointT>::Ptr,
+        ModelsPtr);
+    void backgroundReferenceLikelihood(
+        const ModelsPtr,
+        const ModelsPtr,
+        std::map<uint32_t, float>);
+    void filterCloudForBoundingBoxViz(
+        pcl::PointCloud<PointT>::Ptr,
+        const ModelsPtr,
+        const float = 0.6f);
     
     void computeScatterMatrix(
        const pcl::PointCloud<PointT>::Ptr,
        const Eigen::Vector4f);
+
+    template<typename T, typename U, typename V>
+    cv::Scalar plotJetColour(T, U, V);
    
 };
 

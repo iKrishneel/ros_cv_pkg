@@ -34,6 +34,8 @@ class SupervoxelSegmentation {
     float color_scaling_;
     float structure_scaling_;
     bool update_tracker_reference_;
+    bool update_filter_template_;
+    int history_window_size_;
     boost::mutex mutex_;
    
  public:
@@ -45,6 +47,10 @@ class SupervoxelSegmentation {
        const pcl::PointCloud<PointT>::Ptr,
        std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &,
        std::multimap<uint32_t, uint32_t> &);
+    void supervoxelSegmentation(
+       const pcl::PointCloud<PointT>::Ptr,
+       std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &,
+       std::multimap<uint32_t, uint32_t> &, const float);
     void publishSupervoxel(
        const std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr>,
        sensor_msgs::PointCloud2 &,

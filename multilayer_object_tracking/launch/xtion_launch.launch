@@ -1,0 +1,5 @@
+<launch>
+  <group ns="xtion">
+    <include file="$(find openni2_launch)/launch/openni2.launch" />
+  </group>
+</launch>

@@ -1,3 +1,5 @@
+// Copyright (C) 2015 by Krishneel Chaudhary @ JSK Lab, The University
+// of Tokyo, Japan
 
 #ifndef _OBJECT_MODEL_ANNOTATION_H_
 #define _OBJECT_MODEL_ANNOTATION_H_
@@ -34,6 +36,8 @@
 #include <pcl/io/pcd_io.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/segmentation/extract_clusters.h>
+#include <pcl/filters/passthrough.h>
+#include <pcl/registration/distances.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <geometry_msgs/PolygonStamped.h>
@@ -55,6 +59,7 @@ class ObjectModelAnnotation {
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
     ros::Publisher pub_cloud_;
+    ros::Publisher pub_background_;
     ros::Publisher pub_image_;
     ros::Publisher pub_pose_;
    
@@ -80,6 +85,19 @@ class ObjectModelAnnotation {
     void compute3DCentroids(
        const pcl::PointCloud<PointT>::Ptr,
        Eigen::Vector4f &);
+    void backgroundPointCloudIndices(
+        pcl::PointCloud<PointT>::Ptr,
+        const pcl::PointCloud<PointT>::Ptr,
+        const Eigen::Vector4f,
+        const cv::Size, const cv::Rect_<int>);
+    float templateCloudFilterLenght(
+       const pcl::PointCloud<PointT>::Ptr,
+       const Eigen::Vector4f);
+    bool filterPointCloud(
+       pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<PointT>::Ptr,
+       const Eigen::Vector4f,
+       const float = 2.0f);
 };
 
 
