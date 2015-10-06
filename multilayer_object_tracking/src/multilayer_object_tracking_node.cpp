@@ -6,7 +6,7 @@
 
 MultilayerObjectTracking::MultilayerObjectTracking() :
     init_counter_(0),
-    update_counter_(0),
+    update_counter_(0), thread_(8),
     growth_rate_(1.15) {
     this->object_reference_ = ModelsPtr(new Models);
     this->background_reference_ = ModelsPtr(new Models);
@@ -170,7 +170,7 @@ void MultilayerObjectTracking::callback(
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
-    bool use_tf = false;
+    bool use_tf = true;
     tf::TransformListener tf_listener;
     tf::StampedTransform transform;
     ros::Time now = ros::Time(0);
@@ -293,8 +293,14 @@ void MultilayerObjectTracking::voxelizeAndProcessPointCloud(
     if (cloud->empty() || supervoxel_clusters.empty()) {
        return;
     }
-    models = ModelsPtr(new Models);
+    // models = ModelsPtr(new Models);
+    const int DIM = supervoxel_clusters.size();
+    ReferenceModel ref_model_ptr[DIM];
+
+    // ReferenceModel *ref_model_ptr = &models->operator[](0);
+    
     int icounter = 0;
+    int iteration_counter = 0;
     for (std::multimap<uint32_t, pcl::Supervoxel<PointT>::Ptr>::const_iterator
             label_itr = supervoxel_clusters.begin(); label_itr !=
             supervoxel_clusters.end(); label_itr++) {
@@ -348,13 +354,22 @@ void MultilayerObjectTracking::voxelizeAndProcessPointCloud(
           }
           ref_model.flag = false;
           ref_model.match_counter = 0;
-          models->push_back(ref_model);
+          // models->push_back(ref_model);
+
+          ref_model_ptr[iteration_counter++] = ref_model;
        }
     }
+
+    models = ModelsPtr(new Models);
+    std::cout << iteration_counter  << "\n";
+    for (int i = 0; i < iteration_counter; i++) {
+      models->push_back(ref_model_ptr[i]);
+    }
+   
     std::cout << "Cloud Voxel size: "  << models->size() << std::endl;
 
     // compute the local pfh
-    if (neigh_pfh) {
+    if (this->structure_scaling_) {
        for (int i = 0; i < models->size(); i++) {
             this->computeLocalPairwiseFeautures(
                 supervoxel_clusters,
@@ -475,7 +490,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
           // - local structure info
           bool is_voxel_adjacency_info = true;
           float local_weight = 0.0f;
-          if (is_voxel_adjacency_info) {
+          if (this->structure_scaling_> 0) {
              cv::Mat histogram_phf;
              this->computeLocalPairwiseFeautures(
                 supervoxel_clusters, neigb, histogram_phf);
@@ -498,7 +513,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                 supervoxel_clusters.at(*it)->centroid_.getVector4fMap(),
                 voxel_mod);
              voxel_mod->query_index = itr->first;
-             if (is_voxel_adjacency_info) {
+             if (this->structure_scaling_ > 0) {
                 std::map<uint32_t, std::vector<uint32_t> > local_adjacency;
                 std::vector<uint32_t> list_adj;
                 for (std::multimap<uint32_t, uint32_t>::const_iterator
@@ -951,16 +966,9 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                  (1 - adaptive_factor);
              cv::normalize(ncolor_hist, ncolor_hist, 0, 1,
                            cv::NORM_MINMAX, -1, cv::Mat());
-             cv::Mat local_phf = cv::Mat::zeros(
-                itr->second->neigbour_pfh.size(),
-                itr->second->neigbour_pfh.type());
-             local_phf = itr->second->neigbour_pfh * adaptive_factor +
-                 obj_ref[itr->second->query_index].neigbour_pfh *
-                 (1 - adaptive_factor);
-             cv::normalize(local_phf, local_phf, 0, 1,
-                           cv::NORM_MINMAX, -1, cv::Mat());
+
              int query_idx = estimated_match_info.find(
-                *it)->second->query_index;
+                 *it)->second->query_index;
              obj_ref[query_idx].cluster_cloud = supervoxel_clusters.at(
                  *it)->voxels_;
              obj_ref[query_idx].cluster_vfh_hist = nvfh_hist.clone();
@@ -969,11 +977,23 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                 *it)->normals_;
              obj_ref[query_idx].cluster_centroid = supervoxel_clusters.at(
                  *it)->centroid_.getVector4fMap();
-             obj_ref[query_idx].neigbour_pfh = local_phf.clone();
+
              obj_ref[query_idx].flag = false;
              matching_surfels[query_idx] = obj_ref[query_idx];
              obj_ref[query_idx].match_counter++;
+
              
+             if (this->structure_scaling_ > 0) {
+               cv::Mat local_phf = cv::Mat::zeros(
+                   itr->second->neigbour_pfh.size(),
+                   itr->second->neigbour_pfh.type());
+               local_phf = itr->second->neigbour_pfh * adaptive_factor +
+                   obj_ref[itr->second->query_index].neigbour_pfh *
+                   (1 - adaptive_factor);
+               cv::normalize(local_phf, local_phf, 0, 1,
+                             cv::NORM_MINMAX, -1, cv::Mat());
+               obj_ref[query_idx].neigbour_pfh = local_phf.clone();
+             }
              
              // std::cout << "\033[32mReplacing: " << query_idx << std::endl;
              // this->object_reference_->operator[](query_idx) =
@@ -1203,8 +1223,10 @@ void MultilayerObjectTracking::processVoxelForReferenceModel(
         ref_model->cluster_neigbors = a_info;
         std::map<uint32_t, std::vector<uint32_t> > local_adj;
         local_adj[match_index] = adjacent_voxels;
-        this->computeLocalPairwiseFeautures(
-            supervoxel_clusters, local_adj, ref_model->neigbour_pfh);
+        if (this->structure_scaling_ > 0) {
+          this->computeLocalPairwiseFeautures(
+              supervoxel_clusters, local_adj, ref_model->neigbour_pfh);
+        }
     } else {
        ref_model->flag = true;
     }
