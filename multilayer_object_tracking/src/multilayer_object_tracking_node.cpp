@@ -296,11 +296,20 @@ void MultilayerObjectTracking::voxelizeAndProcessPointCloud(
     // models = ModelsPtr(new Models);
     const int DIM = supervoxel_clusters.size();
     ReferenceModel ref_model_ptr[DIM];
-
-    // ReferenceModel *ref_model_ptr = &models->operator[](0);
+    AdjacentInfo svlist_ptr[DIM];
     
     int icounter = 0;
     int iteration_counter = 0;
+
+    // shared(icounter, iteration_counter)
+// #ifdef _OPENMP
+// #pragma omp parallel for num_threads(8)
+// #endif
+//     for (int i = 0; i < 8; i++) {
+//       if (omp_get_thread_num() == 0) {
+//         std::cout << "# of Threads: " << omp_get_num_threads()  << "\n";
+//       }
+//     }    
     for (std::multimap<uint32_t, pcl::Supervoxel<PointT>::Ptr>::const_iterator
             label_itr = supervoxel_clusters.begin(); label_itr !=
             supervoxel_clusters.end(); label_itr++) {
@@ -310,8 +319,11 @@ void MultilayerObjectTracking::voxelizeAndProcessPointCloud(
        uint32_t supervoxel_label = label_itr->first;
        pcl::Supervoxel<PointT>::Ptr supervoxel =
           supervoxel_clusters.at(supervoxel_label);
+       
        if (supervoxel->voxels_->size() > min_cluster_size_) {
-          std::vector<uint32_t> adjacent_voxels;
+         std::vector<uint32_t> adjacent_voxels;
+         adjacent_voxels.reserve(sizeof(double));
+         int tmp_count = 0;
           for (std::multimap<uint32_t, uint32_t>::const_iterator
                   adjacent_itr = supervoxel_adjacency.equal_range(
                      supervoxel_label).first; adjacent_itr !=
@@ -321,13 +333,22 @@ void MultilayerObjectTracking::voxelizeAndProcessPointCloud(
                 supervoxel_clusters.at(adjacent_itr->second);
              if (neighbor_supervoxel->voxels_->size() >
                  min_cluster_size_) {
-                adjacent_voxels.push_back(adjacent_itr->second);
+               adjacent_voxels[tmp_count] = adjacent_itr->second;
+               tmp_count++;
              }
              icounter++;
           }
+
+          if (omp_get_thread_num() == 0) {
+            std::cout << "# of Threads: " << omp_get_num_threads()  << "\n";
+          }
+          
           AdjacentInfo a_info;
           a_info.adjacent_voxel_indices[supervoxel_label] = adjacent_voxels;
-          supervoxel_list.push_back(a_info);
+          
+          // supervoxel_list.push_back(a_info);
+          svlist_ptr[iteration_counter] = a_info;
+          
           a_info.voxel_index = supervoxel_label;
           ref_model.cluster_neigbors = a_info;
           ref_model.cluster_cloud = pcl::PointCloud<PointT>::Ptr(
@@ -354,8 +375,6 @@ void MultilayerObjectTracking::voxelizeAndProcessPointCloud(
           }
           ref_model.flag = false;
           ref_model.match_counter = 0;
-          // models->push_back(ref_model);
-
           ref_model_ptr[iteration_counter++] = ref_model;
        }
     }
@@ -364,6 +383,7 @@ void MultilayerObjectTracking::voxelizeAndProcessPointCloud(
     std::cout << iteration_counter  << "\n";
     for (int i = 0; i < iteration_counter; i++) {
       models->push_back(ref_model_ptr[i]);
+      supervoxel_list.push_back(svlist_ptr[i]);
     }
    
     std::cout << "Cloud Voxel size: "  << models->size() << std::endl;
@@ -481,6 +501,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
              target_voxels[itr->second].cluster_normals,
              target_voxels[itr->second].cluster_centroid, voxel_model);
           voxel_model->query_index = itr->first;
+          
           // probability *= (1 - background_probability.find(target_voxels[
           //                         itr->second].supervoxel_index)->second);
           
@@ -513,6 +534,9 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                 supervoxel_clusters.at(*it)->centroid_.getVector4fMap(),
                 voxel_mod);
              voxel_mod->query_index = itr->first;
+
+             std::cout << "\033[34m DUBUG MODE CHECKED 1\033[0m \n";
+             
              if (this->structure_scaling_ > 0) {
                 std::map<uint32_t, std::vector<uint32_t> > local_adjacency;
                 std::vector<uint32_t> list_adj;
@@ -538,6 +562,8 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                 prob *= phf_prob;
              }
 
+             std::cout << "\033[34m DUBUG MODE CHECKED 2\033[0m \n";
+             
              // probability *= (1 - background_probability.find(*it)->second);
              
              // -----------------------------------------------------
