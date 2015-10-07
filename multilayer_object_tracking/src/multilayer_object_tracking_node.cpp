@@ -6,7 +6,7 @@
 
 MultilayerObjectTracking::MultilayerObjectTracking() :
     init_counter_(0),
-    update_counter_(0), thread_(8),
+    update_counter_(0), thread_(16),
     growth_rate_(1.15) {
     this->object_reference_ = ModelsPtr(new Models);
     this->background_reference_ = ModelsPtr(new Models);
@@ -303,14 +303,10 @@ void MultilayerObjectTracking::voxelizeAndProcessPointCloud(
        ref_model.flag = true;
        ref_model.supervoxel_index = label_itr->first;
        uint32_t supervoxel_label = label_itr->first;
-       
        pcl::Supervoxel<PointT>::Ptr supervoxel =
            supervoxel_clusters.at(supervoxel_label);
-       
        if (supervoxel->voxels_->size() > min_cluster_size_) {
          std::vector<uint32_t> adjacent_voxels;
-         adjacent_voxels.reserve(sizeof(double));
-         int tmp_count = 0;
           for (std::multimap<uint32_t, uint32_t>::const_iterator
                   adjacent_itr = supervoxel_adjacency.equal_range(
                      supervoxel_label).first; adjacent_itr !=
@@ -321,8 +317,7 @@ void MultilayerObjectTracking::voxelizeAndProcessPointCloud(
             
              if (neighbor_supervoxel->voxels_->size() >
                  min_cluster_size_) {
-               adjacent_voxels[tmp_count] = adjacent_itr->second;
-               tmp_count++;
+               adjacent_voxels.push_back(adjacent_itr->second);
              }
              icounter++;
           }     
@@ -408,10 +403,9 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
           Eigen::Vector4f obj_centroid;
           obj_centroid = transformation_matrix * obj_ref[j].cluster_centroid;
           
-// #ifdef _OPENMP
-// #pragma omp parallel for schedule(dynamic) firstprivate(nearest_index, distance) \
-//   private(obj_centroid) lastprivate(nearest_index)
-// #endif      
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(this->thread_)
+#endif
           for (int i = 0; i < target_voxels.size(); i++) {
               if (!target_voxels[i].flag) {
                 Eigen::Vector4f t_centroid =
@@ -419,6 +413,9 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                 t_centroid(3) = 1.0f;
                 float dist = static_cast<float>(
                    pcl::distances::l2(obj_centroid, t_centroid));
+#ifdef _OPENMP
+#pragma omp critical
+#endif
                 if (dist < distance) {
                    distance = dist;
                    nearest_index = i;  // voxel_index
@@ -440,13 +437,12 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        }
     }
 
-
     // ros::Time begin = ros::Time::now();
 
     // NOTE: if the VFH matches are on the BG than perfrom
     // backprojection to confirm the match thru motion and VFH
     // set of patches that match the trajectory
-    ROS_INFO("\033[35m MATCHING THROUGH NIEGBOUR SEARCH \033[0m");
+    ROS_INFO("\033[35m MATCHING THROUGH NEIGBOUR SEARCH \033[0m");
     int counter = 0;
     float connectivity_lenght = 2.0f;
     pcl::PointCloud<PointT>::Ptr est_centroid_cloud(
@@ -502,9 +498,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                 supervoxel_clusters.at(*it)->centroid_.getVector4fMap(),
                 voxel_mod);
              voxel_mod->query_index = itr->first;
-
-             std::cout << "\033[34m DUBUG MODE CHECKED 1\033[0m \n";
-             
              if (this->structure_scaling_ > 0) {
                 std::map<uint32_t, std::vector<uint32_t> > local_adjacency;
                 std::vector<uint32_t> list_adj;
@@ -529,9 +522,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                 local_weight = phf_prob;
                 prob *= phf_prob;
              }
-
-             std::cout << "\033[34m DUBUG MODE CHECKED 2\033[0m \n";
-             
              // probability *= (1 - background_probability.find(*it)->second);
              
              // -----------------------------------------------------
@@ -611,35 +601,32 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
               obj_ref[itr->first].history_window.push_back(0);
           }
        }
-    }
-
-
-    ros::Time end = ros::Time::now();
-    std::cout << "----------------------------------------------------------\n";
-    std::cout << "\033[33m PROCESSING TIME: " << end - begin  << "  \033[0m \n";
-    std::cout << "----------------------------------------------------------\n";
-    
+    }    
     // visualization of probablity map
-    pcl::PointCloud<PointT>::Ptr prob_cloud(new pcl::PointCloud<PointT>);
-    for (std::multimap<uint32_t, float>::iterator it = all_probabilites.begin();
-         it != all_probabilites.end(); it++) {
+    bool is_pub_prob = false;
+    if (is_pub_prob) {
+      pcl::PointCloud<PointT>::Ptr prob_cloud(new pcl::PointCloud<PointT>);
+      for (std::multimap<uint32_t, float>::iterator it = all_probabilites.begin();
+           it != all_probabilites.end(); it++) {
         if (it->second > eps_distance_) {
-            for (int i = 0; i < supervoxel_clusters.at(
-                     it->first)->voxels_->size(); i++) {
-                PointT pt = supervoxel_clusters.at(it->first)->voxels_->points[i];
-                // cv::Scalar j_color = this->plotJetColour<float, float, float>(
-                //     it->second, threshold_, 1.0f);
-                pt.r = 255 * it->second;
-                pt.g = 255 * it->second;
-                pt.b = 255 * it->second;
-                prob_cloud->push_back(pt);
-            }
+          for (int i = 0; i < supervoxel_clusters.at(
+                   it->first)->voxels_->size(); i++) {
+            PointT pt = supervoxel_clusters.at(it->first)->voxels_->points[i];
+            // cv::Scalar j_color = this->plotJetColour<float, float, float>(
+            //     it->second, threshold_, 1.0f);
+            pt.r = 255 * it->second;
+            pt.g = 255 * it->second;
+            pt.b = 255 * it->second;
+            prob_cloud->push_back(pt);
+          }
         }
-    }
-    sensor_msgs::PointCloud2 ros_prob;
-    pcl::toROSMsg(*prob_cloud, ros_prob);
-    ros_prob.header = header;
-    this->pub_prob_.publish(ros_prob);
+      }
+      sensor_msgs::PointCloud2 ros_prob;
+      pcl::toROSMsg(*prob_cloud, ros_prob);
+      ros_prob.header = header;
+      this->pub_prob_.publish(ros_prob);
+    }    
+
     
     // centroid votes clustering
     pcl::PointCloud<PointT>::Ptr inliers(new pcl::PointCloud<PointT>);
@@ -688,6 +675,11 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
         }
         inliers->push_back(pt);
     }
+
+    ros::Time end = ros::Time::now();
+    std::cout << "----------------------------------------------------------\n";
+    std::cout << "\033[33m PROCESSING TIME: " << end - begin  << "  \033[0m \n";
+    std::cout << "----------------------------------------------------------\n";
     
     /*
     std::cout << "TOTAL POINTS: " << estimated_centroids.size() << std::endl;
