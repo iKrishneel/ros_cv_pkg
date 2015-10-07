@@ -293,11 +293,7 @@ void MultilayerObjectTracking::voxelizeAndProcessPointCloud(
     if (cloud->empty() || supervoxel_clusters.empty()) {
        return;
     }
-    // models = ModelsPtr(new Models);
-    const int DIM = supervoxel_clusters.size();
-    ReferenceModel ref_model_ptr[DIM];
-    AdjacentInfo svlist_ptr[DIM];
-    
+    models = ModelsPtr(new Models);
     int icounter = 0;
     int iteration_counter = 0;    
     for (std::multimap<uint32_t, pcl::Supervoxel<PointT>::Ptr>::const_iterator
@@ -332,10 +328,7 @@ void MultilayerObjectTracking::voxelizeAndProcessPointCloud(
           }     
           AdjacentInfo a_info;
           a_info.adjacent_voxel_indices[supervoxel_label] = adjacent_voxels;
-          
-          // supervoxel_list.push_back(a_info);
-          svlist_ptr[iteration_counter] = a_info;
-          
+          supervoxel_list.push_back(a_info);
           a_info.voxel_index = supervoxel_label;
           ref_model.cluster_neigbors = a_info;
           ref_model.cluster_cloud = pcl::PointCloud<PointT>::Ptr(
@@ -362,17 +355,11 @@ void MultilayerObjectTracking::voxelizeAndProcessPointCloud(
           }
           ref_model.flag = false;
           ref_model.match_counter = 0;
-          ref_model_ptr[iteration_counter++] = ref_model;
+          models->push_back(ref_model);
        }
     }
 
-    models = ModelsPtr(new Models);
-    for (int i = 0; i < iteration_counter; i++) {
-      models->push_back(ref_model_ptr[i]);
-      supervoxel_list.push_back(svlist_ptr[i]);
-    }
-    // compute the local pfh
-    if (this->structure_scaling_) {
+    if (this->structure_scaling_ > 0) {
        for (int i = 0; i < models->size(); i++) {
             this->computeLocalPairwiseFeautures(
                 supervoxel_clusters,
@@ -400,27 +387,20 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                                  supervoxel_adjacency);
     Eigen::Matrix<float, 3, 3> rotation_matrix;
     rotation_matrix = transformation_matrix.rotation();
-
-
-    ros::Time begin = ros::Time::now();
     
     std::vector<AdjacentInfo> supervoxel_list;
     ModelsPtr t_voxels = ModelsPtr(new Models);
     this->voxelizeAndProcessPointCloud(
        cloud, supervoxel_clusters, supervoxel_adjacency,
        supervoxel_list, t_voxels, true, false, true);
-
-    ros::Time end = ros::Time::now();
-    std::cout << "----------------------------------------------------------\n";
-    std::cout << "\033[33m PROCESSING TIME: " << end - begin  << "  \033[0m \n";
-    std::cout << "----------------------------------------------------------\n";
-    
     Models target_voxels = *t_voxels;
     
     ROS_INFO("\033[35m MODEL TRANSITION FOR MATCHING \033[0m");    
     std::map<int, int> matching_indices;  // hold the query and test case
     const int motion_hist_index = this->motion_history_.size() - 1;
 
+    ros::Time begin = ros::Time::now();
+    
     for (int j = 0; j < obj_ref.size(); j++) {
        if (!obj_ref[j].flag) {
           float distance = FLT_MAX;
@@ -428,10 +408,10 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
           Eigen::Vector4f obj_centroid;
           obj_centroid = transformation_matrix * obj_ref[j].cluster_centroid;
           
-#ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic) firstprivate(nearest_index, distance) \
-  shared(obj_centroid) lastprivate(nearest_index)
-#endif      
+// #ifdef _OPENMP
+// #pragma omp parallel for schedule(dynamic) firstprivate(nearest_index, distance) \
+//   private(obj_centroid) lastprivate(nearest_index)
+// #endif      
           for (int i = 0; i < target_voxels.size(); i++) {
               if (!target_voxels[i].flag) {
                 Eigen::Vector4f t_centroid =
@@ -459,6 +439,10 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
              
        }
     }
+
+
+    // ros::Time begin = ros::Time::now();
+
     // NOTE: if the VFH matches are on the BG than perfrom
     // backprojection to confirm the match thru motion and VFH
     // set of patches that match the trajectory
@@ -488,8 +472,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
              target_voxels[itr->second].cluster_centroid, voxel_model);
           voxel_model->query_index = itr->first;
           
-          // probability *= (1 - background_probability.find(target_voxels[
-          //                         itr->second].supervoxel_index)->second);
           
           // TODO(.) collect the neigbours here instead of next for
           // loop
@@ -631,6 +613,12 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        }
     }
 
+
+    ros::Time end = ros::Time::now();
+    std::cout << "----------------------------------------------------------\n";
+    std::cout << "\033[33m PROCESSING TIME: " << end - begin  << "  \033[0m \n";
+    std::cout << "----------------------------------------------------------\n";
+    
     // visualization of probablity map
     pcl::PointCloud<PointT>::Ptr prob_cloud(new pcl::PointCloud<PointT>);
     for (std::multimap<uint32_t, float>::iterator it = all_probabilites.begin();
