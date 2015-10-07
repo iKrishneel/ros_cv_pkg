@@ -420,7 +420,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     ROS_INFO("\033[35m MODEL TRANSITION FOR MATCHING \033[0m");    
     std::map<int, int> matching_indices;  // hold the query and test case
     const int motion_hist_index = this->motion_history_.size() - 1;
-
     for (int j = 0; j < obj_ref.size(); j++) {
        if (!obj_ref[j].flag) {
           float distance = FLT_MAX;
@@ -488,8 +487,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
              target_voxels[itr->second].cluster_centroid, voxel_model);
           voxel_model->query_index = itr->first;
           
-          // probability *= (1 - background_probability.find(target_voxels[
-          //                         itr->second].supervoxel_index)->second);
           
           // TODO(.) collect the neigbours here instead of next for
           // loop

@@ -56,6 +56,8 @@
 #include <geometry_msgs/PoseStamped.h>
 #include <std_msgs/Header.h>
 
+#include <omp.h>
+
 #include <multilayer_object_tracking/supervoxel_segmentation.h>
 #include <multilayer_object_tracking/EstimatedCentroidsClustering.h>
 #include <map>
@@ -146,6 +148,8 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     pcl::PointCloud<PointT>::Ptr previous_template_;
     float growth_rate_;
     float previous_distance_;
+
+    int thread_;
     
  protected:
     void onInit();
