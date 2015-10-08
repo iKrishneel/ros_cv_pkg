@@ -393,8 +393,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     ROS_INFO("\033[35m MODEL TRANSITION FOR MATCHING \033[0m");    
     std::map<int, int> matching_indices;  // hold the query and test case
     const int motion_hist_index = this->motion_history_.size() - 1;
-
-    ros::Time begin = ros::Time::now();
     
     for (int j = 0; j < obj_ref.size(); j++) {
        if (!obj_ref[j].flag) {
@@ -468,7 +466,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
              target_voxels[itr->second].cluster_centroid, voxel_model);
           voxel_model->query_index = itr->first;
           
-          
           // TODO(.) collect the neigbours here instead of next for
           // loop
 
@@ -497,7 +494,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                 supervoxel_clusters.at(*it)->normals_,
                 supervoxel_clusters.at(*it)->centroid_.getVector4fMap(),
                 voxel_mod);
-             voxel_mod->query_index = itr->first;
+             voxel_mod->query_index = itr->first;  
              if (this->structure_scaling_ > 0) {
                 std::map<uint32_t, std::vector<uint32_t> > local_adjacency;
                 std::vector<uint32_t> list_adj;
@@ -675,11 +672,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
         }
         inliers->push_back(pt);
     }
-
-    ros::Time end = ros::Time::now();
-    std::cout << "----------------------------------------------------------\n";
-    std::cout << "\033[33m PROCESSING TIME: " << end - begin  << "  \033[0m \n";
-    std::cout << "----------------------------------------------------------\n";
     
     /*
     std::cout << "TOTAL POINTS: " << estimated_centroids.size() << std::endl;
@@ -930,6 +922,8 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     // std::cout << "\033[036m REFERENCE INFO \033[0m"
     //           << object_reference_->size() << "\t"
     //           << convex_local_voxels.size() << std::endl;
+
+    ros::Time begin = ros::Time::now();
     
     if (best_match_index.size() > 2 && this->update_tracker_reference_) {
        ROS_INFO("\n\033[32mUpdating Tracking Reference Model\033[0m \n");
@@ -1051,24 +1045,39 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     } else {
        ROS_WARN("TRACKING MODEL CURRENTLY SET TO STATIC\n");
     }
+
+
+    ros::Time end = ros::Time::now();
+    std::cout << "----------------------------------------------------------\n";
+    std::cout << "\033[34m PROCESSING TIME: " << end - begin  << "  \033[0m \n";
+    std::cout << "----------------------------------------------------------\n";
+    
     pcl::PointCloud<PointT>::Ptr template_cloud(new pcl::PointCloud<PointT>);
     template_cloud->clear();
     int tmp_counter = 0;
     float argmax_lenght = 0.0f;
+    
+// #ifdef _OPENMP
+// #pragma omp parallel for shared(tmp_counter, argmax_lenght)
+// #endif
     for (int i = 0; i < this->object_reference_->size(); i++) {
-        // filter the good surfels against the background
-        // check the distance?
         Eigen::Vector4f surfel_centroid = Eigen::Vector4f();
         surfel_centroid = this->object_reference_->operator[](
             i).cluster_centroid;
         surfel_centroid(3) = 0.0f;
         float surfel_dist = static_cast<float>(
-            pcl::distances::l2(surfel_centroid, current_pose_));
+            pcl::distances::l2(surfel_centroid, current_pose_));        
         if (surfel_dist > argmax_lenght) {
             argmax_lenght = surfel_dist;
         }
+// #ifdef _OPENMP
+// #pragma omp barrier
+// #endif
         if (surfel_dist < (this->previous_distance_ * growth_rate_)) {            
             float probability = 0.0f;
+#ifdef _OPENMP
+#pragma omp parallel for shared(probability) schedule(dynamic) firstprivate(i)
+#endif
             for (int j = 0; j < this->background_reference_->size(); j++) {
                 ReferenceModel *r_mod = new ReferenceModel;
                 float prob = this->targetCandidateToReferenceLikelihood<float>(
@@ -1078,12 +1087,18 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                     this->background_reference_->operator[](j).cluster_centroid,
                     r_mod);
                 if (prob > probability) {
+#ifdef _OPENMP
+#pragma omp critical
+#endif
                     probability = prob;
                 }
-            }
+             }
             if (probability < 0.60f) {
                 *template_cloud = *template_cloud + *(
-                    this->object_reference_->operator[](i).cluster_cloud);   
+                    this->object_reference_->operator[](i).cluster_cloud);
+// #ifdef _OPENMP
+// #pragma omp atomic
+// #endif
                 tmp_counter++;
             } else {
                 ROS_INFO("\033[35m SURFEL REMOVED AS BACKGRND \033[0m");
@@ -1571,13 +1586,29 @@ Eigen::Vector4f MultilayerObjectTracking::cloudMeanNormal(
     float y = 0.0f;
     float z = 0.0f;
     int icounter = 0;
+
+#ifdef _OPENMP
+#pragma omp parallel for shared(x, y, z, icounter)
+#endif
     for (int i = 0; i < normal->size(); i++) {
        if ((!isnan(normal->points[i].normal_x)) &&
            (!isnan(normal->points[i].normal_y)) &&
            (!isnan(normal->points[i].normal_z))) {
+#ifdef _OPENMP
+#pragma omp atomic
+#endif
           x += normal->points[i].normal_x;
+#ifdef _OPENMP
+#pragma omp atomic
+#endif
           y += normal->points[i].normal_y;
+#ifdef _OPENMP
+#pragma omp atomic
+#endif
           z += normal->points[i].normal_z;
+#ifdef _OPENMP
+#pragma omp atomic
+#endif
           icounter++;
        }
     }
@@ -1889,7 +1920,12 @@ void MultilayerObjectTracking::transformModelPrimitives(
         ROS_ERROR("ERROR! No Object Model to Transform");
         return;
     }
-    for (int i = 0; i < obj_ref->size(); i++) {
+    const int DIM = obj_ref->size();
+    ReferenceModel tmp_arr[DIM];    
+#ifdef _OPENMP
+#pragma omp parallel for shared(transform_model, trans_models)
+#endif
+    for (int i = 0; i < DIM /*obj_ref->size()*/; i++) {
         pcl::PointCloud<PointT>::Ptr trans_cloud(
             new pcl::PointCloud<PointT>);
         pcl::transformPointCloud(*(obj_ref->operator[](i).cluster_cloud),
@@ -1897,9 +1933,15 @@ void MultilayerObjectTracking::transformModelPrimitives(
         Eigen::Vector4f trans_centroid = Eigen::Vector4f();
         pcl::compute3DCentroid<PointT, float>(
             *trans_cloud, trans_centroid);
-        trans_models->push_back(obj_ref->operator[](i));
-        trans_models->operator[](i).cluster_cloud = trans_cloud;
-        trans_models->operator[](i).cluster_centroid = trans_centroid;
+        tmp_arr[i] = obj_ref->operator[](i);
+        tmp_arr[i].cluster_cloud = trans_cloud;
+        tmp_arr[i].cluster_centroid = trans_centroid;
+        // trans_models->push_back(obj_ref->operator[](i));
+        // trans_models->operator[](i).cluster_cloud = trans_cloud;
+        // trans_models->operator[](i).cluster_centroid = trans_centroid;
+    }
+    for (int i = 0; i < DIM; i++) {
+      trans_models->push_back(tmp_arr[i]);
     }
 }
 
@@ -1914,6 +1956,7 @@ void MultilayerObjectTracking::filterCloudForBoundingBoxViz(
     ModelsPtr tmp_model(new Models);
     this->processInitCloud(cloud, tmp_model);
     pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
+    
     for (int i = 0; i < tmp_model->size(); i++) {
         Eigen::Vector4f surfel_centroid = Eigen::Vector4f();
         surfel_centroid = tmp_model->operator[](i).cluster_centroid;
@@ -1922,6 +1965,9 @@ void MultilayerObjectTracking::filterCloudForBoundingBoxViz(
             pcl::distances::l2(surfel_centroid, current_pose_));
         if (surfel_dist < (this->previous_distance_ * growth_rate_)) {            
             float probability = 0.0f;
+// #ifdef _OPENMP
+// #pragma omp parallel for shared(probability)
+// #endif
             for (int j = 0; j < background_reference->size(); j++) {
                 ReferenceModel *r_mod = new ReferenceModel;
                 float prob = this->targetCandidateToReferenceLikelihood<float>(
