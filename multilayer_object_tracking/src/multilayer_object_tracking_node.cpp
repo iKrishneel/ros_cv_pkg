@@ -170,7 +170,7 @@ void MultilayerObjectTracking::callback(
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
-    bool use_tf = true;
+    bool use_tf = false;
     tf::TransformListener tf_listener;
     tf::StampedTransform transform;
     ros::Time now = ros::Time(0);
@@ -373,6 +373,9 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        ROS_ERROR("ERROR: Global Layer Input Empty");
        return;
     }
+
+    ros::Time begin = ros::Time::now();
+    
     pcl::PointCloud<PointT>::Ptr n_cloud(new pcl::PointCloud<PointT>);
     Models obj_ref = *object_reference_;
     std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters;
@@ -393,16 +396,20 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     ROS_INFO("\033[35m MODEL TRANSITION FOR MATCHING \033[0m");    
     std::map<int, int> matching_indices;  // hold the query and test case
     const int motion_hist_index = this->motion_history_.size() - 1;
-    
-    for (int j = 0; j < obj_ref.size(); j++) {
+
+
+// #ifdef _OPENMP
+// #pragma omp parallel for
+// #endif
+        for (int j = 0; j < obj_ref.size(); j++) {
        if (!obj_ref[j].flag) {
           float distance = FLT_MAX;
           int nearest_index = -1;
-          Eigen::Vector4f obj_centroid;
-          obj_centroid = transformation_matrix * obj_ref[j].cluster_centroid;
+          Eigen::Vector4f obj_centroid =
+              transformation_matrix * obj_ref[j].cluster_centroid;
           
 #ifdef _OPENMP
-#pragma omp parallel for num_threads(this->thread_)
+#pragma omp parallel for shared(nearest_index, distance)
 #endif
           for (int i = 0; i < target_voxels.size(); i++) {
               if (!target_voxels[i].flag) {
@@ -411,18 +418,20 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                 t_centroid(3) = 1.0f;
                 float dist = static_cast<float>(
                    pcl::distances::l2(obj_centroid, t_centroid));
-#ifdef _OPENMP
-#pragma omp critical
-#endif
+                
                 if (dist < distance) {
+// #ifdef _OPENMP
+// #pragma omp critical
+// #endif
                    distance = dist;
                    nearest_index = i;  // voxel_index
                 }
              }
-          }
+          }          
           if (nearest_index != -1) {
              matching_indices[j] = nearest_index;
           }
+          
           // computing the model object cluster centroid-centroid ratio
           // const int motion_hist_index = this->motion_history_.size() - 1;
           obj_ref[j].centroid_distance(0) = obj_ref[j].cluster_centroid(0) -
@@ -434,9 +443,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
              
        }
     }
-
-    // ros::Time begin = ros::Time::now();
-
+    
     // NOTE: if the VFH matches are on the BG than perfrom
     // backprojection to confirm the match thru motion and VFH
     // set of patches that match the trajectory
@@ -592,7 +599,9 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                   est_centroid_cloud->push_back(pt);
                   counter++;
               } else {
+#ifdef DEBUG
                   ROS_WARN("-- Outlier not added...");
+#endif
               }
           } else {
               obj_ref[itr->first].history_window.push_back(0);
@@ -923,7 +932,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     //           << object_reference_->size() << "\t"
     //           << convex_local_voxels.size() << std::endl;
 
-    ros::Time begin = ros::Time::now();
+    ros::Time u_time = ros::Time::now();
     
     if (best_match_index.size() > 2 && this->update_tracker_reference_) {
        ROS_INFO("\n\033[32mUpdating Tracking Reference Model\033[0m \n");
@@ -990,10 +999,11 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        this->previous_pose_ = this->current_pose_;
 
        // this->object_reference_->clear();
+#ifdef DEBUG
        std::cout << "Updating Ref Model: " << matching_surfels.size()
                  << "\t Convex: " << convex_local_voxels.size()
                  << std::endl;
-       
+#endif
        for (std::map<int, ReferenceModel>::iterator it =
                matching_surfels.begin(); it != matching_surfels.end(); it++) {
            this->object_reference_->operator[](it->first) = it->second;
@@ -1019,7 +1029,9 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
                    tmp_model->push_back(renew_model);
                }
                else {
+#ifdef DEBUG
                    std::cout << "\033[033m OUTDATED MODEL \033[0m" << std::endl;
+#endif
                }
            }
            this->update_counter_ = 0;
@@ -1043,13 +1055,16 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        */
      
     } else {
+#ifdef DEBUG
        ROS_WARN("TRACKING MODEL CURRENTLY SET TO STATIC\n");
+#endif
     }
 
-
+    
     ros::Time end = ros::Time::now();
     std::cout << "----------------------------------------------------------\n";
-    std::cout << "\033[34m PROCESSING TIME: " << end - begin  << "  \033[0m \n";
+    std::cout << "\033[34m PROCESSING TIME: " << end - begin << "\t" << end - u_time
+              << "  \033[0m \n";
     std::cout << "----------------------------------------------------------\n";
     
     pcl::PointCloud<PointT>::Ptr template_cloud(new pcl::PointCloud<PointT>);
@@ -1101,10 +1116,14 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
 // #endif
                 tmp_counter++;
             } else {
+#ifdef DEBUG
                 ROS_INFO("\033[35m SURFEL REMOVED AS BACKGRND \033[0m");
+#endif    
             }
         } else {
+#ifdef DEBUG
             ROS_INFO("\033[35m SURFEL REMOVED \033[0m]");
+#endif
         }
     }
     if (argmax_lenght > (growth_rate_ * previous_distance_)) {
@@ -1114,15 +1133,19 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     }
     this->filterCloudForBoundingBoxViz(output, this->background_reference_);
     this->previous_distance_ = argmax_lenght;
-    
+
+#ifdef DEBUG
     std::cout << "\033[031m TEMPLATE SIZE:  \033[0m" << template_cloud->size()
               << std::endl;    
-
+#endif
+    
     if (tmp_counter < 1) {
         template_cloud->clear();
         pcl::copyPointCloud<PointT, PointT>(*previous_template_, *template_cloud);
     } else {
+#ifdef DEBUG
         ROS_INFO("\033[34m UPDATING INFO...\033[0m");
+#endif
         // previous_distance_ = this->templateCloudFilterLenght(template_cloud);
         // this->previous_template_->clear();
         pcl::copyPointCloud<PointT, PointT>(*template_cloud, *previous_template_);
@@ -1131,8 +1154,10 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
         this->processInitCloud(template_cloud, this->object_reference_);
     }
 
+#ifdef DEBUG
     std::cout << "\033[038m REFERENCE INFO \033[0m"
               << object_reference_->size() << std::endl;
+#endif
     
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*output, *cloud);
@@ -1141,7 +1166,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     for (int i = 0; i < cloud->size(); i++) {
        tdp_ind.indices.push_back(i);
     }
-
+    
     // visualization of tracking template
     if (this->update_filter_template_) {
        sensor_msgs::PointCloud2 ros_templ;
@@ -1150,7 +1175,6 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        this->pub_templ_.publish(ros_templ);
        // pub_scloud_.publish(ros_templ);
     }
-    
     
     // visualization of target surfels
     std::vector<pcl::PointIndices> all_indices;
@@ -1186,6 +1210,11 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     pcl::toROSMsg(*centroid_normal, rviz_normal);
     rviz_normal.header = header;
     this->pub_normal_.publish(rviz_normal);
+
+    // ros::Time end = ros::Time::now();
+    // std::cout << "----------------------------------------------------------\n";
+    // std::cout << "\033[34m PROCESSING TIME: " << end - begin  << "  \033[0m \n";
+    // std::cout << "----------------------------------------------------------\n";
 }
 
 void MultilayerObjectTracking::processVoxelForReferenceModel(
@@ -1965,9 +1994,9 @@ void MultilayerObjectTracking::filterCloudForBoundingBoxViz(
             pcl::distances::l2(surfel_centroid, current_pose_));
         if (surfel_dist < (this->previous_distance_ * growth_rate_)) {            
             float probability = 0.0f;
-// #ifdef _OPENMP
-// #pragma omp parallel for shared(probability)
-// #endif
+#ifdef _OPENMP
+#pragma omp parallel for shared(probability) schedule(dynamic) firstprivate(i)
+#endif
             for (int j = 0; j < background_reference->size(); j++) {
                 ReferenceModel *r_mod = new ReferenceModel;
                 float prob = this->targetCandidateToReferenceLikelihood<float>(
@@ -1977,6 +2006,9 @@ void MultilayerObjectTracking::filterCloudForBoundingBoxViz(
                     background_reference->operator[](j).cluster_centroid,
                     r_mod);
                 if (prob > probability) {
+#ifdef _OPENMP
+#pragma omp critical
+#endif
                     probability = prob;
                 }
             }
