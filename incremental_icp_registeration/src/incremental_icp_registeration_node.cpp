@@ -100,7 +100,7 @@ bool IncrementalICPRegisteration::icpAlignPointCloud(
        prev = reg.getLastIncrementalTransformation();
     }
     Eigen::Matrix4f tgt2src = trans.inverse();
-    pcl::transfromPointCloud(*target, *output, tgt2src);
+    pcl::transformPointCloud(*target, *output, tgt2src);
     final_transform = tgt2src;
     *output += *source;
 }
