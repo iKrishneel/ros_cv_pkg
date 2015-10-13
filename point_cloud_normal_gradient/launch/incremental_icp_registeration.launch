@@ -1,0 +1,5 @@
+<launch>
+  <node pkg="point_cloud_normal_gradient" type="incremental_icp_registeration_node" name="incremental_icp_registeration" output="screen" >
+    <remap from="input" to="/camera/depth_registered/points" />
+  </node>
+</launch>
