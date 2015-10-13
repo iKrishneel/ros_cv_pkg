@@ -69,7 +69,6 @@ bool IncrementalICPRegisteration::icpAlignPointCloud(
     this->estimateNormal(source, n_source);
     this->estimateNormal(target, n_target);
 
-
     ICPPointRepresentation icp_point;
     float alpha[4] = {1.0f, 1.0f, 1.0f, 1.0f};
     icp_point.setRescaleValues(alpha);
@@ -84,7 +83,6 @@ bool IncrementalICPRegisteration::icpAlignPointCloud(
 
     Eigen::Matrix4f trans = Eigen::Matrix4f::Identity();
     Eigen::Matrix4f prev;
-    Eigen::Matrix4f tgt2src;
     pcl::PointCloud<pcl::PointNormal>::Ptr reg_result = n_source;
     reg.setMaximumIterations(5);
 
@@ -93,8 +91,18 @@ bool IncrementalICPRegisteration::icpAlignPointCloud(
        n_source = reg_result;
        reg.setInputSource(n_source);
        reg.align(*reg_result);
-    }
+       trans = reg.getFinalTransformation() * trans;
 
+       if (fabs((reg.getLastIncrementalTransformation() - prev).sum()) <
+           reg.getTransformationEpsilon()) {
+         reg.setMaxCorrespondenceDistance(reg.getMaxCorrespondenceDistance() - 0.001f);
+       }
+       prev = reg.getLastIncrementalTransformation();
+    }
+    Eigen::Matrix4f tgt2src = trans.inverse();
+    pcl::transfromPointCloud(*target, *output, tgt2src);
+    final_transform = tgt2src;
+    *output += *source;
 }
 
 void IncrementalICPRegisteration::downsampleCloud(
