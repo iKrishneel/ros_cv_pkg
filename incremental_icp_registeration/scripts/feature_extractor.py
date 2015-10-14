@@ -15,9 +15,12 @@ from cv_bridge import CvBridge, CvBridgeError
 image_topic = "/camera/rgb/image_rect_color"
 
 def features_extraction(img):
-    fast = cv2.FastFeatureDetector()
+    #fast = cv2.FastFeatureDetector()
+    fast = cv2.SIFT()
     kp = fast.detect(img, None)
     img = cv2.drawKeypoints(img, kp, color=(0, 255, 0))
+
+    print len(kp)
     
     cv2.imshow("image", img)
     cv2.waitKey(3)

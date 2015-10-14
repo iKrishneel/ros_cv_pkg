@@ -136,6 +136,7 @@ include_directories(
 
 ## Declare a C++ executable
 add_executable(incremental_icp_registeration_node src/incremental_icp_registeration_node.cpp)
+add_executable(feature_based_registeration_node src/feature_based_registeration_node.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
@@ -143,6 +144,9 @@ add_executable(incremental_icp_registeration_node src/incremental_icp_registerat
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(incremental_icp_registeration_node
+  ${catkin_LIBRARIES}
+  )
+target_link_libraries(feature_based_registeration_node
   ${catkin_LIBRARIES}
 )
 
