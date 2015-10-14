@@ -72,10 +72,13 @@ class IncrementalICPRegisteration {
  private:
     ros::NodeHandle nh_;
     ros::Publisher pub_cloud_;
+    ros::Publisher pub_regis_;
     ros::Subscriber sub_cloud_;
 
     bool set_init;
-    pcl::PointCloud<PointT>::Ptr initial_cloud;
+    pcl::PointCloud<PointT>::Ptr reg_cloud;
+    pcl::PointCloud<PointT>::Ptr prev_cloud;
+    Eigen::Matrix4f global_transformation;
 };
 
 
