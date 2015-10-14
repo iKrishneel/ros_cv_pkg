@@ -57,8 +57,9 @@ void IncrementalICPRegisteration::callback(
        if (this->icpAlignPointCloud(this->prev_cloud, cloud, output, transformation)) {
          ROS_INFO("\033[34m CLOUD ALIGHNED \033[0m");
          pcl::transformPointCloud(*orig_cloud, *output, transformation);
-         *output += *prev_cloud;
+         *output += *reg_cloud;
          this->global_transformation = global_transformation * transformation;
+         reg_cloud->clear();
          pcl::copyPointCloud<PointT, PointT>(*output, *reg_cloud);
          pcl::copyPointCloud<PointT, PointT>(*orig_cloud, *prev_cloud);
          
@@ -94,52 +95,65 @@ bool IncrementalICPRegisteration::icpAlignPointCloud(
        return false;
     }
     ROS_INFO("\033[34m RUNNING ICP ALIGNMENT \033[0m");
-    pcl::PointCloud<pcl::PointNormal>::Ptr n_source(
-       new pcl::PointCloud<pcl::PointNormal>);
-    pcl::PointCloud<pcl::PointNormal>::Ptr n_target(
-       new pcl::PointCloud<pcl::PointNormal>);
+    // pcl::PointCloud<pcl::PointNormal>::Ptr n_source(
+    //    new pcl::PointCloud<pcl::PointNormal>);
+    // pcl::PointCloud<pcl::PointNormal>::Ptr n_target(
+    //     new pcl::PointCloud<pcl::PointNormal>);
+    // this->estimateNormal(source, n_source);
+    // this->estimateNormal(target, n_target);
 
-    this->estimateNormal(source, n_source);
-    this->estimateNormal(target, n_target);
-
-    ICPPointRepresentation icp_point;
-    float alpha[4] = {1.0f, 1.0f, 1.0f, 1.0f};
-    icp_point.setRescaleValues(alpha);
+    // ICPPointRepresentation icp_point;
+    // float alpha[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    // icp_point.setRescaleValues(alpha);
     
-    pcl::IterativeClosestPointNonLinear<pcl::PointNormal, pcl::PointNormal> reg;
+    // pcl::IterativeClosestPointNonLinear<pcl::PointNormal, pcl::PointNormal> reg;
+    pcl::IterativeClosestPointNonLinear<PointT, PointT> reg;
     reg.setTransformationEpsilon(1e-6);
     reg.setMaxCorrespondenceDistance(0.1f);
-    reg.setPointRepresentation(boost::make_shared<
-                               const ICPPointRepresentation> (icp_point));
-    reg.setInputSource(n_source);
-    reg.setInputTarget(n_target);
+    // reg.setPointRepresentation(boost::make_shared<
+    //                            const ICPPointRepresentation> (icp_point));
+    // reg.setInputSource(n_source);
+    // reg.setInputTarget(n_target);
 
+    reg.setInputSource(source);
+    reg.setInputTarget(target);
+    reg.setMaximumIterations(5);
+    reg.setEuclideanFitnessEpsilon(0.01);
+    reg.setRANSACIterations(100);
+    reg.setRANSACOutlierRejectionThreshold(0.05);
+    
     Eigen::Matrix4f trans = Eigen::Matrix4f::Identity();
     Eigen::Matrix4f prev;
-    pcl::PointCloud<pcl::PointNormal>::Ptr reg_result = n_source;
-    reg.setMaximumIterations(5);
+    // pcl::PointCloud<pcl::PointNormal>::Ptr reg_result = n_source;
+
 
     ROS_WARN("STARTING REGISTRATION");
-    
-    const int max_iter = 2;
-    for (int i = 0; i < max_iter; i++) {
-       n_source = reg_result;
-       reg.setInputSource(n_source);
-       reg.align(*reg_result);
-       trans = reg.getFinalTransformation() * trans;
 
-       if (fabs((reg.getLastIncrementalTransformation() - prev).sum()) <
-           reg.getTransformationEpsilon()) {
-         reg.setMaxCorrespondenceDistance(reg.getMaxCorrespondenceDistance() - 0.001f);
-       }
-       prev = reg.getLastIncrementalTransformation();
-    }
+    pcl::PointCloud<PointT>::Ptr tmp(new pcl::PointCloud<PointT>);
+    reg.align(*tmp);
+    
+    final_transform = reg.getFinalTransformation().inverse();
+    
+    
+    // const int max_iter = 2;
+    // for (int i = 0; i < max_iter; i++) {
+    //    n_source = reg_result;
+    //    reg.setInputSource(n_source);
+    //    reg.align(*reg_result);
+    //    trans = reg.getFinalTransformation() * trans;
+
+    //    if (fabs((reg.getLastIncrementalTransformation() - prev).sum()) <
+    //        reg.getTransformationEpsilon()) {
+    //      reg.setMaxCorrespondenceDistance(reg.getMaxCorrespondenceDistance() - 0.001f);
+    //    }
+    //    prev = reg.getLastIncrementalTransformation();
+    // }
 
     ROS_WARN("FINISHED REGISTRATION");
         
-    Eigen::Matrix4f tgt2src = trans.inverse();
+    // Eigen::Matrix4f tgt2src = trans.inverse();
     // pcl::transformPointCloud(*target, *output, tgt2src);
-    final_transform = tgt2src;
+    // final_transform = tgt2src;
     // *output += *source;
     return true;
 }

@@ -6,6 +6,8 @@
 #include <ros/console.h>
 
 #include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/CameraInfo.h>
+
 #include <opencv2/opencv.hpp>
 #include <boost/make_shared.hpp>
 
@@ -25,7 +27,7 @@
 #include <pcl/registration/icp.h>
 #include <pcl/registration/icp_nl.h>
 #include <pcl/registration/transforms.h>
-
+#include <pcl/registration/gicp.h>
 
 class ICPPointRepresentation: public pcl::PointRepresentation<
     pcl::PointNormal> {
@@ -63,7 +65,7 @@ class IncrementalICPRegisteration {
        const pcl::PointCloud<PointT>::Ptr,
        pcl::PointCloud<pcl::PointNormal>::Ptr,
        const int = 30);
-   
+  
  protected:
     void onInit();
     void subscribe();
