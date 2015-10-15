@@ -39,6 +39,7 @@
 #include <pcl/registration/transforms.h>
 #include <pcl/registration/gicp.h>
 #include <pcl/registration/correspondence_estimation.h>
+#include <pcl/registration/correspondence_rejection_sample_consensus.h>
 
 #include <omp.h>
 
@@ -98,7 +99,7 @@ class FeatureBasedRegisteration {
     ros::Publisher pub_regis_;
     ros::Subscriber sub_cloud_;
     ros::Subscriber sub_image_;
-    pcl::PointCloud<PointT>::Ptr reg_cloud;
+    pcl::PointCloud<PointT>::Ptr prev_cloud;
     cv::Mat image;
 
     pcl::PointCloud<pcl::FPFHSignature33>::Ptr prev_features;

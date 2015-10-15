@@ -3,7 +3,8 @@
 
 FeatureBasedRegisteration::FeatureBasedRegisteration() {
 
-    this->reg_cloud = pcl::PointCloud<PointT>::Ptr(new pcl::PointCloud<PointT>);
+    this->prev_cloud = pcl::PointCloud<PointT>::Ptr(
+       new pcl::PointCloud<PointT>);
     this->prev_features = pcl::PointCloud<pcl::FPFHSignature33>::Ptr(
         new pcl::PointCloud<pcl::FPFHSignature33>());
     this->onInit();
@@ -69,26 +70,55 @@ void FeatureBasedRegisteration::callback(
       this->getPointCloudKeypoints(nnan_cloud, cloud_normals, keypoints);
     } else {
       this->keypointsFrom2DImage(cloud, this->image, keypoints);
-    }    
-    std::cout << keypoints->points.size()<< "\n";
+    }
+    // std::cout << keypoints->points.size()<< "\n";
     
     pcl::PointCloud<pcl::FPFHSignature33>::Ptr features(
         new pcl::PointCloud<pcl::FPFHSignature33>());
     this->computePointFPFH(nnan_cloud, cloud_normals, keypoints, features);
 
     if (!this->prev_features->points.empty()) {
-      // pcl::registration::CorrespondenceEstimation<
-      //   pcl::FPFHSignature33, pcl::FPFHSignature33, double> estimate;
-      // estimate.setInputSource(this->prev_features);
-      // estimate.setInputTarget(features);
-      // pcl::Correspondences correspondences;
-      // estimate.determineCorrespondences(correspondences, 1.0f);
-      
-      this->featureCorrespondenceEstimate(prev_features, features);
+      pcl::registration::CorrespondenceEstimation<
+        pcl::FPFHSignature33, pcl::FPFHSignature33, double> estimate;
+      estimate.setInputSource(this->prev_features);
+      estimate.setInputTarget(features);
+      boost::shared_ptr<pcl::Correspondences> correspondences(
+         new pcl::Correspondences);
+      estimate.determineCorrespondences(*correspondences);
 
-    } else {pcl::CorrespondenceRejection
+      boost::shared_ptr<pcl::Correspondences> out_correspondences(
+         new pcl::Correspondences);
+
+      int rej_sac_max_dist = 0.001;
+      int rej_sac_max_iter = 5000;
+      pcl::registration::CorrespondenceRejectorSampleConsensus<
+         PointT> corr_rej_sac;
+      corr_rej_sac.setInputSource(this->prev_cloud);
+      corr_rej_sac.setInputTarget(nnan_cloud);
+      corr_rej_sac.setInlierThreshold(rej_sac_max_dist);
+      corr_rej_sac.setMaximumIterations(rej_sac_max_iter);
+      corr_rej_sac.getRemainingCorrespondences(
+         *correspondences, *out_correspondences);
+
+      for (int i = 0; i < out_correspondences->size(); i++) {
+         std::cout << out_correspondences->operator[](i).index_query << " "
+                   << out_correspondences->operator[](i).index_match << " "
+                   << out_correspondences->operator[](i).distance << std::endl;
+      }
+
+      
+      Eigen::Matrix4f transform_res_sac = corr_rej_sac.getBestTransformation();
+      
+      std::cout << "Size Matching: " << out_correspondences->size() << "\t"
+                << correspondences->size() << std::endl;
+      
+       // this->featureCorrespondenceEstimate(prev_features,
+       // features);      
+
+    } else {
       ROS_WARN("SETTING INITIAL FEATURES");
       *prev_features = *features;
+      pcl::copyPointCloud<PointT, PointT>(*nnan_cloud, *prev_cloud);
     }
 
     
@@ -110,7 +140,8 @@ void FeatureBasedRegisteration::keypointsFrom2DImage(
     pcl::PointCloud<pcl::PointWithScale>::Ptr extr_keypts) {
     cv::Mat gray_img;
     cv::cvtColor(img, gray_img, CV_BGR2GRAY);
-    cv::Ptr<cv::FeatureDetector> detector = cv::FeatureDetector::create("HARRIS");
+    cv::Ptr<cv::FeatureDetector> detector =
+       cv::FeatureDetector::create("HARRIS");
     std::vector<cv::KeyPoint> keypoints;
     detector->detect(gray_img, keypoints);
     for (std::vector<cv::KeyPoint>::iterator it = keypoints.begin();
@@ -126,7 +157,7 @@ void FeatureBasedRegisteration::keypointsFrom2DImage(
          pws.z = cloud->points[index].z;
          extr_keypts->push_back(pws);
        }
-    }   
+    }
     cv::Mat draw = img.clone();
     cv::drawKeypoints(img, keypoints, draw, cv::Scalar(0, 255, 0));
     cv::imshow("image", draw);
@@ -193,14 +224,15 @@ void FeatureBasedRegisteration::computePointFPFH(
     pcl::PointCloud<PointT>::Ptr keypoints_clouds(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud(*keypoints, *keypoints_clouds);
 
-    pcl::PointCloud<pcl::Normal>::Ptr cloud_normals(new pcl::PointCloud<pcl::Normal>);
+    pcl::PointCloud<pcl::Normal>::Ptr cloud_normals(
+       new pcl::PointCloud<pcl::Normal>);
     for (int i = 0; i < normals->size(); i++) {
       pcl::Normal npt;
       npt.normal_x = normals->points[i].normal_x;
       npt.normal_y = normals->points[i].normal_y;
       npt.normal_z = normals->points[i].normal_z;
       cloud_normals->push_back(npt);
-    }    
+    }
     pcl::FPFHEstimationOMP<PointT, pcl::PointNormal, pcl::FPFHSignature33> fpfh;
     fpfh.setInputCloud(keypoints_clouds);
     fpfh.setSearchSurface(cloud);
@@ -257,7 +289,8 @@ void FeatureBasedRegisteration::featureCorrespondenceEstimate(
     std::vector<cv::DMatch> good_matches;
     double threshold = 2;
     for (int i = 0; i < src_descriptor.rows; i++) {
-      if (matches[i].distance < std::max(threshold * min_dist, 0.1 * max_dist)) {
+      if (matches[i].distance < std::max(
+             threshold * min_dist, 0.1 * max_dist)) {
         good_matches.push_back(matches[i]);
       }
     }
@@ -276,7 +309,8 @@ void FeatureBasedRegisteration::convertFPFHEstimationToMat(
     }
     bool is_norm = true;
     if (is_norm) {
-      cv::normalize(descriptor, descriptor, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+      cv::normalize(
+         descriptor, descriptor, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
     }
 }
 
