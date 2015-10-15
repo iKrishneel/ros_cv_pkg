@@ -80,13 +80,23 @@ class FeatureBasedRegisteration {
     void keypointsFrom2DImage(
         const pcl::PointCloud<PointT>::Ptr,
         const cv::Mat &,
-        pcl::PointCloud<pcl::PointWithScale>::Ptr);
+        std::vector<cv::KeyPoint> &, cv::Mat &);
     void convertFPFHEstimationToMat(
         const pcl::PointCloud<pcl::FPFHSignature33>::Ptr, cv::Mat &);
     void featureCorrespondenceEstimate(
         const pcl::PointCloud<pcl::FPFHSignature33>::Ptr,
-        const pcl::PointCloud<pcl::FPFHSignature33>::Ptr);
-  
+        const pcl::PointCloud<pcl::FPFHSignature33>::Ptr,
+        boost::shared_ptr<pcl::Correspondences>);
+    void featureCorrespondenceEstimate2D(
+       const pcl::PointCloud<PointT>::Ptr,
+       const cv::Mat, const std::vector<cv::KeyPoint>,
+       const cv::Mat, const cv::Mat,
+       const std::vector<cv::KeyPoint>, const cv::Mat,
+       boost::shared_ptr<pcl::Correspondences>);
+    void draw2DFinalCorrespondence(
+      const cv::Mat, std::vector<cv::KeyPoint>,
+      const cv::Mat, std::vector<cv::KeyPoint>,
+      const boost::shared_ptr<pcl::Correspondences>);
    
  protected:
     void onInit();
@@ -100,8 +110,14 @@ class FeatureBasedRegisteration {
     ros::Subscriber sub_cloud_;
     ros::Subscriber sub_image_;
     pcl::PointCloud<PointT>::Ptr prev_cloud;
+    pcl::PointCloud<PointT>::Ptr prev_nnan_cloud;
     cv::Mat image;
-
+    cv::Mat prev_image;
+    cv::Mat prev_descriptor_;
+   
+    std::vector<cv::KeyPoint> prev_keypoints_;
+   
+   
     pcl::PointCloud<pcl::FPFHSignature33>::Ptr prev_features;
   
 };
