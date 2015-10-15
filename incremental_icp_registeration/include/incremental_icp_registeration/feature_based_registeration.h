@@ -13,6 +13,7 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/features2d/features2d.hpp>
 #include <opencv2/nonfree/features2d.hpp>
+#include <opencv2/nonfree/nonfree.hpp>
 
 #include <boost/make_shared.hpp>
 
@@ -20,6 +21,7 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+// #include <correspondence_types.hpp>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/kdtree/kdtree.h>
 #include <pcl/filters/passthrough.h>
@@ -36,6 +38,7 @@
 #include <pcl/registration/icp_nl.h>
 #include <pcl/registration/transforms.h>
 #include <pcl/registration/gicp.h>
+#include <pcl/registration/correspondence_estimation.h>
 
 #include <omp.h>
 
@@ -77,6 +80,12 @@ class FeatureBasedRegisteration {
         const pcl::PointCloud<PointT>::Ptr,
         const cv::Mat &,
         pcl::PointCloud<pcl::PointWithScale>::Ptr);
+    void convertFPFHEstimationToMat(
+        const pcl::PointCloud<pcl::FPFHSignature33>::Ptr, cv::Mat &);
+    void featureCorrespondenceEstimate(
+        const pcl::PointCloud<pcl::FPFHSignature33>::Ptr,
+        const pcl::PointCloud<pcl::FPFHSignature33>::Ptr);
+  
    
  protected:
     void onInit();
@@ -91,7 +100,9 @@ class FeatureBasedRegisteration {
     ros::Subscriber sub_image_;
     pcl::PointCloud<PointT>::Ptr reg_cloud;
     cv::Mat image;
-   
+
+    pcl::PointCloud<pcl::FPFHSignature33>::Ptr prev_features;
+  
 };
 
 #endif  // _FEATURE_BASED_REGISTERATION_H_

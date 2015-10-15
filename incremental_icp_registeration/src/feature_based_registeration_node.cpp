@@ -4,6 +4,8 @@
 FeatureBasedRegisteration::FeatureBasedRegisteration() {
 
     this->reg_cloud = pcl::PointCloud<PointT>::Ptr(new pcl::PointCloud<PointT>);
+    this->prev_features = pcl::PointCloud<pcl::FPFHSignature33>::Ptr(
+        new pcl::PointCloud<pcl::FPFHSignature33>());
     this->onInit();
 }
 
@@ -49,8 +51,12 @@ void FeatureBasedRegisteration::callback(
     pcl::PointCloud<PointT>::Ptr nnan_cloud(new pcl::PointCloud<PointT>);
     std::vector<int> index;
     pcl::removeNaNFromPointCloud<PointT>(*cloud, *nnan_cloud, index);
-    const float leaf_size = 0.01f;
-    this->voxelGridFilter(nnan_cloud, nnan_cloud, leaf_size);
+
+    bool is_downsample = false;
+    if (is_downsample) {
+      const float leaf_size = 0.01f;
+      this->voxelGridFilter(nnan_cloud, nnan_cloud, leaf_size);
+    }
     
     pcl::PointCloud<pcl::PointNormal>::Ptr cloud_normals(
         new pcl::PointCloud<pcl::PointNormal>);
@@ -58,22 +64,32 @@ void FeatureBasedRegisteration::callback(
     
     pcl::PointCloud<pcl::PointWithScale>::Ptr keypoints(
         new pcl::PointCloud<pcl::PointWithScale>);
-    this->getPointCloudKeypoints(nnan_cloud, cloud_normals, keypoints);
+    bool feature_3d = false;
+    if (feature_3d) {
+      this->getPointCloudKeypoints(nnan_cloud, cloud_normals, keypoints);
+    } else {
+      this->keypointsFrom2DImage(cloud, this->image, keypoints);
+    }    
     std::cout << keypoints->points.size()<< "\n";
     
-    pcl::PointCloud<pcl::FPFHSignature33>::Ptr feature_bank(
+    pcl::PointCloud<pcl::FPFHSignature33>::Ptr features(
         new pcl::PointCloud<pcl::FPFHSignature33>());
-    // this->computePointFPFH(nnan_cloud, cloud_normals, keypoints, feature_bank);
+    this->computePointFPFH(nnan_cloud, cloud_normals, keypoints, features);
 
-    
-    // for (int i = 0; i < indices->indices.size(); i++) {
-    //   int index = indices->indices[i];
+    if (!this->prev_features->points.empty()) {
+      // pcl::registration::CorrespondenceEstimation<
+      //   pcl::FPFHSignature33, pcl::FPFHSignature33, double> estimate;
+      // estimate.setInputSource(this->prev_features);
+      // estimate.setInputTarget(features);
+      // pcl::Correspondences correspondences;
+      // estimate.determineCorrespondences(correspondences, 1.0f);
       
-    //   feature_bank->points.push_back(fpfhs->points[indices->indices[i]]);
-      
-    //   std::cout << "INDEX: " << fpfhs->points.size() << "\t" <<
-    //       indices->indices[i] << "\n";
-    // }
+      this->featureCorrespondenceEstimate(prev_features, features);
+
+    } else {pcl::CorrespondenceRejection
+      ROS_WARN("SETTING INITIAL FEATURES");
+      *prev_features = *features;
+    }
 
     
     
@@ -86,6 +102,35 @@ void FeatureBasedRegisteration::callback(
     pcl::toROSMsg(*nnan_cloud, ros_regis);
     ros_regis.header = cloud_msg->header;
     this->pub_regis_.publish(ros_regis);
+}
+
+void FeatureBasedRegisteration::keypointsFrom2DImage(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const cv::Mat &img,
+    pcl::PointCloud<pcl::PointWithScale>::Ptr extr_keypts) {
+    cv::Mat gray_img;
+    cv::cvtColor(img, gray_img, CV_BGR2GRAY);
+    cv::Ptr<cv::FeatureDetector> detector = cv::FeatureDetector::create("HARRIS");
+    std::vector<cv::KeyPoint> keypoints;
+    detector->detect(gray_img, keypoints);
+    for (std::vector<cv::KeyPoint>::iterator it = keypoints.begin();
+         it != keypoints.end(); it++) {
+      int index = static_cast<int>(it->pt.x) + (
+          static_cast<int>(it->pt.y) * img.cols);
+       if (!isnan(cloud->points[index].x) ||
+           !isnan(cloud->points[index].y) ||
+           !isnan(cloud->points[index].z)) {
+         pcl::PointWithScale pws;
+         pws.x = cloud->points[index].x;
+         pws.y = cloud->points[index].y;
+         pws.z = cloud->points[index].z;
+         extr_keypts->push_back(pws);
+       }
+    }   
+    cv::Mat draw = img.clone();
+    cv::drawKeypoints(img, keypoints, draw, cv::Scalar(0, 255, 0));
+    cv::imshow("image", draw);
+    cv::waitKey(3);
 }
 
 void FeatureBasedRegisteration::getPointCloudKeypoints(
@@ -170,6 +215,71 @@ void FeatureBasedRegisteration::computePointFPFH(
     *feature_fpfh = *fpfhs;
 }
 
+void FeatureBasedRegisteration::featureCorrespondenceEstimate(
+    pcl::PointCloud<pcl::FPFHSignature33>::Ptr source,
+    pcl::PointCloud<pcl::FPFHSignature33>::Ptr target) {
+    if (source->points.empty() || target->points.empty()) {
+      ROS_ERROR("CANNOT COMPUTE CORRESPONDENCE OF EMPTY FEATURES");
+      return;
+    }
+    cv::Mat src_descriptor;
+    cv::Mat tgt_descriptor;
+#pragma omp parallel sections
+    {
+#pragma omp section
+      {
+        this->convertFPFHEstimationToMat(source, src_descriptor);
+      }
+#pragma omp section
+      {
+        this->convertFPFHEstimationToMat(target, tgt_descriptor);
+      }
+    }
+    
+    cv::FlannBasedMatcher matcher;
+    std::vector<cv::DMatch> matches;
+    matcher.match(src_descriptor, tgt_descriptor, matches);
+
+    double max_dist = 0;
+    double min_dist = FLT_MAX;
+    for (int i = 0; i < src_descriptor.rows; i++) {
+      double dist = matches[i].distance;
+      if (dist < min_dist) {
+        min_dist = dist;
+      }
+      if (dist > max_dist) {
+        max_dist = dist;
+      }
+    }
+
+    std::cout << min_dist << "\t" << max_dist  << "\n";
+    
+    std::vector<cv::DMatch> good_matches;
+    double threshold = 2;
+    for (int i = 0; i < src_descriptor.rows; i++) {
+      if (matches[i].distance < std::max(threshold * min_dist, 0.1 * max_dist)) {
+        good_matches.push_back(matches[i]);
+      }
+    }
+    std::cout << "Good Match: " << good_matches.size() << "\n";
+}
+
+
+void FeatureBasedRegisteration::convertFPFHEstimationToMat(
+    const pcl::PointCloud<pcl::FPFHSignature33>::Ptr source,
+    cv::Mat &descriptor) {
+    descriptor = cv::Mat(static_cast<int>(source->points.size()), 33, CV_32F);
+    for (int i = 0; i < source->points.size(); i++) {
+      for (int j = 0; j < 33; j++) {
+        descriptor.at<float>(i, j) = source->points[i].histogram[j];
+      }
+    }
+    bool is_norm = true;
+    if (is_norm) {
+      cv::normalize(descriptor, descriptor, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+    }
+}
+
 void FeatureBasedRegisteration::voxelGridFilter(
     const pcl::PointCloud<PointT>::Ptr input,
     pcl::PointCloud<PointT>::Ptr output, const float leaf_size) {
@@ -177,40 +287,6 @@ void FeatureBasedRegisteration::voxelGridFilter(
     grid.setLeafSize(leaf_size, leaf_size, leaf_size);
     grid.setInputCloud(input);
     grid.filter(*output);
-}
-
-
-void FeatureBasedRegisteration::keypointsFrom2DImage(
-    const pcl::PointCloud<PointT>::Ptr cloud,
-    const cv::Mat &img,
-    pcl::PointCloud<pcl::PointWithScale>::Ptr extr_keypts) {
-    cv::Mat gray_img;
-    cv::cvtColor(img, gray_img, CV_BGR2GRAY);
-    // cv::Ptr<cv::FeatureDetector> detector =
-    // cv::FeatureDetector::create("SIFT");
-    cv::SiftFeatureDetector detector(1000);
-    std::vector<cv::KeyPoint> keypoints;
-    detector.detect(gray_img, keypoints);
-    
-    for (std::vector<cv::KeyPoint>::iterator it = keypoints.begin();
-         it != keypoints.end(); it++) {
-      int index = static_cast<int>(it->pt.x) + (
-          static_cast<int>(it->pt.y) * img.cols);
-       if (!isnan(cloud->points[index].x) ||
-           !isnan(cloud->points[index].y) ||
-           !isnan(cloud->points[index].z)) {
-         pcl::PointWithScale pws;
-         pws.x = cloud->points[index].x;
-         pws.y = cloud->points[index].y;
-         pws.z = cloud->points[index].z;
-         extr_keypts->push_back(pws);
-       }
-    }
-    
-    cv::Mat draw = img.clone();
-    cv::drawKeypoints(img, keypoints, draw, cv::Scalar(0, 255, 0));
-    cv::imshow("image", draw);
-    cv::waitKey(3);
 }
 
 
