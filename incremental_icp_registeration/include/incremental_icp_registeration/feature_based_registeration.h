@@ -37,6 +37,8 @@
 #include <pcl/registration/transforms.h>
 #include <pcl/registration/gicp.h>
 
+#include <omp.h>
+
 class FeatureBasedRegisteration {
 
     typedef pcl::PointXYZRGB PointT;
@@ -56,19 +58,25 @@ class FeatureBasedRegisteration {
     void computePointFPFH(
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::PointNormal>::Ptr,
-       cv::Mat &, bool) const;
+       const pcl::PointCloud<pcl::PointWithScale>::Ptr,
+       pcl::PointCloud<pcl::FPFHSignature33>::Ptr) const;
+    void voxelGridFilter(
+        const pcl::PointCloud<PointT>::Ptr,
+        pcl::PointCloud<PointT>::Ptr, const float);
 
-    void keypointsFrom2DImage(
-       const pcl::PointCloud<PointT>::Ptr,
-       const cv::Mat &);
     void getPointCloudKeypoints(
-       const pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<pcl::PointNormal>::Ptr,
-       pcl::PointCloud<pcl::PointWithScale>::Ptr result,
-       const float = 0.01f,
-       const int = 3,
-       const int = 4,
-       const float = 0.001f);
+        const pcl::PointCloud<PointT>::Ptr,
+        const pcl::PointCloud<pcl::PointNormal>::Ptr,
+        pcl::PointCloud<pcl::PointWithScale>::Ptr result,
+        const float = 0.01f,
+        const int = 3,
+        const int = 4,
+        const float = 0.001f);
+  
+    void keypointsFrom2DImage(
+        const pcl::PointCloud<PointT>::Ptr,
+        const cv::Mat &,
+        pcl::PointCloud<pcl::PointWithScale>::Ptr);
    
  protected:
     void onInit();
