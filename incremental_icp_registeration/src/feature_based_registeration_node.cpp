@@ -46,25 +46,47 @@ void FeatureBasedRegisteration::callback(
        return;
     }
 
-    this->keypointsFrom2DImage(cloud, image);
+    pcl::PointCloud<PointT>::Ptr nnan_cloud(new pcl::PointCloud<PointT>);
+    std::vector<int> index;
+    pcl::removeNaNFromPointCloud<PointT>(*cloud, *nnan_cloud, index);
+    pcl::PointCloud<pcl::Normal>::Ptr cloud_normals(
+        new pcl::PointCloud<pcl::Normal>);
+    pcl::PointIndices::Ptr indices(new pcl::PointIndices);
+#pragma omp parallel sections
+    {
+#pragma omp section
+      {
+        this->keypointsFrom2DImage(cloud, image, indices);
+      }
+#pragma omp section
+      {
+        this->estimatePointCloudNormals<int>(nnan_cloud, cloud_normals, 10, true);
+      }
+    }
+    pcl::PointCloud<pcl::FPFHSignature33>::Ptr fpfhs(
+        new pcl::PointCloud<pcl::FPFHSignature33>());
+    this->computePointFPFH(nnan_cloud, cloud_normals, fpfhs);    
     
-    
-    
-    pcl::PointCloud<pcl::PointNormal>::Ptr cloud_normals(
-       new pcl::PointCloud<pcl::PointNormal>);
-    // this->estimatePointCloudNormals<float>(cloud, cloud_normals, 0.1f);
+    std::cout << "INFO--" << indices->indices.size() << "\t" << cloud_normals->size()
+              << "\t" << fpfhs->points.size()  << "\t" << index.size()<< "\n";
 
-    pcl::PointCloud<pcl::PointWithScale>::Ptr result(
-       new pcl::PointCloud<pcl::PointWithScale>);
-    // this->getPointCloudKeypoints(cloud, cloud_normals, result);
-    
-    std::cout << "No of SIFT points in the result are "
-              << result->points.size() << std::endl;
-
-    for (int i = 0; i < result->points.size(); i++) {
-       std::cout << result->points[i] << std::endl;
+    for (int i = 0; i < index.size(); i++) {
+      std::cout << index[i]  << "\n";
     }
 
+    
+    // pcl::PointCloud<pcl::FPFHSignature33>::Ptr feature_bank(
+    //     new pcl::PointCloud<pcl::FPFHSignature33>());
+    // for (int i = 0; i < indices->indices.size(); i++) {
+    //   int index = indices->indices[i];
+      
+    //   feature_bank->points.push_back(fpfhs->points[indices->indices[i]]);
+      
+    //   std::cout << "INDEX: " << fpfhs->points.size() << "\t" <<
+    //       indices->indices[i] << "\n";
+    // }
+
+    
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
@@ -79,7 +101,8 @@ void FeatureBasedRegisteration::callback(
 
 void FeatureBasedRegisteration::keypointsFrom2DImage(
     const pcl::PointCloud<PointT>::Ptr cloud,
-    const cv::Mat &img) {
+    const cv::Mat &img,
+    pcl::PointIndices::Ptr indices) {
     cv::Mat gray_img;
     cv::cvtColor(img, gray_img, CV_BGR2GRAY);
     // cv::Ptr<cv::FeatureDetector> detector =
@@ -87,23 +110,22 @@ void FeatureBasedRegisteration::keypointsFrom2DImage(
     cv::SiftFeatureDetector detector(1000);
     std::vector<cv::KeyPoint> keypoints;
     detector.detect(gray_img, keypoints);
-
-    pcl::PointIndices::Ptr indices(new pcl::PointIndices);
     for (std::vector<cv::KeyPoint>::iterator it = keypoints.begin();
          it != keypoints.end(); it++) {
-       int index = it->pt.x + (it->pt.y * img.cols);
-       indices->indices.push_back(index);
+      int index = static_cast<int>(it->pt.x) + (
+          static_cast<int>(it->pt.y) * img.cols);
+       if (!isnan(cloud->points[index].x) ||
+           !isnan(cloud->points[index].y) ||
+           !isnan(cloud->points[index].z)) {
+         indices->indices.push_back(index);
+       }
     }
-
-    std::cout << indices->indices.size() << "\t" << keypoints.size()
-              << std::endl;
     
     cv::Mat draw = img.clone();
     cv::drawKeypoints(img, keypoints, draw, cv::Scalar(0, 255, 0));
     cv::imshow("image", draw);
     cv::waitKey(3);
 }
-
 
 void FeatureBasedRegisteration::getPointCloudKeypoints(
     const pcl::PointCloud<PointT>::Ptr cloud,
@@ -112,9 +134,10 @@ void FeatureBasedRegisteration::getPointCloudKeypoints(
     const float min_scale, const int n_octaves,
     const int n_scales_per_octave, const float min_contrast) {
     if (cloud->empty()) {
-       ROS_ERROR("EMPTY POINT CLOUD");
-       return;
+      ROS_ERROR("EMPTY POINT CLOUD");
+      return;
     }
+
     // for (int i = 0; i < cloud_normals->size(); i++) {
     //    cloud_normals->points[i].x = cloud->points[i].x;
     //    cloud_normals->points[i].y = cloud->points[i].y;
@@ -126,7 +149,7 @@ void FeatureBasedRegisteration::getPointCloudKeypoints(
 
     pcl::SIFTKeypoint<PointT, pcl::PointWithScale> sift;
     pcl::search::KdTree<PointT>::Ptr tree(
-       new pcl::search::KdTree<PointT> ());
+        new pcl::search::KdTree<PointT> ());
     sift.setSearchMethod(tree);
     sift.setScales(min_scale, n_octaves, n_scales_per_octave);
     sift.setMinimumContrast(min_contrast);
@@ -134,16 +157,17 @@ void FeatureBasedRegisteration::getPointCloudKeypoints(
     sift.compute(*result);
 }
 
+
 template<class T>
 void FeatureBasedRegisteration::estimatePointCloudNormals(
     const pcl::PointCloud<PointT>::Ptr cloud,
-    pcl::PointCloud<pcl::PointNormal>::Ptr normals,
+    pcl::PointCloud<pcl::Normal>::Ptr normals,
     const T k, bool use_knn) const {
     if (cloud->empty()) {
        ROS_ERROR("ERROR: The Input cloud is Empty.....");
        return;
     }
-    pcl::NormalEstimationOMP<PointT, pcl::PointNormal> ne;
+    pcl::NormalEstimationOMP<PointT, pcl::Normal> ne;
     ne.setInputCloud(cloud);
      ne.setNumberOfThreads(8);
     pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT> ());
@@ -157,39 +181,32 @@ void FeatureBasedRegisteration::estimatePointCloudNormals(
 
 void FeatureBasedRegisteration::computePointFPFH(
     const pcl::PointCloud<PointT>::Ptr cloud,
-    const pcl::PointCloud<pcl::PointNormal>::Ptr normals,
-    cv::Mat &histogram, bool holistic) const {
+    const pcl::PointCloud<pcl::Normal>::Ptr normals,
+    pcl::PointCloud<pcl::FPFHSignature33>::Ptr feature_fpfh) const {
     if (cloud->empty() || normals->empty()) {
        ROS_ERROR("-- ERROR: cannot compute FPFH");
        return;
     }
-    pcl::FPFHEstimationOMP<PointT, pcl::PointNormal, pcl::FPFHSignature33> fpfh;
+    pcl::FPFHEstimationOMP<PointT, pcl::Normal, pcl::FPFHSignature33> fpfh;
     fpfh.setInputCloud(cloud);
     fpfh.setInputNormals(normals);
+    fpfh.setNumberOfThreads(8);
     pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);
     fpfh.setSearchMethod(tree);
     pcl::PointCloud<pcl::FPFHSignature33>::Ptr fpfhs(
        new pcl::PointCloud<pcl::FPFHSignature33> ());
-    fpfh.setRadiusSearch(0.05);
+    fpfh.setRadiusSearch(0.01f);
     fpfh.compute(*fpfhs);
-    const int hist_dim = 33;
-    if (holistic) {
-       histogram = cv::Mat::zeros(1, hist_dim, CV_32F);
-       for (int i = 0; i < fpfhs->size(); i++) {
-          for (int j = 0; j < hist_dim; j++) {
-             histogram.at<float>(0, j) += fpfhs->points[i].histogram[j];
-          }
-       }
-    } else {
-       histogram = cv::Mat::zeros(
-          static_cast<int>(fpfhs->size()), hist_dim, CV_32F);
-       for (int i = 0; i < fpfhs->size(); i++) {
-          for (int j = 0; j < hist_dim; j++) {
-             histogram.at<float>(i, j) = fpfhs->points[i].histogram[j];
-          }
-       }
-    }
-    cv::normalize(histogram, histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+    *feature_fpfh = *fpfhs;
+}
+
+void FeatureBasedRegisteration::voxelGridFilter(
+    const pcl::PointCloud<PointT>::Ptr input,
+    pcl::PointCloud<PointT>::Ptr output, const float leaf_size) {
+    pcl::VoxelGrid<PointT> grid;
+    grid.setLeafSize(leaf_size, leaf_size, leaf_size);
+    grid.setInputCloud(input);
+    grid.filter(*output);
 }
 
 int main(int argc, char *argv[]) {
