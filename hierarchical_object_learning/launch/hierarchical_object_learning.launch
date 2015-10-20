@@ -1,0 +1,20 @@
+<launch>
+  <arg name="cloud" default="/camera/depth_registered/points" />
+
+  <node pkg="nodelet" type="nodelet" name="normal_estimation"
+	args="standalone pcl/NormalEstimationOMP" output="screen">
+    <remap from="~input" to="$(arg cloud)" />
+    <rosparam>
+      radius_search: 0.1
+      k_search: 0
+      # 0, => ANN, 1 => FLANN, 2 => Organized
+      spatial_locator: 1
+      max_queue_size: 1
+    </rosparam>
+  </node>
+
+  <node pkg="hierarchical_object_learning" type="hierarchical_object_learning_node"
+	name="hierarchical_object_learning" output="screen" >
+    <remap from="input_cloud" to="$(arg cloud)" />
+  </node>
+</launch>
