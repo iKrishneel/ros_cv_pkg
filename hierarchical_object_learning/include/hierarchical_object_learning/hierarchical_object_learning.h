@@ -57,6 +57,8 @@
 #include <geometry_msgs/PolygonStamped.h>
 #include <std_msgs/Header.h>
 
+#include <omp.h>
+
 class HierarchicalObjectLearning {
  private:
     typedef pcl::PointXYZRGB PointT;
@@ -64,7 +66,6 @@ class HierarchicalObjectLearning {
     ros::NodeHandle pnh_;
     typedef  message_filters::sync_policies::ApproximateTime<
        sensor_msgs::Image,
-      sensor_msgs::PointCloud2,
       sensor_msgs::PointCloud2> SyncPolicy;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
     message_filters::Subscriber<sensor_msgs::Image> sub_image_;
@@ -73,6 +74,9 @@ class HierarchicalObjectLearning {
     ros::Publisher pub_cloud_;
     ros::Publisher pub_image_;
     ros::Publisher pub_pose_;
+
+
+    int num_threads_;
    
  protected:
     void onInit();
@@ -91,9 +95,17 @@ class HierarchicalObjectLearning {
         cv::Mat &, bool = true) const;
     template<class T>
     void estimatePointCloudNormals(
-        const pcl::PointCloud<PointT>::Ptr,
+        pcl::PointCloud<PointT>::Ptr,
         pcl::PointCloud<pcl::Normal>::Ptr,
-        T = 0.05f, bool = false) const;
+        T = 0.05f, bool = true) const;
+    void pointFeaturesBOWDescriptor(
+       const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<pcl::Normal>::Ptr,
+       const int);
+    template<class T>
+    void pointIntensityFeature(
+       const pcl::PointCloud<PointT>::Ptr,
+       cv::Mat &, const T, bool);
 };
 
 

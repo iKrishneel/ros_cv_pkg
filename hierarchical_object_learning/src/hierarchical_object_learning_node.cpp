@@ -3,7 +3,8 @@
 
 #include <hierarchical_object_learning/hierarchical_object_learning.h>
 
-HierarchicalObjectLearning::HierarchicalObjectLearning() {
+HierarchicalObjectLearning::HierarchicalObjectLearning() :
+    num_threads_(8) {
     this->onInit();
 }
 
@@ -23,8 +24,9 @@ void HierarchicalObjectLearning::subscribe() {
        this->sync_ = boost::make_shared<message_filters::Synchronizer<
           SyncPolicy> >(100);
        sync_->connectInput(sub_image_, sub_cloud_);
-       sync_->registerCallback(boost::bind(&HierarchicalObjectLearning::callback,
-                                           this, _1, _2));
+       sync_->registerCallback(boost::bind(
+                                  &HierarchicalObjectLearning::callback,
+                                  this, _1, _2));
 }
 
 void HierarchicalObjectLearning::unsubscribe() {
@@ -40,43 +42,69 @@ void HierarchicalObjectLearning::callback(
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
+
+    pcl::PointCloud<pcl::Normal>::Ptr normals(
+    new pcl::PointCloud<pcl::Normal>);
+    this->estimatePointCloudNormals<float>(cloud, normals, 16, false);
+    this->pointFeaturesBOWDescriptor(cloud, normals, 100);
+
+    
     cv_bridge::CvImage pub_img(
         image_msg->header, sensor_msgs::image_encodings::BGR8, image);
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
+    
 
-    ROS_INFO("--Publish selected object info.");
     this->pub_cloud_.publish(ros_cloud);
     this->pub_image_.publish(pub_img.toImageMsg());
 }
 
-template<class T>
-void HierarchicalObjectLearning::estimatePointCloudNormals(
+void HierarchicalObjectLearning::pointFeaturesBOWDescriptor(
     const pcl::PointCloud<PointT>::Ptr cloud,
-    pcl::PointCloud<pcl::Normal>::Ptr normals,
-    const T k, bool use_knn) const {
-    if (cloud->empty()) {
-      ROS_ERROR("ERROR: The Input cloud is Empty.....");
-      return;
+    const pcl::PointCloud<pcl::Normal>::Ptr normals,
+    const int cluster_size) {
+    if (cloud->empty() || normals->empty()) {
+       ROS_ERROR("CANNOT EXTRACT FEATURES OF EMPTY CLOUD");
+       return;
     }
-    pcl::NormalEstimationOMP<PointT, pcl::Normal> ne;
-    ne.setInputCloud(cloud);
-    ne.setNumberOfThreads(8);
-    pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT> ());
-    ne.setSearchMethod(tree);
-    if (use_knn) {
-      ne.setKSearch(k);
-    } else {
-      ne.setRadiusSearch(k);
+    cv::Mat geometric_features;
+    cv::Mat color_features;
+#ifdef _OPENMP
+    #pragma omp parallel sections
+#endif
+    {
+#ifdef _OPENMP
+#pragma omp section
+#endif
+       {
+          this->computePointFPFH(cloud, normals, geometric_features, true);
+       }
+#ifdef _OPENMP
+#pragma omp section
+#endif
+       {
+       this->pointIntensityFeature<int>(cloud, color_features, 8, true);
+       }
+    } 
+    cv::Mat feature_descriptor = cv::Mat(
+       cloud->size(), color_features.cols + geometric_features.cols, CV_32F);
+    cv::hconcat(geometric_features, color_features, feature_descriptor);
+
+    std::cout << "Feature Size: " << feature_descriptor.size() << std::endl;
+    
+    if (feature_descriptor.empty()) {
+       return;
     }
-    ne.compute(*normals);
+    cv::BOWKMeansTrainer bow_trainer(cluster_size);
+    bow_trainer.add(feature_descriptor);
+    cv::Mat vocabulary = bow_trainer.cluster();
 }
 
 void HierarchicalObjectLearning::computePointFPFH(
     const pcl::PointCloud<PointT>::Ptr cloud,
     const pcl::PointCloud<pcl::Normal>::Ptr normals,
-    cv::Mat &histogram, bool holistic) const {
+    cv::Mat &histogram, bool is_norm) const {
     if (cloud->empty() || normals->empty()) {
       ROS_ERROR("-- ERROR: cannot compute FPFH");
       return;
@@ -91,26 +119,90 @@ void HierarchicalObjectLearning::computePointFPFH(
     fpfh.setRadiusSearch(0.05);
     fpfh.compute(*fpfhs);
     const int hist_dim = 33;
-    if (holistic) {
-      histogram = cv::Mat::zeros(1, hist_dim, CV_32F);
-      for (int i = 0; i < fpfhs->size(); i++) {
-        for (int j = 0; j < hist_dim; j++) {
-          histogram.at<float>(0, j) += fpfhs->points[i].histogram[j];
-        }
-      }
-    } else {
-      histogram = cv::Mat::zeros(
-          static_cast<int>(fpfhs->size()), hist_dim, CV_32F);
-      for (int i = 0; i < fpfhs->size(); i++) {
-        for (int j = 0; j < hist_dim; j++) {
+    histogram = cv::Mat::zeros(
+       static_cast<int>(fpfhs->size()), hist_dim, CV_32F);
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) shared(histogram) \
+   num_threads(this->num_threads_)
+#endif
+    for (int i = 0; i < fpfhs->size(); i++) {
+       for (int j = 0; j < hist_dim; j++) {
           histogram.at<float>(i, j) = fpfhs->points[i].histogram[j];
-        }
-      }
+       }
     }
-    cv::normalize(histogram, histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+    if (is_norm) {
+       cv::normalize(
+          histogram, histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+    }
 }
 
+template<class T>
+void HierarchicalObjectLearning::pointIntensityFeature(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    cv::Mat &histogram, const T search_dim, bool is_knn) {
+    if (cloud->empty()) {
+       ROS_ERROR("-- ERROR: cannot compute FPFH");
+       return;
+    }
+    pcl::KdTreeFLANN<PointT> kdtree;
+    kdtree.setInputCloud(cloud);
+    histogram = cv::Mat::zeros(static_cast<int>(cloud->size()), 3, CV_32F);
 
+#ifdef _OPENMP
+#pragma omp parallel for shared(histogram) num_threads(this->num_threads_)
+#endif
+    for (int j = 0; j < cloud->size(); j++) {
+       std::vector<int> point_idx_search;
+       std::vector<float> point_squared_distance;
+       PointT pt = cloud->points[j];
+       int search_out = 0;
+       if (is_knn) {
+          search_out = kdtree.nearestKSearch(
+             pt, search_dim, point_idx_search, point_squared_distance);
+       } else {
+          search_out = kdtree.radiusSearch(
+             pt, search_dim, point_idx_search, point_squared_distance);
+       }
+       float r_dist = 0.0;
+       float g_dist = 0.0;
+       float b_dist = 0.0;
+       for (size_t i = 0; i < point_idx_search.size(); ++i) {
+          r_dist += (pt.r - cloud->points[point_idx_search[i]].r)/255.0f;
+          b_dist += (pt.b - cloud->points[point_idx_search[i]].b)/255.0f;
+          g_dist += (pt.g - cloud->points[point_idx_search[i]].g)/255.0f;
+       }
+       histogram.at<float>(j, 0) = r_dist / static_cast<float>(
+          point_idx_search.size());
+       histogram.at<float>(j, 1) = g_dist / static_cast<float>(
+          point_idx_search.size());
+       histogram.at<float>(j, 2) = b_dist / static_cast<float>(
+          point_idx_search.size());
+    }
+}
+
+template<class T>
+void HierarchicalObjectLearning::estimatePointCloudNormals(
+    pcl::PointCloud<PointT>::Ptr cloud,
+    pcl::PointCloud<pcl::Normal>::Ptr normals,
+    const T k, bool use_knn) const {
+    if (cloud->empty()) {
+      ROS_ERROR("ERROR: The Input cloud is Empty.....");
+      return;
+    }
+    std::vector<int> index;
+    pcl::removeNaNFromPointCloud(*cloud, *cloud, index);
+    pcl::NormalEstimationOMP<PointT, pcl::Normal> ne;
+    ne.setInputCloud(cloud);
+    ne.setNumberOfThreads(8);
+    pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT> ());
+    ne.setSearchMethod(tree);
+    if (use_knn) {
+      ne.setKSearch(k);
+    } else {
+      ne.setRadiusSearch(k);
+    }
+    ne.compute(*normals);
+}
 
 int main(int argc, char *argv[]) {
     ros::init(argc, argv, "hierarchical_object_learning");
