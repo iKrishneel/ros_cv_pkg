@@ -1,20 +1,26 @@
 <launch>
   <arg name="cloud" default="/camera/depth_registered/points" />
+  <arg name="rgb_image" default="/camera/rgb/image_rect_color" />
 
-  <node pkg="nodelet" type="nodelet" name="normal_estimation"
-	args="standalone pcl/NormalEstimationOMP" output="screen">
-    <remap from="~input" to="$(arg cloud)" />
-    <rosparam>
-      radius_search: 0.1
-      k_search: 0
-      # 0, => ANN, 1 => FLANN, 2 => Organized
-      spatial_locator: 1
-      max_queue_size: 1
-    </rosparam>
-  </node>
-
+  <arg name="voxel_grid_filter_limit_min" default="0.0"/>
+  <arg name="voxel_grid_filter_limit_max" default="5.0"/>
+  <arg name="voxel_grid_filter_field_name" default="z"/>
+  <arg name="voxel_grid_leaf_size" default="0.04"/>
+  
+  <node pkg="nodelet" type="nodelet"
+          name="voxelgrid"
+          args="standalone pcl/VoxelGrid"
+          output="screen" clear_params="true">
+      <remap from="~input" to="$(arg cloud)" />
+      <param name="filter_limit_min" value="$(arg voxel_grid_filter_limit_min)" />
+      <param name="filter_limit_max" value="$(arg voxel_grid_filter_limit_max)" />
+      <param name="filter_limit_field_name" value="$(arg voxel_grid_filter_field_name)" />
+      <param name="leaf_size" value="$(arg voxel_grid_leaf_size)" />
+    </node>
+  
   <node pkg="hierarchical_object_learning" type="hierarchical_object_learning_node"
 	name="hierarchical_object_learning" output="screen" >
-    <remap from="input_cloud" to="$(arg cloud)" />
+    <remap from="input_image" to="$(arg rgb_image)" />
+    <remap from="input_cloud" to="voxelgrid/output" />
   </node>
 </launch>
