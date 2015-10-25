@@ -16,9 +16,15 @@
     <remap from="input_pose" to="/particle_filter_tracker/track_result_pose" />
     <remap from="input_obj_pose" to="/object_model/output/pose" />
   </node>
-  <node pkg="multilayer_object_tracking" type="estimated_centroids_clustering.py"
-	name="estimated_centroids_clustering" output="screen" >
-  </node>
+
+  <!-- <node pkg="multilayer_object_tracking" type="estimated_centroids_clustering.py" -->
+  <!-- 	name="estimated_centroids_clustering" output="screen" > -->
+  <!-- </node> -->
+
+  <!-- <node pkg="multilayer_object_tracking" type="rosbag_data_recorder.py" -->
+  <!-- 	name="rosbag_data_recorder" output="screen" > -->
+  <!-- </node> -->
+  
   <node pkg="rqt_reconfigure" type="rqt_reconfigure" name="rqt_reconfigure"/>
 
   <!--<node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer" 

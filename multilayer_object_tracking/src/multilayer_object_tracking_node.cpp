@@ -51,6 +51,10 @@ void MultilayerObjectTracking::onInit() {
 
     this->pub_prob_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
         "/multilayer_object_tracking/output/probability_map", 1);
+
+    this->pub_template_set_ = this->pnh_.advertise<
+       jsk_recognition_msgs::PointsArray>(
+       "/multilayer_object_tracking/output/model_surfels_set", 1);
 }
 
 void MultilayerObjectTracking::subscribe() {
@@ -1054,7 +1058,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
         if (surfel_dist > argmax_lenght) {
             argmax_lenght = surfel_dist;
         }
-        if (surfel_dist < (this->previous_distance_ * growth_rate_)) {            
+        if (surfel_dist < (this->previous_distance_ * growth_rate_)) {
             float probability = 0.0f;
             for (int j = 0; j < this->background_reference_->size(); j++) {
                 ReferenceModel *r_mod = new ReferenceModel;
@@ -1070,7 +1074,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
             }
             if (probability < 0.60f) {
                 *template_cloud = *template_cloud + *(
-                    this->object_reference_->operator[](i).cluster_cloud);   
+                    this->object_reference_->operator[](i).cluster_cloud);
                 tmp_counter++;
             } else {
                 ROS_INFO("\033[35m SURFEL REMOVED AS BACKGRND \033[0m");
@@ -1088,16 +1092,18 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     this->previous_distance_ = argmax_lenght;
     
     std::cout << "\033[031m TEMPLATE SIZE:  \033[0m" << template_cloud->size()
-              << std::endl;    
+              << std::endl;
 
     if (tmp_counter < 1) {
         template_cloud->clear();
-        pcl::copyPointCloud<PointT, PointT>(*previous_template_, *template_cloud);
+        pcl::copyPointCloud<PointT, PointT>(
+           *previous_template_, *template_cloud);
     } else {
         ROS_INFO("\033[34m UPDATING INFO...\033[0m");
         // previous_distance_ = this->templateCloudFilterLenght(template_cloud);
         // this->previous_template_->clear();
-        pcl::copyPointCloud<PointT, PointT>(*template_cloud, *previous_template_);
+        pcl::copyPointCloud<PointT, PointT>(
+           *template_cloud, *previous_template_);
 
         this->object_reference_ = ModelsPtr(new Models);
         this->processInitCloud(template_cloud, this->object_reference_);
@@ -1121,8 +1127,14 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        ros_templ.header = header;
        this->pub_templ_.publish(ros_templ);
        // pub_scloud_.publish(ros_templ);
+       
+       jsk_recognition_msgs::PointsArray model_sets =
+          this->convertAndPublishTemplateAsJSKPointsArray(
+             this->object_reference_, header);
+       model_sets.cloud_list.push_back(ros_templ);
+       model_sets.header = header;
+       this->pub_template_set_.publish(model_sets);
     }
-    
     
     // visualization of target surfels
     std::vector<pcl::PointIndices> all_indices;
@@ -1957,6 +1969,26 @@ cv::Scalar MultilayerObjectTracking::plotJetColour(
        c.val[2] = 0;
     }
     return(c);
+}
+
+jsk_recognition_msgs::PointsArray
+MultilayerObjectTracking::convertAndPublishTemplateAsJSKPointsArray(
+    const ModelsPtr ref_model, const std_msgs::Header header) {
+    if (ref_model->empty()) {
+       ROS_ERROR("EMPTY: SKIPPING TEMPLATE PUBLISH");
+       return jsk_recognition_msgs::PointsArray();
+    }
+    jsk_recognition_msgs::PointsArray points_array;
+    for (int i = 0; i < ref_model->size(); i++) {
+       sensor_msgs::PointCloud2 ros_cloud;
+       pcl::PointCloud<PointT>::Ptr m_cloud(new pcl::PointCloud<PointT>);
+       m_cloud = ref_model->operator[](i).cluster_cloud;
+       pcl::toROSMsg(*m_cloud, ros_cloud);
+       ros_cloud.header = header;
+       points_array.cloud_list.push_back(ros_cloud);
+    }
+    points_array.header = header;
+    return points_array;
 }
 
 int main(int argc, char *argv[]) {

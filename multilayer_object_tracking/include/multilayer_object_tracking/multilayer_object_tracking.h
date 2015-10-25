@@ -52,6 +52,7 @@
 #include <tf/transform_broadcaster.h>
 #include <tf_conversions/tf_eigen.h>
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
+#include <jsk_recognition_msgs/PointsArray.h>
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <std_msgs/Header.h>
@@ -124,6 +125,7 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     ros::Publisher pub_centroids_;
     ros::Publisher pub_pose_;
     ros::Publisher pub_prob_;
+    ros::Publisher pub_template_set_;
     ros::ServiceClient clustering_client_;
     
     // object model params
@@ -275,7 +277,10 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
 
     template<typename T, typename U, typename V>
     cv::Scalar plotJetColour(T, U, V);
-   
+
+    jsk_recognition_msgs::PointsArray
+    convertAndPublishTemplateAsJSKPointsArray(
+       const ModelsPtr, const std_msgs::Header);
 };
 
 #endif  // _MULTILAYER_OBJECT_TRACKING_H_
