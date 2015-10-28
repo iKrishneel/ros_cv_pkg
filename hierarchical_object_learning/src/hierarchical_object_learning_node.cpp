@@ -5,7 +5,7 @@
 
 HierarchicalObjectLearning::HierarchicalObjectLearning() :
     num_threads_(8) {
-    pnh_.getParam("source_type", this->source_type_);
+    pnh_.getParam("source_type", this->source_type_);    
     if (this->source_type_.compare("ROSBAG") == 0) {
        std::string rosbag_dir;
        pnh_.getParam("rosbag_directory", rosbag_dir);
@@ -13,6 +13,7 @@ HierarchicalObjectLearning::HierarchicalObjectLearning() :
        pnh_.getParam("sub_topic", topic);
        this->read_rosbag_file(rosbag_dir, topic);
     } else {
+       ROS_INFO("INITIALIZING ROS SUBSCRIBER");
        this->onInit();
     }
 }
@@ -52,52 +53,57 @@ void HierarchicalObjectLearning::read_rosbag_file(
     std::vector<std::string> topics;
     topics.push_back(topic);
     rosbag::View view(bag, rosbag::TopicQuery(topics));
+    
     BOOST_FOREACH(rosbag::MessageInstance const m, view) {
        multilayer_object_tracking::ReferenceModelBundle::ConstPtr
           ref_bundle = m.instantiate<
              multilayer_object_tracking::ReferenceModelBundle>();
-
-       const jsk_recognition_msgs::PointsArray::ConstPtr cloud_ptr(
-          &ref_bundle->cloud_bundle);
-       const sensor_msgs::Image::ConstPtr image_ptr(&ref_bundle->image_bundle);
-       const sensor_msgs::CameraInfo::ConstPtr info_ptr(&ref_bundle->cam_info);
-       // this->callback(info_ptr, image_ptr, cloud_ptr);
-
-       for (int i = 0; i < cloud_ptr->cloud_list.size(); i++) {
-          sensor_msgs::PointCloud2::ConstPtr surfel_ptr(
-             &cloud_ptr->cloud_list[i]);
-          this->callback(info_ptr, image_ptr, surfel_ptr);
-       }
        
-       std::cout << ref_bundle->cloud_bundle.cloud_list[0].height
-                 << std::endl;
+       jsk_recognition_msgs::PointsArray cloud_list(ref_bundle->cloud_bundle);
+       sensor_msgs::Image image_msg(ref_bundle->image_bundle);
+       sensor_msgs::CameraInfo info_msg(ref_bundle->cam_info);
+       // cv::Mat image = cv_bridge::toCvShare(
+       // image_msg, sensor_msgs::image_encodings::BGR8)->image;
+
+       const int min_cloud_size_ = 100;
+       for (int i = 0; i < cloud_list.cloud_list.size(); i++) {
+         sensor_msgs::PointCloud2 surfel_cloud(cloud_list.cloud_list[i]);
+         pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
+         pcl::fromROSMsg(surfel_cloud, *cloud);
+
+         bool is_process_point = false;
+         if (i == cloud_list.cloud_list.size() && cloud->size() > min_cloud_size_) {
+           is_process_point = true;
+         }
+         this->processReferenceBundle(info_msg, cloud, is_process_point);
+         
+       }
     }
+    bag.close();
+    ROS_INFO("SUCCESSFULLY COMPLETED");
 }
 
-void HierarchicalObjectLearning::callback(
-    const sensor_msgs::CameraInfo::ConstPtr &info_msg,
-    const sensor_msgs::Image::ConstPtr &image_msg,
-    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
-    cv::Mat image = cv_bridge::toCvShare(
-       image_msg, image_msg->encoding)->image;
-    pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
-    pcl::fromROSMsg(*cloud_msg, *cloud);
-
+void HierarchicalObjectLearning::processReferenceBundle(
+    const sensor_msgs::CameraInfo &info_msg,
+    /*const sensor_msgs::Image &image_msg, */
+    const pcl::PointCloud<PointT>::Ptr cloud, bool is_point_level) {
+    if (cloud->empty()) {
+        ROS_ERROR("CANNOT PROCESS EMPTY CLOUD");
+        return;
+    }
     pcl::PointCloud<pcl::Normal>::Ptr normals(
     new pcl::PointCloud<pcl::Normal>);
     this->estimatePointCloudNormals<float>(cloud, normals, 16, false);
-    this->pointFeaturesBOWDescriptor(cloud, normals, 100);
 
-    
-    cv_bridge::CvImage pub_img(
-        image_msg->header, sensor_msgs::image_encodings::BGR8, image);
-    sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*cloud, ros_cloud);
-    ros_cloud.header = cloud_msg->header;
-    
+    // extract voxel level features
+    cv::Mat surfel_features;
+    this->extractObjectSurfelFeatures(cloud, normals, surfel_features);
 
-    this->pub_cloud_.publish(ros_cloud);
-    this->pub_image_.publish(pub_img.toImageMsg());
+    cv::Mat point_features;
+    if (is_point_level) {
+      this->extractPointLevelFeatures(cloud, normals, point_features, 0.001f, 100);
+    }
+    std::cout << "FEAUTURE SIZE: " << surfel_features.size() << " " << point_features  << "\n";
 }
 
 void HierarchicalObjectLearning::pointFeaturesBOWDescriptor(
@@ -223,7 +229,7 @@ void HierarchicalObjectLearning::pointIntensityFeature(
 void HierarchicalObjectLearning::globalPointCloudFeatures(
     const pcl::PointCloud<PointT>::Ptr cloud,
     const pcl::PointCloud<pcl::Normal>::Ptr normals,
-    cv::Mat featureMD) {
+    cv::Mat &featureMD) {
     if (cloud->empty() || normals->empty()) {
       ROS_ERROR("ERROR: EMPTY CLOUD FOR SURFEL FEATURE");
       return;
@@ -240,7 +246,7 @@ void HierarchicalObjectLearning::globalPointCloudFeatures(
     cv::Mat histogram = cv::Mat(sizeof(char), 308, CV_32F);
     for (int i = 0; i < histogram.cols; i++) {
        histogram.at<float>(0, i) = vfhs->points[0].histogram[i];
-    }
+    }    
     featureMD = histogram.clone();
 }
 
@@ -270,14 +276,14 @@ void HierarchicalObjectLearning::estimatePointCloudNormals(
 
 void HierarchicalObjectLearning::extractObjectSurfelFeatures(
     const pcl::PointCloud<PointT>::Ptr cloud,
-    const pcl::PointCloud<pcl::Normal>::Ptr normals,
-    cv::Mat featureMD, const int cluster_size) {
+    const pcl::PointCloud<pcl::Normal>::Ptr normals, cv::Mat &featureMD) {
     if (cloud->empty()) {
        ROS_ERROR("EMPTY CLOUD FOR MID-LEVEL FEATURES");
        return;
     }
     cv::Mat feature;
     this->globalPointCloudFeatures(cloud, normals, feature);
+    featureMD = feature.clone();
 }
 
 void HierarchicalObjectLearning::extractPointLevelFeatures(
@@ -298,6 +304,30 @@ void HierarchicalObjectLearning::extractPointLevelFeatures(
     this->pointFeaturesBOWDescriptor(cloud, normals, cluster_size);
 }
 
+void HierarchicalObjectLearning::callback(
+    const sensor_msgs::CameraInfo::ConstPtr &info_msg,
+    const sensor_msgs::Image::ConstPtr &image_msg,
+    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
+    cv::Mat image = cv_bridge::toCvShare(
+       image_msg, image_msg->encoding)->image;
+    pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
+    pcl::fromROSMsg(*cloud_msg, *cloud);
+
+    pcl::PointCloud<pcl::Normal>::Ptr normals(
+    new pcl::PointCloud<pcl::Normal>);
+    this->estimatePointCloudNormals<float>(cloud, normals, 16, false);
+    this->pointFeaturesBOWDescriptor(cloud, normals, 100);
+
+    
+    cv_bridge::CvImage pub_img(
+        image_msg->header, sensor_msgs::image_encodings::BGR8, image);
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*cloud, ros_cloud);
+    ros_cloud.header = cloud_msg->header;   
+
+    this->pub_cloud_.publish(ros_cloud);
+    this->pub_image_.publish(pub_img.toImageMsg());
+}
 
 int main(int argc, char *argv[]) {
     ros::init(argc, argv, "hierarchical_object_learning");

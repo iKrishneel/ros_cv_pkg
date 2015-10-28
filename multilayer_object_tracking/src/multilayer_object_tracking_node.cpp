@@ -1134,6 +1134,8 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
        model_sets.cloud_list.push_back(ros_templ);
        model_sets.header = header;
        this->pub_template_set_.publish(model_sets);
+
+       ROS_INFO("\033[34m \t PUBLISH SET....\033[0m]");
     }
     
     // visualization of target surfels
