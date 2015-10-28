@@ -147,12 +147,15 @@ class HierarchicalObjectLearning {
     void processReferenceBundle(
         const sensor_msgs::CameraInfo &,
         /*const sensor_msgs::Image &,*/
-        pcl::PointCloud<PointT>::Ptr, bool = false);
+        pcl::PointCloud<PointT>::Ptr,
+        jsk_recognition_msgs::Histogram &,
+        jsk_recognition_msgs::Histogram &, bool = false);
 
     bool fitFeatureModelService(
        const hierarchical_object_learning::FeatureArray &,
        const std::string);
-   
+    jsk_recognition_msgs::Histogram convertCvMatToFeatureMsg(
+       const cv::Mat);
 };
 
 
