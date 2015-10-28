@@ -12,6 +12,7 @@
 #include <message_filters/sync_policies/approximate_time.h>
 
 #include <sensor_msgs/Image.h>
+#include <sensor_msgs/CameraInfo.h>
 #include <sensor_msgs/image_encodings.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <cv_bridge/cv_bridge.h>
@@ -58,6 +59,7 @@
 #include <std_msgs/Header.h>
 
 #include <multilayer_object_tracking/supervoxel_segmentation.h>
+#include <multilayer_object_tracking/ReferenceModelBundle.h>
 #include <multilayer_object_tracking/EstimatedCentroidsClustering.h>
 #include <map>
 

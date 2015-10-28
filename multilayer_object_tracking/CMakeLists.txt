@@ -50,11 +50,10 @@ generate_dynamic_reconfigure_options(
   cfg/SupervoxelSegmentation.cfg)
 
 ## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
-# )
+add_message_files(
+  FILES
+  ReferenceModelBundle.msg
+)
 
 ## Generate services in the 'srv' folder
 add_service_files(
@@ -73,7 +72,8 @@ add_service_files(
 generate_messages(
   DEPENDENCIES
   std_msgs  # Or other packages containing msgs
-  geometry_msgs
+  jsk_recognition_msgs
+  sensor_msgs
  )
 
 ###################################
