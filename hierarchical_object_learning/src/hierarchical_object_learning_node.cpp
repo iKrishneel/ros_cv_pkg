@@ -9,6 +9,10 @@ HierarchicalObjectLearning::HierarchicalObjectLearning() :
     min_cloud_size_(100),
     neigbour_size_(16),
     downsize_(0.00f) {
+
+    this->trainer_client_ = pnh_.serviceClient<
+       hierarchical_object_learning::FitFeatureModel>("fit_feature_model");
+   
     pnh_.getParam("source_type", this->source_type_);
     if (this->source_type_.compare("ROSBAG") == 0) {
        std::string rosbag_dir;
@@ -85,6 +89,20 @@ void HierarchicalObjectLearning::read_rosbag_file(
     }
     bag.close();
     ROS_INFO("SUCCESSFULLY COMPLETED");
+}
+
+bool HierarchicalObjectLearning::fitFeatureModelService(
+    const hierarchical_object_learning::FeatureArray &feature_array,
+    const std::string model_save_path) {
+    hierarchical_object_learning::FitFeatureModel srv_ffm;
+    srv_ffm.request.features = feature_array;
+    srv_ffm.request.model_save_path = model_save_path;
+    if (this->trainer_client_.call(srv_ffm)) {
+       return srv_ffm.response.success;
+    } else {
+       ROS_ERROR("ERROR: FAILED TO CALL TRAINER SERIVCE");
+       return false;
+    }
 }
 
 void HierarchicalObjectLearning::processReferenceBundle(

@@ -17,6 +17,9 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <cv_bridge/cv_bridge.h>
 
+#include <rosbag/bag.h>
+#include <rosbag/view.h>
+
 #include <opencv2/core/core.hpp>
 #include <opencv2/opencv.hpp>
 #include <boost/thread/mutex.hpp>
@@ -53,17 +56,18 @@
 #include <tf/transform_listener.h>
 #include <tf/transform_broadcaster.h>
 #include <tf_conversions/tf_eigen.h>
-#include <jsk_recognition_msgs/ClusterPointIndices.h>
-#include <jsk_recognition_msgs/PointsArray.h>
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PolygonStamped.h>
 #include <std_msgs/Header.h>
 
-#include <rosbag/bag.h>
-#include <rosbag/view.h>
+#include <jsk_recognition_msgs/ClusterPointIndices.h>
+#include <jsk_recognition_msgs/PointsArray.h>
+#include <jsk_recognition_msgs/Histogram.h>
 
 #include <multilayer_object_tracking/ReferenceModelBundle.h>
+#include <hierarchical_object_learning/FeatureArray.h>
+#include <hierarchical_object_learning/FitFeatureModel.h>
 
 #include <omp.h>
 
@@ -84,7 +88,7 @@ class HierarchicalObjectLearning {
     ros::Publisher pub_cloud_;
     ros::Publisher pub_image_;
     ros::Publisher pub_pose_;
-
+    ros::ServiceClient trainer_client_;
 
     int num_threads_;
 
@@ -144,6 +148,11 @@ class HierarchicalObjectLearning {
         const sensor_msgs::CameraInfo &,
         /*const sensor_msgs::Image &,*/
         pcl::PointCloud<PointT>::Ptr, bool = false);
+
+    bool fitFeatureModelService(
+       const hierarchical_object_learning::FeatureArray &,
+       const std::string);
+   
 };
 
 
