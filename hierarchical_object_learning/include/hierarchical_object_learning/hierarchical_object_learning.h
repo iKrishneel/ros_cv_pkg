@@ -12,6 +12,7 @@
 #include <message_filters/sync_policies/approximate_time.h>
 
 #include <sensor_msgs/Image.h>
+#include <sensor_msgs/CameraInfo.h>
 #include <sensor_msgs/image_encodings.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <cv_bridge/cv_bridge.h>
@@ -47,15 +48,22 @@
 #include <pcl/common/common.h>
 #include <pcl/registration/distances.h>
 #include <pcl/filters/passthrough.h>
+#include <pcl/filters/voxel_grid.h>
 
 #include <tf/transform_listener.h>
 #include <tf/transform_broadcaster.h>
 #include <tf_conversions/tf_eigen.h>
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
+#include <jsk_recognition_msgs/PointsArray.h>
 #include <geometry_msgs/Pose.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PolygonStamped.h>
 #include <std_msgs/Header.h>
+
+#include <rosbag/bag.h>
+#include <rosbag/view.h>
+
+#include <multilayer_object_tracking/ReferenceModelBundle.h>
 
 #include <omp.h>
 
@@ -65,9 +73,11 @@ class HierarchicalObjectLearning {
     boost::mutex mutex_;
     ros::NodeHandle pnh_;
     typedef  message_filters::sync_policies::ApproximateTime<
+       sensor_msgs::CameraInfo,
        sensor_msgs::Image,
-      sensor_msgs::PointCloud2> SyncPolicy;
+       sensor_msgs::PointCloud2> SyncPolicy;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
+    message_filters::Subscriber<sensor_msgs::CameraInfo> sub_info_;
     message_filters::Subscriber<sensor_msgs::Image> sub_image_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
@@ -77,6 +87,8 @@ class HierarchicalObjectLearning {
 
 
     int num_threads_;
+
+    std::string source_type_;
    
  protected:
     void onInit();
@@ -86,6 +98,7 @@ class HierarchicalObjectLearning {
  public:
     HierarchicalObjectLearning();
     virtual void callback(
+       const sensor_msgs::CameraInfo::ConstPtr &,
        const sensor_msgs::Image::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
   
@@ -93,6 +106,10 @@ class HierarchicalObjectLearning {
         const pcl::PointCloud<PointT>::Ptr,
         pcl::PointCloud<pcl::Normal>::Ptr,
         cv::Mat &, bool = true) const;
+    void globalPointCloudFeatures(
+       const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<pcl::Normal>::Ptr, cv::Mat);
+   
     template<class T>
     void estimatePointCloudNormals(
         pcl::PointCloud<PointT>::Ptr,
@@ -106,6 +123,19 @@ class HierarchicalObjectLearning {
     void pointIntensityFeature(
        const pcl::PointCloud<PointT>::Ptr,
        cv::Mat &, const T, bool);
+
+    void read_rosbag_file(
+      const std::string, const std::string);
+
+    void extractPointLevelFeatures(
+       const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<pcl::Normal>::Ptr,
+       cv::Mat, const float, const int);
+    void extractObjectSurfelFeatures(
+       const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<pcl::Normal>::Ptr,
+       cv::Mat, const int);
+   
 };
 
 

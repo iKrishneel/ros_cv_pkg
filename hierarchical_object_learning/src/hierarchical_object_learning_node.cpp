@@ -5,7 +5,16 @@
 
 HierarchicalObjectLearning::HierarchicalObjectLearning() :
     num_threads_(8) {
-    this->onInit();
+    pnh_.getParam("source_type", this->source_type_);
+    if (this->source_type_.compare("ROSBAG") == 0) {
+       std::string rosbag_dir;
+       pnh_.getParam("rosbag_directory", rosbag_dir);
+       std::string topic;
+       pnh_.getParam("sub_topic", topic);
+       this->read_rosbag_file(rosbag_dir, topic);
+    } else {
+       this->onInit();
+    }
 }
 
 void HierarchicalObjectLearning::onInit() {
@@ -19,14 +28,15 @@ void HierarchicalObjectLearning::onInit() {
 }
 
 void HierarchicalObjectLearning::subscribe() {
+       this->sub_info_.subscribe(this->pnh_, "input_info", 1);
        this->sub_image_.subscribe(this->pnh_, "input_image", 1);
        this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
        this->sync_ = boost::make_shared<message_filters::Synchronizer<
           SyncPolicy> >(100);
-       sync_->connectInput(sub_image_, sub_cloud_);
+       sync_->connectInput(sub_info_, sub_image_, sub_cloud_);
        sync_->registerCallback(boost::bind(
                                   &HierarchicalObjectLearning::callback,
-                                  this, _1, _2));
+                                  this, _1, _2, _3));
 }
 
 void HierarchicalObjectLearning::unsubscribe() {
@@ -35,6 +45,7 @@ void HierarchicalObjectLearning::unsubscribe() {
 }
 
 void HierarchicalObjectLearning::callback(
+    const sensor_msgs::CameraInfo::ConstPtr &info_msg,
     const sensor_msgs::Image::ConstPtr &image_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
     cv::Mat image = cv_bridge::toCvShare(
@@ -86,7 +97,7 @@ void HierarchicalObjectLearning::pointFeaturesBOWDescriptor(
        {
        this->pointIntensityFeature<int>(cloud, color_features, 8, true);
        }
-    } 
+    }
     cv::Mat feature_descriptor = cv::Mat(
        cloud->size(), color_features.cols + geometric_features.cols, CV_32F);
     cv::hconcat(geometric_features, color_features, feature_descriptor);
@@ -180,6 +191,30 @@ void HierarchicalObjectLearning::pointIntensityFeature(
     }
 }
 
+void HierarchicalObjectLearning::globalPointCloudFeatures(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<pcl::Normal>::Ptr normals,
+    cv::Mat featureMD) {
+    if (cloud->empty() || normals->empty()) {
+      ROS_ERROR("ERROR: EMPTY CLOUD FOR SURFEL FEATURE");
+      return;
+    }
+    pcl::VFHEstimation<PointT, pcl::Normal, pcl::VFHSignature308> vfh;
+    vfh.setInputCloud(cloud);
+    vfh.setInputNormals(normals);
+    pcl::search::KdTree<PointT>::Ptr tree(
+       new pcl::search::KdTree<PointT>);
+    vfh.setSearchMethod(tree);
+    pcl::PointCloud<pcl::VFHSignature308>::Ptr vfhs(
+       new pcl::PointCloud<pcl::VFHSignature308>());
+    vfh.compute(*vfhs);
+    cv::Mat histogram = cv::Mat(sizeof(char), 308, CV_32F);
+    for (int i = 0; i < histogram.cols; i++) {
+       histogram.at<float>(0, i) = vfhs->points[0].histogram[i];
+    }
+    featureMD = histogram.clone();
+}
+
 template<class T>
 void HierarchicalObjectLearning::estimatePointCloudNormals(
     pcl::PointCloud<PointT>::Ptr cloud,
@@ -203,6 +238,67 @@ void HierarchicalObjectLearning::estimatePointCloudNormals(
     }
     ne.compute(*normals);
 }
+
+void HierarchicalObjectLearning::read_rosbag_file(
+    const std::string path_to_bag,
+    const std::string topic) {
+    rosbag::Bag bag;
+    bag.open(path_to_bag, rosbag::bagmode::Read);
+    std::vector<std::string> topics;
+    topics.push_back(topic);
+    rosbag::View view(bag, rosbag::TopicQuery(topics));
+    BOOST_FOREACH(rosbag::MessageInstance const m, view) {
+       multilayer_object_tracking::ReferenceModelBundle::ConstPtr
+          ref_bundle = m.instantiate<
+             multilayer_object_tracking::ReferenceModelBundle>();
+
+       const jsk_recognition_msgs::PointsArray::ConstPtr cloud_ptr(
+          &ref_bundle->cloud_bundle);
+       const sensor_msgs::Image::ConstPtr image_ptr(&ref_bundle->image_bundle);
+       const sensor_msgs::CameraInfo::ConstPtr info_ptr(&ref_bundle->cam_info);
+       // this->callback(info_ptr, image_ptr, cloud_ptr);
+
+       for (int i = 0; i < cloud_ptr->cloud_list.size(); i++) {
+          sensor_msgs::PointCloud2::ConstPtr surfel_ptr(
+             &cloud_ptr->cloud_list[i]);
+          this->callback(info_ptr, image_ptr, surfel_ptr);
+       }
+       
+       std::cout << ref_bundle->cloud_bundle.cloud_list[0].height
+                 << std::endl;
+    }
+}
+
+void HierarchicalObjectLearning::extractObjectSurfelFeatures(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<pcl::Normal>::Ptr normals,
+    cv::Mat featureMD, const int cluster_size) {
+    if (cloud->empty()) {
+       ROS_ERROR("EMPTY CLOUD FOR MID-LEVEL FEATURES");
+       return;
+    }
+    cv::Mat feature;
+    this->globalPointCloudFeatures(cloud, normals, feature);
+}
+
+void HierarchicalObjectLearning::extractPointLevelFeatures(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<pcl::Normal>::Ptr normals,
+    cv::Mat featureMD, const float leaf_size, const int cluster_size) {
+    if (cloud->empty()) {
+       ROS_ERROR("EMPTY CLOUD FOR POINT-LEVEL FEATURES");
+       return;
+    }
+    pcl::PointCloud<PointT>::Ptr filtered_cloud(new pcl::PointCloud<PointT>);
+    pcl::VoxelGrid<PointT> grid;
+    grid.setLeafSize(leaf_size, leaf_size, leaf_size);
+    grid.setInputCloud(cloud);
+    grid.filter(*filtered_cloud);
+
+     // TODO(here): modify the feature computer and return features
+    this->pointFeaturesBOWDescriptor(cloud, normals, cluster_size);
+}
+
 
 int main(int argc, char *argv[]) {
     ros::init(argc, argv, "hierarchical_object_learning");

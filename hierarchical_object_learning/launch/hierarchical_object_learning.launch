@@ -2,25 +2,16 @@
   <arg name="cloud" default="/camera/depth_registered/points" />
   <arg name="rgb_image" default="/camera/rgb/image_rect_color" />
 
-  <arg name="voxel_grid_filter_limit_min" default="0.0"/>
-  <arg name="voxel_grid_filter_limit_max" default="5.0"/>
-  <arg name="voxel_grid_filter_field_name" default="z"/>
-  <arg name="voxel_grid_leaf_size" default="0.04"/>
-  
-  <node pkg="nodelet" type="nodelet"
-          name="voxelgrid"
-          args="standalone pcl/VoxelGrid"
-          output="screen" clear_params="true">
-      <remap from="~input" to="$(arg cloud)" />
-      <param name="filter_limit_min" value="$(arg voxel_grid_filter_limit_min)" />
-      <param name="filter_limit_max" value="$(arg voxel_grid_filter_limit_max)" />
-      <param name="filter_limit_field_name" value="$(arg voxel_grid_filter_field_name)" />
-      <param name="leaf_size" value="$(arg voxel_grid_leaf_size)" />
-    </node>
+  <arg name="bag_directory" default="/home/krishneel/.ros/*.bag" />
+  <arg name="topic" default="/multilayer_object_tracking/output/model_surfels_set" />
   
   <node pkg="hierarchical_object_learning" type="hierarchical_object_learning_node"
 	name="hierarchical_object_learning" output="screen" >
     <remap from="input_image" to="$(arg rgb_image)" />
     <remap from="input_cloud" to="voxelgrid/output" />
+    
+    <param name="source_type"  value="ROSBAG" type="str"/>
+    <param name="rosbag_directory"  value="$(arg bag_directory)" type="str"/>
+    <param name="sub_topic"  value="$(arg topic)" type="str"/>
   </node>
 </launch>
