@@ -1,0 +1,4 @@
+hierarchical_object_learning/FeatureArray features
+string model_save_path
+---
+bool success

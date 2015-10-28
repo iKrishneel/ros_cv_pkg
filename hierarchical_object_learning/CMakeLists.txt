@@ -55,18 +55,18 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
-# )
+add_message_files(
+  FILES
+  FeatureArray.msg
+ # Message2.msg
+)
 
 ## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
-#   Service2.srv
-# )
+add_service_files(
+  FILES
+  FitFeatureModel.srv
+ # Service2.srv
+)
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -76,10 +76,11 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   std_msgs  # Or other packages containing msgs
-# )
+generate_messages(
+  DEPENDENCIES
+  std_msgs  # Or other packages containing msgs
+  jsk_recognition_msgs
+)
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -143,7 +144,7 @@ add_executable(hierarchical_object_learning_node src/hierarchical_object_learnin
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-# add_dependencies(hierarchical_object_learning_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(hierarchical_object_learning_node ${PROJECT_NAME}_gencfg  ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(hierarchical_object_learning_node
