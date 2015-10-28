@@ -44,6 +44,36 @@ void HierarchicalObjectLearning::unsubscribe() {
     this->sub_image_.unsubscribe();
 }
 
+void HierarchicalObjectLearning::read_rosbag_file(
+    const std::string path_to_bag,
+    const std::string topic) {
+    rosbag::Bag bag;
+    bag.open(path_to_bag, rosbag::bagmode::Read);
+    std::vector<std::string> topics;
+    topics.push_back(topic);
+    rosbag::View view(bag, rosbag::TopicQuery(topics));
+    BOOST_FOREACH(rosbag::MessageInstance const m, view) {
+       multilayer_object_tracking::ReferenceModelBundle::ConstPtr
+          ref_bundle = m.instantiate<
+             multilayer_object_tracking::ReferenceModelBundle>();
+
+       const jsk_recognition_msgs::PointsArray::ConstPtr cloud_ptr(
+          &ref_bundle->cloud_bundle);
+       const sensor_msgs::Image::ConstPtr image_ptr(&ref_bundle->image_bundle);
+       const sensor_msgs::CameraInfo::ConstPtr info_ptr(&ref_bundle->cam_info);
+       // this->callback(info_ptr, image_ptr, cloud_ptr);
+
+       for (int i = 0; i < cloud_ptr->cloud_list.size(); i++) {
+          sensor_msgs::PointCloud2::ConstPtr surfel_ptr(
+             &cloud_ptr->cloud_list[i]);
+          this->callback(info_ptr, image_ptr, surfel_ptr);
+       }
+       
+       std::cout << ref_bundle->cloud_bundle.cloud_list[0].height
+                 << std::endl;
+    }
+}
+
 void HierarchicalObjectLearning::callback(
     const sensor_msgs::CameraInfo::ConstPtr &info_msg,
     const sensor_msgs::Image::ConstPtr &image_msg,
@@ -52,7 +82,6 @@ void HierarchicalObjectLearning::callback(
        image_msg, image_msg->encoding)->image;
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-
 
     pcl::PointCloud<pcl::Normal>::Ptr normals(
     new pcl::PointCloud<pcl::Normal>);
@@ -237,36 +266,6 @@ void HierarchicalObjectLearning::estimatePointCloudNormals(
       ne.setRadiusSearch(k);
     }
     ne.compute(*normals);
-}
-
-void HierarchicalObjectLearning::read_rosbag_file(
-    const std::string path_to_bag,
-    const std::string topic) {
-    rosbag::Bag bag;
-    bag.open(path_to_bag, rosbag::bagmode::Read);
-    std::vector<std::string> topics;
-    topics.push_back(topic);
-    rosbag::View view(bag, rosbag::TopicQuery(topics));
-    BOOST_FOREACH(rosbag::MessageInstance const m, view) {
-       multilayer_object_tracking::ReferenceModelBundle::ConstPtr
-          ref_bundle = m.instantiate<
-             multilayer_object_tracking::ReferenceModelBundle>();
-
-       const jsk_recognition_msgs::PointsArray::ConstPtr cloud_ptr(
-          &ref_bundle->cloud_bundle);
-       const sensor_msgs::Image::ConstPtr image_ptr(&ref_bundle->image_bundle);
-       const sensor_msgs::CameraInfo::ConstPtr info_ptr(&ref_bundle->cam_info);
-       // this->callback(info_ptr, image_ptr, cloud_ptr);
-
-       for (int i = 0; i < cloud_ptr->cloud_list.size(); i++) {
-          sensor_msgs::PointCloud2::ConstPtr surfel_ptr(
-             &cloud_ptr->cloud_list[i]);
-          this->callback(info_ptr, image_ptr, surfel_ptr);
-       }
-       
-       std::cout << ref_bundle->cloud_bundle.cloud_list[0].height
-                 << std::endl;
-    }
 }
 
 void HierarchicalObjectLearning::extractObjectSurfelFeatures(
