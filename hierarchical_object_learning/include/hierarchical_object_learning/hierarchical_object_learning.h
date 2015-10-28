@@ -89,6 +89,11 @@ class HierarchicalObjectLearning {
     int num_threads_;
 
     std::string source_type_;
+    int cluster_size_;
+    int min_cloud_size_;
+    int neigbour_size_;
+    float downsize_;
+   
    
  protected:
     void onInit();
@@ -117,7 +122,7 @@ class HierarchicalObjectLearning {
         T = 0.05f, bool = true) const;
     void pointFeaturesBOWDescriptor(
        const pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<pcl::Normal>::Ptr,
+       const pcl::PointCloud<pcl::Normal>::Ptr, cv::Mat &,
        const int);
     template<class T>
     void pointIntensityFeature(
@@ -130,7 +135,7 @@ class HierarchicalObjectLearning {
     void extractPointLevelFeatures(
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr,
-       cv::Mat, const float = 0.05f, const int = 100);
+       cv::Mat &, const float = 0.05f, const int = 100);
     void extractObjectSurfelFeatures(
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr, cv::Mat &);
