@@ -1,8 +1,8 @@
-// Copyright (C) 2015 by Krishneel Chaudhary @ JSK Lab, The University
-// of Tokyo, Japan
 
-#ifndef _HIERARCHICAL_OBJECT_LEARNING_H_
-#define _HIERARCHICAL_OBJECT_LEARNING_H_
+#ifndef _HIERARCHICAL_OBJECT_DETECTION_H_
+#define _HIERARCHICAL_OBJECT_DETECTION_H_
+
+#include <hierarchical_object_learning/hierarchical_object_learning.h>
 
 #include <ros/ros.h>
 #include <ros/console.h>
@@ -71,7 +71,7 @@
 
 #include <omp.h>
 
-class HierarchicalObjectLearning {
+class HierarchicalObjectDetection : public HierarchicalObjectLearning {
  private:
     typedef pcl::PointXYZRGB PointT;
     boost::mutex mutex_;
@@ -88,7 +88,7 @@ class HierarchicalObjectLearning {
     ros::Publisher pub_cloud_;
     ros::Publisher pub_image_;
     ros::Publisher pub_pose_;
-    ros::ServiceClient trainer_client_;
+    ros::ServiceClient predictor_client_;
 
     int num_threads_;
 
@@ -103,61 +103,16 @@ class HierarchicalObjectLearning {
     void onInit();
     void subscribe();
     void unsubscribe();
-
+  
+  public:
+    HierarchicalObjectDetection();
+  
     virtual void callback(
         const sensor_msgs::CameraInfo::ConstPtr &,
         const sensor_msgs::Image::ConstPtr &,
         const sensor_msgs::PointCloud2::ConstPtr &);
   
- public:
-     HierarchicalObjectLearning();
-  
-    void computePointFPFH(
-        const pcl::PointCloud<PointT>::Ptr,
-        pcl::PointCloud<pcl::Normal>::Ptr,
-        cv::Mat &, bool = true) const;
-    void globalPointCloudFeatures(
-       const pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<pcl::Normal>::Ptr, cv::Mat &);
-   
-    template<class T>
-    void estimatePointCloudNormals(
-        pcl::PointCloud<PointT>::Ptr,
-        pcl::PointCloud<pcl::Normal>::Ptr,
-        T = 0.05f, bool = true) const;
-    void pointFeaturesBOWDescriptor(
-       const pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<pcl::Normal>::Ptr, cv::Mat &,
-       const int);
-    template<class T>
-    void pointIntensityFeature(
-       const pcl::PointCloud<PointT>::Ptr,
-       cv::Mat &, const T, bool);
-
-    void read_rosbag_file(
-      const std::string, const std::string);
-
-    void extractPointLevelFeatures(
-       const pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<pcl::Normal>::Ptr,
-       cv::Mat &, const float = 0.05f, const int = 100);
-    void extractObjectSurfelFeatures(
-       const pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<pcl::Normal>::Ptr, cv::Mat &);
-
-    void processReferenceBundle(
-        const sensor_msgs::CameraInfo &,
-        /*const sensor_msgs::Image &,*/
-        pcl::PointCloud<PointT>::Ptr,
-        hierarchical_object_learning::FeatureArray &,
-        hierarchical_object_learning::FeatureArray &, bool = false);
-
-    int fitFeatureModelService(
-       const hierarchical_object_learning::FeatureArray &,
-       const std::string);
-    jsk_recognition_msgs::Histogram convertCvMatToFeatureMsg(
-       const cv::Mat);
 };
 
 
-#endif  //_HIERARCHICAL_OBJECT_LEARNING_H_
+#endif   // _HIERARCHICAL_OBJECT_DETECTION_H_

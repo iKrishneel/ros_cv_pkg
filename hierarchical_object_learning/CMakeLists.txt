@@ -149,7 +149,7 @@ add_dependencies(hierarchical_object_learning_node ${PROJECT_NAME}_gencfg  ${${P
 ## Specify libraries to link a library or executable target against
 target_link_libraries(hierarchical_object_learning_node
   ${catkin_LIBRARIES}
-)
+  )
 
 #############
 ## Install ##
