@@ -1,0 +1,28 @@
+<launch>
+  <arg name="cloud" default="/camera/depth_registered/points" />
+  <arg name="rgb_image" default="/camera/rgb/image_rect_color" />
+  
+  <arg name="bag_directory" default="/tmp/dataset.bag" />
+  <arg name="topic" default="/multilayer_object_tracking/reference_set_bundle "/>
+
+  <arg name="run_type" default="ROSBAG" />
+  <!-- <node pkg="jsk_pcl_ros" type="supervoxel_segmentation" -->
+  <!-- 	name="supervoxel_segmentation" output="screen" > -->
+  <!--   <remap from="~input" to="$(arg cloud)" /> -->
+  <!-- </node> -->
+  
+  <node pkg="hierarchical_object_learning" type="hierarchical_object_learning_node"
+	name="hierarchical_object_learning" output="screen" >
+    <remap from="input_image" to="$(arg rgb_image)" />
+    <remap from="input_cloud" to="$(arg cloud)" />
+    <remap from="input_indices" to="/supervoxel_segmentation/output/indices" />
+    
+    <param name="source_type"  value="$(arg run_type)" type="str"/>
+    <param name="rosbag_directory"  value="$(arg bag_directory)" type="str"/>
+    <param name="sub_topic"  value="$(arg topic)" type="str"/>
+
+    <remap from="source_type" to="/hierarchical_object_learning/source_type" />
+    <remap from="rosbag_directory" to="/hierarchical_object_learning/rosbag_directory" />
+    <remap from="sub_topic" to="/hierarchical_object_learning/sub_topic" />
+  </node>
+</launch>

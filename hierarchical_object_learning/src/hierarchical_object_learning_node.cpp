@@ -19,7 +19,7 @@ HierarchicalObjectLearning::HierarchicalObjectLearning() :
        std::string topic;
        pnh_.getParam("sub_topic", topic);
        this->read_rosbag_file(rosbag_dir, topic);
-    } else {
+    } else if (this->source_type_.compare("DETECTOR") == 0) {
        ROS_INFO("INITIALIZING ROS SUBSCRIBER");
        this->onInit();
     }
@@ -36,12 +36,12 @@ void HierarchicalObjectLearning::onInit() {
 }
 
 void HierarchicalObjectLearning::subscribe() {
-       this->sub_info_.subscribe(this->pnh_, "input_info", 1);
+       this->sub_indices_.subscribe(this->pnh_, "input_indices", 1);
        this->sub_image_.subscribe(this->pnh_, "input_image", 1);
        this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
        this->sync_ = boost::make_shared<message_filters::Synchronizer<
           SyncPolicy> >(100);
-       sync_->connectInput(sub_info_, sub_image_, sub_cloud_);
+       sync_->connectInput(sub_image_, sub_cloud_, sub_indices_);
        sync_->registerCallback(boost::bind(
                                   &HierarchicalObjectLearning::callback,
                                   this, _1, _2, _3));
@@ -53,19 +53,38 @@ void HierarchicalObjectLearning::unsubscribe() {
 }
 
 void HierarchicalObjectLearning::callback(
-    const sensor_msgs::CameraInfo::ConstPtr &info_msg,
     const sensor_msgs::Image::ConstPtr &image_msg,
-    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
+    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
+    const jsk_recognition_msgs::ClusterPointIndices::ConstPtr &indices_msg) {
     cv::Mat image = cv_bridge::toCvShare(
        image_msg, image_msg->encoding)->image;
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
+    std::vector<pcl::PointCloud<PointT>::Ptr> surfel_cloud;
+    this->surfelsCloudFromIndices(cloud, indices_msg, surfel_cloud);
+
+
+    
     hierarchical_object_learning::FeatureArray surfel_featureMD;
     hierarchical_object_learning::FeatureArray point_featureMD;
-    this->processReferenceBundle(*info_msg, cloud,
-                                 surfel_featureMD,
-                                 point_featureMD, true);    
+
+    std::cout << "IN CALLBACK: " << indices_msg->cluster_indices.size()  << "\n";
+    
+    // sensor_msgs::CameraInfo::ConstPtr info_msg;
+    // this->processReferenceBundle(*info_msg, cloud,
+    //                              surfel_featureMD,
+    //                              point_featureMD, true);
+
+
+    //--------------
+    pcl::BriskKeypoint2D<PointT> brisk;
+    brisk.setThreshold(60);
+    brisk.setOctaves(4);
+    brisk.setInputCloud(*cloud);
+    pcl::PointCloud<pcl::PointWithScale> keypoints;
+    brisk.compute(keypoints);
+    //--------------
     
     cv_bridge::CvImage pub_img(
         image_msg->header, sensor_msgs::image_encodings::BGR8, image);
@@ -382,6 +401,27 @@ HierarchicalObjectLearning::convertCvMatToFeatureMsg(
        }
     }
     return hist_msg;
+}
+
+void HierarchicalObjectLearning::surfelsCloudFromIndices(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const jsk_recognition_msgs::ClusterPointIndices::ConstPtr &indices_msg,
+    std::vector<pcl::PointCloud<PointT>::Ptr> &surfel_list) {
+    if (cloud->empty()) {
+      return;
+    }
+    pcl::ExtractIndices<PointT> extract;
+    extract.setInputCloud(cloud);
+    for (int i = 0; i < indices_msg->cluster_indices.size(); i++) {
+      pcl::PointIndices::Ptr indices(new pcl::PointIndices);
+      indices->indices = indices_msg->cluster_indices[i].indices;
+      extract.setIndices(indices);
+      extract.setNegative(false);
+      pcl::PointCloud<PointT>::Ptr surfel(new pcl::PointCloud<PointT>);
+      extract.filter(*surfel);
+      surfel_list.push_back(surfel);
+    }
+    
 }
 
 int main(int argc, char *argv[]) {
