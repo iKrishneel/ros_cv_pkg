@@ -80,7 +80,7 @@ void HierarchicalObjectLearning::callback(
                                        surfel_featureMD, point_featureMD,
                                        false);
 
-          // classifier
+          // classifier here
        }
     }
     
@@ -169,14 +169,8 @@ void HierarchicalObjectLearning::extractMultilevelCloudFeatures(
     }
     
     if (is_point_level) {
-      cv::Mat point_features;
-      this->extractPointLevelFeatures(
-         cloud, normals, point_features, this->downsize_, this->cluster_size_);
-      for (int i = 0; i < point_features.rows; i++) {
-        jsk_recognition_msgs::Histogram point_feature =
-            this->convertCvMatToFeatureMsg(point_features.row(i));
-        point_feature_array.feature_list.push_back(point_feature);
-      }
+      this->extractPointLevelFeatures(cloud, normals, point_feature_array,
+                                      this->downsize_, this->cluster_size_);
     }
 }
 
@@ -257,17 +251,25 @@ int HierarchicalObjectLearning::fitFeatureModelService(
 void HierarchicalObjectLearning::extractPointLevelFeatures(
     const pcl::PointCloud<PointT>::Ptr cloud,
     const pcl::PointCloud<pcl::Normal>::Ptr normals,
-    cv::Mat &featureMD, const float leaf_size, const int cluster_size) {
+    hierarchical_object_learning::FeatureArray &feature_array,
+    const float leaf_size, const int cluster_size) {
     if (cloud->empty()) {
        ROS_ERROR("EMPTY CLOUD FOR POINT-LEVEL FEATURES");
        return;
     }
-    pcl::PointCloud<PointT>::Ptr filtered_cloud(new pcl::PointCloud<PointT>);
+    pcl::PointCloud<PointT>::Ptr keypoints_cloud(new pcl::PointCloud<PointT>);
     pcl::VoxelGrid<PointT> grid;
     grid.setLeafSize(leaf_size, leaf_size, leaf_size);
     grid.setInputCloud(cloud);
-    grid.filter(*filtered_cloud);
-    this->pointFeaturesBOWDescriptor(cloud, normals, featureMD, cluster_size);
+    grid.filter(*keypoints_cloud);
+    
+    this->computePointCloudFPFH(cloud, keypoints_cloud, normals, feature_array);
+
+    
+    
+    // this->pointFeaturesBOWDescriptor(cloud, normals, featureMD, cluster_size);
+    
+    
 }
 
 void HierarchicalObjectLearning::pointFeaturesBOWDescriptor(
@@ -288,7 +290,8 @@ void HierarchicalObjectLearning::pointFeaturesBOWDescriptor(
 #pragma omp section
 #endif
        {
-          this->computePointFPFH(cloud, normals, geometric_features, true);
+          // this->computePointCloudFPFH(
+          //    cloud, cloud, normals, geometric_features, true);
        }
 #ifdef _OPENMP
 #pragma omp section
@@ -312,38 +315,33 @@ void HierarchicalObjectLearning::pointFeaturesBOWDescriptor(
     vocabulary = feature_descriptor.clone();
 }
 
-void HierarchicalObjectLearning::computePointFPFH(
+void HierarchicalObjectLearning::computePointCloudFPFH(
     const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<PointT>::Ptr keypoints,
     const pcl::PointCloud<pcl::Normal>::Ptr normals,
-    cv::Mat &histogram, bool is_norm) const {
-    if (cloud->empty() || normals->empty()) {
+    hierarchical_object_learning::FeatureArray &feature_array,
+    const float search_radius) const {
+    if (cloud->empty() || normals->empty() || keypoints->empty()) {
       ROS_ERROR("-- ERROR: cannot compute FPFH");
       return;
     }
     pcl::FPFHEstimationOMP<PointT, pcl::Normal, pcl::FPFHSignature33> fpfh;
-    fpfh.setInputCloud(cloud);
+    fpfh.setInputCloud(keypoints);
+    fpfh.setSearchSurface(cloud);
     fpfh.setInputNormals(normals);
     pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);
     fpfh.setSearchMethod(tree);
     pcl::PointCloud<pcl::FPFHSignature33>::Ptr fpfhs(
         new pcl::PointCloud<pcl::FPFHSignature33> ());
-    fpfh.setRadiusSearch(0.05);
+    fpfh.setRadiusSearch(search_radius);
     fpfh.compute(*fpfhs);
     const int hist_dim = 33;
-    histogram = cv::Mat::zeros(
-       static_cast<int>(fpfhs->size()), hist_dim, CV_32F);
-#ifdef _OPENMP
-#pragma omp parallel for collapse(2) shared(histogram) \
-   num_threads(this->num_threads_)
-#endif
     for (int i = 0; i < fpfhs->size(); i++) {
+       jsk_recognition_msgs::Histogram histogram;
        for (int j = 0; j < hist_dim; j++) {
-          histogram.at<float>(i, j) = fpfhs->points[i].histogram[j];
+          histogram.histogram.push_back(fpfhs->points[i].histogram[j]);
        }
-    }
-    if (is_norm) {
-       cv::normalize(
-          histogram, histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+       feature_array.feature_list.push_back(histogram);
     }
 }
 
