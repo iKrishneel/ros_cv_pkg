@@ -19,8 +19,10 @@
   <node pkg="hierarchical_object_learning" type="hierarchical_object_learning_node"
 	name="hierarchical_object_learning" output="screen" >
     <remap from="input_image" to="$(arg rgb_image)" />
-    <remap from="input_cloud" to="$(arg cloud)" />
+    <!-- <remap from="input_cloud" to="$(arg cloud)" /> -->
+    <remap from="input_cloud" to="/supervoxel_segmentation/output/cloud" />
     <remap from="input_indices" to="/supervoxel_segmentation/output/indices" />
+    <remap from="input_normals" to="/supervoxel_segmentation/output/normals" />
     
     <param name="source_type"  value="$(arg run_type)" type="str"/>
     <param name="rosbag_directory"  value="$(arg bag_directory)" type="str"/>

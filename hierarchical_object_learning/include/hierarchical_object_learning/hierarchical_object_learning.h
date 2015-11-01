@@ -80,10 +80,13 @@ class HierarchicalObjectLearning {
     typedef  message_filters::sync_policies::ApproximateTime<
        sensor_msgs::Image,
        sensor_msgs::PointCloud2,
+       sensor_msgs::PointCloud2,
        jsk_recognition_msgs::ClusterPointIndices> SyncPolicy;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normals_;
     message_filters::Subscriber<sensor_msgs::Image> sub_image_;
-  message_filters::Subscriber<jsk_recognition_msgs::ClusterPointIndices> sub_indices_;
+    message_filters::Subscriber<
+       jsk_recognition_msgs::ClusterPointIndices> sub_indices_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
     ros::Publisher pub_cloud_;
@@ -107,6 +110,7 @@ class HierarchicalObjectLearning {
 
     virtual void callback(
         const sensor_msgs::Image::ConstPtr &,
+        const sensor_msgs::PointCloud2::ConstPtr &,
         const sensor_msgs::PointCloud2::ConstPtr &,
         const jsk_recognition_msgs::ClusterPointIndices::ConstPtr &);
   
@@ -146,12 +150,14 @@ class HierarchicalObjectLearning {
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr, cv::Mat &);
 
-    void processReferenceBundle(
+    void extractMultilevelCloudFeatures(
         const sensor_msgs::CameraInfo &,
         /*const sensor_msgs::Image &,*/
-        pcl::PointCloud<PointT>::Ptr,
+        const pcl::PointCloud<PointT>::Ptr,
+        const pcl::PointCloud<pcl::Normal>::Ptr,
         hierarchical_object_learning::FeatureArray &,
-        hierarchical_object_learning::FeatureArray &, bool = false);
+        hierarchical_object_learning::FeatureArray &,
+        bool = false, bool = true);
 
     int fitFeatureModelService(
        const hierarchical_object_learning::FeatureArray &,
@@ -161,8 +167,10 @@ class HierarchicalObjectLearning {
 
     void surfelsCloudFromIndices(
         const pcl::PointCloud<PointT>::Ptr,
+        const pcl::PointCloud<pcl::Normal>::Ptr,
         const jsk_recognition_msgs::ClusterPointIndices::ConstPtr &,
-        std::vector<pcl::PointCloud<PointT>::Ptr> &);
+        std::vector<pcl::PointCloud<PointT>::Ptr> &,
+        std::vector<pcl::PointCloud<pcl::Normal>::Ptr> &);
 };
 
 

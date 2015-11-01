@@ -39,12 +39,13 @@ void HierarchicalObjectLearning::subscribe() {
        this->sub_indices_.subscribe(this->pnh_, "input_indices", 1);
        this->sub_image_.subscribe(this->pnh_, "input_image", 1);
        this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
+       this->sub_normals_.subscribe(this->pnh_, "input_normals", 1);
        this->sync_ = boost::make_shared<message_filters::Synchronizer<
           SyncPolicy> >(100);
-       sync_->connectInput(sub_image_, sub_cloud_, sub_indices_);
+       sync_->connectInput(sub_image_, sub_cloud_, sub_normals_, sub_indices_);
        sync_->registerCallback(boost::bind(
                                   &HierarchicalObjectLearning::callback,
-                                  this, _1, _2, _3));
+                                  this, _1, _2, _3, _4));
 }
 
 void HierarchicalObjectLearning::unsubscribe() {
@@ -55,27 +56,33 @@ void HierarchicalObjectLearning::unsubscribe() {
 void HierarchicalObjectLearning::callback(
     const sensor_msgs::Image::ConstPtr &image_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
+    const sensor_msgs::PointCloud2::ConstPtr &normal_msg,
     const jsk_recognition_msgs::ClusterPointIndices::ConstPtr &indices_msg) {
     cv::Mat image = cv_bridge::toCvShare(
        image_msg, image_msg->encoding)->image;
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
-    // std::vector<pcl::PointCloud<PointT>::Ptr> surfel_cloud;
-    // this->surfelsCloudFromIndices(cloud, indices_msg, surfel_cloud);
-
-    std::cout << "-- in callback--" << std::endl;
+    pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
+    pcl::fromROSMsg(*normal_msg, *normals);
     
-    hierarchical_object_learning::FeatureArray surfel_featureMD;
-    hierarchical_object_learning::FeatureArray point_featureMD;
-    sensor_msgs::CameraInfo::ConstPtr info_msg (new sensor_msgs::CameraInfo);
-    this->processReferenceBundle(*info_msg, cloud,
-                                 surfel_featureMD,
-                                 point_featureMD, false);
+    std::vector<pcl::PointCloud<PointT>::Ptr> surfel_cloud;
+    std::vector<pcl::PointCloud<pcl::Normal>::Ptr> surfel_normals;
+    this->surfelsCloudFromIndices(cloud, normals, indices_msg,
+                                  surfel_cloud, surfel_normals);
 
-    std::cout << "SURFEL: " << surfel_featureMD.feature_list.size()
-              << std::endl;
-    
+    sensor_msgs::CameraInfo::ConstPtr info_msg(new sensor_msgs::CameraInfo);
+    if (surfel_cloud.size() == surfel_normals.size()) {
+       for (int i = 0; i < surfel_cloud.size(); i++) {
+          hierarchical_object_learning::FeatureArray surfel_featureMD;
+          hierarchical_object_learning::FeatureArray point_featureMD;
+          this->extractMultilevelCloudFeatures(*info_msg, cloud, normals,
+                                       surfel_featureMD, point_featureMD,
+                                       false);
+
+          // classifier
+       }
+    }
     
     cv_bridge::CvImage pub_img(
         image_msg->header, sensor_msgs::image_encodings::BGR8, image);
@@ -116,11 +123,15 @@ void HierarchicalObjectLearning::read_rosbag_file(
              cloud->size() > this->min_cloud_size_) {
            is_process_point = true;
          }
+         pcl::PointCloud<pcl::Normal>::Ptr normals(
+            new pcl::PointCloud<pcl::Normal>);
+         this->estimatePointCloudNormals<float>(
+            cloud, normals, this->neigbour_size_, false);
          hierarchical_object_learning::FeatureArray surfel_featureMD;
          hierarchical_object_learning::FeatureArray point_featureMD;
-         this->processReferenceBundle(info_msg, cloud,
-                                      surfel_featureMD,
-                                      point_featureMD, is_process_point);
+         this->extractMultilevelCloudFeatures(info_msg, cloud, normals,
+                                      surfel_featureMD, point_featureMD,
+                                      is_process_point);
 
          // TODO(here): Make parallel
          {
@@ -137,26 +148,25 @@ void HierarchicalObjectLearning::read_rosbag_file(
     ROS_INFO("\033[35mSUCCESSFULLY COMPLETED\033[0m");
 }
 
-void HierarchicalObjectLearning::processReferenceBundle(
+void HierarchicalObjectLearning::extractMultilevelCloudFeatures(
     const sensor_msgs::CameraInfo &info_msg,
     /*const sensor_msgs::Image &image_msg, */
     const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<pcl::Normal>::Ptr normals,
     hierarchical_object_learning::FeatureArray &surfel_feature_array,
     hierarchical_object_learning::FeatureArray &point_feature_array,
-    bool is_point_level) {
+    bool is_point_level, bool is_surfel_level) {
     if (cloud->empty()) {
         ROS_ERROR("CANNOT PROCESS EMPTY CLOUD");
         return;
     }
-    pcl::PointCloud<pcl::Normal>::Ptr normals(
-    new pcl::PointCloud<pcl::Normal>);
-    this->estimatePointCloudNormals<float>(
-       cloud, normals, this->neigbour_size_, false);
-    cv::Mat surfel_feature;
-    this->extractObjectSurfelFeatures(cloud, normals, surfel_feature);
-    jsk_recognition_msgs::Histogram surfel_features =
-        this->convertCvMatToFeatureMsg(surfel_feature);
-    surfel_feature_array.feature_list.push_back(surfel_features);
+    if (is_surfel_level) {
+       cv::Mat surfel_feature;
+       this->extractObjectSurfelFeatures(cloud, normals, surfel_feature);
+       jsk_recognition_msgs::Histogram surfel_features =
+          this->convertCvMatToFeatureMsg(surfel_feature);
+       surfel_feature_array.feature_list.push_back(surfel_features);
+    }
     
     if (is_point_level) {
       cv::Mat point_features;
@@ -396,23 +406,34 @@ HierarchicalObjectLearning::convertCvMatToFeatureMsg(
 
 void HierarchicalObjectLearning::surfelsCloudFromIndices(
     const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<pcl::Normal>::Ptr normals,
     const jsk_recognition_msgs::ClusterPointIndices::ConstPtr &indices_msg,
-    std::vector<pcl::PointCloud<PointT>::Ptr> &surfel_list) {
-    if (cloud->empty()) {
+    std::vector<pcl::PointCloud<PointT>::Ptr> &surfel_list,
+    std::vector<pcl::PointCloud<pcl::Normal>::Ptr> &surfel_normals) {
+    if (cloud->empty() || normals->empty()) {
       return;
     }
-    pcl::ExtractIndices<PointT> extract;
-    extract.setInputCloud(cloud);
+    pcl::ExtractIndices<PointT> extract_cloud;
+    extract_cloud.setInputCloud(cloud);
+    pcl::ExtractIndices<pcl::Normal> extract_normal;
+    extract_normal.setInputCloud(normals);
     for (int i = 0; i < indices_msg->cluster_indices.size(); i++) {
       pcl::PointIndices::Ptr indices(new pcl::PointIndices);
       indices->indices = indices_msg->cluster_indices[i].indices;
-      extract.setIndices(indices);
-      extract.setNegative(false);
+      extract_cloud.setIndices(indices);
+      extract_normal.setIndices(indices);
+      extract_cloud.setNegative(false);
+      extract_normal.setNegative(false);
       pcl::PointCloud<PointT>::Ptr surfel(new pcl::PointCloud<PointT>);
-      extract.filter(*surfel);
-      surfel_list.push_back(surfel);
+      extract_cloud.filter(*surfel);
+      pcl::PointCloud<pcl::Normal>::Ptr normal(
+         new pcl::PointCloud<pcl::Normal>);
+      extract_normal.filter(*normal);
+      if (surfel->size() > this->min_cloud_size_) {
+         surfel_list.push_back(surfel);
+         surfel_normals.push_back(normal);
+      }
     }
-    
 }
 
 int main(int argc, char *argv[]) {
