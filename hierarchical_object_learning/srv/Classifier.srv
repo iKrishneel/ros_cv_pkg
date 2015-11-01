@@ -1,4 +1,3 @@
 hierarchical_object_learning/FeatureArray features
-string model_save_path
 ---
-int64 success
+float64[] responses
