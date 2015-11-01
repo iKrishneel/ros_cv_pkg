@@ -117,13 +117,16 @@ class HierarchicalObjectLearning {
  public:
      HierarchicalObjectLearning();
   
-    void computePointFPFH(
+    void computePointCloudFPFH(
+        const pcl::PointCloud<PointT>::Ptr,
         const pcl::PointCloud<PointT>::Ptr,
         pcl::PointCloud<pcl::Normal>::Ptr,
-        cv::Mat &, bool = true) const;
+        hierarchical_object_learning::FeatureArray &,
+        const float = 0.05f) const;
     void globalPointCloudFeatures(
        const pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<pcl::Normal>::Ptr, cv::Mat &);
+       const pcl::PointCloud<pcl::Normal>::Ptr,
+       jsk_recognition_msgs::Histogram &);
    
     template<class T>
     void estimatePointCloudNormals(
@@ -145,10 +148,12 @@ class HierarchicalObjectLearning {
     void extractPointLevelFeatures(
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr,
-       cv::Mat &, const float = 0.05f, const int = 100);
+       hierarchical_object_learning::FeatureArray &,
+       const float = 0.05f, const int = 100);
     void extractObjectSurfelFeatures(
        const pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<pcl::Normal>::Ptr, cv::Mat &);
+       const pcl::PointCloud<pcl::Normal>::Ptr,
+       jsk_recognition_msgs::Histogram &);
 
     void extractMultilevelCloudFeatures(
         const sensor_msgs::CameraInfo &,

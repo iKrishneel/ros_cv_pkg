@@ -161,10 +161,8 @@ void HierarchicalObjectLearning::extractMultilevelCloudFeatures(
         return;
     }
     if (is_surfel_level) {
-       cv::Mat surfel_feature;
-       this->extractObjectSurfelFeatures(cloud, normals, surfel_feature);
-       jsk_recognition_msgs::Histogram surfel_features =
-          this->convertCvMatToFeatureMsg(surfel_feature);
+       jsk_recognition_msgs::Histogram surfel_features;
+       this->extractObjectSurfelFeatures(cloud, normals, surfel_features);
        surfel_feature_array.feature_list.push_back(surfel_features);
     }
     
@@ -200,20 +198,19 @@ void HierarchicalObjectLearning::estimatePointCloudNormals(
 
 void HierarchicalObjectLearning::extractObjectSurfelFeatures(
     const pcl::PointCloud<PointT>::Ptr cloud,
-    const pcl::PointCloud<pcl::Normal>::Ptr normals, cv::Mat &featureMD) {
+    const pcl::PointCloud<pcl::Normal>::Ptr normals,
+    jsk_recognition_msgs::Histogram &histogram) {
     if (cloud->empty()) {
        ROS_ERROR("EMPTY CLOUD FOR MID-LEVEL FEATURES");
        return;
     }
-    cv::Mat feature;
-    this->globalPointCloudFeatures(cloud, normals, feature);
-    featureMD = feature.clone();
+    this->globalPointCloudFeatures(cloud, normals, histogram);
 }
 
 void HierarchicalObjectLearning::globalPointCloudFeatures(
     const pcl::PointCloud<PointT>::Ptr cloud,
     const pcl::PointCloud<pcl::Normal>::Ptr normals,
-    cv::Mat &featureMD) {
+    jsk_recognition_msgs::Histogram &histogram) {
     if (cloud->empty() || normals->empty()) {
       ROS_ERROR("ERROR: EMPTY CLOUD FOR SURFEL FEATURE");
       return;
@@ -227,11 +224,10 @@ void HierarchicalObjectLearning::globalPointCloudFeatures(
     pcl::PointCloud<pcl::VFHSignature308>::Ptr vfhs(
        new pcl::PointCloud<pcl::VFHSignature308>());
     vfh.compute(*vfhs);
-    cv::Mat histogram = cv::Mat(sizeof(char), 308, CV_32F);
-    for (int i = 0; i < histogram.cols; i++) {
-       histogram.at<float>(0, i) = vfhs->points[0].histogram[i];
+    const int feat_dim = 308;
+    for (int i = 0; i < feat_dim; i++) {
+       histogram.histogram.push_back(vfhs->points[0].histogram[i]);
     }
-    featureMD = histogram.clone();
 }
 
 int HierarchicalObjectLearning::fitFeatureModelService(
