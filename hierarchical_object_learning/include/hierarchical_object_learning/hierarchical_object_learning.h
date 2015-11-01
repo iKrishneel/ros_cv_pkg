@@ -29,6 +29,7 @@
 #include <pcl/point_types.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/correspondence.h>
+#include <pcl/point_types_conversion.h>
 // #include <pcl/recognition/cg/hough_3d.h>
 // #include <pcl/recognition/cg/geometric_consistency.h>
 #include <pcl/kdtree/kdtree_flann.h>
@@ -52,8 +53,6 @@
 // #include <pcl/registration/distances.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/filters/voxel_grid.h>
-
-#include <pcl/keypoints/brisk_2d.h>
 
 #include <tf/transform_listener.h>
 #include <tf/transform_broadcaster.h>

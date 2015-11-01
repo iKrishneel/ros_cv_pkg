@@ -61,36 +61,27 @@ void HierarchicalObjectLearning::callback(
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
-    std::vector<pcl::PointCloud<PointT>::Ptr> surfel_cloud;
-    this->surfelsCloudFromIndices(cloud, indices_msg, surfel_cloud);
+    // std::vector<pcl::PointCloud<PointT>::Ptr> surfel_cloud;
+    // this->surfelsCloudFromIndices(cloud, indices_msg, surfel_cloud);
 
-
+    std::cout << "-- in callback--" << std::endl;
     
     hierarchical_object_learning::FeatureArray surfel_featureMD;
     hierarchical_object_learning::FeatureArray point_featureMD;
+    sensor_msgs::CameraInfo::ConstPtr info_msg (new sensor_msgs::CameraInfo);
+    this->processReferenceBundle(*info_msg, cloud,
+                                 surfel_featureMD,
+                                 point_featureMD, false);
 
-    std::cout << "IN CALLBACK: " << indices_msg->cluster_indices.size()  << "\n";
+    std::cout << "SURFEL: " << surfel_featureMD.feature_list.size()
+              << std::endl;
     
-    // sensor_msgs::CameraInfo::ConstPtr info_msg;
-    // this->processReferenceBundle(*info_msg, cloud,
-    //                              surfel_featureMD,
-    //                              point_featureMD, true);
-
-
-    //--------------
-    pcl::BriskKeypoint2D<PointT> brisk;
-    brisk.setThreshold(60);
-    brisk.setOctaves(4);
-    brisk.setInputCloud(*cloud);
-    pcl::PointCloud<pcl::PointWithScale> keypoints;
-    brisk.compute(keypoints);
-    //--------------
     
     cv_bridge::CvImage pub_img(
         image_msg->header, sensor_msgs::image_encodings::BGR8, image);
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
-    ros_cloud.header = cloud_msg->header;   
+    ros_cloud.header = cloud_msg->header;
 
     this->pub_cloud_.publish(ros_cloud);
     this->pub_image_.publish(pub_img.toImageMsg());
@@ -121,7 +112,7 @@ void HierarchicalObjectLearning::read_rosbag_file(
          pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
          pcl::fromROSMsg(surfel_cloud, *cloud);
          bool is_process_point = false;
-         if (i == cloud_list.cloud_list.size() - 1 &&   // last entry has complete model
+         if (i == cloud_list.cloud_list.size() - 1 &&
              cloud->size() > this->min_cloud_size_) {
            is_process_point = true;
          }
@@ -131,14 +122,14 @@ void HierarchicalObjectLearning::read_rosbag_file(
                                       surfel_featureMD,
                                       point_featureMD, is_process_point);
 
-         // TODO: Make parallel
+         // TODO(here): Make parallel
          {
            std::string save_surfel_model = "surfel_model";
-           int is_success_surfel = this->fitFeatureModelService(surfel_featureMD,
-                                                                 save_surfel_model);
+           int is_success_surfel = this->fitFeatureModelService(
+              surfel_featureMD, save_surfel_model);
            std::string save_point_model = "point_model";
-           int is_success_point = this->fitFeatureModelService(point_featureMD,
-                                                                save_point_model);
+           int is_success_point = this->fitFeatureModelService(
+              point_featureMD, save_point_model);
          }
        }
     }
@@ -164,7 +155,7 @@ void HierarchicalObjectLearning::processReferenceBundle(
     cv::Mat surfel_feature;
     this->extractObjectSurfelFeatures(cloud, normals, surfel_feature);
     jsk_recognition_msgs::Histogram surfel_features =
-        this->convertCvMatToFeatureMsg(surfel_feature);    
+        this->convertCvMatToFeatureMsg(surfel_feature);
     surfel_feature_array.feature_list.push_back(surfel_features);
     
     if (is_point_level) {
@@ -192,7 +183,7 @@ void HierarchicalObjectLearning::estimatePointCloudNormals(
     pcl::removeNaNFromPointCloud(*cloud, *cloud, index);
     pcl::NormalEstimationOMP<PointT, pcl::Normal> ne;
     ne.setInputCloud(cloud);
-    ne.setNumberOfThreads(8);
+    ne.setNumberOfThreads(this->num_threads_);
     pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT> ());
     ne.setSearchMethod(tree);
     if (use_knn) {
