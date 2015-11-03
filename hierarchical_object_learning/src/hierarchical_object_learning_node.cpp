@@ -11,7 +11,7 @@ HierarchicalObjectLearning::HierarchicalObjectLearning() :
     downsize_(0.00f) {
     this->point_srv_client_ = pnh_.serviceClient<
        hierarchical_object_learning::FitFeatureModel>(
-          "point_level_predictor");
+          "point_level_classifier");
     this->surfel_srv_client_ = pnh_.serviceClient<
        hierarchical_object_learning::FitFeatureModel>(
           "surfel_level_classifier");
@@ -124,16 +124,16 @@ void HierarchicalObjectLearning::readRosbagFile(
        sensor_msgs::CameraInfo info_msg(ref_bundle->cam_info);
        // cv::Mat image = cv_bridge::toCvShare(
        // image_msg, sensor_msgs::image_encodings::BGR8)->image;
-       
-       for (int i = 0; i < cloud_list.cloud_list.size(); i++) {
+
+       for (int i = 0; i < cloud_list.cloud_list.size() - 1; i++) {
           sensor_msgs::PointCloud2 surfel_cloud(cloud_list.cloud_list[i]);
           pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
           pcl::fromROSMsg(surfel_cloud, *cloud);
-          bool is_process_point = false;
-          if (i == cloud_list.cloud_list.size() - 1 &&
-              cloud->size() > this->min_cloud_size_) {
-             is_process_point = true;
-          }
+          bool is_process_point = true;
+          // if (i == cloud_list.cloud_list.size() - 1 &&
+          //     cloud->size() > this->min_cloud_size_) {
+          //    is_process_point = true;
+          // }
           pcl::PointCloud<pcl::Normal>::Ptr normals(
              new pcl::PointCloud<pcl::Normal>);
           this->estimatePointCloudNormals<float>(
@@ -142,6 +142,10 @@ void HierarchicalObjectLearning::readRosbagFile(
                                                surfel_featureMD,
                                                point_featureMD,
                                                is_process_point);
+          // label the dataset
+          int label = 1;
+          // this->labelTrainingDataset(surfel_featureMD, label);
+          this->labelTrainingDataset(point_featureMD, cloud->size(), label);
        }
     }
     bag.close();
@@ -149,15 +153,13 @@ void HierarchicalObjectLearning::readRosbagFile(
     {
        int success;
        std::string save_surfel_model = "/tmp/surfel_model";
-       this->fitFeatureModelService(this->surfel_srv_client_,
-                                    surfel_featureMD, save_surfel_model,
+       // this->fitFeatureModelService(this->surfel_srv_client_,
+       //                              surfel_featureMD, save_surfel_model,
+       //                              RUN_TYPE_TRAINER, success);
+       std::string save_point_model = "/tmp/point_model";
+       this->fitFeatureModelService(this->point_srv_client_,
+                                    point_featureMD, save_point_model,
                                     RUN_TYPE_TRAINER, success);
-       /*
-         std::string save_point_model = "point_model";
-         this->fitFeatureModelService(this->surfel_srv_client_,
-         point_featureMD,
-         save_point_model, success);
-       */
     }
     ROS_INFO("\033[35mSUCCESSFULLY COMPLETED\033[0m");
 }
@@ -190,6 +192,7 @@ void HierarchicalObjectLearning::extractMultilevelCloudFeatures(
     if (is_point_level) {
       this->extractPointLevelFeatures(cloud, normals, point_feature_array,
                                       this->downsize_, this->cluster_size_);
+
     }
 }
 
@@ -282,11 +285,14 @@ void HierarchicalObjectLearning::extractPointLevelFeatures(
        return;
     }
     pcl::PointCloud<PointT>::Ptr keypoints_cloud(new pcl::PointCloud<PointT>);
-    pcl::VoxelGrid<PointT> grid;
-    grid.setLeafSize(leaf_size, leaf_size, leaf_size);
-    grid.setInputCloud(cloud);
-    grid.filter(*keypoints_cloud);
-    
+    if (leaf_size == 0.0f) {
+       pcl::copyPointCloud<PointT, PointT>(*cloud, *keypoints_cloud);
+    } else {
+       pcl::VoxelGrid<PointT> grid;
+       grid.setLeafSize(leaf_size, leaf_size, leaf_size);
+       grid.setInputCloud(cloud);
+       grid.filter(*keypoints_cloud);
+    }
     this->computePointCloudFPFH(cloud, keypoints_cloud, normals, feature_array);
 }
 
@@ -375,6 +381,14 @@ HierarchicalObjectLearning::convertCvMatToFeatureMsg(
        }
     }
     return hist_msg;
+}
+
+void HierarchicalObjectLearning::labelTrainingDataset(
+    hierarchical_object_learning::FeatureArray &feature_array,
+    const int dim_size, const int label) {
+    for (int j = 0; j < dim_size; ++j) {
+       feature_array.labels.push_back(static_cast<int>(label));
+    }
 }
 
 void HierarchicalObjectLearning::surfelsCloudFromIndices(

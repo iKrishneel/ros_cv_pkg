@@ -50,10 +50,16 @@ def convert_from_feature_list(feature_list):
 
 def object_level_classifier_handler(req):
     feature_vector = convert_from_feature_list(req.features.feature_list)
+
+    #print feature_vector.shape
+    
     save_fname = str(req.model_save_path)    
     if req.run_type is 0:
         print "TRAINING POINT CLASSIFIER"
-        label_vector = np.array(req.features.labels)        
+        label_vector = np.array(req.features.labels)
+
+        #print label_vector.shape
+        
         train_object_point_classifier(feature_vector, label_vector, save_fname)
         return FitFeatureModelResponse([], 1)
     elif req.run_type is 1:
@@ -70,8 +76,6 @@ def object_classifier_predictor_server():
     rospy.spin()
 
 def onInit():
-    global gaussian_naive_bayes
-    gaussian_naive_bayes = load_trained_model_manifest()
     object_classifier_predictor_server()
     
 if __name__ == "__main__":

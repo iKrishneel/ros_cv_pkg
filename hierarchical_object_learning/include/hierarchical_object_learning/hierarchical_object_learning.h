@@ -173,7 +173,9 @@ class HierarchicalObjectLearning {
         const jsk_recognition_msgs::ClusterPointIndices::ConstPtr &,
         std::vector<pcl::PointCloud<PointT>::Ptr> &,
         std::vector<pcl::PointCloud<pcl::Normal>::Ptr> &);
-
+    void labelTrainingDataset(
+       hierarchical_object_learning::FeatureArray &, const int, const int);
+   
     enum CLASSIFIER_TYPE{
        RUN_TYPE_TRAINER,
        RUN_TYPE_PREDICTOR
