@@ -6,10 +6,9 @@
 HierarchicalObjectLearning::HierarchicalObjectLearning() :
     num_threads_(8),
     cluster_size_(100),
-    min_cloud_size_(100),
+    min_cloud_size_(10),
     neigbour_size_(16),
     downsize_(0.00f) {
-
     this->point_srv_client_ = pnh_.serviceClient<
        hierarchical_object_learning::FitFeatureModel>(
           "point_level_predictor");
@@ -18,8 +17,6 @@ HierarchicalObjectLearning::HierarchicalObjectLearning() :
           "surfel_level_classifier");
     pnh_.getParam("source_type", this->source_type_);
     if (this->source_type_.compare("ROSBAG") == 0) {
-       // this->trainer_client_ = pnh_.serviceClient<
-       //    hierarchical_object_learning::FitFeatureModel>("fit_feature_model");
        std::string rosbag_dir;
        pnh_.getParam("rosbag_directory", rosbag_dir);
        std::string topic;
@@ -108,7 +105,8 @@ void HierarchicalObjectLearning::readRosbagFile(
     std::vector<std::string> topics;
     topics.push_back(topic);
     rosbag::View view(bag, rosbag::TopicQuery(topics));
-    
+    hierarchical_object_learning::FeatureArray surfel_featureMD;
+    hierarchical_object_learning::FeatureArray point_featureMD;
     BOOST_FOREACH(rosbag::MessageInstance const m, view) {
        multilayer_object_tracking::ReferenceModelBundle::ConstPtr
           ref_bundle = m.instantiate<
@@ -127,33 +125,33 @@ void HierarchicalObjectLearning::readRosbagFile(
           bool is_process_point = false;
           if (i == cloud_list.cloud_list.size() - 1 &&
               cloud->size() > this->min_cloud_size_) {
-           is_process_point = true;
+             is_process_point = true;
           }
           pcl::PointCloud<pcl::Normal>::Ptr normals(
              new pcl::PointCloud<pcl::Normal>);
           this->estimatePointCloudNormals<float>(
              cloud, normals, this->neigbour_size_, false);
-          hierarchical_object_learning::FeatureArray surfel_featureMD;
-          hierarchical_object_learning::FeatureArray point_featureMD;
           this->extractMultilevelCloudFeatures(info_msg, cloud, normals,
                                                surfel_featureMD,
                                                point_featureMD,
                                                is_process_point);
-          // TODO(here): Make parallel
-          {
-             int success;
-             std::string save_surfel_model = "surfel_model";
-             this->fitFeatureModelService(this->point_srv_client_,
-                                          surfel_featureMD,
-                                          save_surfel_model, success);
-             std::string save_point_model = "point_model";
-             this->fitFeatureModelService(this->surfel_srv_client_,
-                                          point_featureMD,
-                                          save_point_model, success);
-          }
        }
     }
-    bag.close();
+    bag.close();    
+    // TODO(here): Make parallel
+    {
+       int success;
+       std::string save_surfel_model = "/tmp/surfel_model";
+       this->fitFeatureModelService(this->surfel_srv_client_,
+                                    surfel_featureMD,
+                                    save_surfel_model, success);
+       /*
+         std::string save_point_model = "point_model";
+         this->fitFeatureModelService(this->surfel_srv_client_,
+         point_featureMD,
+         save_point_model, success);
+       */
+    }
     ROS_INFO("\033[35mSUCCESSFULLY COMPLETED\033[0m");
 }
 
@@ -173,6 +171,13 @@ void HierarchicalObjectLearning::extractMultilevelCloudFeatures(
        jsk_recognition_msgs::Histogram surfel_features;
        this->extractObjectSurfelFeatures(cloud, normals, surfel_features);
        surfel_feature_array.feature_list.push_back(surfel_features);
+
+       // %%%% FIX HERE
+       if (cloud->size() >  50) {
+          surfel_feature_array.labels.push_back(1);
+       } else {
+          surfel_feature_array.labels.push_back(2);
+       }
     }
     
     if (is_point_level) {
@@ -246,6 +251,7 @@ std::vector<float> HierarchicalObjectLearning::fitFeatureModelService(
     hierarchical_object_learning::FitFeatureModel srv_ffm;
     srv_ffm.request.features = feature_array;
     srv_ffm.request.model_save_path = model_save_name;
+    srv_ffm.request.run_type = RUN_TYPE_TRAINER;
     if (service_client.call(srv_ffm)) {
        std::vector<float> responses;
        responses.insert(responses.end(), srv_ffm.response.responses.begin(),

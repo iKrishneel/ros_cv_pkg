@@ -10,8 +10,8 @@ from sklearn.naive_bayes import GaussianNB
 from sklearn.externals import joblib
 from sklearn.preprocessing import Imputer
 
-from hierarchical_object_learning.srv import Classifier
-from hierarchical_object_learning.srv import ClassifierResponse
+from hierarchical_object_learning.srv import FitFeatureModel
+from hierarchical_object_learning.srv import FitFeatureModelResponse
 
 gaussian_naive_bayes = None
 

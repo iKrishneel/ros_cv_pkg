@@ -10,8 +10,10 @@ from sklearn.svm import SVC
 from sklearn.externals import joblib
 from sklearn.preprocessing import Imputer
 
-from hierarchical_object_learning.srv import Classifier
-from hierarchical_object_learning.srv import ClassifierResponse
+from hierarchical_object_learning.srv import FitFeatureModel
+from hierarchical_object_learning.srv import FitFeatureModelResponse
+
+model_extension = '.pkl'
 
 def load_trained_model_manifest(filename):
     return joblib.load('../.ros/' + filename)
@@ -33,11 +35,11 @@ def train_object_surfel_classifier(feature_vector, label_vector, filename):
         imp = Imputer(missing_values='NaN', strategy='median', axis=1)
         feature_vector = imp.fit_transform(feature_vector)
         clf = SVC(C=100, cache_size=200, class_weight=None,
-                  coef0=0.0, degree=3, gamma=0.0, kernel='linear',
-                  max_iter=-1, probability=True,
+                  coef0=0.0, degree=3, kernel='linear',
+                  max_iter=-1, probability=False,
                   random_state=None, shrinking=True, tol=0.00001, verbose=False)
         clf.fit(feature_vector, label_vector)
-        joblib.dump(clf, filename + '.pkl')
+        joblib.dump(clf, filename + model_extension, compress=3)
     except ValueError as err:
         print (err.args)
         
@@ -52,16 +54,16 @@ def convert_from_feature_list(feature_list):
 
 def surfel_level_classifier_handler(req):
     feature_vector = convert_from_feature_list(req.features.feature_list)
-    save_fname = str(req.model_save_path)
+    save_fname = str(req.model_save_path)    
     if req.run_type is 0:
         print "TRAINING CLASSIFIER"
-        label_vector = req.features.labels
+        label_vector = np.array(req.features.labels)        
         train_object_surfel_classifier(feature_vector, label_vector, save_fname)
-        return PredictorResponse([], 1)
+        return FitFeatureModelResponse([], 1)
     elif req.run_type is 1:
         print "RUNNING CLASSIFIER"
         response = object_classifier_predict(feature_vector, save_fname)
-        return PredictorResponse(response, 1)
+        return FitFeatureModelResponse(response, 1)
     else:
         print "\033[31mERROR: THE SURFEL LEVEL RUN_TYPE IS NOT SET.\033[0m"
     
