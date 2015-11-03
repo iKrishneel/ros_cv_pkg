@@ -23,7 +23,8 @@ sub_cam_info_tp = '/camera/depth_registered/camera_info'
 
 init_bag = True
 default_directory = os.path.expanduser("/tmp/")
-bag_name = ""
+bag_name = None
+class_label_ = None
 
 img = Image()
 info = CameraInfo()
@@ -74,6 +75,7 @@ def rosbag_write(points_array):
     bundle.cloud_bundle = points_array
     bundle.image_bundle = img
     bundle.cam_info = info
+    bundle.label = class_label_ # label of the class
     bundle.header = points_array.header
     
     # ros_bag_writer.write(sub_model_tp, points_array)
@@ -94,7 +96,6 @@ def camera_info_cb(msg):
 def cloud_callback(points_array_msg):
     rosbag_write(points_array_msg)
     
-    
 def subscribe():
     rospy.Subscriber(sub_cam_info_tp, CameraInfo, camera_info_cb)
     rospy.Subscriber(sub_image_tp, Image, image_cb)
@@ -104,7 +105,12 @@ def on_init():
     subscribe()
 
 def main():
-
+    global class_label_
+    class_label_ = rospy.get_param('/rosbag_data_recorder/class_label')
+    print "LABEL: ", class_label_
+    if class_label_ is None or class_label_ == 'none':
+        rospy.signal_shutdown("THE CLASS LABEL IS NOT SET")
+    
     setup_folder()
     print "\n SETUP BAG: ", default_directory
     

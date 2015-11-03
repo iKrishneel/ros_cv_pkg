@@ -88,10 +88,13 @@ void HierarchicalObjectLearning::callback(
        {
           int success;
           std::string save_surfel_model = "/tmp/surfel_model";
-          std::vector<float> responses = this->fitFeatureModelService(
+          std::vector<float> surf_responses = this->fitFeatureModelService(
              this->surfel_srv_client_, surfel_featureMD, save_surfel_model,
              RUN_TYPE_PREDICTOR, success);
-          
+          std::string save_point_model = "/tmp/point_model";
+          std::vector<float> point_responses = this->fitFeatureModelService(
+             this->point_srv_client_, point_featureMD, save_point_model,
+             RUN_TYPE_PREDICTOR, success);
        }
     }
     
@@ -130,6 +133,8 @@ void HierarchicalObjectLearning::readRosbagFile(
           pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
           pcl::fromROSMsg(surfel_cloud, *cloud);
           bool is_process_point = true;
+
+          // TODO(CNN): make image and pass to CNN
           // if (i == cloud_list.cloud_list.size() - 1 &&
           //     cloud->size() > this->min_cloud_size_) {
           //    is_process_point = true;
@@ -142,9 +147,9 @@ void HierarchicalObjectLearning::readRosbagFile(
                                                surfel_featureMD,
                                                point_featureMD,
                                                is_process_point);
-          // label the dataset
-          int label = 1;
-          // this->labelTrainingDataset(surfel_featureMD, label);
+          
+          int label = 1;   // ? will be added from the topic
+          this->labelTrainingDataset(surfel_featureMD, 1, label);
           this->labelTrainingDataset(point_featureMD, cloud->size(), label);
        }
     }
@@ -153,9 +158,9 @@ void HierarchicalObjectLearning::readRosbagFile(
     {
        int success;
        std::string save_surfel_model = "/tmp/surfel_model";
-       // this->fitFeatureModelService(this->surfel_srv_client_,
-       //                              surfel_featureMD, save_surfel_model,
-       //                              RUN_TYPE_TRAINER, success);
+       this->fitFeatureModelService(this->surfel_srv_client_,
+                                    surfel_featureMD, save_surfel_model,
+                                    RUN_TYPE_TRAINER, success);
        std::string save_point_model = "/tmp/point_model";
        this->fitFeatureModelService(this->point_srv_client_,
                                     point_featureMD, save_point_model,

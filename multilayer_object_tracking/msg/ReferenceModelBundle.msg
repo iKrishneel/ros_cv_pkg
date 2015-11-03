@@ -2,3 +2,4 @@ std_msgs/Header header
 jsk_recognition_msgs/PointsArray cloud_bundle
 sensor_msgs/Image image_bundle
 sensor_msgs/CameraInfo cam_info
+std_msgs/String label
