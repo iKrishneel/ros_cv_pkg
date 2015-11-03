@@ -16,7 +16,7 @@ from hierarchical_object_learning.srv import FitFeatureModelResponse
 model_extension = '.pkl'
 
 def load_trained_model_manifest(filename):
-    return joblib.load('../.ros/' + filename)
+    return joblib.load(filename + model_extension)
 
 def object_classifier_predict(fvect, model_fname):
     clf = None
@@ -56,12 +56,12 @@ def surfel_level_classifier_handler(req):
     feature_vector = convert_from_feature_list(req.features.feature_list)
     save_fname = str(req.model_save_path)    
     if req.run_type is 0:
-        print "TRAINING CLASSIFIER"
+        print "TRAINING SURFEL CLASSIFIER"
         label_vector = np.array(req.features.labels)        
         train_object_surfel_classifier(feature_vector, label_vector, save_fname)
         return FitFeatureModelResponse([], 1)
     elif req.run_type is 1:
-        print "RUNNING CLASSIFIER"
+        print "RUNNING SURFEL CLASSIFIER"
         response = object_classifier_predict(feature_vector, save_fname)
         return FitFeatureModelResponse(response, 1)
     else:

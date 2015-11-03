@@ -76,14 +76,22 @@ void HierarchicalObjectLearning::callback(
 
     sensor_msgs::CameraInfo::ConstPtr info_msg(new sensor_msgs::CameraInfo);
     if (surfel_cloud.size() == surfel_normals.size()) {
+       hierarchical_object_learning::FeatureArray surfel_featureMD;
+       hierarchical_object_learning::FeatureArray point_featureMD;
        for (int i = 0; i < surfel_cloud.size(); i++) {
-          hierarchical_object_learning::FeatureArray surfel_featureMD;
-          hierarchical_object_learning::FeatureArray point_featureMD;
           this->extractMultilevelCloudFeatures(*info_msg, cloud, normals,
                                        surfel_featureMD, point_featureMD,
                                        false);
+       }
 
-          // classifier here
+       // classify here in parallel
+       {
+          int success;
+          std::string save_surfel_model = "/tmp/surfel_model";
+          std::vector<float> responses = this->fitFeatureModelService(
+             this->surfel_srv_client_, surfel_featureMD, save_surfel_model,
+             RUN_TYPE_PREDICTOR, success);
+          
        }
     }
     
@@ -98,8 +106,7 @@ void HierarchicalObjectLearning::callback(
 }
 
 void HierarchicalObjectLearning::readRosbagFile(
-    const std::string path_to_bag,
-    const std::string topic) {
+    const std::string path_to_bag, const std::string topic) {
     rosbag::Bag bag;
     bag.open(path_to_bag, rosbag::bagmode::Read);
     std::vector<std::string> topics;
@@ -137,14 +144,14 @@ void HierarchicalObjectLearning::readRosbagFile(
                                                is_process_point);
        }
     }
-    bag.close();    
+    bag.close();
     // TODO(here): Make parallel
     {
        int success;
        std::string save_surfel_model = "/tmp/surfel_model";
        this->fitFeatureModelService(this->surfel_srv_client_,
-                                    surfel_featureMD,
-                                    save_surfel_model, success);
+                                    surfel_featureMD, save_surfel_model,
+                                    RUN_TYPE_TRAINER, success);
        /*
          std::string save_point_model = "point_model";
          this->fitFeatureModelService(this->surfel_srv_client_,
@@ -247,11 +254,11 @@ void HierarchicalObjectLearning::globalPointCloudFeatures(
 std::vector<float> HierarchicalObjectLearning::fitFeatureModelService(
     ros::ServiceClient service_client,
     const hierarchical_object_learning::FeatureArray &feature_array,
-    const std::string model_save_name, int &success) {
+    const std::string model_save_name, const int type, int &success) {
     hierarchical_object_learning::FitFeatureModel srv_ffm;
     srv_ffm.request.features = feature_array;
     srv_ffm.request.model_save_path = model_save_name;
-    srv_ffm.request.run_type = RUN_TYPE_TRAINER;
+    srv_ffm.request.run_type = type;
     if (service_client.call(srv_ffm)) {
        std::vector<float> responses;
        responses.insert(responses.end(), srv_ffm.response.responses.begin(),
@@ -281,55 +288,6 @@ void HierarchicalObjectLearning::extractPointLevelFeatures(
     grid.filter(*keypoints_cloud);
     
     this->computePointCloudFPFH(cloud, keypoints_cloud, normals, feature_array);
-
-    
-    
-    // this->pointFeaturesBOWDescriptor(cloud, normals, featureMD, cluster_size);
-    
-    
-}
-
-void HierarchicalObjectLearning::pointFeaturesBOWDescriptor(
-    const pcl::PointCloud<PointT>::Ptr cloud,
-    const pcl::PointCloud<pcl::Normal>::Ptr normals, cv::Mat &vocabulary,
-    const int cluster_size) {
-    if (cloud->empty() || normals->empty()) {
-       ROS_ERROR("CANNOT EXTRACT FEATURES OF EMPTY CLOUD");
-       return;
-    }
-    cv::Mat geometric_features;
-    cv::Mat color_features;
-#ifdef _OPENMP
-    #pragma omp parallel sections
-#endif
-    {
-#ifdef _OPENMP
-#pragma omp section
-#endif
-       {
-          // this->computePointCloudFPFH(
-          //    cloud, cloud, normals, geometric_features, true);
-       }
-#ifdef _OPENMP
-#pragma omp section
-#endif
-       {
-       this->pointIntensityFeature<int>(cloud, color_features, 8, true);
-       }
-    }
-    cv::Mat feature_descriptor = cv::Mat(
-       cloud->size(), color_features.cols + geometric_features.cols, CV_32F);
-    cv::hconcat(geometric_features, color_features, feature_descriptor);
-
-    // std::cout << "Feature Size: " << feature_descriptor.size() << std::endl;
-    
-    if (feature_descriptor.empty()) {
-       return;
-    }
-    // cv::BOWKMeansTrainer bow_trainer(cluster_size);
-    // bow_trainer.add(feature_descriptor);
-    // vocabulary = bow_trainer.cluster();
-    vocabulary = feature_descriptor.clone();
 }
 
 void HierarchicalObjectLearning::computePointCloudFPFH(

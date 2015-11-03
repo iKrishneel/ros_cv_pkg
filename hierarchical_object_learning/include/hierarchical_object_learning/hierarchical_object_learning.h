@@ -135,10 +135,6 @@ class HierarchicalObjectLearning {
         pcl::PointCloud<PointT>::Ptr,
         pcl::PointCloud<pcl::Normal>::Ptr,
         T = 0.05f, bool = true) const;
-    void pointFeaturesBOWDescriptor(
-       const pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<pcl::Normal>::Ptr, cv::Mat &,
-       const int);
     template<class T>
     void pointIntensityFeature(
        const pcl::PointCloud<PointT>::Ptr,
@@ -150,7 +146,7 @@ class HierarchicalObjectLearning {
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr,
        hierarchical_object_learning::FeatureArray &,
-       const float = 0.05f, const int = 100);
+       const float = 0.0f, const int = 100);
     void extractObjectSurfelFeatures(
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr,
@@ -167,7 +163,7 @@ class HierarchicalObjectLearning {
     std::vector<float> fitFeatureModelService(
        ros::ServiceClient,
        const hierarchical_object_learning::FeatureArray &,
-       const std::string, int &);
+       const std::string, const int, int &);
     jsk_recognition_msgs::Histogram convertCvMatToFeatureMsg(
        const cv::Mat);
 
