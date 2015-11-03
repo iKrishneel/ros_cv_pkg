@@ -1,4 +1,6 @@
 hierarchical_object_learning/FeatureArray features
 string model_save_path
+int64 run_type
 ---
+float64[] responses
 int64 success

@@ -9,16 +9,22 @@ HierarchicalObjectLearning::HierarchicalObjectLearning() :
     min_cloud_size_(100),
     neigbour_size_(16),
     downsize_(0.00f) {
-    this->trainer_client_ = pnh_.serviceClient<
-       hierarchical_object_learning::FitFeatureModel>("fit_feature_model");
-   
+
+    this->point_srv_client_ = pnh_.serviceClient<
+       hierarchical_object_learning::FitFeatureModel>(
+          "point_level_predictor");
+    this->surfel_srv_client_ = pnh_.serviceClient<
+       hierarchical_object_learning::FitFeatureModel>(
+          "surfel_level_classifier");
     pnh_.getParam("source_type", this->source_type_);
     if (this->source_type_.compare("ROSBAG") == 0) {
+       // this->trainer_client_ = pnh_.serviceClient<
+       //    hierarchical_object_learning::FitFeatureModel>("fit_feature_model");
        std::string rosbag_dir;
        pnh_.getParam("rosbag_directory", rosbag_dir);
        std::string topic;
        pnh_.getParam("sub_topic", topic);
-       this->read_rosbag_file(rosbag_dir, topic);
+       this->readRosbagFile(rosbag_dir, topic);
     } else if (this->source_type_.compare("DETECTOR") == 0) {
        ROS_INFO("INITIALIZING ROS SUBSCRIBER");
        this->onInit();
@@ -94,7 +100,7 @@ void HierarchicalObjectLearning::callback(
     this->pub_image_.publish(pub_img.toImageMsg());
 }
 
-void HierarchicalObjectLearning::read_rosbag_file(
+void HierarchicalObjectLearning::readRosbagFile(
     const std::string path_to_bag,
     const std::string topic) {
     rosbag::Bag bag;
@@ -115,33 +121,36 @@ void HierarchicalObjectLearning::read_rosbag_file(
        // image_msg, sensor_msgs::image_encodings::BGR8)->image;
        
        for (int i = 0; i < cloud_list.cloud_list.size(); i++) {
-         sensor_msgs::PointCloud2 surfel_cloud(cloud_list.cloud_list[i]);
-         pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
-         pcl::fromROSMsg(surfel_cloud, *cloud);
-         bool is_process_point = false;
-         if (i == cloud_list.cloud_list.size() - 1 &&
-             cloud->size() > this->min_cloud_size_) {
+          sensor_msgs::PointCloud2 surfel_cloud(cloud_list.cloud_list[i]);
+          pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
+          pcl::fromROSMsg(surfel_cloud, *cloud);
+          bool is_process_point = false;
+          if (i == cloud_list.cloud_list.size() - 1 &&
+              cloud->size() > this->min_cloud_size_) {
            is_process_point = true;
-         }
-         pcl::PointCloud<pcl::Normal>::Ptr normals(
-            new pcl::PointCloud<pcl::Normal>);
-         this->estimatePointCloudNormals<float>(
-            cloud, normals, this->neigbour_size_, false);
-         hierarchical_object_learning::FeatureArray surfel_featureMD;
-         hierarchical_object_learning::FeatureArray point_featureMD;
-         this->extractMultilevelCloudFeatures(info_msg, cloud, normals,
-                                      surfel_featureMD, point_featureMD,
-                                      is_process_point);
-
-         // TODO(here): Make parallel
-         {
-           std::string save_surfel_model = "surfel_model";
-           int is_success_surfel = this->fitFeatureModelService(
-              surfel_featureMD, save_surfel_model);
-           std::string save_point_model = "point_model";
-           int is_success_point = this->fitFeatureModelService(
-              point_featureMD, save_point_model);
-         }
+          }
+          pcl::PointCloud<pcl::Normal>::Ptr normals(
+             new pcl::PointCloud<pcl::Normal>);
+          this->estimatePointCloudNormals<float>(
+             cloud, normals, this->neigbour_size_, false);
+          hierarchical_object_learning::FeatureArray surfel_featureMD;
+          hierarchical_object_learning::FeatureArray point_featureMD;
+          this->extractMultilevelCloudFeatures(info_msg, cloud, normals,
+                                               surfel_featureMD,
+                                               point_featureMD,
+                                               is_process_point);
+          // TODO(here): Make parallel
+          {
+             int success;
+             std::string save_surfel_model = "surfel_model";
+             this->fitFeatureModelService(this->point_srv_client_,
+                                          surfel_featureMD,
+                                          save_surfel_model, success);
+             std::string save_point_model = "point_model";
+             this->fitFeatureModelService(this->surfel_srv_client_,
+                                          point_featureMD,
+                                          save_point_model, success);
+          }
        }
     }
     bag.close();
@@ -230,17 +239,23 @@ void HierarchicalObjectLearning::globalPointCloudFeatures(
     }
 }
 
-int HierarchicalObjectLearning::fitFeatureModelService(
+std::vector<float> HierarchicalObjectLearning::fitFeatureModelService(
+    ros::ServiceClient service_client,
     const hierarchical_object_learning::FeatureArray &feature_array,
-    const std::string model_save_name) {
+    const std::string model_save_name, int &success) {
     hierarchical_object_learning::FitFeatureModel srv_ffm;
     srv_ffm.request.features = feature_array;
     srv_ffm.request.model_save_path = model_save_name;
-    if (this->trainer_client_.call(srv_ffm)) {
-       return srv_ffm.response.success;
+    if (service_client.call(srv_ffm)) {
+       std::vector<float> responses;
+       responses.insert(responses.end(), srv_ffm.response.responses.begin(),
+                        srv_ffm.response.responses.end());
+       success = srv_ffm.response.success;
+       return responses;
     } else {
        ROS_ERROR("ERROR: FAILED TO CALL TRAINER SERIVCE");
-       return false;
+       success = -1;
+       return std::vector<float>();
     }
 }
 

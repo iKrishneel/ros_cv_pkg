@@ -27,7 +27,7 @@ def object_classifier_predict(feature_list):
     except ValueError as err:
         print (err.args)
     
-def object_classifier_predictor_handler(req):
+def object_level_classifier_handler(req):
 
     feature_vector = np.array(req.features.feature_list)
     feature_vector = feature_vector.astype("float")
@@ -37,8 +37,8 @@ def object_classifier_predictor_handler(req):
     
 def object_classifier_predictor_server():
     rospy.init_node('point_level_predictor_server')
-    s = rospy.Service('point_level_predictor',
-                      Classifier, object_classifier_predictor_handler)
+    s = rospy.Service('point_level_classifier',
+                      FitFeatureModel, object_level_classifier_handler)
     rospy.spin()
 
 def onInit():

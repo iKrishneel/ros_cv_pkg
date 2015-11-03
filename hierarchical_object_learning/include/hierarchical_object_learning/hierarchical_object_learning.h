@@ -93,6 +93,8 @@ class HierarchicalObjectLearning {
     ros::Publisher pub_image_;
     ros::Publisher pub_pose_;
     ros::ServiceClient trainer_client_;
+    ros::ServiceClient point_srv_client_;
+    ros::ServiceClient surfel_srv_client_;
 
     int num_threads_;
 
@@ -142,9 +144,8 @@ class HierarchicalObjectLearning {
        const pcl::PointCloud<PointT>::Ptr,
        cv::Mat &, const T, bool);
 
-    void read_rosbag_file(
+    void readRosbagFile(
       const std::string, const std::string);
-
     void extractPointLevelFeatures(
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr,
@@ -163,10 +164,10 @@ class HierarchicalObjectLearning {
         hierarchical_object_learning::FeatureArray &,
         hierarchical_object_learning::FeatureArray &,
         bool = false, bool = true);
-
-    int fitFeatureModelService(
+    std::vector<float> fitFeatureModelService(
+       ros::ServiceClient,
        const hierarchical_object_learning::FeatureArray &,
-       const std::string);
+       const std::string, int &);
     jsk_recognition_msgs::Histogram convertCvMatToFeatureMsg(
        const cv::Mat);
 
@@ -176,6 +177,11 @@ class HierarchicalObjectLearning {
         const jsk_recognition_msgs::ClusterPointIndices::ConstPtr &,
         std::vector<pcl::PointCloud<PointT>::Ptr> &,
         std::vector<pcl::PointCloud<pcl::Normal>::Ptr> &);
+
+    enum CLASSIFIER_TYPE{
+       RUN_TYPE_TRAINER,
+       RUN_TYPE_PREDICTOR
+    };
 };
 
 
