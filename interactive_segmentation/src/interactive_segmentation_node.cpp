@@ -43,8 +43,10 @@ void InteractiveSegmentation::callback(
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     
-    // this->pointCloudEdge(cloud, image, edge_img, 10);
-    PointCloudSurfels surfels = this->decomposePointCloud2Voxels(cloud);
+    this->pointCloudEdge(cloud, image, edge_img, 10);
+    // PointCloudSurfels surfels = this->decomposePointCloud2Voxels(cloud);
+
+
     
     cv_bridge::CvImage pub_img(
        image_msg->header, sensor_msgs::image_encodings::BGR8, image);
@@ -138,7 +140,7 @@ void InteractiveSegmentation::pointCloudEdge(
     std::vector<std::vector<cv::Point> > contours;
     cv::Mat cont_img = cv::Mat::zeros(image.size(), CV_8UC3);
     cv::findContours(edge_img, contours, hierarchy, CV_RETR_LIST,
-                     CV_CHAIN_APPROX_TC89_KCOS, cv::Point(0, 0));
+                     CV_CHAIN_APPROX_NONE, cv::Point(0, 0));
     std::vector<std::vector<cv::Point> > selected_contours;
     for (int i = 0; i < contours.size(); i++) {
        if (cv::contourArea(contours[i]) > contour_thresh) {
@@ -182,8 +184,10 @@ void InteractiveSegmentation::pointCloudEdge(
              Eigen::Vector3f ne_cntr = ((ne_pt1 - ne_pt2) / 2) + ne_pt2;
              Eigen::Vector3f e_pt = cloud->points[ept_index].getVector3fMap();
 
+             
              PointT pt = cloud->points[ept_index];
-             if (ne_cntr(2) < e_pt(2) - 0.005f) {
+             if (ne_cntr(2) < e_pt(2)  || isnan(e_pt(2))
+                 || isnan(ne_cntr(2))) {
                 pt.r = 0;
                 pt.b = 0;
                 pt.g = 255;

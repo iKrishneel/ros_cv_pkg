@@ -122,7 +122,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const sensor_msgs::Image::ConstPtr &,
        const sensor_msgs::Image::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
-
+   
     virtual InteractiveSegmentation::PointCloudSurfels
     decomposePointCloud2Voxels(
         const pcl::PointCloud<PointT>::Ptr);
