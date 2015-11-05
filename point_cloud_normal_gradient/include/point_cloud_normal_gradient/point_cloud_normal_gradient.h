@@ -17,6 +17,8 @@
 #include <pcl/filters/passthrough.h>
 #include <pcl/features/normal_3d_omp.h>
 
+#include <omp.h>
+
 class PointCloudNormalGradients{
    
  public:

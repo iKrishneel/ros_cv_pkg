@@ -1,9 +1,9 @@
 <launch>
   <arg name="input_point" default="/camera/depth_registered/points" />
   <arg name="voxel_grid_filter_limit_min" default="0.0"/>
-  <arg name="voxel_grid_filter_limit_max" default="2.0"/>
+  <arg name="voxel_grid_filter_limit_max" default="5.0"/>
   <arg name="voxel_grid_filter_field_name" default="z"/>
-    <arg name="voxel_grid_leaf_size" default="0.01"/>
+    <arg name="voxel_grid_leaf_size" default="0.02"/>
 
   <!-- <include file="$(find interactive_segmentation)/launch/organized_multi_plane_segmentation.launch" /> -->
   <!-- <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch" /> -->
@@ -20,16 +20,16 @@
     <param name="leaf_size" value="$(arg voxel_grid_leaf_size)" />
   </node>
 
-  <!-- <node pkg="nodelet" type="nodelet" name="normal_estimation" -->
-  <!-- 	args="standalone pcl/NormalEstimation"> -->
-  <!--   <remap from="~input" to="/voxelgrid/output" /> -->
-  <!--   <rosparam> -->
-  <!--     k_search: 0 -->
-  <!--     radius_search: 0.1 -->
-  <!--     # 0 -> ANN, 1 -> FLANN, 2 -> Organized -->
-  <!--     spatial_locator: 0 -->
-  <!--   </rosparam> -->
-  <!-- </node> -->
+  <node pkg="nodelet" type="nodelet" name="normal_estimation"
+	args="standalone pcl/NormalEstimation">
+    <remap from="~input" to="/voxelgrid/output" />
+    <rosparam>
+      k_search: 0
+      radius_search: 0.1
+      # 0 -> ANN, 1 -> FLANN, 2 -> Organized
+      spatial_locator: 0
+    </rosparam>
+  </node>
   
   <node pkg="interactive_segmentation" name="interactive_segmentation"
 	type="interactive_segmentation_node" output="screen">

@@ -1,6 +1,24 @@
 <launch>
+  <arg name="input_point" default="/camera/depth_registered/points" />
+  <arg name="voxel_grid_filter_limit_min" default="0.0"/>
+  <arg name="voxel_grid_filter_limit_max" default="5.0"/>
+  <arg name="voxel_grid_filter_field_name" default="z"/>
+  <arg name="voxel_grid_leaf_size" default="0.02"/>
+  <node pkg="nodelet" type="nodelet"
+	name="voxelgrid"
+	args="standalone pcl/VoxelGrid"
+	output="screen" clear_params="true">
+    <remap from="~input" to="$(arg input_point)" />
+    <param name="filter_limit_min" value="$(arg voxel_grid_filter_limit_min)" />
+    <param name="filter_limit_max" value="$(arg voxel_grid_filter_limit_max)" />
+    <param name="filter_limit_field_name" value="$(arg voxel_grid_filter_field_name)" />
+    <param name="leaf_size" value="$(arg voxel_grid_leaf_size)" />
+
+  </node>
+
   <node pkg="point_cloud_normal_gradient" type="point_cloud_normal_gradient_node"
 	name="point_cloud_normal_gradient" output="screen">
-    <remap from="input" to="/camera/depth_registered/points" />
+    <!-- <remap from="input" to="/camera/depth_registered/points" /> -->
+    <remap from="input" to="/voxelgrid/output" />
   </node>
 </launch>

@@ -100,6 +100,10 @@ void PointCloudNormalGradients::viewPointSurfaceNormalOrientation(
         return;
     }
     pcl::PointCloud<PointT>::Ptr gradient_cloud(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*cloud, *gradient_cloud);
+#ifdef _OPENMP
+#pragma omp parallel for shared(gradient_cloud)
+#endif
     for (int i = 0; i < cloud->size(); i++) {
        Eigen::Vector3f viewPointVec =
           cloud->points[i].getVector3fMap();
@@ -114,16 +118,19 @@ void PointCloudNormalGradients::viewPointSurfaceNormalOrientation(
        float angle = atan2(cross_norm, scalar_prod);
        if (angle * (180/CV_PI) >= 0 && angle * (180/CV_PI) <= 180) {
           cv::Scalar jmap = JetColour(angle/(2*CV_PI), 0, 1);
-          PointT pt;
-          pt.x = cloud->points[i].x;
-          pt.y = cloud->points[i].y;
-          pt.z = cloud->points[i].z;
-          pt.r = jmap.val[0] * 255;
-          pt.g = jmap.val[1] * 255;
-          pt.b = jmap.val[2] * 255;
-          gradient_cloud->push_back(pt);
+          PointT *pt = &gradient_cloud->points[i];
+          pt->x = cloud->points[i].x;
+          pt->y = cloud->points[i].y;
+          pt->z = cloud->points[i].z;
+          pt->r = jmap.val[0] * 255;
+          pt->g = jmap.val[1] * 255;
+          pt->b = jmap.val[2] * 255;
+          // gradient_cloud->push_back(pt);
        }
     }
+
+
+    
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*gradient_cloud, *cloud);
 }

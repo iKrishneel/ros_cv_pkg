@@ -11,52 +11,216 @@ InteractiveSegmentation::InteractiveSegmentation():
 void InteractiveSegmentation::onInit() {
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/interactive_segmentation/output/cloud", 1);
+
+    this->pub_pt_map_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+        "/interactive_segmentation/output/point_map", 1);
     this->pub_image_ = this->pnh_.advertise<sensor_msgs::Image>(
        "/interactive_segmentation/output/image", 1);
 }
 
 void InteractiveSegmentation::subscribe() {
        this->sub_image_.subscribe(this->pnh_, "input_image", 1);
-       this->sub_edge_.subscribe(this->pnh_, "input_edge", 1);
+       this->sub_normal_.subscribe(this->pnh_, "input_normal", 1);
        this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
        this->sync_ = boost::make_shared<message_filters::Synchronizer<
           SyncPolicy> >(100);
-       sync_->connectInput(sub_image_, sub_edge_, sub_cloud_);
+       sync_->connectInput(sub_image_, sub_normal_, sub_cloud_);
        sync_->registerCallback(boost::bind(&InteractiveSegmentation::callback,
                                            this, _1, _2, _3));
 }
 
 void InteractiveSegmentation::unsubscribe() {
     this->sub_cloud_.unsubscribe();
+    this->sub_normal_.unsubscribe();
     this->sub_image_.unsubscribe();
 }
 
 void InteractiveSegmentation::callback(
     const sensor_msgs::Image::ConstPtr &image_msg,
-    const sensor_msgs::Image::ConstPtr &edge_msg,
+    const sensor_msgs::PointCloud2::ConstPtr &normal_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
     boost::mutex::scoped_lock lock(this->mutex_);
     cv::Mat image = cv_bridge::toCvShare(
        image_msg, image_msg->encoding)->image;
-    cv::Mat edge_img = cv_bridge::toCvShare(
-       edge_msg, edge_msg->encoding)->image;
+
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     
-    this->pointCloudEdge(cloud, image, edge_img, 10);
-    // PointCloudSurfels surfels = this->decomposePointCloud2Voxels(cloud);
-
-
+    std::vector<int> index;
+    pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, index);
+    pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);
+    pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
+    int neigbour_size = 16;
+    this->estimatePointCloudNormals<int>(cloud, normals, neigbour_size, true);
     
-    cv_bridge::CvImage pub_img(
-       image_msg->header, sensor_msgs::image_encodings::BGR8, image);
-    this->pub_image_.publish(pub_img.toImageMsg());
+    /*
+    pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr mls_points(
+        new pcl::PointCloud<pcl::PointXYZRGBNormal>);
+    pcl::MovingLeastSquares<PointT, pcl::PointXYZRGBNormal> mls;
+    mls.setComputeNormals(true);
+    mls.setInputCloud(cloud);
+    mls.setPolynomialFit(true);
+    mls.setSearchMethod(tree);
+    mls.setSearchRadius(0.03);
+    mls.process(*mls_points);
+    */
+    /*
+    pcl::PointCloud<PointT>::Ptr scloud(new pcl::PointCloud<PointT>);
+    for (int i = 0; i < mls_points->size(); i++) {
+      pcl::Normal norm;
+      norm.normal_x = mls_points->points[i].normal_x;
+      norm.normal_y = mls_points->points[i].normal_y;
+      norm.normal_z = mls_points->points[i].normal_z;
+      PointT pt;
+      pt.x = mls_points->points[i].x;
+      pt.y = mls_points->points[i].y;
+      pt.z = mls_points->points[i].z;
+      pt.r = mls_points->points[i].r;
+      pt.g = mls_points->points[i].g;
+      pt.b = mls_points->points[i].b;
+      normals->push_back(norm);
+      scloud->push_back(pt);
+    }
+    */
+    
+    this->pointLevelSimilarity(cloud, normals, cloud_msg->header);
+    
+    
+    // this->pointCloudEdge(cloud, image, edge_img, 10);
+    // PointCloudSurfels surfels = this->decomposePointCloud2Voxels(cloud);
+    
+    // cv_bridge::CvImage pub_img(
+    //    image_msg->header, sensor_msgs::image_encodings::BGR8, image);
+    // this->pub_image_.publish(pub_img.toImageMsg());
 
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
 }
+
+
+void InteractiveSegmentation::pointLevelSimilarity(
+     const pcl::PointCloud<PointT>::Ptr cloud,
+     const pcl::PointCloud<pcl::Normal>::Ptr normals,
+     const std_msgs::Header header) {
+     if (cloud->empty() || normals->empty()) {
+        return;
+     }
+
+     // get the features
+     // pcl::PointCloud<PointT>::Ptr dist_map(new pcl::PointCloud<PointT>);
+     // cv::Mat fpfh_hist;
+     // this->computePointFPFH(cloud, normals, fpfh_hist);
+
+     
+     
+     // compute weight
+     pcl::PointCloud<PointT>::Ptr out_cloud(new pcl::PointCloud<PointT>);
+     pcl::copyPointCloud<PointT, PointT>(*cloud, *out_cloud);
+     
+     pcl::KdTreeFLANN<PointT> kdtree;
+     kdtree.setInputCloud(cloud);
+     bool is_knn = false;
+     float search_dim = 0.05f;
+#ifdef _OPENMP
+     #pragma omp parallel for
+#endif
+     for (int i = 0; i < cloud->size(); i++) {
+
+       pcl::PointXYZHSV hsv;
+       pcl::PointXYZRGBtoXYZHSV(cloud->points[i], hsv);
+       
+       std::vector<int> point_idx_search;
+       std::vector<float> point_squared_distance;
+       PointT pt = cloud->points[i];
+       int search_out = 0;
+       if (is_knn) {
+         search_out = kdtree.nearestKSearch(
+             pt, search_dim, point_idx_search, point_squared_distance);
+       } else {
+         search_out = kdtree.radiusSearch(
+             pt, search_dim, point_idx_search, point_squared_distance);
+       }
+       double sum = 0.0;
+       for (size_t k = 0; k < point_idx_search.size(); k++) {
+         int index = point_idx_search[k];
+
+         pcl::PointXYZHSV n_hsv;
+         pcl::PointXYZRGBtoXYZHSV(cloud->points[index], n_hsv);
+
+         double dist_color = std::sqrt(std::pow(hsv.h - n_hsv.h, 2) +
+                                       std::pow(hsv.s - n_hsv.s, 2)) / 255.0;
+         // dist_color = 1 - dist_color;
+         
+         
+         double dist_fpfh = 0.0;
+         // dist_fpfh = cv::compareHist(fpfh_hist.row(i),
+         //                                    fpfh_hist.row(index),
+         //                                    CV_COMP_CORREL);
+
+         Eigen::Vector4f norm = Eigen::Vector4f(normals->points[i].normal_x,
+                                                normals->points[i].normal_y,
+                                                normals->points[i].normal_z, 1.0f);
+         Eigen::Vector4f n_norm = Eigen::Vector4f(normals->points[index].normal_x,
+                                                normals->points[index].normal_y,
+                                                  normals->points[index].normal_z, 1.0f);
+         dist_fpfh = pcl::distances::l2(norm, n_norm);
+
+         double distance = std::sqrt(std::pow(dist_color, 2) + 
+                                     std::pow(dist_fpfh, 2));
+         
+         sum += distance;
+       }
+       sum /= static_cast<double>(point_idx_search.size());
+       
+       
+       
+       double intensity = 255.0;
+       out_cloud->points[i].r = intensity * sum;
+       out_cloud->points[i].b = intensity * sum;
+       out_cloud->points[i].g = intensity * sum;
+     }
+
+     sensor_msgs::PointCloud2 ros_cloud;
+     pcl::toROSMsg(*out_cloud, ros_cloud);
+     ros_cloud.header = header;
+     this->pub_pt_map_.publish(ros_cloud);
+
+  }
+
+
+void InteractiveSegmentation::computePointFPFH(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<pcl::Normal>::Ptr normals,
+    cv::Mat &histogram) const {
+    if (cloud->empty() || normals->empty()) {
+      ROS_ERROR("-- ERROR: cannot compute FPFH");
+      return;
+    }
+    pcl::FPFHEstimationOMP<PointT, pcl::Normal, FPFHS> fpfh;
+    fpfh.setInputCloud(cloud);
+    fpfh.setInputNormals(normals);
+    pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);
+    fpfh.setSearchMethod(tree);
+    fpfh.setRadiusSearch(0.05);
+    pcl::PointCloud<FPFHS>::Ptr fpfhs(new pcl::PointCloud<FPFHS>());
+    fpfh.compute(*fpfhs);
+    const int hist_dim = 33;
+    histogram = cv::Mat::zeros(
+        static_cast<int>(fpfhs->size()), hist_dim, CV_32F);
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) shared(histogram)
+#endif
+    for (int i = 0; i < fpfhs->size(); i++) {
+      for (int j = 0; j < hist_dim; j++) {
+        histogram.at<float>(i, j) = fpfhs->points[i].histogram[j];
+      }
+    }
+    cv::normalize(histogram, histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
+}
+
+
 
 InteractiveSegmentation::PointCloudSurfels
 InteractiveSegmentation::decomposePointCloud2Voxels(
@@ -186,8 +350,8 @@ void InteractiveSegmentation::pointCloudEdge(
 
              
              PointT pt = cloud->points[ept_index];
-             if (ne_cntr(2) < e_pt(2)  || isnan(e_pt(2))
-                 || isnan(ne_cntr(2))) {
+             if (ne_cntr(2) < e_pt(2)
+                 /*|| isnan(e_pt(2)) || isnan(ne_cntr(2))*/) {
                 pt.r = 0;
                 pt.b = 0;
                 pt.g = 255;

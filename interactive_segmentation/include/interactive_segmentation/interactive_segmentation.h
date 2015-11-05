@@ -46,11 +46,16 @@
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/filters/filter.h>
 #include <pcl/common/centroid.h>
+#include <pcl/features/fpfh_omp.h>
+#include <pcl/surface/mls.h>
+#include <pcl/point_types_conversion.h>
+#include <pcl/registration/distances.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
 #include <point_cloud_scene_decomposer/signal.h>
 
+#include <std_msgs/Header.h>
 #include <std_msgs/Bool.h>
 #include <std_msgs/Int64.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -61,11 +66,13 @@
 
 #include <vector>
 #include <string>
+#include <omp.h>
 
 class InteractiveSegmentation: public SupervoxelSegmentation {
 
     typedef pcl::PointXYZRGB PointT;
-
+    typedef  pcl::FPFHSignature33 FPFHS;
+  
     struct PointCloudSurfels {
         std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters;
         std::multimap<uint32_t, uint32_t> supervoxel_adjacency;
@@ -98,16 +105,17 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     ros::NodeHandle pnh_;
     typedef  message_filters::sync_policies::ApproximateTime<
        sensor_msgs::Image,
-       sensor_msgs::Image,
+      sensor_msgs::PointCloud2,
        sensor_msgs::PointCloud2> SyncPolicy;
 
     message_filters::Subscriber<sensor_msgs::Image> sub_image_;
-    message_filters::Subscriber<sensor_msgs::Image> sub_edge_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
     ros::Publisher pub_cloud_;
     ros::Publisher pub_image_;
+    ros::Publisher pub_pt_map_;
 
     int min_cluster_size_;
     
@@ -120,9 +128,19 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     InteractiveSegmentation();
     virtual void callback(
        const sensor_msgs::Image::ConstPtr &,
-       const sensor_msgs::Image::ConstPtr &,
+       const sensor_msgs::PointCloud2::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
-   
+
+   void computePointFPFH(
+       const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<pcl::Normal>::Ptr,
+       cv::Mat &) const;
+  
+   void pointLevelSimilarity(
+       const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<pcl::Normal>::Ptr, const std_msgs::Header);
+  
+  
     virtual InteractiveSegmentation::PointCloudSurfels
     decomposePointCloud2Voxels(
         const pcl::PointCloud<PointT>::Ptr);
