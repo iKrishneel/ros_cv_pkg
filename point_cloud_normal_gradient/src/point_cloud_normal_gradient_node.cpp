@@ -106,18 +106,18 @@ void PointCloudNormalGradients::viewPointSurfaceNormalOrientation(
 #endif
     for (int i = 0; i < cloud->size(); i++) {
        Eigen::Vector3f viewPointVec =
-          cloud->points[i].getVector3fMap();
+          cloud->points[i].getVector3fMap() * -1.0f;
        Eigen::Vector3f surfaceNormalVec = Eigen::Vector3f(
-          -cloud_normal->points[i].normal_x,
-          -cloud_normal->points[i].normal_y,
-          -cloud_normal->points[i].normal_z);
+          cloud_normal->points[i].normal_x,
+          cloud_normal->points[i].normal_y,
+          cloud_normal->points[i].normal_z);
        float cross_norm = static_cast<float>(
           surfaceNormalVec.cross(viewPointVec).norm());
        float scalar_prod = static_cast<float>(
           surfaceNormalVec.dot(viewPointVec));
        float angle = atan2(cross_norm, scalar_prod);
        if (angle * (180/CV_PI) >= 0 && angle * (180/CV_PI) <= 180) {
-          cv::Scalar jmap = JetColour(angle/(2*CV_PI), 0, 1);
+          cv::Scalar jmap = JetColour(angle/(CV_PI), 0, 1);
           PointT *pt = &gradient_cloud->points[i];
           pt->x = cloud->points[i].x;
           pt->y = cloud->points[i].y;

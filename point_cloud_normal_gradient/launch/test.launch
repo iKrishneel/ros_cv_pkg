@@ -3,7 +3,7 @@
   <arg name="voxel_grid_filter_limit_min" default="0.0"/>
   <arg name="voxel_grid_filter_limit_max" default="5.0"/>
   <arg name="voxel_grid_filter_field_name" default="z"/>
-  <arg name="voxel_grid_leaf_size" default="0.02"/>
+  <arg name="voxel_grid_leaf_size" default="0.01"/>
   <node pkg="nodelet" type="nodelet"
 	name="voxelgrid"
 	args="standalone pcl/VoxelGrid"

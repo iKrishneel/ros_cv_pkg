@@ -49,8 +49,8 @@ void InteractiveSegmentation::callback(
     std::vector<int> index;
     pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, index);
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
-    int neigbour_size = 16;
-    this->estimatePointCloudNormals<int>(cloud, normals, neigbour_size, true);
+    float neigbour_size = 0.05f;
+    this->estimatePointCloudNormals<float>(cloud, normals, neigbour_size, false);
     
     this->pointLevelSimilarity(cloud, normals, cloud_msg->header);
     
@@ -122,6 +122,9 @@ void InteractiveSegmentation::pointLevelSimilarity(
                                        std::pow(hsv.s - n_hsv.s, 2)) / 255.0;
          // dist_color = 1 - dist_color;
          
+         Eigen::Vector4f i_point = cloud->points[i].getVector4fMap();
+         Eigen::Vector4f k_point = cloud->points[k].getVector4fMap();
+         double dist_point = pcl::distances::l2(i_point, k_point);
          
          double dist_fpfh = 0.0;
          // dist_fpfh = cv::compareHist(fpfh_hist.row(i),
@@ -136,14 +139,15 @@ void InteractiveSegmentation::pointLevelSimilarity(
                                                   normals->points[index].normal_z, 1.0f);
          dist_fpfh = pcl::distances::l2(norm, n_norm);
 
-         double distance = std::sqrt(std::pow(dist_color, 2) + 
-                                     std::pow(dist_fpfh, 2));
+         double distance = std::sqrt(
+             std::pow(dist_color, 2) + 
+             std::pow(dist_fpfh, 2) //+
+             // std::pow(dist_point, 2)
+                                     );
          
          sum += distance;
        }
        sum /= static_cast<double>(point_idx_search.size());
-       
-       
        
        double intensity = 255.0;
        out_cloud->points[i].r = intensity * sum;
@@ -427,7 +431,7 @@ void InteractiveSegmentation::estimatePointCloudNormals(
     }
     pcl::NormalEstimationOMP<PointT, pcl::Normal> ne;
     ne.setInputCloud(cloud);
-    ne.setNumberOfThreads(8);
+    ne.setNumberOfThreads(16);
     pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT> ());
     ne.setSearchMethod(tree);
     if (use_knn) {

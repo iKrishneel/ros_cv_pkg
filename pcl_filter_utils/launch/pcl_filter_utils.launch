@@ -1,7 +1,8 @@
 <launch>
+  <arg name="cloud" default="/camera/depth_registered/points" />
   <node pkg="pcl_filter_utils" type="pcl_filter_utils_node" 
 	name ="pcl_filter_utils" output="screen">
-    <remap from="input" to="/camera/depth_registered/points"/>
+    <remap from="input" to="$(arg cloud)"/>
     <remap from="target" to="pcl_filter_utils/output/cloud" />
   </node>
   <node pkg="rqt_reconfigure" type="rqt_reconfigure"
