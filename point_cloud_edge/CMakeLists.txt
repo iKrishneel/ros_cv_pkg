@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(interactive_segmentation)
+project(point_cloud_edge)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
@@ -13,15 +13,14 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   sensor_msgs
   std_msgs
-)
+  )
 
 find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msgs std_srvs geometry_msgs roscpp rospy sensor_msgs visualization_msgs message_filters message_generation jsk_pcl_ros interactive_markers pcl_conversions jsk_topic_tools rviz eigen_conversions dynamic_tf_publisher jsk_interactive_marker jsk_recognition_msgs move_base_msgs rosgraph_msgs topic_tools jsk_topic_tools jsk_ik_server pcl_msgs jsk_footstep_msgs drc_com_common jsk_perception jsk_calibration resized_image_transport smach_msgs pcl_ros nav_msgs tf dynamic_reconfigure roseus)
 
 
-find_package(OpenMP)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
+## System dependencies are found with CMake's conventions
+# find_package(Boost REQUIRED COMPONENTS system)
+
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
@@ -37,10 +36,10 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}
 ## * Let MSG_DEP_SET be the set of packages whose message types you use in
 ##   your messages/services/actions (e.g. std_msgs, actionlib_msgs, ...).
 ## * In the file package.xml:
+##   * add a build_depend tag for "message_generation"
 ##   * add a build_depend and a run_depend tag for each package in MSG_DEP_SET
-##   * If MSG_DEP_SET isn't empty the following dependencies might have been
-##     pulled in transitively but can be declared for certainty nonetheless:
-##     * add a build_depend tag for "message_generation"
+##   * If MSG_DEP_SET isn't empty the following dependency has been pulled in
+##     but can be declared for certainty nonetheless:
 ##     * add a run_depend tag for "message_runtime"
 ## * In this file (CMakeLists.txt):
 ##   * add "message_generation" and every package in MSG_DEP_SET to
@@ -51,9 +50,6 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}
 ##     and list every .msg/.srv/.action file to be processed
 ##   * uncomment the generate_messages entry below
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
-
-generate_dynamic_reconfigure_options(
-  cfg/SupervoxelSegmentation.cfg)
 
 ## Generate messages in the 'msg' folder
 # add_message_files(
@@ -82,6 +78,26 @@ generate_dynamic_reconfigure_options(
 #   std_msgs  # Or other packages containing msgs
 # )
 
+################################################
+## Declare ROS dynamic reconfigure parameters ##
+################################################
+
+## To declare and build dynamic reconfigure parameters within this
+## package, follow these steps:
+## * In the file package.xml:
+##   * add a build_depend and a run_depend tag for "dynamic_reconfigure"
+## * In this file (CMakeLists.txt):
+##   * add "dynamic_reconfigure" to
+##     find_package(catkin REQUIRED COMPONENTS ...)
+##   * uncomment the "generate_dynamic_reconfigure_options" section below
+##     and list every .cfg file to be processed
+
+## Generate dynamic reconfigure parameters in the 'cfg' folder
+# generate_dynamic_reconfigure_options(
+#   cfg/DynReconf1.cfg
+#   cfg/DynReconf2.cfg
+# )
+
 ###################################
 ## catkin specific configuration ##
 ###################################
@@ -93,8 +109,8 @@ generate_dynamic_reconfigure_options(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES interactive_segmentation
-  CATKIN_DEPENDS #cv_bridge image_transport roscpp rospy
+  LIBRARIES point_cloud_edge
+  CATKIN_DEPENDS roscpp rospy
   DEPENDS system_lib
 )
 
@@ -109,26 +125,31 @@ include_directories(
   include ${catkin_INCLUDE_DIRS}
 )
 
-## Declare a cpp library
-# add_library(interactive_segmentation
-#   src/${PROJECT_NAME}/interactive_segmentation.cpp
+## Declare a C++ library
+# add_library(point_cloud_edge
+#   src/${PROJECT_NAME}/point_cloud_edge.cpp
 # )
 
-## Declare a cpp executable
-add_executable(interactive_segmentation_node
-  src/interactive_segmentation_node.cpp
-  src/supervoxel_segmentation.cpp
-  src/region_adjacency_graph.cpp)
+## Add cmake target dependencies of the library
+## as an example, code may need to be generated before libraries
+## either from message generation or dynamic reconfigure
+# add_dependencies(point_cloud_edge ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
-## Add cmake target dependencies of the executable/library
-## as an example, message headers may need to be generated before nodes
-# add_dependencies(interactive_segmentation_node interactive_segmentation_generate_messages_cpp)
-add_dependencies(interactive_segmentation_node ${PROJECT_NAME}_gencfg)
+## Declare a C++ executable
+add_executable(point_cloud_edge_node
+  src/point_cloud_edge_node.cpp
+  src/organized_edge_detection.cpp
+  src/convolution_2d.cpp
+  )
+
+## Add cmake target dependencies of the executable
+## same as for the library above
+# add_dependencies(point_cloud_edge_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Specify libraries to link a library or executable target against
- target_link_libraries(interactive_segmentation_node
-   ${catkin_LIBRARIES}
- )
+target_link_libraries(point_cloud_edge_node
+  ${catkin_LIBRARIES}
+)
 
 #############
 ## Install ##
@@ -145,7 +166,7 @@ add_dependencies(interactive_segmentation_node ${PROJECT_NAME}_gencfg)
 # )
 
 ## Mark executables and/or libraries for installation
-# install(TARGETS interactive_segmentation interactive_segmentation_node
+# install(TARGETS point_cloud_edge point_cloud_edge_node
 #   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
@@ -170,7 +191,7 @@ add_dependencies(interactive_segmentation_node ${PROJECT_NAME}_gencfg)
 #############
 
 ## Add gtest based cpp test target and link libraries
-# catkin_add_gtest(${PROJECT_NAME}-test test/test_interactive_segmentation.cpp)
+# catkin_add_gtest(${PROJECT_NAME}-test test/test_point_cloud_edge.cpp)
 # if(TARGET ${PROJECT_NAME}-test)
 #   target_link_libraries(${PROJECT_NAME}-test ${PROJECT_NAME})
 # endif()

@@ -1,0 +1,7 @@
+<launch>
+  <arg name="input" default="/camera/depth_registered/points" />
+  <node pkg="point_cloud_edge" name="point_cloud_edge" type="point_cloud_edge_node"
+  	output="screen" >
+    <remap from="input_cloud" to="$(arg input)" />
+  </node>
+</launch>
