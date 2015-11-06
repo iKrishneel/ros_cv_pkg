@@ -48,40 +48,9 @@ void InteractiveSegmentation::callback(
     
     std::vector<int> index;
     pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, index);
-    pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
     int neigbour_size = 16;
     this->estimatePointCloudNormals<int>(cloud, normals, neigbour_size, true);
-    
-    /*
-    pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr mls_points(
-        new pcl::PointCloud<pcl::PointXYZRGBNormal>);
-    pcl::MovingLeastSquares<PointT, pcl::PointXYZRGBNormal> mls;
-    mls.setComputeNormals(true);
-    mls.setInputCloud(cloud);
-    mls.setPolynomialFit(true);
-    mls.setSearchMethod(tree);
-    mls.setSearchRadius(0.03);
-    mls.process(*mls_points);
-    */
-    /*
-    pcl::PointCloud<PointT>::Ptr scloud(new pcl::PointCloud<PointT>);
-    for (int i = 0; i < mls_points->size(); i++) {
-      pcl::Normal norm;
-      norm.normal_x = mls_points->points[i].normal_x;
-      norm.normal_y = mls_points->points[i].normal_y;
-      norm.normal_z = mls_points->points[i].normal_z;
-      PointT pt;
-      pt.x = mls_points->points[i].x;
-      pt.y = mls_points->points[i].y;
-      pt.z = mls_points->points[i].z;
-      pt.r = mls_points->points[i].r;
-      pt.g = mls_points->points[i].g;
-      pt.b = mls_points->points[i].b;
-      normals->push_back(norm);
-      scloud->push_back(pt);
-    }
-    */
     
     this->pointLevelSimilarity(cloud, normals, cloud_msg->header);
     
@@ -467,6 +436,37 @@ void InteractiveSegmentation::estimatePointCloudNormals(
         ne.setRadiusSearch(k);
     }
     ne.compute(*normals);
+}
+
+void InteractiveSegmentation::mlsSmoothPointCloud(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    pcl::PointCloud<PointT>::Ptr scloud,
+    pcl::PointCloud<pcl::Normal>::Ptr normals) {
+    pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr mls_points(
+        new pcl::PointCloud<pcl::PointXYZRGBNormal>);
+    pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);
+    pcl::MovingLeastSquares<PointT, pcl::PointXYZRGBNormal> mls;
+    mls.setComputeNormals(true);
+    mls.setInputCloud(cloud);
+    mls.setPolynomialFit(true);
+    mls.setSearchMethod(tree);
+    mls.setSearchRadius(0.03);
+    mls.process(*mls_points);
+    for (int i = 0; i < mls_points->size(); i++) {
+      pcl::Normal norm;
+      norm.normal_x = mls_points->points[i].normal_x;
+      norm.normal_y = mls_points->points[i].normal_y;
+      norm.normal_z = mls_points->points[i].normal_z;
+      PointT pt;
+      pt.x = mls_points->points[i].x;
+      pt.y = mls_points->points[i].y;
+      pt.z = mls_points->points[i].z;
+      pt.r = mls_points->points[i].r;
+      pt.g = mls_points->points[i].g;
+      pt.b = mls_points->points[i].b;
+      normals->push_back(norm);
+      scloud->push_back(pt);
+    }
 }
 
 int main(int argc, char *argv[]) {

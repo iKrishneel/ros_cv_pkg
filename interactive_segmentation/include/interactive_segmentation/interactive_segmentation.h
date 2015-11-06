@@ -165,6 +165,11 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const pcl::PointCloud<PointT>::Ptr,
        pcl::PointCloud<pcl::Normal>::Ptr,
        T = 0.05f, bool = false) const;
+
+    void mlsSmoothPointCloud(
+        const pcl::PointCloud<PointT>::Ptr,
+        pcl::PointCloud<PointT>::Ptr,
+        pcl::PointCloud<pcl::Normal>::Ptr);
 };
 
 
