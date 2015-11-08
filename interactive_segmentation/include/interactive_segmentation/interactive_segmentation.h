@@ -101,7 +101,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
  private:
     boost::mutex mutex_;
     ros::NodeHandle pnh_;
-    typedef  message_filters::sync_policies::ApproximateTime<
+    typedef pcl::SupervoxelClustering<PointT>::VoxelAdjacencyList AdjacencyList;
+    typedef message_filters::sync_policies::ApproximateTime<
        sensor_msgs::Image,
       sensor_msgs::PointCloud2,
        sensor_msgs::PointCloud2> SyncPolicy;
@@ -133,7 +134,16 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr,
        cv::Mat &) const;
-  
+
+    void surfelLevelObjectHypothesis(
+       const pcl::PointCloud<PointT>::Ptr,
+       pcl::PointCloud<pcl::Normal>::Ptr,
+       std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &);
+    void updateSupervoxelClusters(
+       std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> &,
+       const uint32_t, const uint32_t);
+   
+   
     void pointLevelSimilarity(
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr, const std_msgs::Header);

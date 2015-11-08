@@ -39,7 +39,12 @@ class SupervoxelSegmentation {
     void supervoxelSegmentation(
        const pcl::PointCloud<PointT>::Ptr,
        std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &,
-       std::multimap<uint32_t, uint32_t> &);
+       pcl::SupervoxelClustering<PointT>::VoxelAdjacencyList &);
+   
+    void supervoxelSegmentation(
+       const pcl::PointCloud<PointT>::Ptr,
+       std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &,
+       std::multimap<uint32_t, uint32_t> &, const float);
     void publishSupervoxel(
        const std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr>,
        sensor_msgs::PointCloud2 &,
@@ -48,6 +53,10 @@ class SupervoxelSegmentation {
     std::vector<pcl_msgs::PointIndices> convertToROSPointIndices(
        const std::vector<pcl::PointIndices>,
        const std_msgs::Header &);
+    void targetDescriptiveSurfelsIndices(
+       const jsk_recognition_msgs::ClusterPointIndices &,
+       const std::vector<uint32_t> &,
+       jsk_recognition_msgs::ClusterPointIndices &);
 };
 
 

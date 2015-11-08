@@ -53,7 +53,7 @@ void InteractiveSegmentation::callback(
     this->estimatePointCloudNormals<float>(
        cloud, normals, neigbour_size, false);
     
-    this->pointLevelSimilarity(cloud, normals, cloud_msg->header);
+    // this->pointLevelSimilarity(cloud, normals, cloud_msg->header);
     
     
     // this->pointCloudEdge(cloud, image, edge_img, 10);
@@ -67,6 +67,107 @@ void InteractiveSegmentation::callback(
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
+}
+
+void InteractiveSegmentation::surfelLevelObjectHypothesis(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    pcl::PointCloud<pcl::Normal>::Ptr normals,
+    std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &convex_supervoxels) {
+    if (cloud->empty()) {
+       ROS_ERROR("ERROR: EMPTY CLOUD");
+       return;
+    }
+    std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > supervoxel_clusters;
+    AdjacencyList adjacency_list;
+    this->supervoxelSegmentation(cloud,
+                                 supervoxel_clusters,
+                                 adjacency_list);
+    std::map<uint32_t, int> voxel_labels;
+    convex_supervoxels.clear();
+    // std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > convex_supervoxels;
+    
+    for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr>::iterator it =
+            supervoxel_clusters.begin(); it != supervoxel_clusters.end();
+         it++) {
+       voxel_labels[it->first] = -1;
+       pcl::Supervoxel<PointT>::Ptr supervoxel =
+          supervoxel_clusters.at(it->first);
+       *normals = *normals + *(supervoxel->normals_);
+    }
+    int label = -1;
+    AdjacencyList::vertex_iterator i, end;
+    for (boost::tie(i, end) = boost::vertices(adjacency_list); i != end; i++) {
+       AdjacencyList::adjacency_iterator ai, a_end;
+       boost::tie(ai, a_end) = boost::adjacent_vertices(*i, adjacency_list);
+       uint32_t vindex = static_cast<int>(adjacency_list[*i]);
+       Eigen::Vector4f v_normal = Eigen::Vector4f(
+          supervoxel_clusters.at(vindex)->normal_.normal_x,
+          supervoxel_clusters.at(vindex)->normal_.normal_y,
+          supervoxel_clusters.at(vindex)->normal_.normal_z, 1.0f);
+       std::map<uint32_t, int>::iterator it = voxel_labels.find(vindex);
+       if (it->second == -1) {
+          voxel_labels[vindex] = ++label;
+       }
+       for (; ai != a_end; ai++) {
+          bool found = false;
+          AdjacencyList::edge_descriptor e_descriptor;
+          boost::tie(e_descriptor, found) = boost::edge(
+             *i, *ai, adjacency_list);
+          if (found) {
+             float weight = adjacency_list[e_descriptor];
+             uint32_t n_vindex = adjacency_list[*ai];
+             float conv_criteria = (
+                supervoxel_clusters.at(vindex)->centroid_.getVector4fMap() -
+                supervoxel_clusters.at(n_vindex)->centroid_.getVector4fMap()).
+                dot(v_normal);
+             const float threshold_ = 0.0f;
+             if (conv_criteria < threshold_ || isnan(conv_criteria)) {
+                boost::remove_edge(e_descriptor, adjacency_list);
+             } else {
+                this->updateSupervoxelClusters(supervoxel_clusters,
+                                               vindex, n_vindex);
+                voxel_labels[n_vindex] = label;
+             }
+          }
+       }
+       convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
+    }
+    supervoxel_clusters.clear();
+    
+}
+
+void InteractiveSegmentation::updateSupervoxelClusters(
+    std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> &supervoxel_clusters,
+    const uint32_t vindex, const uint32_t n_vindex) {
+    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+    *cloud = *(supervoxel_clusters.at(vindex)->voxels_) +
+       *(supervoxel_clusters.at(n_vindex)->voxels_);
+    pcl::PointCloud<pcl::Normal>::Ptr normals(
+       new pcl::PointCloud<pcl::Normal>);
+    *normals = *(supervoxel_clusters.at(vindex)->normals_) +
+       *(supervoxel_clusters.at(n_vindex)->normals_);
+    // Eigen::Vector4f centroid;
+    // pcl::compute3DCentroid<PointT, float>(*cloud, centroid);
+    // pcl::PointXYZRGBA vcentroid;
+    // vcentroid.x = centroid(0);
+    // vcentroid.y = centroid(1);
+    // vcentroid.z = centroid(2);
+    pcl::PointXYZRGBA centroid;
+    pcl::PointXYZRGBA vcent = supervoxel_clusters.at(vindex)->centroid_;
+    pcl::PointXYZRGBA n_vcent = supervoxel_clusters.at(n_vindex)->centroid_;
+    centroid.x = (vcent.x - n_vcent.x)/2 + n_vcent.x;
+    centroid.y = (vcent.y - n_vcent.y)/2 + n_vcent.y;
+    centroid.z = (vcent.z - n_vcent.z)/2 + n_vcent.z;
+    centroid.r = (vcent.r - n_vcent.r)/2 + n_vcent.r;
+    centroid.g = (vcent.g - n_vcent.g)/2 + n_vcent.g;
+    centroid.b = (vcent.b - n_vcent.b)/2 + n_vcent.b;
+    centroid.a = (vcent.a - n_vcent.a)/2 + n_vcent.a;
+    *(supervoxel_clusters.at(vindex)->voxels_) = *cloud;
+    *(supervoxel_clusters.at(vindex)->normals_) = *normals;
+    supervoxel_clusters.at(vindex)->centroid_ = centroid;
+    *(supervoxel_clusters.at(n_vindex)->voxels_) = *cloud;
+    *(supervoxel_clusters.at(n_vindex)->normals_) = *normals;
+    supervoxel_clusters.at(n_vindex)->centroid_ = centroid;
 }
 
 
@@ -206,7 +307,7 @@ InteractiveSegmentation::decomposePointCloud2Voxels(
     std::multimap<uint32_t, uint32_t> supervoxel_adjacency;
     this->supervoxelSegmentation(cloud,
                                  supervoxel_clusters,
-                                 supervoxel_adjacency);
+                                 supervoxel_adjacency, 0.05f);
     RegionAdjacencyGraph *rag = new RegionAdjacencyGraph();
     rag->generateRAG(supervoxel_clusters, supervoxel_adjacency);
     // rag->splitMergeRAG(0.0f);
