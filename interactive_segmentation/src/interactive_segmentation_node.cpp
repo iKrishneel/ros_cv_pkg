@@ -105,7 +105,6 @@ void InteractiveSegmentation::surfelLevelObjectHypothesis(
                                  adjacency_list);
     std::map<uint32_t, int> voxel_labels;
     convex_supervoxels.clear();
-    // std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > convex_supervoxels;
     for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr>::iterator it =
             supervoxel_clusters.begin(); it != supervoxel_clusters.end();
          it++) {
@@ -174,7 +173,6 @@ void InteractiveSegmentation::surfelLevelObjectHypothesis(
        convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
     }
     supervoxel_clusters.clear();
-    // convex_supervoxels = supervoxel_clusters;
     
 }
 
@@ -188,12 +186,12 @@ void InteractiveSegmentation::updateSupervoxelClusters(
        new pcl::PointCloud<pcl::Normal>);
     *normals = *(supervoxel_clusters.at(vindex)->normals_) +
        *(supervoxel_clusters.at(n_vindex)->normals_);
-    // Eigen::Vector4f centroid;
-    // pcl::compute3DCentroid<PointT, float>(*cloud, centroid);
-    // pcl::PointXYZRGBA vcentroid;
-    // vcentroid.x = centroid(0);
-    // vcentroid.y = centroid(1);
-    // vcentroid.z = centroid(2);
+    // Eigen::Vector4f centre;
+    // pcl::compute3DCentroid<PointT, float>(*cloud, centre);
+    // pcl::PointXYZRGBA centroid;
+    // centroid.x = centre(0);
+    // centroid.y = centre(1);
+    // centroid.z = centre(2);
     pcl::PointXYZRGBA centroid;
     pcl::PointXYZRGBA vcent = supervoxel_clusters.at(vindex)->centroid_;
     pcl::PointXYZRGBA n_vcent = supervoxel_clusters.at(n_vindex)->centroid_;
@@ -378,7 +376,6 @@ bool InteractiveSegmentation::localVoxelConvexityCriteria(
 Eigen::Vector4f InteractiveSegmentation::cloudMeanNormal(
     const pcl::PointCloud<pcl::Normal>::Ptr normal,
     bool isnorm) {
-
     if (normal->empty()) {
         return Eigen::Vector4f(0, 0, 0, 0);
     }
