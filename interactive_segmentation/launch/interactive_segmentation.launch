@@ -34,11 +34,19 @@
   <node pkg="interactive_segmentation" name="interactive_segmentation"
 	type="interactive_segmentation_node" output="screen">
     <remap from="input_image" to="/camera/rgb/image_rect_color" />
-    <remap from="input_cloud" to="/voxelgrid/output" />
-    <remap from="input_normal" to="/voxelgrid/output" />
+    <remap from="input_cloud" to="$(arg input_point)" />
+    <remap from="input_normal" to="$(arg input_point)" />
 
+    <!-- <remap from="input_cloud" to="/voxelgrid/output" /> -->
+    <!-- <remap from="input_normal" to="/voxelgrid/output" /> -->
     <!--<remap from="input_image" to="/camera/rgb/image_rect_color" />
     <remap from="input_edge" to="/edge/image" />
     <remap from="input_cloud" to="/plane_extraction/output_nonplane_cloud" /> -->
   </node>
+
+  <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer" name="supervoxel_segmentation_decomposer">
+    <remap from="~input" to="/interactive_segmentation/output/supervoxels" />
+    <remap from="~target" to="/interactive_segmentation/output/indices" />
+  </node>
+  
 </launch>

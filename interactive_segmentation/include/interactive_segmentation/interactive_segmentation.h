@@ -113,6 +113,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
     ros::Publisher pub_cloud_;
+    ros::Publisher pub_voxels_;
+    ros::Publisher pub_indices_;
     ros::Publisher pub_image_;
     ros::Publisher pub_pt_map_;
 
@@ -142,7 +144,6 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     void updateSupervoxelClusters(
        std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> &,
        const uint32_t, const uint32_t);
-   
    
     void pointLevelSimilarity(
        const pcl::PointCloud<PointT>::Ptr,

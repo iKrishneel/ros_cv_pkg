@@ -11,7 +11,14 @@ InteractiveSegmentation::InteractiveSegmentation():
 void InteractiveSegmentation::onInit() {
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/interactive_segmentation/output/cloud", 1);
-
+    
+    this->pub_indices_ = this->pnh_.advertise<
+       jsk_recognition_msgs::ClusterPointIndices>(
+          "/interactive_segmentation/output/indices", 1);
+    this->pub_voxels_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+          "/interactive_segmentation/output/supervoxels", 1);
+    
+    
     this->pub_pt_map_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
         "/interactive_segmentation/output/point_map", 1);
     this->pub_image_ = this->pnh_.advertise<sensor_msgs::Image>(
@@ -46,12 +53,12 @@ void InteractiveSegmentation::callback(
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     
-    std::vector<int> index;
-    pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, index);
+    // std::vector<int> index;
+    // pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, index);
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
-    float neigbour_size = 0.05f;
-    this->estimatePointCloudNormals<float>(
-       cloud, normals, neigbour_size, false);
+    // float neigbour_size = 0.05f;
+    // this->estimatePointCloudNormals<float>(
+    //    cloud, normals, neigbour_size, false);
     
     // this->pointLevelSimilarity(cloud, normals, cloud_msg->header);
     
@@ -63,6 +70,20 @@ void InteractiveSegmentation::callback(
     //    image_msg->header, sensor_msgs::image_encodings::BGR8, image);
     // this->pub_image_.publish(pub_img.toImageMsg());
 
+
+    std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > supervoxel_clusters;
+    this->surfelLevelObjectHypothesis(cloud, normals, supervoxel_clusters);
+
+    std::cout << supervoxel_clusters.size() << std::endl;
+    
+    sensor_msgs::PointCloud2 ros_voxels;
+    jsk_recognition_msgs::ClusterPointIndices ros_indices;
+    this->publishSupervoxel(supervoxel_clusters,
+                            ros_voxels, ros_indices, cloud_msg->header);
+    this->pub_voxels_.publish(ros_voxels);
+    this->pub_indices_.publish(ros_indices);
+    
+    
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
@@ -85,7 +106,6 @@ void InteractiveSegmentation::surfelLevelObjectHypothesis(
     std::map<uint32_t, int> voxel_labels;
     convex_supervoxels.clear();
     // std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > convex_supervoxels;
-    
     for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr>::iterator it =
             supervoxel_clusters.begin(); it != supervoxel_clusters.end();
          it++) {
@@ -100,10 +120,15 @@ void InteractiveSegmentation::surfelLevelObjectHypothesis(
        AdjacencyList::adjacency_iterator ai, a_end;
        boost::tie(ai, a_end) = boost::adjacent_vertices(*i, adjacency_list);
        uint32_t vindex = static_cast<int>(adjacency_list[*i]);
-       Eigen::Vector4f v_normal = Eigen::Vector4f(
-          supervoxel_clusters.at(vindex)->normal_.normal_x,
-          supervoxel_clusters.at(vindex)->normal_.normal_y,
-          supervoxel_clusters.at(vindex)->normal_.normal_z, 1.0f);
+       
+       Eigen::Vector4f v_normal = this->cloudMeanNormal(
+          supervoxel_clusters.at(vindex)->normals_);
+          // Eigen::Vector4f(
+          // supervoxel_clusters.at(vindex)->normal_.normal_x,
+          // supervoxel_clusters.at(vindex)->normal_.normal_y,
+          // supervoxel_clusters.at(vindex)->normal_.normal_z, 1.0f);
+
+       
        std::map<uint32_t, int>::iterator it = voxel_labels.find(vindex);
        if (it->second == -1) {
           voxel_labels[vindex] = ++label;
@@ -120,12 +145,29 @@ void InteractiveSegmentation::surfelLevelObjectHypothesis(
                 supervoxel_clusters.at(vindex)->centroid_.getVector4fMap() -
                 supervoxel_clusters.at(n_vindex)->centroid_.getVector4fMap()).
                 dot(v_normal);
-             const float threshold_ = 0.0f;
-             if (conv_criteria < threshold_ || isnan(conv_criteria)) {
+             std::cout << "CONVX CRITERIA: "<<  conv_criteria << std::endl;
+             
+             const float threshold_ = -0.01f;
+             if (conv_criteria <= threshold_ || isnan(conv_criteria)) {
                 boost::remove_edge(e_descriptor, adjacency_list);
              } else {
                 this->updateSupervoxelClusters(supervoxel_clusters,
                                                vindex, n_vindex);
+                AdjacencyList::adjacency_iterator ni, n_end;
+                boost::tie(ni, n_end) = boost::adjacent_vertices(
+                   *ai, adjacency_list);
+                for (; ni != n_end; ni++) {
+                   bool is_found = false;
+                   AdjacencyList::edge_descriptor n_edge;
+                   boost::tie(n_edge, is_found) = boost::edge(
+                      *ai, *ni, adjacency_list);
+                   if (is_found && (*ni != *i)) {
+                      boost::add_edge(*i, *ni, FLT_MIN, adjacency_list);
+                   }
+                   boost::remove_edge(n_edge, adjacency_list);
+                }
+                boost::clear_vertex(*ai, adjacency_list);
+                
                 voxel_labels[n_vindex] = label;
              }
           }
@@ -133,6 +175,7 @@ void InteractiveSegmentation::surfelLevelObjectHypothesis(
        convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
     }
     supervoxel_clusters.clear();
+    // convex_supervoxels = supervoxel_clusters;
     
 }
 
@@ -169,7 +212,6 @@ void InteractiveSegmentation::updateSupervoxelClusters(
     *(supervoxel_clusters.at(n_vindex)->normals_) = *normals;
     supervoxel_clusters.at(n_vindex)->centroid_ = centroid;
 }
-
 
 void InteractiveSegmentation::pointLevelSimilarity(
      const pcl::PointCloud<PointT>::Ptr cloud,
@@ -359,7 +401,7 @@ Eigen::Vector4f InteractiveSegmentation::cloudMeanNormal(
         x/static_cast<float>(icounter),
         y/static_cast<float>(icounter),
         z/static_cast<float>(icounter),
-        0.0f);
+        1.0f);
     if (isnorm) {
         n_mean.normalize();
     }
