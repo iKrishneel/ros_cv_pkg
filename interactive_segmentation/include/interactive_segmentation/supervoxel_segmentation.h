@@ -35,7 +35,7 @@ class SupervoxelSegmentation {
     SupervoxelSegmentation();
     typedef pcl::PointXYZRGB PointT;
     typedef boost::shared_ptr<SupervoxelSegmentation> Ptr;
-
+   
     void supervoxelSegmentation(
        const pcl::PointCloud<PointT>::Ptr,
        std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &,
@@ -57,6 +57,8 @@ class SupervoxelSegmentation {
        const jsk_recognition_msgs::ClusterPointIndices &,
        const std::vector<uint32_t> &,
        jsk_recognition_msgs::ClusterPointIndices &);
+
+    double convex_threshold_;
 };
 
 

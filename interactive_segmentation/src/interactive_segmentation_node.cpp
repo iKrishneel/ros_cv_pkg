@@ -145,10 +145,9 @@ void InteractiveSegmentation::surfelLevelObjectHypothesis(
                 supervoxel_clusters.at(vindex)->centroid_.getVector4fMap() -
                 supervoxel_clusters.at(n_vindex)->centroid_.getVector4fMap()).
                 dot(v_normal);
-             std::cout << "CONVX CRITERIA: "<<  conv_criteria << std::endl;
-             
-             const float threshold_ = -0.01f;
-             if (conv_criteria <= threshold_ || isnan(conv_criteria)) {
+             // std::cout << "CONVX CRITERIA: "<<  conv_criteria << std::endl;
+             if (conv_criteria <= this->convex_threshold_ ||
+                 isnan(conv_criteria)) {
                 boost::remove_edge(e_descriptor, adjacency_list);
              } else {
                 this->updateSupervoxelClusters(supervoxel_clusters,
