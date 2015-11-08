@@ -44,6 +44,8 @@
 #include <pcl/pcl_base.h>
 #include <pcl/PointIndices.h>
 
+#include <omp.h>
+
 namespace pcl
 {
   /** \brief OrganizedEdgeBase, OrganizedEdgeFromRGB, OrganizedEdgeFromNormals, 

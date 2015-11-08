@@ -42,6 +42,8 @@
 #include <pcl/filters/filter.h>
 #include <pcl/point_types.h>
 
+#include <omp.h>
+
 namespace pcl
 {
   /**

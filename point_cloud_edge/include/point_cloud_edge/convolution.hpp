@@ -56,6 +56,9 @@ pcl::Convolution<PointT>::filter (pcl::PointCloud<PointT> &output)
     default:
     case BOUNDARY_OPTION_CLAMP:
     {
+#ifdef _OPENMP
+#pragma omp for collapse(2)
+#endif 
       for (int i = 0; i < ih; i++)
       {
         for (int j = 0; j < iw; j++)
@@ -91,6 +94,9 @@ pcl::Convolution<PointT>::filter (pcl::PointCloud<PointT> &output)
 
     case BOUNDARY_OPTION_MIRROR:
     {
+#ifdef _OPENMP
+#pragma omp for collapse(2)
+#endif 
       for (int i = 0; i < ih; i++)
       {
         for (int j = 0; j < iw; j++)
@@ -126,11 +132,14 @@ pcl::Convolution<PointT>::filter (pcl::PointCloud<PointT> &output)
     
     case BOUNDARY_OPTION_ZERO_PADDING:
     {
+#ifdef _OPENMP
+#pragma omp for collapse(2)
+#endif 
       for (int i = 0; i < ih; i++)
       {
         for (int j = 0; j < iw; j++)
         {
-          float intensity = 0;
+           float intensity = 0;
           for (int k = 0; k < kh; k++)
           {
             for (int l = 0; l < kw; l++)

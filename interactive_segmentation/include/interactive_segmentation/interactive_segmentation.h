@@ -64,8 +64,6 @@
 #include <interactive_segmentation/supervoxel_segmentation.h>
 #include <interactive_segmentation/region_adjacency_graph.h>
 
-#include <vector>
-#include <string>
 #include <omp.h>
 
 class InteractiveSegmentation: public SupervoxelSegmentation {
@@ -131,12 +129,12 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const sensor_msgs::PointCloud2::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
 
-   void computePointFPFH(
+    void computePointFPFH(
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr,
        cv::Mat &) const;
   
-   void pointLevelSimilarity(
+    void pointLevelSimilarity(
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr, const std_msgs::Header);
   

@@ -42,6 +42,8 @@
 #include <point_cloud_edge/convolution.h>
 #include <point_cloud_edge/kernel.h>
 
+#include <omp.h>
+
 namespace pcl
 {
   template <typename PointInT, typename PointOutT>

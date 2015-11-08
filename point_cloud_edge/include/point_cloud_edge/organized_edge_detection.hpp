@@ -70,6 +70,7 @@ pcl::OrganizedEdgeBase<PointT, PointLT>::assignLabelIndices (pcl::PointCloud<Poi
 {
   const unsigned invalid_label = unsigned (0);
   label_indices.resize (num_of_edgetype_);
+
   for (unsigned idx = 0; idx < input_->points.size (); idx++)
   {
     if (labels[idx].label != invalid_label)
@@ -100,8 +101,11 @@ pcl::OrganizedEdgeBase<PointT, PointLT>::extractEdges (pcl::PointCloud<PointLT>&
       Neighbor( 0,  1,  labels.width    ),
       Neighbor(-1,  1,  labels.width - 1)};
 
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2)
+#endif
     for (int row = 1; row < int(input_->height) - 1; row++)
-    {
+    {  
       for (int col = 1; col < int(input_->width) - 1; col++)
       {
         int curr_idx = row*int(input_->width) + col;
@@ -259,7 +263,9 @@ pcl::OrganizedEdgeFromRGB<PointT, PointLT>::extractEdges (pcl::PointCloud<PointL
     edge.setHysteresisThresholdLow (th_rgb_canny_low_);
     edge.setHysteresisThresholdHigh (th_rgb_canny_high_);
     edge.detectEdgeCanny (img_edge_rgb);
-    
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2)
+#endif    
     for (uint32_t row=0; row<labels.height; row++)
     {
       for (uint32_t col=0; col<labels.width; col++)
@@ -302,7 +308,9 @@ pcl::OrganizedEdgeFromNormals<PointT, PointNT, PointLT>::extractEdges (pcl::Poin
     ny.width = normals_->width;
     ny.height = normals_->height;
     ny.resize (normals_->height*normals_->width);
-
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2)
+#endif
     for (uint32_t row=0; row<normals_->height; row++)
     {
       for (uint32_t col=0; col<normals_->width; col++)
@@ -317,7 +325,9 @@ pcl::OrganizedEdgeFromNormals<PointT, PointNT, PointLT>::extractEdges (pcl::Poin
     edge.setHysteresisThresholdLow (th_hc_canny_low_);
     edge.setHysteresisThresholdHigh (th_hc_canny_high_);
     edge.canny (nx, ny, img_edge);
-
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2)
+#endif
     for (uint32_t row=0; row<labels.height; row++)
     {
       for (uint32_t col=0; col<labels.width; col++)

@@ -50,7 +50,8 @@ void InteractiveSegmentation::callback(
     pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, index);
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
     float neigbour_size = 0.05f;
-    this->estimatePointCloudNormals<float>(cloud, normals, neigbour_size, false);
+    this->estimatePointCloudNormals<float>(
+       cloud, normals, neigbour_size, false);
     
     this->pointLevelSimilarity(cloud, normals, cloud_msg->header);
     
@@ -81,8 +82,6 @@ void InteractiveSegmentation::pointLevelSimilarity(
      // pcl::PointCloud<PointT>::Ptr dist_map(new pcl::PointCloud<PointT>);
      // cv::Mat fpfh_hist;
      // this->computePointFPFH(cloud, normals, fpfh_hist);
-
-     
      
      // compute weight
      pcl::PointCloud<PointT>::Ptr out_cloud(new pcl::PointCloud<PointT>);
@@ -99,7 +98,6 @@ void InteractiveSegmentation::pointLevelSimilarity(
 
        pcl::PointXYZHSV hsv;
        pcl::PointXYZRGBtoXYZHSV(cloud->points[i], hsv);
-       
        std::vector<int> point_idx_search;
        std::vector<float> point_squared_distance;
        PointT pt = cloud->points[i];
@@ -118,9 +116,9 @@ void InteractiveSegmentation::pointLevelSimilarity(
          pcl::PointXYZHSV n_hsv;
          pcl::PointXYZRGBtoXYZHSV(cloud->points[index], n_hsv);
 
-         double dist_color = std::sqrt(std::pow(hsv.h - n_hsv.h, 2) +
-                                       std::pow(hsv.s - n_hsv.s, 2)) / 255.0;
-         // dist_color = 1 - dist_color;
+         double dist_color = std::sqrt(std::pow((hsv.h - n_hsv.h), 2) +
+                                       std::pow((hsv.s - n_hsv.s), 2));
+         dist_color = (255.0 - dist_color)/255.0;
          
          Eigen::Vector4f i_point = cloud->points[i].getVector4fMap();
          Eigen::Vector4f k_point = cloud->points[k].getVector4fMap();
@@ -131,19 +129,21 @@ void InteractiveSegmentation::pointLevelSimilarity(
          //                                    fpfh_hist.row(index),
          //                                    CV_COMP_CORREL);
 
-         Eigen::Vector4f norm = Eigen::Vector4f(normals->points[i].normal_x,
-                                                normals->points[i].normal_y,
-                                                normals->points[i].normal_z, 1.0f);
-         Eigen::Vector4f n_norm = Eigen::Vector4f(normals->points[index].normal_x,
-                                                normals->points[index].normal_y,
-                                                  normals->points[index].normal_z, 1.0f);
+         Eigen::Vector4f norm = Eigen::Vector4f(
+            normals->points[i].normal_x,
+            normals->points[i].normal_y,
+            normals->points[i].normal_z, 1.0f);
+         Eigen::Vector4f n_norm = Eigen::Vector4f(
+            normals->points[index].normal_x,
+            normals->points[index].normal_y,
+            normals->points[index].normal_z, 1.0f);
          dist_fpfh = pcl::distances::l2(norm, n_norm);
 
          double distance = std::sqrt(
-             std::pow(dist_color, 2) + 
-             std::pow(dist_fpfh, 2) //+
-             // std::pow(dist_point, 2)
-                                     );
+            std::pow(dist_color, 2)
+            + std::pow(dist_fpfh, 2)
+            + std::pow(dist_point, 2)
+            );
          
          sum += distance;
        }

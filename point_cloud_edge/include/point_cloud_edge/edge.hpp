@@ -73,6 +73,9 @@ pcl::Edge<PointInT, PointOutT>::detectEdgeSobel (
   output.height = height;
   output.width = width;
 
+#ifdef _OPENMP
+#pragma omp parallel for shared(output)
+#endif  
   for (size_t i = 0; i < output.size (); ++i)
   {
     output[i].magnitude_x = (*magnitude_x)[i].intensity;
@@ -115,7 +118,9 @@ pcl::Edge<PointInT, PointOutT>::sobelMagnitudeDirection (
   output.resize (height * width);
   output.height = height;
   output.width = width;
-
+#ifdef _OPENMP
+#pragma omp parallel for shared(output)
+#endif  
   for (size_t i = 0; i < output.size (); ++i)
   {
     output[i].magnitude_x = (*magnitude_x)[i].intensity;
@@ -154,7 +159,9 @@ pcl::Edge<PointInT, PointOutT>::detectEdgePrewitt (pcl::PointCloud<PointOutT> &o
   output.resize (height * width);
   output.height = height;
   output.width = width;
-
+#ifdef _OPENMP
+#pragma omp parallel for shared(output)
+#endif  
   for (size_t i = 0; i < output.size (); ++i)
   {
     output[i].magnitude_x = (*magnitude_x)[i].intensity;
@@ -193,7 +200,9 @@ pcl::Edge<PointInT, PointOutT>::detectEdgeRoberts (pcl::PointCloud<PointOutT> &o
   output.resize (height * width);
   output.height = height;
   output.width = width;
-
+#ifdef _OPENMP
+#pragma omp parallel for shared(output)
+#endif  
   for (size_t i = 0; i < output.size (); ++i)
   {
     output[i].magnitude_x = (*magnitude_x)[i].intensity;
@@ -240,6 +249,10 @@ pcl::Edge<PointInT, PointOutT>::discretizeAngles (pcl::PointCloud<PointOutT> &th
   const int height = thet.height;
   const int width = thet.width;
   float angle;
+
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2)
+#endif  
   for (int i = 0; i < height; i++)
   {
     for (int j = 0; j < width; j++)
@@ -277,6 +290,9 @@ pcl::Edge<PointInT, PointOutT>::suppressNonMaxima (
     maxima[i].intensity = 0.0f;
 
   // tHigh and non-maximal supression
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) 
+#endif  
   for (int i = 1; i < height - 1; i++)
   {
     for (int j = 1; j < width - 1; j++)
@@ -368,6 +384,9 @@ pcl::Edge<PointInT, PointOutT>::detectEdgeCanny (pcl::PointCloud<PointOutT> &out
   //PCL_ERROR ("NM suppress: %g\n", tt.toc ()); tt.tic ();
 
   // Edge tracing
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2)
+#endif  
   for (int i = 0; i < height; i++)
   {
     for (int j = 0; j < width; j++)
@@ -389,6 +408,9 @@ pcl::Edge<PointInT, PointOutT>::detectEdgeCanny (pcl::PointCloud<PointOutT> &out
   //PCL_ERROR ("Edge tracing: %g\n", tt.toc ());
 
   // Final thresholding
+#ifdef _OPENMP
+#pragma omp parallel for shared(output)
+#endif    
   for (size_t i = 0; i < input_->size (); ++i)
   {
     if ((*maxima)[i].intensity == std::numeric_limits<float>::max ())
@@ -442,6 +464,9 @@ pcl::Edge<PointInT, PointOutT>::canny (
   suppressNonMaxima (*edges, *maxima, tLow);
 
   // Edge tracing
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2)
+#endif  
   for (int i = 0; i < height; i++)
   {
     for (int j = 0; j < width; j++)
@@ -462,6 +487,9 @@ pcl::Edge<PointInT, PointOutT>::canny (
   }
 
   // Final thresholding
+#ifdef _OPENMP
+#pragma omp parallel for shared(output)
+#endif  
   for (int i = 0; i < height; i++)
   {
     for (int j = 0; j < width; j++)
