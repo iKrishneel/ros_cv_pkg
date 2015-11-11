@@ -62,6 +62,8 @@ class PointCloudNormalGradients{
    
     template<typename T, typename U, typename V>
     cv::Scalar JetColour(T, U, V);
+    int num_threads_;
+  
 };
 
 
