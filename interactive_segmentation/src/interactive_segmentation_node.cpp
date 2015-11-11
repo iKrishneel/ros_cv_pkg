@@ -63,26 +63,24 @@ void InteractiveSegmentation::callback(
     // this->pointLevelSimilarity(cloud, normals, cloud_msg->header);
     
     
-    // this->pointCloudEdge(cloud, image, edge_img, 10);
-    // PointCloudSurfels surfels = this->decomposePointCloud2Voxels(cloud);
+    // this->pointCloudEdge(cloud, image, 10);
     
     // cv_bridge::CvImage pub_img(
     //    image_msg->header, sensor_msgs::image_encodings::BGR8, image);
     // this->pub_image_.publish(pub_img.toImageMsg());
 
-
-    std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > supervoxel_clusters;
-    this->surfelLevelObjectHypothesis(cloud, normals, supervoxel_clusters);
-
-    std::cout << supervoxel_clusters.size() << std::endl;
+    bool is_surfel_level = false;
+    if (is_surfel_level) {
+       std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > supervoxel_clusters;
+       this->surfelLevelObjectHypothesis(cloud, normals, supervoxel_clusters);
     
-    sensor_msgs::PointCloud2 ros_voxels;
-    jsk_recognition_msgs::ClusterPointIndices ros_indices;
-    this->publishSupervoxel(supervoxel_clusters,
-                            ros_voxels, ros_indices, cloud_msg->header);
-    this->pub_voxels_.publish(ros_voxels);
-    this->pub_indices_.publish(ros_indices);
-    
+       sensor_msgs::PointCloud2 ros_voxels;
+       jsk_recognition_msgs::ClusterPointIndices ros_indices;
+       this->publishSupervoxel(supervoxel_clusters,
+                               ros_voxels, ros_indices, cloud_msg->header);
+       this->pub_voxels_.publish(ros_voxels);
+       this->pub_indices_.publish(ros_indices);
+    }
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
@@ -333,33 +331,6 @@ void InteractiveSegmentation::computePointFPFH(
     cv::normalize(histogram, histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
 }
 
-
-
-InteractiveSegmentation::PointCloudSurfels
-InteractiveSegmentation::decomposePointCloud2Voxels(
-    const pcl::PointCloud<PointT>::Ptr cloud) {
-    if (cloud->empty()) {
-        ROS_ERROR("Error: empty point cloud");
-        return PointCloudSurfels();
-    }
-    std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters;
-    std::multimap<uint32_t, uint32_t> supervoxel_adjacency;
-    this->supervoxelSegmentation(cloud,
-                                 supervoxel_clusters,
-                                 supervoxel_adjacency, 0.05f);
-    RegionAdjacencyGraph *rag = new RegionAdjacencyGraph();
-    rag->generateRAG(supervoxel_clusters, supervoxel_adjacency);
-    // rag->splitMergeRAG(0.0f);
-    // rag->printGraph();
-    free(rag);
-    
-    
-    std::cout << "\t\tSize: " << supervoxel_clusters.size()  << std::endl;
-    
-    PointCloudSurfels surfels;
-    return surfels;
-}
-
 bool InteractiveSegmentation::localVoxelConvexityCriteria(
     Eigen::Vector4f c_centroid, Eigen::Vector4f c_normal,
     Eigen::Vector4f n_centroid, Eigen::Vector4f n_normal,
@@ -406,12 +377,14 @@ Eigen::Vector4f InteractiveSegmentation::cloudMeanNormal(
 
 void InteractiveSegmentation::pointCloudEdge(
     pcl::PointCloud<PointT>::Ptr cloud,
-    const cv::Mat &image, const cv::Mat &edge_img,
-    const int contour_thresh) {
+    const cv::Mat &image, const int contour_thresh) {
     if (image.empty()) {
        ROS_ERROR("-- Cannot eompute edge of empty image");
        return;
     }
+    cv::Mat edge_img;
+    cv::GaussianBlur(image, edge_img, cv::Size(3, 3), 1);
+    cv::Canny(edge_img, edge_img, 50, 150, 3, true);
     std::vector<cv::Vec4i> hierarchy;
     std::vector<std::vector<cv::Point> > contours;
     cv::Mat cont_img = cv::Mat::zeros(image.size(), CV_8UC3);
