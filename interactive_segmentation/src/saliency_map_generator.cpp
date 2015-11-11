@@ -11,9 +11,6 @@ bool SaliencyMapGenerator::computeSaliencyImpl(
     if (image.empty()) {
        return false;
     }
-    if (image.channels() == 3) {
-      cv::cvtColor(image, image, CV_BGR2GRAY);
-    }
     cv::Mat dst(cv::Size(image.cols, image.rows), CV_8UC1);
     calcIntensityChannel(image, dst);
     saliencyMap = cv::Mat::zeros(image.size(), CV_8UC1);

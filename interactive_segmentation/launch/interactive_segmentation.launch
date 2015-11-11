@@ -1,6 +1,7 @@
 <launch>
   <arg name="input_point" default="/camera/depth_registered/points" />
   <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />
+  <arg name="image" default="/camera/rgb/image_rect_color" />
   <!-- <include file="$(find interactive_segmentation)/launch/organized_multi_plane_segmentation.launch" /> -->
   <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch" />
   <!-- <include file="$(find point_cloud_image_creator)/launch/point_cloud_image_creator.launch" /> -->
@@ -21,7 +22,7 @@
 
   <node pkg="interactive_segmentation" name="interactive_segmentation"
 	type="interactive_segmentation_node" output="screen" clear_params="true">
-    <remap from="input_image" to="/camera/rgb/image_rect_color" />
+    <remap from="input_image" to="$(arg image)" />
     <remap from="input_cloud" to="$(arg filter_point)" /> 
     <remap from="input_normal" to="$(arg input_point)" />
 

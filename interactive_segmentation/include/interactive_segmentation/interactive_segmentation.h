@@ -113,7 +113,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     ros::Publisher pub_pt_map_;
 
     int min_cluster_size_;
-    
+    int num_threads_;
+  
  protected:
     void onInit();
     void subscribe();
@@ -132,9 +133,9 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        cv::Mat &) const;
 
     void surfelLevelObjectHypothesis(
-       const pcl::PointCloud<PointT>::Ptr,
-       pcl::PointCloud<pcl::Normal>::Ptr,
-       std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &);
+        pcl::PointCloud<PointT>::Ptr,
+        pcl::PointCloud<pcl::Normal>::Ptr,
+        std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &);
     void updateSupervoxelClusters(
        std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> &,
        const uint32_t, const uint32_t);
@@ -143,6 +144,18 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr, const std_msgs::Header);
 
+    void generateFeatureSaliencyMap(
+        const cv::Mat &, cv::Mat &);
+  
+    void viewPointSurfaceNormalOrientation(
+        pcl::PointCloud<PointT>::Ptr,
+        const pcl::PointCloud<pcl::Normal>::Ptr,
+        std::vector<pcl::PointIndices> &);
+    void normalNeigbourOrientation(
+        const pcl::PointCloud<PointT>::Ptr,
+        const pcl::PointCloud<pcl::Normal>::Ptr,
+        const std::vector<pcl::PointIndices> &,
+        pcl::PointCloud<PointT>::Ptr);
    
     virtual Eigen::Vector4f cloudMeanNormal(
     const pcl::PointCloud<pcl::Normal>::Ptr,

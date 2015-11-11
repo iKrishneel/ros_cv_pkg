@@ -3,7 +3,8 @@
 #include <vector>
 
 InteractiveSegmentation::InteractiveSegmentation():
-    min_cluster_size_(50) {
+    min_cluster_size_(50),
+    num_threads_(8) {
     this->subscribe();
     this->onInit();
 }
@@ -49,17 +50,6 @@ void InteractiveSegmentation::callback(
     boost::mutex::scoped_lock lock(this->mutex_);
     cv::Mat image = cv_bridge::toCvShare(
        image_msg, image_msg->encoding)->image;
-
-    cv::Mat saliency_img;
-    SaliencyMapGenerator saliency_map(8);
-    saliency_map.computeSaliencyImpl(image, saliency_img);
-
-    cv::cvtColor(saliency_img, saliency_img, CV_GRAY2BGR);
-    
-    cv::imshow("Saliency", saliency_img);
-    cv::waitKey(3);
-    
-    
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     
@@ -79,7 +69,6 @@ void InteractiveSegmentation::callback(
     if (is_surfel_level) {
        std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > supervoxel_clusters;
        this->surfelLevelObjectHypothesis(cloud, normals, supervoxel_clusters);
-    
        sensor_msgs::PointCloud2 ros_voxels;
        jsk_recognition_msgs::ClusterPointIndices ros_indices;
        this->publishSupervoxel(supervoxel_clusters,
@@ -88,9 +77,32 @@ void InteractiveSegmentation::callback(
        this->pub_indices_.publish(ros_indices);
     }
 
-    cv_bridge::CvImage pub_img(
-        image_msg->header, sensor_msgs::image_encodings::BGR8, saliency_img);
-    this->pub_image_.publish(pub_img.toImageMsg());
+    bool is_point_level = true;
+    if (is_point_level) {
+      std::vector<int> index;
+      pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, index);
+      this->estimatePointCloudNormals<int>(cloud, normals, 10, true);
+      std::vector<pcl::PointIndices> neigbours;
+      this->viewPointSurfaceNormalOrientation(cloud, normals, neigbours);
+
+      std::cout << cloud->size() << "\t" << normals->size() <<
+          "\t" << neigbours.size() << "\n";
+      
+      
+      pcl::PointCloud<PointT>::Ptr orientation(new pcl::PointCloud<PointT>);
+      this->normalNeigbourOrientation(cloud, normals, neigbours, orientation);
+
+      cloud->clear();
+      *cloud = *orientation;
+      
+      
+      
+      cv::Mat saliency_img;
+      this->generateFeatureSaliencyMap(image, saliency_img);
+      cv_bridge::CvImage pub_img(
+          image_msg->header, sensor_msgs::image_encodings::BGR8, saliency_img);
+      this->pub_image_.publish(pub_img.toImageMsg());
+    }
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
@@ -98,8 +110,17 @@ void InteractiveSegmentation::callback(
     this->pub_cloud_.publish(ros_cloud);
 }
 
+void InteractiveSegmentation::generateFeatureSaliencyMap(
+    const cv::Mat &img, cv::Mat &saliency_img) {
+    cv::Mat image = img.clone();
+    cv::cvtColor(img, image, CV_BGR2GRAY);
+    SaliencyMapGenerator saliency_map(8);
+    saliency_map.computeSaliencyImpl(image, saliency_img);
+    cv::cvtColor(saliency_img, saliency_img, CV_GRAY2BGR);
+}
+
 void InteractiveSegmentation::surfelLevelObjectHypothesis(
-    const pcl::PointCloud<PointT>::Ptr cloud,
+    pcl::PointCloud<PointT>::Ptr cloud,
     pcl::PointCloud<pcl::Normal>::Ptr normals,
     std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &convex_supervoxels) {
     if (cloud->empty()) {
@@ -113,6 +134,7 @@ void InteractiveSegmentation::surfelLevelObjectHypothesis(
                                  adjacency_list);
     std::map<uint32_t, int> voxel_labels;
     convex_supervoxels.clear();
+    cloud->clear();
     for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr>::iterator it =
             supervoxel_clusters.begin(); it != supervoxel_clusters.end();
          it++) {
@@ -120,6 +142,7 @@ void InteractiveSegmentation::surfelLevelObjectHypothesis(
        pcl::Supervoxel<PointT>::Ptr supervoxel =
           supervoxel_clusters.at(it->first);
        *normals = *normals + *(supervoxel->normals_);
+       *cloud = *cloud + *(supervoxel->voxels_);
     }
     int label = -1;
     AdjacencyList::vertex_iterator i, end;
@@ -134,7 +157,6 @@ void InteractiveSegmentation::surfelLevelObjectHypothesis(
           // supervoxel_clusters.at(vindex)->normal_.normal_x,
           // supervoxel_clusters.at(vindex)->normal_.normal_y,
           // supervoxel_clusters.at(vindex)->normal_.normal_z, 1.0f);
-
        
        std::map<uint32_t, int>::iterator it = voxel_labels.find(vindex);
        if (it->second == -1) {
@@ -152,7 +174,6 @@ void InteractiveSegmentation::surfelLevelObjectHypothesis(
                 supervoxel_clusters.at(vindex)->centroid_.getVector4fMap() -
                 supervoxel_clusters.at(n_vindex)->centroid_.getVector4fMap()).
                 dot(v_normal);
-             // std::cout << "CONVX CRITERIA: "<<  conv_criteria << std::endl;
              if (conv_criteria <= this->convex_threshold_ ||
                  isnan(conv_criteria)) {
                 boost::remove_edge(e_descriptor, adjacency_list);
@@ -172,8 +193,7 @@ void InteractiveSegmentation::surfelLevelObjectHypothesis(
                    }
                    boost::remove_edge(n_edge, adjacency_list);
                 }
-                boost::clear_vertex(*ai, adjacency_list);
-                
+                boost::clear_vertex(*ai, adjacency_list);                
                 voxel_labels[n_vindex] = label;
              }
           }
@@ -181,7 +201,99 @@ void InteractiveSegmentation::surfelLevelObjectHypothesis(
        convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
     }
     supervoxel_clusters.clear();
+}
+
+void InteractiveSegmentation::viewPointSurfaceNormalOrientation(
+    pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<pcl::Normal>::Ptr cloud_normal,
+    std::vector<pcl::PointIndices> &neigbours) {
+    if (cloud->empty() || cloud_normal->empty()) {
+      ROS_ERROR("ERROR: Point Cloud | Normal vector is empty...");
+      return;
+    }
+    bool find_neighbour = true;
+    pcl::KdTreeFLANN<PointT> kdtree;
+    kdtree.setInputCloud(cloud);
+    pcl::PointCloud<PointT>::Ptr point_orientation(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*cloud, *point_orientation);
+
+    neigbours.reserve(static_cast<int>(cloud->size()));
+    pcl::PointIndices::Ptr neigbour_indices = &neigbours[0];
     
+#ifdef _OPENMP
+#pragma omp parallel for shared(point_orientation) num_threads(this->num_threads_)
+#endif
+    for (int i = 0; i < cloud->size(); i++) {
+      Eigen::Vector3f viewPointVec =
+          cloud->points[i].getVector3fMap() * -1.0f;
+      Eigen::Vector3f surfaceNormalVec = Eigen::Vector3f(
+          cloud_normal->points[i].normal_x,
+          cloud_normal->points[i].normal_y,
+          cloud_normal->points[i].normal_z);
+      float cross_norm = static_cast<float>(
+          surfaceNormalVec.cross(viewPointVec).norm());
+      float scalar_prod = static_cast<float>(
+          surfaceNormalVec.dot(viewPointVec));
+      float angle = atan2(cross_norm, scalar_prod);
+      if (angle * (180/CV_PI) >= 0 && angle * (180/CV_PI) <= 180) {
+        // cv::Scalar jmap = JetColour(angle/(CV_PI), 0, 1);
+        float pix_val = angle/(0.5 * CV_PI);
+        
+        PointT *pt = &point_orientation->points[i];
+        pt->x = cloud->points[i].x;
+        pt->y = cloud->points[i].y;
+        pt->z = cloud->points[i].z;
+        pt->r = pix_val * 255;
+        pt->g = pix_val * 255;
+        pt->b = pix_val * 255;
+      }
+      if (find_neighbour) {
+        std::vector<int> point_idx_search;
+        std::vector<float> point_squared_distance;
+        int search_out = 0;
+        bool is_knn = true;
+        if (is_knn) {
+          search_out = kdtree.nearestKSearch(
+              cloud->points[i], 10, point_idx_search, point_squared_distance);
+        } else {
+          search_out = kdtree.radiusSearch(
+              cloud->points[i], 0.02, point_idx_search, point_squared_distance);
+        }
+        pcl::PointIndices indices;
+        indices.indices.insert(indices.indices.end(), point_idx_search.begin(),
+                               point_idx_search.end());
+        //neigbour_indices->operator[](i) = indices; --> HERE
+      }
+    }
+    cloud->clear();
+    pcl::copyPointCloud<PointT, PointT>(*point_orientation, *cloud);
+}
+
+void InteractiveSegmentation::normalNeigbourOrientation(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<pcl::Normal>::Ptr normals,
+    const std::vector<pcl::PointIndices> &neigbours,
+    pcl::PointCloud<PointT>::Ptr orientation) {
+    if (cloud->size() != neigbours.size() || cloud->height == 1) {
+      return;
+    }
+    // pcl::PointCloud<PointT>::Ptr orientation(new pcl::PointCloud<PointT>);
+    for (int i = 0; i < cloud->size(); i++) {
+      pcl::PointIndices indices = neigbours.at(i);
+      Eigen::Vector4f normal = normals->points[i].getNormalVector4fMap();
+      float sum = 0.0f;
+      for (int j = 0; j < indices.indices.size(); j++) {
+        int index = indices.indices.at(j);
+        Eigen::Vector4f n_normal = normals->points[index].getNormalVector4fMap();
+        sum += normal.dot(n_normal);
+      }
+      sum /= static_cast<float>(indices.indices.size());
+      PointT pt = cloud->points[i];
+      pt.r = sum;
+      pt.g = sum;
+      pt.b = sum;
+      orientation->push_back(pt);
+    }
 }
 
 void InteractiveSegmentation::updateSupervoxelClusters(
@@ -217,6 +329,9 @@ void InteractiveSegmentation::updateSupervoxelClusters(
     *(supervoxel_clusters.at(n_vindex)->normals_) = *normals;
     supervoxel_clusters.at(n_vindex)->centroid_ = centroid;
 }
+
+
+
 
 void InteractiveSegmentation::pointLevelSimilarity(
      const pcl::PointCloud<PointT>::Ptr cloud,
