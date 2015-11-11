@@ -50,6 +50,16 @@ void InteractiveSegmentation::callback(
     cv::Mat image = cv_bridge::toCvShare(
        image_msg, image_msg->encoding)->image;
 
+    cv::Mat saliency_img;
+    SaliencyMapGenerator saliency_map(8);
+    saliency_map.computeSaliencyImpl(image, saliency_img);
+
+    cv::cvtColor(saliency_img, saliency_img, CV_GRAY2BGR);
+    
+    cv::imshow("Saliency", saliency_img);
+    cv::waitKey(3);
+    
+    
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     
@@ -64,10 +74,6 @@ void InteractiveSegmentation::callback(
     
     
     // this->pointCloudEdge(cloud, image, 10);
-    
-    // cv_bridge::CvImage pub_img(
-    //    image_msg->header, sensor_msgs::image_encodings::BGR8, image);
-    // this->pub_image_.publish(pub_img.toImageMsg());
 
     bool is_surfel_level = false;
     if (is_surfel_level) {
@@ -81,6 +87,10 @@ void InteractiveSegmentation::callback(
        this->pub_voxels_.publish(ros_voxels);
        this->pub_indices_.publish(ros_indices);
     }
+
+    cv_bridge::CvImage pub_img(
+        image_msg->header, sensor_msgs::image_encodings::BGR8, saliency_img);
+    this->pub_image_.publish(pub_img.toImageMsg());
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);

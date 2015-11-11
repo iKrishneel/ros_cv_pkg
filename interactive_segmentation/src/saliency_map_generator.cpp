@@ -1,20 +1,28 @@
 
 #include <interactive_segmentation/saliency_map_generator.h>
 
-SaliencyMapGenerator::SaliencyMapGenerator() {
-
+SaliencyMapGenerator::SaliencyMapGenerator(int num_threads) :
+    num_threads_(num_threads) {
+  
 }
 
 bool SaliencyMapGenerator::computeSaliencyImpl(
     cv::Mat image, cv::Mat &saliencyMap) {
-    if (image.channels() > 1 || image.empty()) {
+    if (image.empty()) {
        return false;
+    }
+    if (image.channels() == 3) {
+      cv::cvtColor(image, image, CV_BGR2GRAY);
     }
     cv::Mat dst(cv::Size(image.cols, image.rows), CV_8UC1);
     calcIntensityChannel(image, dst);
     saliencyMap = cv::Mat::zeros(image.size(), CV_8UC1);
     dst.copyTo(saliencyMap);
     return true;
+}
+
+void SaliencyMapGenerator::setNumThreads(int num_threads) {
+    this->num_threads_ = num_threads;
 }
 
 void SaliencyMapGenerator::copyImage(cv::Mat srcArg, cv::Mat dstArg) {
@@ -73,13 +81,16 @@ void SaliencyMapGenerator::getIntensityScaled(
     cv::Mat integralImage, cv::Mat gray, cv::Mat intensityScaledOn,
     cv::Mat intensityScaledOff, int neighborhood) {
     float value, meanOn, meanOff;
-    cv::Point2i point;
-    int x, y;
     intensityScaledOn.setTo(cv::Scalar::all(0));
     intensityScaledOff.setTo(cv::Scalar::all(0));
-
-    for (y = 0; y < gray.rows; y++) {
-       for (x = 0; x < gray.cols; x++) {
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) \
+    private(value, meanOn, meanOff) \
+        num_threads(num_threads_)
+#endif
+    for (int y = 0; y < gray.rows; y++) {
+       for (int x = 0; x < gray.cols; x++) {
+            cv::Point2i point;
             point.x = x;
             point.y = y;
             value = getMean(integralImage,
@@ -139,7 +150,7 @@ float SaliencyMapGenerator::getMean(
 void SaliencyMapGenerator::mixScales(
     cv::Mat *intensityScaledOn, cv::Mat intensityOn,
     cv::Mat *intensityScaledOff, cv::Mat intensityOff, const int numScales) {
-    int i = 0, x, y;
+    int i = 0;
     int width = intensityScaledOn[0].cols;
     int height = intensityScaledOn[0].rows;
     short int maxValOn = 0, currValOn = 0;
@@ -149,10 +160,14 @@ void SaliencyMapGenerator::mixScales(
     cv::Mat mixedValuesOff(cv::Size(width, height), CV_16UC1);
     mixedValuesOn.setTo(cv::Scalar::all(0));
     mixedValuesOff.setTo(cv::Scalar::all(0));
-
+#ifdef _OPENMP
+#pragma omp parallel for collapse(3) \
+    private(i, maxValOn, currValOn, maxValOff, currValOff, maxValSumOn, maxValSumOff) \
+    num_threads(num_threads_) 
+#endif
     for (i = 0; i < numScales; i++) {
-       for (y = 0; y < height; y++)
-          for (x = 0; x < width; x++) {
+       for (int y = 0; y < height; y++)
+          for (int x = 0; x < width; x++) {
              currValOn = intensityScaledOn[i].at<uchar>(y, x);
              if (currValOn > maxValOn)
                 maxValOn = currValOn;
@@ -164,9 +179,13 @@ void SaliencyMapGenerator::mixScales(
              mixedValuesOff.at<unsigned short>(y, x) += currValOff;
          }
     }
-
-    for (y = 0; y < height; y++)
-       for (x = 0; x < width; x++) {
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) \
+    shared(currValOn, currValOff, maxValSumOn, maxValSumOff) \
+    num_threads(num_threads_) 
+#endif
+    for (int y = 0; y < height; y++)
+       for (int x = 0; x < width; x++) {
           currValOn = mixedValuesOn.at<unsigned short>(y, x);
           currValOff = mixedValuesOff.at<unsigned short>(y, x);
           if (currValOff > maxValSumOff)
@@ -174,18 +193,21 @@ void SaliencyMapGenerator::mixScales(
           if (currValOn > maxValSumOn)
             maxValSumOn = currValOn;
       }
-    
-    for (y = 0; y < height; y++)
-       for (x = 0; x < width; x++) {
-         intensityOn.at<uchar>(y, x) = (uchar)(255.*((float)(mixedValuesOn.at<unsigned short>(y, x) / (float)maxValSumOn)));
-         intensityOff.at<uchar>(y, x) = (uchar)(255.*((float)(mixedValuesOff.at<unsigned short>(y, x) / (float)maxValSumOff)));
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) num_threads(num_threads_) 
+#endif
+    for (int y = 0; y < height; y++)
+       for (int x = 0; x < width; x++) {
+         intensityOn.at<uchar>(y, x) = (uchar)(
+             255.*((float)(mixedValuesOn.at<unsigned short>(y, x) / (float)maxValSumOn)));
+         intensityOff.at<uchar>(y, x) = (uchar)(
+             255.*((float)(mixedValuesOff.at<unsigned short>(y, x) / (float)maxValSumOff)));
       }
 
 }
 
 void SaliencyMapGenerator::mixOnOff(
     cv::Mat intensityOn, cv::Mat intensityOff, cv::Mat intensityArg) {
-    int x, y;
     int width = intensityOn.cols;
     int height = intensityOn.rows;
     int maxVal = 0;
@@ -193,8 +215,13 @@ void SaliencyMapGenerator::mixOnOff(
     cv::Mat intensity(cv::Size(width, height), CV_8UC1);
     maxValSumOff = 0;
     maxValSumOn = 0;
-    for (y = 0; y < height; y++) {
-       for (x = 0; x < width; x++) {
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) \
+    shared(currValOn, currValOff, maxValSumOn, maxValSumOff, maxVal)      \
+    num_threads(num_threads_) 
+#endif
+    for (int y = 0; y < height; y++) {
+       for (int x = 0; x < width; x++) {
           currValOn = intensityOn.at<uchar>(y, x);
           currValOff = intensityOff.at<uchar>(y, x);
           if (currValOff > maxValSumOff) {
@@ -210,9 +237,11 @@ void SaliencyMapGenerator::mixOnOff(
     } else {
         maxVal = maxValSumOff;
     }
-    
-    for (y = 0; y < height; y++) {
-        for (x = 0; x < width; x++) {
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) num_threads(num_threads_) 
+#endif
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
             intensity.at<uchar>(y, x) = (uchar) (
                255. * (float) (intensityOn.at<uchar>(y, x) +
                                intensityOff.at<uchar>(y, x)) / (float)maxVal);
