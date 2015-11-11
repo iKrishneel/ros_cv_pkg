@@ -14,7 +14,29 @@ SupervoxelSegmentation::SupervoxelSegmentation() {
 void SupervoxelSegmentation::supervoxelSegmentation(
     const pcl::PointCloud<PointT>::Ptr cloud,
     std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &supervoxel_clusters,
-    std::multimap<uint32_t, uint32_t> &supervoxel_adjacency) {
+    std::multimap<uint32_t, uint32_t> &supervoxel_adjacency,
+    const float seed_resolution) {
+    if (cloud->empty() || seed_resolution <= 0.0f) {
+       ROS_ERROR("ERROR: Supervoxel input cloud empty...\n Incorrect Seed");
+       return;
+    }
+    
+    boost::mutex::scoped_lock lock(mutex_);
+    pcl::SupervoxelClustering<PointT> super(
+       voxel_resolution_, static_cast<double>(seed_resolution), use_transform_);
+    super.setInputCloud(cloud);
+    super.setColorImportance(color_importance_);
+    super.setSpatialImportance(spatial_importance_);
+    super.setNormalImportance(normal_importance_);
+    supervoxel_clusters.clear();
+    super.extract(supervoxel_clusters);
+    super.getSupervoxelAdjacency(supervoxel_adjacency);
+}
+
+void SupervoxelSegmentation::supervoxelSegmentation(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &supervoxel_clusters,
+    pcl::SupervoxelClustering<PointT>::VoxelAdjacencyList &adjacency_list) {
     if (cloud->empty()) {
        ROS_ERROR("ERROR: Supervoxel input cloud empty...");
        return;
@@ -29,7 +51,7 @@ void SupervoxelSegmentation::supervoxelSegmentation(
     super.setNormalImportance(normal_importance_);
     supervoxel_clusters.clear();
     super.extract(supervoxel_clusters);
-    super.getSupervoxelAdjacency(supervoxel_adjacency);
+    super.getSupervoxelAdjacencyList(adjacency_list);
 }
 
 void SupervoxelSegmentation::publishSupervoxel(
@@ -61,6 +83,18 @@ void SupervoxelSegmentation::publishSupervoxel(
     ros_cloud.header = header;
 }
 
+void SupervoxelSegmentation::targetDescriptiveSurfelsIndices(
+    const jsk_recognition_msgs::ClusterPointIndices &sv_indices,
+    const std::vector<uint32_t> &tdp_list,
+    jsk_recognition_msgs::ClusterPointIndices &ros_indices) {
+    ros_indices.cluster_indices.clear();
+    for (std::vector<uint32_t>::const_iterator it = tdp_list.begin();
+         it != tdp_list.end(); it++) {
+       ros_indices.cluster_indices.push_back(sv_indices.cluster_indices[*it]);
+    }
+    ros_indices.header = sv_indices.header;
+}
+
 std::vector<pcl_msgs::PointIndices>
 SupervoxelSegmentation::convertToROSPointIndices(
     const std::vector<pcl::PointIndices> cluster_indices,
@@ -78,10 +112,11 @@ SupervoxelSegmentation::convertToROSPointIndices(
 void SupervoxelSegmentation::configCallback(
     Config &config, uint32_t level) {
     boost::mutex::scoped_lock lock(mutex_);
-    color_importance_ = config.color_importance;
-    spatial_importance_ = config.spatial_importance;
-    normal_importance_ = config.normal_importance;
-    voxel_resolution_ = config.voxel_resolution;
-    seed_resolution_ = config.seed_resolution;
-    use_transform_ = config.use_transform;
+    this->color_importance_ = config.color_importance;
+    this->spatial_importance_ = config.spatial_importance;
+    this->normal_importance_ = config.normal_importance;
+    this->voxel_resolution_ = config.voxel_resolution;
+    this->seed_resolution_ = config.seed_resolution;
+    this->use_transform_ = config.use_transform;
+    this->convex_threshold_ = config.convex_threshold;
 }

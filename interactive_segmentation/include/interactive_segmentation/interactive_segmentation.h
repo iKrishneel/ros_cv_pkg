@@ -62,7 +62,7 @@
 #include <geometry_msgs/PoseArray.h>
 
 #include <interactive_segmentation/supervoxel_segmentation.h>
-#include <interactive_segmentation/region_adjacency_graph.h>
+#include <interactive_segmentation/saliency_map_generator.h>
 
 #include <omp.h>
 
@@ -71,12 +71,6 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     typedef pcl::PointXYZRGB PointT;
     typedef  pcl::FPFHSignature33 FPFHS;
   
-    struct PointCloudSurfels {
-        std::map <uint32_t, pcl::Supervoxel<PointT>::Ptr> supervoxel_clusters;
-        std::multimap<uint32_t, uint32_t> supervoxel_adjacency;
-        std::map<uint32_t, std::vector<uint32_t> > adjaceny_info;
-    };
-    
     struct EdgeParam {
        cv::Point index;
        float orientation;
@@ -101,7 +95,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
  private:
     boost::mutex mutex_;
     ros::NodeHandle pnh_;
-    typedef  message_filters::sync_policies::ApproximateTime<
+    typedef pcl::SupervoxelClustering<PointT>::VoxelAdjacencyList AdjacencyList;
+    typedef message_filters::sync_policies::ApproximateTime<
        sensor_msgs::Image,
       sensor_msgs::PointCloud2,
        sensor_msgs::PointCloud2> SyncPolicy;
@@ -112,6 +107,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
     ros::Publisher pub_cloud_;
+    ros::Publisher pub_voxels_;
+    ros::Publisher pub_indices_;
     ros::Publisher pub_image_;
     ros::Publisher pub_pt_map_;
 
@@ -133,15 +130,20 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr,
        cv::Mat &) const;
-  
+
+    void surfelLevelObjectHypothesis(
+       const pcl::PointCloud<PointT>::Ptr,
+       pcl::PointCloud<pcl::Normal>::Ptr,
+       std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &);
+    void updateSupervoxelClusters(
+       std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> &,
+       const uint32_t, const uint32_t);
+   
     void pointLevelSimilarity(
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr, const std_msgs::Header);
-  
-  
-    virtual InteractiveSegmentation::PointCloudSurfels
-    decomposePointCloud2Voxels(
-        const pcl::PointCloud<PointT>::Ptr);
+
+   
     virtual Eigen::Vector4f cloudMeanNormal(
     const pcl::PointCloud<pcl::Normal>::Ptr,
     bool = true);
@@ -152,7 +154,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     
     virtual void pointCloudEdge(
        pcl::PointCloud<PointT>::Ptr,
-       const cv::Mat &, const cv::Mat &, const int = 50);
+       const cv::Mat &, const int = 50);
     void computeEdgeCurvature(
        const cv::Mat &,
        const std::vector<std::vector<cv::Point> > &contours,

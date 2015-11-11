@@ -1,6 +1,6 @@
 <launch>
   <arg name="input" default="/camera/depth_registered/points" />
-  <arg name="filtered" default="/filter/output"/>
+    <arg name="filtered" default="/filter/output"/>
 
   <node pkg="nodelet" type="nodelet" name="filter"
         args="standalone pcl/PassThrough">
@@ -15,7 +15,6 @@
   
   <node pkg="point_cloud_edge" name="point_cloud_edge" type="point_cloud_edge_node"
   	output="screen" >
-    <!-- <remap from="input_cloud" to="$(arg input)" /> -->
     <remap from="input_cloud" to="$(arg filtered)" />
   </node>
 </launch>

@@ -60,9 +60,9 @@ class SupervoxelSegmentation {
        const std::vector<pcl::PointIndices>,
        const std_msgs::Header &);
     void targetDescriptiveSurfelsIndices(
-           const jsk_recognition_msgs::ClusterPointIndices &,
-           const std::vector<uint32_t> &,
-           jsk_recognition_msgs::ClusterPointIndices &);   
+       const jsk_recognition_msgs::ClusterPointIndices &,
+       const std::vector<uint32_t> &,
+       jsk_recognition_msgs::ClusterPointIndices &);
    
  private:
     typedef multilayer_object_tracking::SupervoxelSegmentationConfig Config;

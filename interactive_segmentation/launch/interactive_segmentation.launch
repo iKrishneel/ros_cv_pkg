@@ -1,44 +1,35 @@
 <launch>
   <arg name="input_point" default="/camera/depth_registered/points" />
-  <arg name="voxel_grid_filter_limit_min" default="0.0"/>
-  <arg name="voxel_grid_filter_limit_max" default="2.0"/>
-  <arg name="voxel_grid_filter_field_name" default="z"/>
-    <arg name="voxel_grid_leaf_size" default="0.01"/>
-
+  <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />
   <!-- <include file="$(find interactive_segmentation)/launch/organized_multi_plane_segmentation.launch" /> -->
-  <!-- <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch" /> -->
+  <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch" />
   <!-- <include file="$(find point_cloud_image_creator)/launch/point_cloud_image_creator.launch" /> -->
   <!-- <include file="$(find interactive_segmentation)/launch/edge_detector.launch" /> -->
   <!-- <include file="$(find interactive_segmentation)/launch/supervoxel_segmentation.launch" /> -->
-    
-  <node pkg="nodelet" type="nodelet" name="voxelgrid" args="standalone pcl/VoxelGrid"
-	output="screen" clear_params="true">
-    <remap from="~input" to="$(arg input_point)" />
-    <param name="filter_limit_min" value="$(arg voxel_grid_filter_limit_min)" />
-    <param name="filter_limit_max" value="$(arg voxel_grid_filter_limit_max)" />
-    <param name="filter_limit_field_name" value="$(arg voxel_grid_filter_field_name)" />
-    <param name="leaf_size" value="$(arg voxel_grid_leaf_size)" />
-  </node>
 
-  <!-- <node pkg="nodelet" type="nodelet" name="normal_estimation" -->
-  <!-- 	args="standalone pcl/NormalEstimation"> -->
-  <!--   <remap from="~input" to="/voxelgrid/output" /> -->
+  
+  <!-- <node pkg="nodelet" type="nodelet" name="passthrough" -->
+  <!-- 	args="standalone pcl/PassThrough" output="screen"> -->
+  <!--   <remap from="~input" to="$(arg input_point)" /> -->
   <!--   <rosparam> -->
-  <!--     k_search: 0 -->
-  <!--     radius_search: 0.1 -->
-  <!--     # 0 -> ANN, 1 -> FLANN, 2 -> Organized -->
-  <!--     spatial_locator: 0 -->
+  <!--     filter_field_name: z -->
+  <!--     filter_limit_min: 0.01 -->
+  <!--     filter_limit_max: 1.5 -->
+  <!--     keep_organized: true -->
   <!--   </rosparam> -->
   <!-- </node> -->
-  
-  <node pkg="interactive_segmentation" name="interactive_segmentation"
-	type="interactive_segmentation_node" output="screen">
-    <remap from="input_image" to="/camera/rgb/image_rect_color" />
-    <remap from="input_cloud" to="/voxelgrid/output" />
-    <remap from="input_normal" to="/voxelgrid/output" />
 
-    <!--<remap from="input_image" to="/camera/rgb/image_rect_color" />
-    <remap from="input_edge" to="/edge/image" />
-    <remap from="input_cloud" to="/plane_extraction/output_nonplane_cloud" /> -->
+  <node pkg="interactive_segmentation" name="interactive_segmentation"
+	type="interactive_segmentation_node" output="screen" clear_params="true">
+    <remap from="input_image" to="/camera/rgb/image_rect_color" />
+    <remap from="input_cloud" to="$(arg filter_point)" /> 
+    <remap from="input_normal" to="$(arg input_point)" />
+
   </node>
+
+  <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer" name="supervoxel_segmentation_decomposer">
+    <remap from="~input" to="/interactive_segmentation/output/supervoxels" />
+    <remap from="~target" to="/interactive_segmentation/output/indices" />
+  </node>
+  
 </launch>
