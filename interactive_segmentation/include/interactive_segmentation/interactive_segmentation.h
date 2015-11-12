@@ -61,6 +61,7 @@
 #include <std_msgs/Int64.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PoseArray.h>
+#include <geometry_msgs/PointStamped.h>
 
 #include <interactive_segmentation/supervoxel_segmentation.h>
 #include <interactive_segmentation/saliency_map_generator.h>
@@ -113,8 +114,13 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     ros::Publisher pub_image_;
     ros::Publisher pub_pt_map_;
 
+    ros::Subscriber sub_screen_pt_;
+    cv::Point2i screen_pt_;
+    bool is_init_;
+  
     int min_cluster_size_;
     int num_threads_;
+
   
  protected:
     void onInit();
@@ -123,6 +129,10 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
    
  public:
     InteractiveSegmentation();
+
+   virtual void screenPointCallback(
+      const geometry_msgs::PointStamped &);
+  
     virtual void callback(
        const sensor_msgs::Image::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &,

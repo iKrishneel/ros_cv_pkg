@@ -3,7 +3,7 @@
 #include <vector>
 
 InteractiveSegmentation::InteractiveSegmentation():
-    min_cluster_size_(50),
+    min_cluster_size_(50), is_init_(false),
     num_threads_(8) {
     this->subscribe();
     this->onInit();
@@ -27,6 +27,10 @@ void InteractiveSegmentation::onInit() {
 }
 
 void InteractiveSegmentation::subscribe() {
+
+       this->sub_screen_pt_ = this->pnh_.subscribe(
+      "input_screen", 1, &InteractiveSegmentation::screenPointCallback, this);
+  
        this->sub_image_.subscribe(this->pnh_, "input_image", 1);
        this->sub_normal_.subscribe(this->pnh_, "input_normal", 1);
        this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
@@ -43,6 +47,18 @@ void InteractiveSegmentation::unsubscribe() {
     this->sub_image_.unsubscribe();
 }
 
+void InteractiveSegmentation::screenPointCallback(
+    const geometry_msgs::PointStamped &screen_msg) {
+
+   std::cout << "POINTED TO OBJECT"  << "\n";
+   int x = screen_msg.point.x;
+   int y = screen_msg.point.y;
+   this->screen_pt_ = cv::Point2i(x, y);
+   this->is_init_ = true;
+}
+
+
+
 void InteractiveSegmentation::callback(
     const sensor_msgs::Image::ConstPtr &image_msg,
     const sensor_msgs::PointCloud2::ConstPtr &normal_msg,
@@ -52,6 +68,9 @@ void InteractiveSegmentation::callback(
        image_msg, image_msg->encoding)->image;
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
+
+
+    std::cout << "MAIN RUNNING: " << is_init_  << "\n";
     
     // std::vector<int> index;
     // pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, index);
@@ -66,9 +85,9 @@ void InteractiveSegmentation::callback(
     // this->pointCloudEdge(cloud, image, 10);
 
     bool is_surfel_level = false;
+    std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > supervoxel_clusters;
     if (is_surfel_level) {
-       std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > supervoxel_clusters;
-       this->surfelLevelObjectHypothesis(cloud, normals, supervoxel_clusters);
+       this->surfelLevelObjectHypothesis(cloud, normals, supervoxel_clusters);       
        sensor_msgs::PointCloud2 ros_voxels;
        jsk_recognition_msgs::ClusterPointIndices ros_indices;
        this->publishSupervoxel(supervoxel_clusters,
@@ -78,18 +97,95 @@ void InteractiveSegmentation::callback(
     }
     
     bool is_point_level = true;
-    if (is_point_level) {
-      std::vector<int> index;
-      pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, index);
-      int k = 50;
-      this->estimatePointCloudNormals<int>(cloud, normals, k, true);
-      // this->viewPointSurfaceNormalOrientation(cloud, normals);
+    if (is_point_level /*&& !supervoxel_clusters.empty()*/) {
+
+      pcl::KdTreeFLANN<PointT> kdtree;
+      kdtree.setInputCloud(cloud);      
+      // for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr >::iterator it =
+      //          supervoxel_clusters.begin(); it != supervoxel_clusters.end(); it++) {
+        // get the attention points
+        // pcl::PointXYZRGBA centroid_pt = supervoxel_clusters.at(
+        //     it->first)->centroid_;
+      if (is_init_) {
+        int index_pos = screen_pt_.x + (screen_pt_.y * image.cols);
+        PointT centroid_pt = cloud->points[index_pos];
+        PointT attention_pt;
+        attention_pt.x = centroid_pt.x;
+        attention_pt.y = centroid_pt.y;
+        attention_pt.z = centroid_pt.z;
+        attention_pt.r = centroid_pt.r;
+        attention_pt.g = centroid_pt.b;
+        attention_pt.b = centroid_pt.g;
+
+        if (isnan(attention_pt.x) || isnan(attention_pt.y) ||
+            isnan(attention_pt.z)) {
+          return;
+        }
+        
+        // compute point cloud normals
+        // std::vector<int> index;
+        // pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, index);
+        int k = 50;
+        this->estimatePointCloudNormals<int>(cloud, normals, k, true);
+
+        // find some neigbours
+        std::vector<int> point_idx_search;
+        std::vector<float> point_squared_distance;
+        int search_out = kdtree.nearestKSearch(
+            attention_pt, 10, point_idx_search, point_squared_distance);
+
+        float x = 0.0f;
+        float y = 0.0f;
+        float z = 0.0f;
+        int icounter = 0;
+        for (int i = 0; i < point_idx_search.size(); i++) {
+          int index = point_idx_search.at(i);
+          pcl::Normal normal = normals->points[index];
+          if (!isnan(normal.normal_x) || !isnan(normal.normal_y) ||
+              !isnan(normal.normal_z)) {
+            x += normal.normal_x;
+            y += normal.normal_y;
+            z += normal.normal_z;
+            icounter++;
+          }
+        }
+        Eigen::Vector4f attention_normal = Eigen::Vector4f(
+            x/static_cast<float>(icounter),
+            y/static_cast<float>(icounter),
+            z/static_cast<float>(icounter), 1.0f);
+
+        std::cout << cloud->size() << "\t" << normals->size()  << "\n";
+        
+        Eigen::Vector4f attention_centroid = centroid_pt.getVector4fMap();
+        for (int i = 0; i < normals->size(); i++) {
+          if (i != index_pos) {
+            Eigen::Vector4f current_pt = cloud->points[i].getVector4fMap();
+            Eigen::Vector4f d = (attention_centroid - current_pt) /
+                (attention_centroid - current_pt).norm();
+            Eigen::Vector4f current_normal = normals->points[i].getNormalVector4fMap();
+            float connection = (attention_normal - current_normal).dot(d);
+            if (connection < 0.0f || isnan(connection)) {
+              cloud->points[i].r = 0;
+              cloud->points[i].b = 0;
+              cloud->points[i].g = 0;
+            }
+          }
+        }
+
+        
+        // this->viewPointSurfaceNormalOrientation(cloud, normals);
+        
+        
+        std::cout << cloud->size() << "\t" << normals->size() << std::endl;
+        // pcl::PointCloud<PointT>::Ptr orientation(new pcl::PointCloud<PointT>);
+        // this->normalNeigbourOrientation(cloud, normals, orientation, k);
+        // cloud->clear();
+        // *cloud = *orientation;
+      }
       
-      std::cout << cloud->size() << "\t" << normals->size() << std::endl;
-      pcl::PointCloud<PointT>::Ptr orientation(new pcl::PointCloud<PointT>);
-      this->normalNeigbourOrientation(cloud, normals, orientation, k);
-      cloud->clear();
-      *cloud = *orientation;
+
+      
+
       
       cv::Mat saliency_img;
       this->generateFeatureSaliencyMap(image, saliency_img);
@@ -147,11 +243,8 @@ void InteractiveSegmentation::surfelLevelObjectHypothesis(
        
        Eigen::Vector4f v_normal = this->cloudMeanNormal(
           supervoxel_clusters.at(vindex)->normals_);
-          // Eigen::Vector4f(
-          // supervoxel_clusters.at(vindex)->normal_.normal_x,
-          // supervoxel_clusters.at(vindex)->normal_.normal_y,
-          // supervoxel_clusters.at(vindex)->normal_.normal_z, 1.0f);
-       
+       // Eigen::Vector4f v_normal = supervoxel_clusters.at(
+       //     vindex)->normal_.getNormalVector4fMap();
        std::map<uint32_t, int>::iterator it = voxel_labels.find(vindex);
        if (it->second == -1) {
           voxel_labels[vindex] = ++label;
@@ -260,8 +353,7 @@ void InteractiveSegmentation::normalNeigbourOrientation(
        std::vector<int> point_idx_search;
        std::vector<float> point_squared_distance;
        int search_out = 0;
-       bool is_knn = true;
-       
+       bool is_knn = true;       
        if (is_knn) {
           search_out = kdtree.nearestKSearch(
              cloud->points[i], 40, point_idx_search, point_squared_distance);
@@ -269,6 +361,7 @@ void InteractiveSegmentation::normalNeigbourOrientation(
           search_out = kdtree.radiusSearch(
              cloud->points[i], 0.02, point_idx_search, point_squared_distance);
        }
+      
        Eigen::Vector4f normal = normals->points[i].getNormalVector4fMap();
        float sum = 0.0f;
        for (int j = 0; j < point_idx_search.size(); j++) {
@@ -286,7 +379,6 @@ void InteractiveSegmentation::normalNeigbourOrientation(
           }
        }
        sum /= static_cast<float>(point_idx_search.size());
-       
        PointT pt = cloud->points[i];
        // pt.r = sum * 255;
        // pt.g = sum * 255;
@@ -297,7 +389,7 @@ void InteractiveSegmentation::normalNeigbourOrientation(
        // std::cout << pt.r + pt.g + pt.b << std::endl;
        //-----
        // Eigen::Vector4f normal = normals->points[i].getNormalVector4fMap();
-       // Eigen::Vector4f gravity = Eigen::Vector4f(0, 1.0, 0.0, 1.0);
+       Eigen::Vector4f gravity = Eigen::Vector4f(0, 1.0, 0.0, 1.0);
        // float sum = (normal-gravity).dot(cloud->points[i].getVector4fMap());
        // // float sum = (normal).dot(gravity) *
        // // float sum =   (cloud->points[i].getVector4fMap()).dot(gravity);
