@@ -50,6 +50,7 @@
 #include <pcl/surface/mls.h>
 #include <pcl/point_types_conversion.h>
 #include <pcl/registration/distances.h>
+#include <pcl/features/don.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
@@ -149,13 +150,11 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
   
     void viewPointSurfaceNormalOrientation(
         pcl::PointCloud<PointT>::Ptr,
-        const pcl::PointCloud<pcl::Normal>::Ptr,
-        std::vector<pcl::PointIndices> &);
+        const pcl::PointCloud<pcl::Normal>::Ptr);
     void normalNeigbourOrientation(
         const pcl::PointCloud<PointT>::Ptr,
         const pcl::PointCloud<pcl::Normal>::Ptr,
-        const std::vector<pcl::PointIndices> &,
-        pcl::PointCloud<PointT>::Ptr);
+        pcl::PointCloud<PointT>::Ptr, const int);
    
     virtual Eigen::Vector4f cloudMeanNormal(
     const pcl::PointCloud<pcl::Normal>::Ptr,

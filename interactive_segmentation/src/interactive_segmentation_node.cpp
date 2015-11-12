@@ -56,9 +56,9 @@ void InteractiveSegmentation::callback(
     // std::vector<int> index;
     // pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, index);
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
-    // float neigbour_size = 0.05f;
-    // this->estimatePointCloudNormals<float>(
-    //    cloud, normals, neigbour_size, false);
+    // int neigbour_size = 10;
+    // this->estimatePointCloudNormals<int>(
+    //    cloud, normals, neigbour_size, true);
     
     // this->pointLevelSimilarity(cloud, normals, cloud_msg->header);
     
@@ -76,26 +76,20 @@ void InteractiveSegmentation::callback(
        this->pub_voxels_.publish(ros_voxels);
        this->pub_indices_.publish(ros_indices);
     }
-
+    
     bool is_point_level = true;
     if (is_point_level) {
       std::vector<int> index;
       pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, index);
-      this->estimatePointCloudNormals<int>(cloud, normals, 10, true);
-      std::vector<pcl::PointIndices> neigbours;
-      this->viewPointSurfaceNormalOrientation(cloud, normals, neigbours);
-
-      std::cout << cloud->size() << "\t" << normals->size() <<
-          "\t" << neigbours.size() << "\n";
+      int k = 50;
+      this->estimatePointCloudNormals<int>(cloud, normals, k, true);
+      // this->viewPointSurfaceNormalOrientation(cloud, normals);
       
-      
+      std::cout << cloud->size() << "\t" << normals->size() << std::endl;
       pcl::PointCloud<PointT>::Ptr orientation(new pcl::PointCloud<PointT>);
-      this->normalNeigbourOrientation(cloud, normals, neigbours, orientation);
-
+      this->normalNeigbourOrientation(cloud, normals, orientation, k);
       cloud->clear();
       *cloud = *orientation;
-      
-      
       
       cv::Mat saliency_img;
       this->generateFeatureSaliencyMap(image, saliency_img);
@@ -193,7 +187,7 @@ void InteractiveSegmentation::surfelLevelObjectHypothesis(
                    }
                    boost::remove_edge(n_edge, adjacency_list);
                 }
-                boost::clear_vertex(*ai, adjacency_list);                
+                boost::clear_vertex(*ai, adjacency_list);
                 voxel_labels[n_vindex] = label;
              }
           }
@@ -205,27 +199,24 @@ void InteractiveSegmentation::surfelLevelObjectHypothesis(
 
 void InteractiveSegmentation::viewPointSurfaceNormalOrientation(
     pcl::PointCloud<PointT>::Ptr cloud,
-    const pcl::PointCloud<pcl::Normal>::Ptr cloud_normal,
-    std::vector<pcl::PointIndices> &neigbours) {
+    const pcl::PointCloud<pcl::Normal>::Ptr cloud_normal) {
     if (cloud->empty() || cloud_normal->empty()) {
       ROS_ERROR("ERROR: Point Cloud | Normal vector is empty...");
       return;
     }
-    bool find_neighbour = true;
-    pcl::KdTreeFLANN<PointT> kdtree;
-    kdtree.setInputCloud(cloud);
-    pcl::PointCloud<PointT>::Ptr point_orientation(new pcl::PointCloud<PointT>);
+    pcl::PointCloud<PointT>::Ptr point_orientation(
+       new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*cloud, *point_orientation);
-
-    neigbours.reserve(static_cast<int>(cloud->size()));
-    pcl::PointIndices::Ptr neigbour_indices = &neigbours[0];
-    
 #ifdef _OPENMP
-#pragma omp parallel for shared(point_orientation) num_threads(this->num_threads_)
+#pragma omp parallel for shared(point_orientation) \
+   num_threads(this->num_threads_)
 #endif
     for (int i = 0; i < cloud->size(); i++) {
       Eigen::Vector3f viewPointVec =
-          cloud->points[i].getVector3fMap() * -1.0f;
+          cloud->points[i].getVector3fMap() * 1.0f;
+       // Eigen::Vector3f viewPointVec =
+       //    Eigen::Vector3f(0, 1.0, 0);
+       
       Eigen::Vector3f surfaceNormalVec = Eigen::Vector3f(
           cloud_normal->points[i].normal_x,
           cloud_normal->points[i].normal_y,
@@ -235,10 +226,9 @@ void InteractiveSegmentation::viewPointSurfaceNormalOrientation(
       float scalar_prod = static_cast<float>(
           surfaceNormalVec.dot(viewPointVec));
       float angle = atan2(cross_norm, scalar_prod);
-      if (angle * (180/CV_PI) >= 0 && angle * (180/CV_PI) <= 180) {
+      // if (angle * (180/CV_PI) >= 0 && angle * (180/CV_PI) <= 180) {
         // cv::Scalar jmap = JetColour(angle/(CV_PI), 0, 1);
         float pix_val = angle/(0.5 * CV_PI);
-        
         PointT *pt = &point_orientation->points[i];
         pt->x = cloud->points[i].x;
         pt->y = cloud->points[i].y;
@@ -246,24 +236,7 @@ void InteractiveSegmentation::viewPointSurfaceNormalOrientation(
         pt->r = pix_val * 255;
         pt->g = pix_val * 255;
         pt->b = pix_val * 255;
-      }
-      if (find_neighbour) {
-        std::vector<int> point_idx_search;
-        std::vector<float> point_squared_distance;
-        int search_out = 0;
-        bool is_knn = true;
-        if (is_knn) {
-          search_out = kdtree.nearestKSearch(
-              cloud->points[i], 10, point_idx_search, point_squared_distance);
-        } else {
-          search_out = kdtree.radiusSearch(
-              cloud->points[i], 0.02, point_idx_search, point_squared_distance);
-        }
-        pcl::PointIndices indices;
-        indices.indices.insert(indices.indices.end(), point_idx_search.begin(),
-                               point_idx_search.end());
-        //neigbour_indices->operator[](i) = indices; --> HERE
-      }
+        // }
     }
     cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*point_orientation, *cloud);
@@ -272,27 +245,67 @@ void InteractiveSegmentation::viewPointSurfaceNormalOrientation(
 void InteractiveSegmentation::normalNeigbourOrientation(
     const pcl::PointCloud<PointT>::Ptr cloud,
     const pcl::PointCloud<pcl::Normal>::Ptr normals,
-    const std::vector<pcl::PointIndices> &neigbours,
-    pcl::PointCloud<PointT>::Ptr orientation) {
-    if (cloud->size() != neigbours.size() || cloud->height == 1) {
+    pcl::PointCloud<PointT>::Ptr orientation, const int k) {
+    if (cloud->size() != normals->size()) {
+       ROS_ERROR("ERROR. INCORRECT SIZE");
       return;
     }
-    // pcl::PointCloud<PointT>::Ptr orientation(new pcl::PointCloud<PointT>);
+    pcl::KdTreeFLANN<PointT> kdtree;
+    kdtree.setInputCloud(cloud);
+    pcl::copyPointCloud<PointT, PointT>(*cloud, *orientation);
+#ifdef _OPENMP
+#pragma omp parallel for shared(orientation) num_threads(this->num_threads_)
+#endif
     for (int i = 0; i < cloud->size(); i++) {
-      pcl::PointIndices indices = neigbours.at(i);
-      Eigen::Vector4f normal = normals->points[i].getNormalVector4fMap();
-      float sum = 0.0f;
-      for (int j = 0; j < indices.indices.size(); j++) {
-        int index = indices.indices.at(j);
-        Eigen::Vector4f n_normal = normals->points[index].getNormalVector4fMap();
-        sum += normal.dot(n_normal);
-      }
-      sum /= static_cast<float>(indices.indices.size());
-      PointT pt = cloud->points[i];
-      pt.r = sum;
-      pt.g = sum;
-      pt.b = sum;
-      orientation->push_back(pt);
+       std::vector<int> point_idx_search;
+       std::vector<float> point_squared_distance;
+       int search_out = 0;
+       bool is_knn = true;
+       
+       if (is_knn) {
+          search_out = kdtree.nearestKSearch(
+             cloud->points[i], 40, point_idx_search, point_squared_distance);
+       } else {
+          search_out = kdtree.radiusSearch(
+             cloud->points[i], 0.02, point_idx_search, point_squared_distance);
+       }
+       Eigen::Vector4f normal = normals->points[i].getNormalVector4fMap();
+       float sum = 0.0f;
+       for (int j = 0; j < point_idx_search.size(); j++) {
+          int index = point_idx_search.at(j);
+          Eigen::Vector4f n_normal =
+             normals->points[index].getNormalVector4fMap();
+          sum += normal.dot(n_normal);
+          float diff = (cloud->points[i].getVector4fMap() -
+                        cloud->points[index].getVector4fMap()).dot(normal);
+          if (diff > 0.0f) {
+             // sum += static_cast<float>(
+             // std::pow(1 - (normal.dot(n_normal)), 2));
+          } else {
+             // sum = static_cast<float>(1 - (normal.dot(n_normal)));
+          }
+       }
+       sum /= static_cast<float>(point_idx_search.size());
+       
+       PointT pt = cloud->points[i];
+       // pt.r = sum * 255;
+       // pt.g = sum * 255;
+       // pt.b = sum * 255;
+       // pt.r = normals->points[i].normal_x * 1.0;
+       // pt.g = normals->points[i].normal_y * 1.0;
+       // pt.b = normals->points[i].normal_z * 1.0;
+       // std::cout << pt.r + pt.g + pt.b << std::endl;
+       //-----
+       // Eigen::Vector4f normal = normals->points[i].getNormalVector4fMap();
+       // Eigen::Vector4f gravity = Eigen::Vector4f(0, 1.0, 0.0, 1.0);
+       // float sum = (normal-gravity).dot(cloud->points[i].getVector4fMap());
+       // // float sum = (normal).dot(gravity) *
+       // // float sum =   (cloud->points[i].getVector4fMap()).dot(gravity);
+       // PointT pt = cloud->points[i];
+       pt.r = sum * 255;
+       pt.g = sum * 255;
+       pt.b = sum * 255;
+       orientation->points[i] = pt;
     }
 }
 
@@ -352,8 +365,8 @@ void InteractiveSegmentation::pointLevelSimilarity(
      
      pcl::KdTreeFLANN<PointT> kdtree;
      kdtree.setInputCloud(cloud);
-     bool is_knn = false;
-     float search_dim = 0.05f;
+     bool is_knn = true;
+     float search_dim = 0.025f;
 #ifdef _OPENMP
      #pragma omp parallel for
 #endif
@@ -367,7 +380,7 @@ void InteractiveSegmentation::pointLevelSimilarity(
        int search_out = 0;
        if (is_knn) {
          search_out = kdtree.nearestKSearch(
-             pt, search_dim, point_idx_search, point_squared_distance);
+             pt, 40, point_idx_search, point_squared_distance);
        } else {
          search_out = kdtree.radiusSearch(
              pt, search_dim, point_idx_search, point_squared_distance);
@@ -404,7 +417,7 @@ void InteractiveSegmentation::pointLevelSimilarity(
 
          double distance = std::sqrt(
             std::pow(dist_color, 2)
-            + std::pow(dist_fpfh, 2)
+            // + std::pow(dist_fpfh, 2)
             + std::pow(dist_point, 2)
             );
          
