@@ -24,12 +24,14 @@ void SaliencyMapGenerator::callback(
     if (image.empty()) {
        return;
     }
-    cv::cvtColor(image, image, CV_BGR2GRAY);
+    if (image.channels() == 3) {
+      cv::cvtColor(image, image, CV_BGR2GRAY);
+    }
     cv::Mat saliency_map;
     this->computeSaliencyImpl(image, saliency_map);
     cv::cvtColor(saliency_map, saliency_map, CV_GRAY2BGR);
     cv_bridge::CvImage pub_img(image_msg->header,
-                               sensor_msgs::image_encodings::BGR8,
+                               image_msg->encoding,
                                saliency_map);
     this->pub_image_.publish(pub_img.toImageMsg());
     
