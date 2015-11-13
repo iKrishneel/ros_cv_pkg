@@ -120,7 +120,6 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
   
     int min_cluster_size_;
     int num_threads_;
-
   
  protected:
     void onInit();
@@ -160,7 +159,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
   
     void viewPointSurfaceNormalOrientation(
         pcl::PointCloud<PointT>::Ptr,
-        const pcl::PointCloud<pcl::Normal>::Ptr);
+        const pcl::PointCloud<pcl::Normal>::Ptr,
+        const Eigen::Vector3f, const Eigen::Vector3f);
     void normalNeigbourOrientation(
         const pcl::PointCloud<PointT>::Ptr,
         const pcl::PointCloud<pcl::Normal>::Ptr,
