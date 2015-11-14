@@ -158,6 +158,7 @@ void InteractiveSegmentation::callback(
         std::cout << cloud->size() << "\t" << normals->size()  << "\n";
         Eigen::Vector4f attention_centroid = centroid_pt.getVector4fMap();
         cv::Mat connectivity_weights;
+        cv::Mat orientation_weights;
         for (int i = 0; i < normals->size(); i++) {
            // if (i != index_pos) {
             Eigen::Vector4f current_pt = cloud->points[i].getVector4fMap();
@@ -169,38 +170,66 @@ void InteractiveSegmentation::callback(
             float connection = (current_pt - attention_centroid).dot(
                current_normal);
             if (connection <= 0.0f || isnan(connection)) {
-               // cloud->points[i].r = 255;
-               // cloud->points[i].b = 0;
-               // cloud->points[i].g = 0;
                connection = 0.0f;
             } else {
                connection = cos(current_normal.dot(attention_normal))/
                   (2 * M_PI);
-               
-               // cloud->points[i].r = 255 * connection;
-               // cloud->points[i].b = 255 * connection;
-               // cloud->points[i].g = 255 * connection;
             }
             connectivity_weights.push_back(connection);
             // }
+
+
+            // orientation with respect to marked
+            Eigen::Vector3f viewPointVec = (cloud->points[i].getVector3fMap() -
+                                            centroid_pt.getVector3fMap());
+            Eigen::Vector3f surfaceNormalVec = normals->points[
+               i].getNormalVector3fMap() - normals->points[
+                  index_pos].getNormalVector3fMap();
+            float cross_norm = static_cast<float>(
+               surfaceNormalVec.cross(viewPointVec).norm());
+            float scalar_prod = static_cast<float>(
+               surfaceNormalVec.dot(viewPointVec));
+            float angle = atan2(cross_norm, scalar_prod);
+            float view_pt_weight = angle/(2.0 * CV_PI);
+            view_pt_weight = std::exp(-2.0f * view_pt_weight);
+            view_pt_weight * this->whiteNoiseKernel(view_pt_weight);
+            orientation_weights.push_back(view_pt_weight);
+            
         }
         cv::normalize(connectivity_weights, connectivity_weights, 0, 1,
                       cv::NORM_MINMAX, -1, cv::Mat());
+        cv::normalize(orientation_weights, orientation_weights, 0, 1,
+                      cv::NORM_MINMAX, -1, cv::Mat());
         
-
         for (int i = 0; i < connectivity_weights.rows; i++) {
            float pix_val = connectivity_weights.at<float>(i, 0);
+           connectivity_weights.at<float>(i, 0) = pix_val *
+              this->whiteNoiseKernel(pix_val);
+
            pix_val *= this->whiteNoiseKernel(pix_val);
+           pix_val *= orientation_weights.at<float>(i, 0);
            cloud->points[i].r = pix_val * 255;
            cloud->points[i].b = pix_val * 255;
            cloud->points[i].g = pix_val * 255;
-           
         }
-
+        cv::Mat conv_weights = cv::Mat(image.size(), CV_32F);
+        for (int i = 0; i < image.rows; i++) {
+           for (int j = 0; j < image.cols; j++) {
+              int idx = j + (i * image.cols);
+              conv_weights.at<float>(i, j) =
+                 connectivity_weights.at<float>(idx, 0) *
+                 orientation_weights.at<float>(idx, 0);
+              if (isnan(conv_weights.at<float>(i, j))) {
+                 conv_weights.at<float>(i, j) = 0.0f;
+              }
+           }
+        }
+        cv::Rect rect(0, 0, 0, 0);
+        this->graphCutSegmentation(image, conv_weights, rect, 1);
         
-        // this->viewPointSurfaceNormalOrientation(
-        //   cloud, normals, centroid_pt.getVector3fMap(),
-        //   normals->points[index_pos].getNormalVector3fMap());
+        cv::imshow("weights", conv_weights);
+        cv::waitKey(3);
+        
         
 
         // this->pointIntensitySimilarity(cloud, index_pos);

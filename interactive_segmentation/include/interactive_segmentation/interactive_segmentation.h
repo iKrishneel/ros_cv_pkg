@@ -64,11 +64,14 @@
 #include <geometry_msgs/PointStamped.h>
 
 #include <interactive_segmentation/supervoxel_segmentation.h>
+#include <interactive_segmentation/graph_cut_segmentation.h>
 #include <interactive_segmentation/saliency_map_generator.h>
+
 
 #include <omp.h>
 
-class InteractiveSegmentation: public SupervoxelSegmentation {
+class InteractiveSegmentation: public SupervoxelSegmentation,
+                               public GraphCutSegmentation {
 
     typedef pcl::PointXYZRGB PointT;
     typedef  pcl::FPFHSignature33 FPFHS;
