@@ -176,7 +176,6 @@ void InteractiveSegmentation::callback(
             } else {
                connection = cos(current_normal.dot(attention_normal))/
                   (2 * M_PI);
-               
                // cloud->points[i].r = 255 * connection;
                // cloud->points[i].b = 255 * connection;
                // cloud->points[i].g = 255 * connection;

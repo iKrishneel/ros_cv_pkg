@@ -154,6 +154,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr, const std_msgs::Header);
 
+    float whiteNoiseKernel(const float);
+
     void generateFeatureSaliencyMap(
         const cv::Mat &, cv::Mat &);
   
@@ -188,6 +190,10 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        pcl::PointCloud<pcl::Normal>::Ptr,
        T = 0.05f, bool = false) const;
 
+    void pointIntensitySimilarity(
+       pcl::PointCloud<PointT>::Ptr,
+       const int);
+   
     void mlsSmoothPointCloud(
         const pcl::PointCloud<PointT>::Ptr,
         pcl::PointCloud<PointT>::Ptr,
