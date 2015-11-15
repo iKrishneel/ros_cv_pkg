@@ -149,6 +149,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
         pcl::PointCloud<PointT>::Ptr,
         pcl::PointCloud<pcl::Normal>::Ptr,
         std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &);
+
     void updateSupervoxelClusters(
        std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> &,
        const uint32_t, const uint32_t);
@@ -173,7 +174,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
    
     virtual Eigen::Vector4f cloudMeanNormal(
     const pcl::PointCloud<pcl::Normal>::Ptr,
-    bool = true);
+    bool = false);
     bool localVoxelConvexityCriteria(
         Eigen::Vector4f, Eigen::Vector4f,
         Eigen::Vector4f, Eigen::Vector4f,
