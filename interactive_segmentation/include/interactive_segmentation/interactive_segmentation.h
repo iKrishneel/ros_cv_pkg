@@ -67,7 +67,6 @@
 #include <interactive_segmentation/graph_cut_segmentation.h>
 #include <interactive_segmentation/saliency_map_generator.h>
 
-
 #include <omp.h>
 
 class InteractiveSegmentation: public SupervoxelSegmentation,

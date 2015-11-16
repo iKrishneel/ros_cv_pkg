@@ -246,10 +246,9 @@ void InteractiveSegmentation::callback(
         
         cv::cvtColor(image, image, CV_RGB2BGR);
         this->graphCutSegmentation(image, object_mask, rect, 1);
+        
         cv::imshow("weights", conv_weights);
         cv::waitKey(3);
-        
-        
 
         // this->pointIntensitySimilarity(cloud, index_pos);
         
@@ -310,26 +309,33 @@ void InteractiveSegmentation::attentionSurfelRegionMask(
                                    static_cast<float>(screen_pt.y)),
           false);
        if (dist > -1) {
+          index = i;
           cv::drawContours(mask_img, contours, i,
                            cv::Scalar(255, 255, 255), CV_FILLED);
        }
     }
     if (index != -1) {
        rect = cv::boundingRect(contours[index]);
+       const int padding = 20;
+       rect.x -= padding;
+       rect.y -= padding;
+       rect.width += (2 * padding);
+       rect.height += (2 * padding);
     }
     object_mask = cv::Mat::zeros(conv_weights.size(), CV_32F);
     for (int j = 0; j < mask_img.rows; j++) {
        for (int i = 0; i < mask_img.cols; i++) {
           cv::Vec3b pix_val = mask_img.at<cv::Vec3b>(j, i);
           if (pix_val[0] > 0) {
-             // object_mask.at<float>(j, i) = conv_weights.at<float>(j, i);
-             object_mask.at<float>(j, i) = 1.0f;
+             float conv_weight = conv_weights.at<float>(j, i);
+             object_mask.at<float>(j, i) = conv_weight;
+             // object_mask.at<float>(j, i) = 1.0f;
           }
        }
     }
     // cv::bitwise_or(conv_weights, object_mask, object_mask);
     // cv::imshow("contour", mask_img);
-    // cv::imshow("masked", object_mask);
+     cv::imshow("masked", object_mask);
 }
 
 void InteractiveSegmentation::generateFeatureSaliencyMap(

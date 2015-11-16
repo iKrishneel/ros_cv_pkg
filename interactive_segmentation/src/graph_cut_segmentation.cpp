@@ -16,16 +16,24 @@
  */
 
 cv::Mat GraphCutSegmentation::graphCutSegmentation(
-    cv::Mat &img, cv::Mat &objMask, cv::Rect &rect, int iteration) {
-    
+    cv::Mat &image, cv::Mat &objMask, cv::Rect &rect, int iteration) {
+   
     /* Create object mask from the probability map*/
     cv::Mat mask = this->createMaskImage(objMask);
     
     cv::Mat fgdModel;
     cv::Mat bgdModel;
+
+    if (rect.width == 0 || rect.height == 0) {
+       return cv::Mat();
+    }
     
-    cv::grabCut(img, mask, cv::Rect(), bgdModel,
-                fgdModel, static_cast<int>(iteration), cv::GC_INIT_WITH_MASK);
+    // cv::Mat mask = imask(rect).clone();
+    cv::Mat img = image;  // (rect).clone();
+    
+    cv::grabCut(img, mask, rect, bgdModel, fgdModel,
+                static_cast<int>(iteration),
+                cv::GC_INIT_WITH_MASK /*cv::GC_INIT_WITH_RECT*/);
     
     /* Pixels of probable foreground is extracrted */
     cv::compare(mask, cv::GC_PR_FGD, mask, cv::CMP_EQ);
@@ -49,9 +57,14 @@ cv::Mat GraphCutSegmentation::graphCutSegmentation(
     //     return img;
     // }
     
-    cv::imshow("mask", mask);
+    // cv::imshow("mask", mask);
+    cv::rectangle(model, rect, cv::Scalar(0, 255, 0), 2);
     cv::imshow("foreground", model);
-    return model(rect).clone();
+    cv::imshow("object", img);
+    cv::imshow("input mask", mask);
+       
+    // return model(rect).clone();
+    return model;
 }
 
 cv::Mat GraphCutSegmentation::createMaskImage(cv::Mat &objMask) {
@@ -63,7 +76,7 @@ cv::Mat GraphCutSegmentation::createMaskImage(cv::Mat &objMask) {
               mask.at<uchar>(j, i) = cv::GC_PR_FGD;
             }
         }
-    } 
+    }
    return mask;
 }
 
