@@ -131,6 +131,8 @@ void InteractiveSegmentation::callback(
             centroid_pt, cs_nearest, point_idx_search, point_squared_distance);
 
          // just use the origin cloud and norm
+         int k = 50;
+         this->estimatePointCloudNormals<int>(cloud, normals, k, true);
          /*
          cloud->clear();
          normals->clear();
@@ -193,7 +195,24 @@ void InteractiveSegmentation::callback(
                       cv::NORM_MINMAX, -1, cv::Mat());
         cv::normalize(orientation_weights, orientation_weights, 0, 1,
                       cv::NORM_MINMAX, -1, cv::Mat());
+
+        // smoothing
+        const int filter_lenght = 3;
+        cv::GaussianBlur(connectivity_weights, connectivity_weights,
+                         cv::Size(filter_lenght, filter_lenght), 0, 0);
+        cv::GaussianBlur(orientation_weights, orientation_weights,
+                         cv::Size(filter_lenght, filter_lenght), 0, 0);
+
+        // morphological
+        int erosion_size = 5;
+        cv::Mat element = cv::getStructuringElement(
+           cv::MORPH_ELLIPSE,
+           cv::Size(2 * erosion_size + 1, 2 * erosion_size + 1),
+           cv::Point(erosion_size, erosion_size));
+        cv::erode(connectivity_weights, connectivity_weights, element);
+        cv::erode(orientation_weights, orientation_weights, element);
         
+        // convolution of distribution
         for (int i = 0; i < connectivity_weights.rows; i++) {
            float pix_val = connectivity_weights.at<float>(i, 0);
            connectivity_weights.at<float>(i, 0) = pix_val *
@@ -204,7 +223,8 @@ void InteractiveSegmentation::callback(
            cloud->points[i].b = pix_val * 255;
            cloud->points[i].g = pix_val * 255;
         }
-        /*
+
+        // weights for graph cut
         cv::Mat conv_weights = cv::Mat(image.size(), CV_32F);
         for (int i = 0; i < image.rows; i++) {
            for (int j = 0; j < image.cols; j++) {
@@ -217,11 +237,18 @@ void InteractiveSegmentation::callback(
               }
            }
         }
-        cv::Rect rect(0, 0, 0, 0);
-        this->graphCutSegmentation(image, conv_weights, rect, 1);
+
+        // select the object mask
+        cv::Mat object_mask;
+        cv::Rect rect = cv::Rect(0, 0, 0, 0);
+        this->attentionSurfelRegionMask(
+           conv_weights, screen_pt_, object_mask, rect);
+        
+        cv::cvtColor(image, image, CV_RGB2BGR);
+        this->graphCutSegmentation(image, object_mask, rect, 1);
         cv::imshow("weights", conv_weights);
         cv::waitKey(3);
-        */
+        
         
 
         // this->pointIntensitySimilarity(cloud, index_pos);
@@ -232,15 +259,12 @@ void InteractiveSegmentation::callback(
         // cloud->clear();
         // *cloud = *orientation;
       }
-      
 
       
-
-      
-      cv::Mat saliency_img;
-      this->generateFeatureSaliencyMap(image, saliency_img);
+      // cv::Mat saliency_img;
+      // this->generateFeatureSaliencyMap(image, saliency_img);
       cv_bridge::CvImage pub_img(
-          image_msg->header, sensor_msgs::image_encodings::BGR8, saliency_img);
+          image_msg->header, sensor_msgs::image_encodings::BGR8, image);
       this->pub_image_.publish(pub_img.toImageMsg());
     }
     
@@ -248,6 +272,64 @@ void InteractiveSegmentation::callback(
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
+}
+
+void InteractiveSegmentation::attentionSurfelRegionMask(
+    const cv::Mat conv_weights, const cv::Point2i screen_pt,
+    cv::Mat &object_mask, cv::Rect &rect) {
+    if (conv_weights.empty()) {
+       return;
+    }
+    // create mask
+    cv::Mat img_bw = cv::Mat::zeros(conv_weights.size(), CV_8UC1);
+    for (int j = 0; j < img_bw.rows; j++) {
+       for (int i = 0; i < img_bw.cols; i++) {
+          if (conv_weights.at<float>(j, i) > 0.0f) {
+             img_bw.at<uchar>(j, i) = 255;
+          }
+       }
+    }
+    // compute the contours
+    cv::Mat grad_x, grad_y;
+    cv::Mat abs_grad_x, abs_grad_y;
+    cv::Sobel(img_bw, grad_x, CV_16S, 1, 0, 3, 1, 0, cv::BORDER_DEFAULT);
+    cv::convertScaleAbs(grad_x, abs_grad_x);
+    cv::Sobel(img_bw, grad_y, CV_16S, 0, 1, 3, 1, 0, cv::BORDER_DEFAULT);
+    cv::convertScaleAbs(grad_y, abs_grad_y);
+    cv::addWeighted(abs_grad_x, 0.5, abs_grad_y, 0.5, 0, img_bw);
+    std::vector<std::vector<cv::Point> > contours;
+    std::vector<cv::Vec4i> hierarchy;
+    cv::findContours(img_bw, contours, hierarchy, CV_RETR_TREE,
+                     CV_CHAIN_APPROX_SIMPLE, cv::Point(0, 0));
+    // check the contour point belongs to
+    cv::Mat mask_img = cv::Mat::zeros(img_bw.rows, img_bw.cols, CV_8UC3);
+    int index = -1;
+    for (int i = 0; i < contours.size(); i++) {
+       double dist = cv::pointPolygonTest(
+          contours[i], cv::Point2f(static_cast<float>(screen_pt.x),
+                                   static_cast<float>(screen_pt.y)),
+          false);
+       if (dist > -1) {
+          cv::drawContours(mask_img, contours, i,
+                           cv::Scalar(255, 255, 255), CV_FILLED);
+       }
+    }
+    if (index != -1) {
+       rect = cv::boundingRect(contours[index]);
+    }
+    object_mask = cv::Mat::zeros(conv_weights.size(), CV_32F);
+    for (int j = 0; j < mask_img.rows; j++) {
+       for (int i = 0; i < mask_img.cols; i++) {
+          cv::Vec3b pix_val = mask_img.at<cv::Vec3b>(j, i);
+          if (pix_val[0] > 0) {
+             // object_mask.at<float>(j, i) = conv_weights.at<float>(j, i);
+             object_mask.at<float>(j, i) = 1.0f;
+          }
+       }
+    }
+    // cv::bitwise_or(conv_weights, object_mask, object_mask);
+    // cv::imshow("contour", mask_img);
+    // cv::imshow("masked", object_mask);
 }
 
 void InteractiveSegmentation::generateFeatureSaliencyMap(
@@ -274,15 +356,15 @@ void InteractiveSegmentation::surfelLevelObjectHypothesis(
                                  adjacency_list);
     std::map<uint32_t, int> voxel_labels;
     convex_supervoxels.clear();
-    cloud->clear();
+    // cloud->clear();
     for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr>::iterator it =
             supervoxel_clusters.begin(); it != supervoxel_clusters.end();
          it++) {
        voxel_labels[it->first] = -1;
        pcl::Supervoxel<PointT>::Ptr supervoxel =
           supervoxel_clusters.at(it->first);
-       *normals = *normals + *(supervoxel->normals_);
-       *cloud = *cloud + *(supervoxel->voxels_);
+       // *normals = *normals + *(supervoxel->normals_);
+       // *cloud = *cloud + *(supervoxel->voxels_);
     }
     int label = -1;
     AdjacencyList::vertex_iterator i, end;
@@ -785,8 +867,8 @@ void InteractiveSegmentation::computeEdgeCurvature(
        cv::Point2f edge_pt = contours[j].front();
        cv::Point2f edge_tngt = contours[j].back() - contours[j][1];
        tangent.push_back(edge_tngt);
-       float grad = (edge_tngt.y - edge_pt.y) / (edge_tngt.x - edge_pt.x);
-       t_gradient.push_back(grad);
+       float img_bw = (edge_tngt.y - edge_pt.y) / (edge_tngt.x - edge_pt.x);
+       t_gradient.push_back(img_bw);
        const int neighbor_pts = 0;
        if (contours[j].size() > 2) {
           for (int i = sizeof(char) + neighbor_pts;
@@ -796,8 +878,8 @@ void InteractiveSegmentation::computeEdgeCurvature(
              edge_tngt = contours[j][i-1-neighbor_pts] -
                 contours[j][i+1+neighbor_pts];
             tangent.push_back(edge_tngt);
-            grad = (edge_tngt.y - edge_pt.y) / (edge_tngt.x - edge_pt.x);
-            t_gradient.push_back(grad);
+            img_bw = (edge_tngt.y - edge_pt.y) / (edge_tngt.x - edge_pt.x);
+            t_gradient.push_back(img_bw);
             cv::Point2f pt1 = edge_tngt + edge_pt;
             cv::Point2f trans = pt1 - edge_pt;
             cv::Point2f ortho_pt1 = edge_pt + cv::Point2f(-trans.y, trans.x);
