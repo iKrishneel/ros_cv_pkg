@@ -12,6 +12,9 @@ InteractiveSegmentation::InteractiveSegmentation():
 void InteractiveSegmentation::onInit() {
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/interactive_segmentation/output/cloud", 1);
+
+    this->pub_prob_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+       "/interactive_segmentation/output/selected_probability", 1);
     
     this->pub_indices_ = this->pnh_.advertise<
        jsk_recognition_msgs::ClusterPointIndices>(
@@ -106,7 +109,8 @@ void InteractiveSegmentation::callback(
     }
     
     std::cout << "\033[34m 1) SELECTED \033[0m" << std::endl;
-    
+
+    pcl::PointCloud<PointT>::Ptr object_points(new pcl::PointCloud<PointT>);
     bool is_point_level = true;
     if (is_point_level && !supervoxel_clusters.empty()) {
        pcl::PointIndices sample_point_indices;
@@ -119,7 +123,6 @@ void InteractiveSegmentation::callback(
        // index of the sampled surfel points
        int sample_index = 0;
        sample_point_indices.indices.push_back(sample_index);
-          
       if (is_init_) {
          // search 4 neigbours of selected surfel
          int cs_nearest = 10;
@@ -136,6 +139,16 @@ void InteractiveSegmentation::callback(
          int search_out = kdtree.nearestKSearch(
             centroid_pt, cs_nearest, point_idx_search, point_squared_distance);
 
+         // store the point as true object
+         PointT obj_pt;
+         obj_pt.x = centroid_pt.x;
+         obj_pt.y = centroid_pt.y;
+         obj_pt.z = centroid_pt.z;
+         obj_pt.r = centroid_pt.r;
+         obj_pt.g = centroid_pt.g;
+         obj_pt.b = centroid_pt.b;
+         object_points->push_back(obj_pt);
+         
          // just use the origin cloud and norm
          int k = 50;
          this->estimatePointCloudNormals<int>(cloud, normals, k, true);
@@ -157,6 +170,7 @@ void InteractiveSegmentation::callback(
          Eigen::Vector4f attention_normal = this->cloudMeanNormal(
             supervoxel_clusters.at(closest_surfel_index)->normals_);
          Eigen::Vector4f attention_centroid = centroid_pt.getVector4fMap();
+
          
         std::cout << cloud->size() << "\t" << normals->size()  << "\n";
 
@@ -245,21 +259,31 @@ void InteractiveSegmentation::callback(
         }
 
         // select the object mask
+        /*
         cv::Mat object_mask;
         cv::Rect rect = cv::Rect(0, 0, 0, 0);
         this->attentionSurfelRegionMask(conv_weights, screen_pt_,
                                         object_mask, rect);
+        */
 
-
+        // get indices of the probable object mask
         pcl::PointIndices::Ptr prob_object_indices(new pcl::PointIndices);
         this->attentionSurfelRegionPointCloudMask(
-           cloud, attention_centroid, prob_object_indices);
+           cloud, attention_centroid, cloud_msg->header, prob_object_indices);
 
+        // segmentation
+        pcl::PointCloud<PointT>::Ptr object_cloud(new pcl::PointCloud<PointT>);
+        this->objectMinCutSegmentation(cloud, object_points,
+                                       prob_object_indices, object_cloud);
+        
+
+        cloud->clear();
+        *cloud = *object_cloud;
         
         cv::cvtColor(image, image, CV_RGB2BGR);
         // this->graphCutSegmentation(image, object_mask, rect, 1);
 
-        cv::imshow("masked", object_mask);
+
         cv::imshow("weights", conv_weights);
         cv::waitKey(3);
         
@@ -282,7 +306,7 @@ void InteractiveSegmentation::callback(
 
 bool InteractiveSegmentation::attentionSurfelRegionPointCloudMask(
     const pcl::PointCloud<PointT>::Ptr weight_cloud,
-    const Eigen::Vector4f centroid,
+    const Eigen::Vector4f centroid, const std_msgs::Header header,
     pcl::PointIndices::Ptr prob_object_indices) {
     if (weight_cloud->empty()) {
       return false;
@@ -311,6 +335,7 @@ bool InteractiveSegmentation::attentionSurfelRegionPointCloudMask(
     double min_distance = DBL_MAX;
     pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
     eifilter->setInputCloud(cloud);
+    pcl::PointCloud<PointT>::Ptr object_cloud(new pcl::PointCloud<PointT>);
     for (int i = 0; i < cluster_indices.size(); i++) {
        pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
        *region_indices = cluster_indices[i];
@@ -324,8 +349,59 @@ bool InteractiveSegmentation::attentionSurfelRegionPointCloudMask(
           min_distance = dist;
           prob_object_indices->indices.clear();
           *prob_object_indices = *region_indices;
+          object_cloud->clear();
+          *object_cloud = *tmp_cloud;
        }
     }
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*object_cloud, ros_cloud);
+    ros_cloud.header = header;
+    this->pub_prob_.publish(ros_cloud);
+}
+
+void InteractiveSegmentation::objectMinCutSegmentation(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<PointT>::Ptr object_points,
+    const pcl::PointIndices::Ptr prob_object_indices,
+    pcl::PointCloud<PointT>::Ptr object_cloud) {
+    if (cloud->empty() || object_points->empty()) {
+       return;
+    }
+    pcl::PointCloud<PointT>::Ptr prob_object_cloud(new pcl::PointCloud<PointT>);
+    std::vector<int> indices;
+    pcl::removeNaNFromPointCloud<PointT>(*cloud, *prob_object_cloud, indices);
+
+    std::cout << "IN SIZE: " << prob_object_cloud->size() << "\t"
+              << prob_object_indices->indices.size() << std::endl;
+    
+    pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
+    eifilter->setInputCloud(prob_object_cloud);
+    eifilter->setIndices(prob_object_indices);
+    eifilter->filter(*prob_object_cloud);
+    
+    std::cout << "FILTER SIZE: " << prob_object_cloud->size() << std::endl;
+    
+    pcl::MinCutSegmentation<PointT> segmentation;
+    segmentation.setInputCloud(prob_object_cloud);
+    // segmentation.setIndices(prob_object_indices);
+    segmentation.setForegroundPoints(object_points);
+
+    const float sigma = 0.25f;
+    const float radius = 0.1f;
+    const int k = 10;
+    const float source_weight = 0.8f;
+
+    segmentation.setSigma(sigma);
+    segmentation.setRadius(radius);
+    segmentation.setNumberOfNeighbours(k);
+    segmentation.setSourceWeight(source_weight);
+
+    std::vector<pcl::PointIndices> clusters;
+    segmentation.extract(clusters);
+    *object_cloud = *(segmentation.getColoredCloud());
+    
+    std::cout << "MAX FLOW: " << segmentation.getMaxFlow()
+              << "\t" << object_cloud->size() << std::endl;
 }
 
 
@@ -391,6 +467,7 @@ void InteractiveSegmentation::attentionSurfelRegionMask(
     }
     // cv::bitwise_or(conv_weights, object_mask, object_mask);
     // cv::imshow("contour", mask_img);
+    cv::imshow("masked", object_mask);
 }
 
 void InteractiveSegmentation::generateFeatureSaliencyMap(

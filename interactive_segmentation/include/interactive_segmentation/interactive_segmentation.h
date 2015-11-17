@@ -40,7 +40,6 @@
 #include <pcl/kdtree/impl/kdtree_flann.hpp>
 #include <pcl/common/transforms.h>
 #include <pcl/filters/extract_indices.h>
-#include <pcl/segmentation/segment_differences.h>
 #include <pcl/octree/octree.h>
 #include <pcl/surface/concave_hull.h>
 #include <pcl/segmentation/extract_clusters.h>
@@ -51,6 +50,8 @@
 #include <pcl/point_types_conversion.h>
 #include <pcl/registration/distances.h>
 #include <pcl/features/don.h>
+#include <pcl/segmentation/segment_differences.h>
+#include <pcl/segmentation/min_cut_segmentation.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
@@ -111,6 +112,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
     ros::Publisher pub_cloud_;
+    ros::Publisher pub_prob_;
     ros::Publisher pub_voxels_;
     ros::Publisher pub_indices_;
     ros::Publisher pub_image_;
@@ -156,10 +158,13 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
    
     bool attentionSurfelRegionPointCloudMask(
        const pcl::PointCloud<PointT>::Ptr, const Eigen::Vector4f,
-       pcl::PointIndices::Ptr);
+       const std_msgs::Header, pcl::PointIndices::Ptr);
     void attentionSurfelRegionMask(
        const cv::Mat, const cv::Point2i, cv::Mat &, cv::Rect &);
-   
+    void objectMinCutSegmentation(
+       const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointIndices::Ptr, pcl::PointCloud<PointT>::Ptr);
    
     void pointLevelSimilarity(
        const pcl::PointCloud<PointT>::Ptr,
