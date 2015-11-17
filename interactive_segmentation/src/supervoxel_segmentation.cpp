@@ -52,6 +52,26 @@ void SupervoxelSegmentation::supervoxelSegmentation(
     supervoxel_clusters.clear();
     super.extract(supervoxel_clusters);
     super.getSupervoxelAdjacencyList(adjacency_list);
+
+#ifdef DEGUB
+    std::multimap<uint32_t, uint32_t> supervoxel_adjacency;
+    super.getSupervoxelAdjacency(supervoxel_adjacency);
+    for (std::multimap<uint32_t, pcl::Supervoxel<PointT>::Ptr>::const_iterator
+            label_itr = supervoxel_clusters.begin(); label_itr !=
+            supervoxel_clusters.end(); label_itr++) {
+       uint32_t supervoxel_label = label_itr->first;
+       int icount = 0;
+       for (std::multimap<uint32_t, uint32_t>::iterator
+               adjacent_itr = supervoxel_adjacency.equal_range(
+                  supervoxel_label).first; adjacent_itr !=
+               supervoxel_adjacency.equal_range(
+                  supervoxel_label).second; ++adjacent_itr) {
+          icount++;
+       }
+       std::cout << "\t NEIG TOTAL: " << supervoxel_label << "\t"
+                 << icount << std::endl;
+    }
+#endif
 }
 
 void SupervoxelSegmentation::publishSupervoxel(

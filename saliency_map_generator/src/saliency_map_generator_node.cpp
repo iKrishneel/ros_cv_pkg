@@ -1,9 +1,40 @@
 
-#include <interactive_segmentation/saliency_map_generator.h>
+#include <saliency_map_generator/saliency_map_generator.h>
 
 SaliencyMapGenerator::SaliencyMapGenerator(int num_threads) :
     num_threads_(num_threads) {
-  
+    this->subscribe();
+    this->onInit();
+}
+
+void SaliencyMapGenerator::onInit() {
+    this->pub_image_ = this->pnh_.advertise<sensor_msgs::Image>(
+       "/saliency_map_generator/output/saliency_map", 1);
+}
+
+void SaliencyMapGenerator::subscribe() {
+    this->sub_image_ = this->pnh_.subscribe(
+       "input", 1, &SaliencyMapGenerator::callback, this);
+}
+
+void SaliencyMapGenerator::callback(
+    const sensor_msgs::Image::ConstPtr &image_msg) {
+    cv::Mat image = cv_bridge::toCvShare(
+       image_msg, image_msg->encoding)->image;
+    if (image.empty()) {
+       return;
+    }
+    if (image.channels() == 3) {
+      cv::cvtColor(image, image, CV_BGR2GRAY);
+    }
+    cv::Mat saliency_map;
+    this->computeSaliencyImpl(image, saliency_map);
+    cv::cvtColor(saliency_map, saliency_map, CV_GRAY2BGR);
+    cv_bridge::CvImage pub_img(image_msg->header,
+                               image_msg->encoding,
+                               saliency_map);
+    this->pub_image_.publish(pub_img.toImageMsg());
+    
 }
 
 bool SaliencyMapGenerator::computeSaliencyImpl(
@@ -247,4 +278,10 @@ void SaliencyMapGenerator::mixOnOff(
     intensity.copyTo(intensityArg);
 }
 
+int main(int argc, char *argv[]) {
 
+    ros::init(argc, argv, "saliency_map_generator");
+    SaliencyMapGenerator smg(8);
+    ros::spin();
+    return 0;
+}

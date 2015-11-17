@@ -2,7 +2,8 @@
 #include <point_cloud_normal_gradient/point_cloud_normal_gradient.h>
 #include <iostream>
 
-PointCloudNormalGradients::PointCloudNormalGradients() {
+PointCloudNormalGradients::PointCloudNormalGradients() :
+    num_threads_(8) {
     this->subscribe();
     this->onInit();
 }
@@ -81,7 +82,7 @@ void PointCloudNormalGradients::estimatePointCloudNormals(
     }
     pcl::NormalEstimationOMP<PointT, pcl::Normal> ne;
     ne.setInputCloud(cloud);
-    ne.setNumberOfThreads(8);
+    ne.setNumberOfThreads(this->num_threads_);
     pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT> ());
     ne.setSearchMethod(tree);
     if (ksearch) {
@@ -102,7 +103,7 @@ void PointCloudNormalGradients::viewPointSurfaceNormalOrientation(
     pcl::PointCloud<PointT>::Ptr gradient_cloud(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*cloud, *gradient_cloud);
 #ifdef _OPENMP
-#pragma omp parallel for shared(gradient_cloud)
+#pragma omp parallel for shared(gradient_cloud) num_threads(this->num_threads_)
 #endif
     for (int i = 0; i < cloud->size(); i++) {
        Eigen::Vector3f viewPointVec =

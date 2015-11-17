@@ -50,6 +50,7 @@
 #include <pcl/surface/mls.h>
 #include <pcl/point_types_conversion.h>
 #include <pcl/registration/distances.h>
+#include <pcl/features/don.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
@@ -60,13 +61,16 @@
 #include <std_msgs/Int64.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PoseArray.h>
+#include <geometry_msgs/PointStamped.h>
 
 #include <interactive_segmentation/supervoxel_segmentation.h>
+#include <interactive_segmentation/graph_cut_segmentation.h>
 #include <interactive_segmentation/saliency_map_generator.h>
 
 #include <omp.h>
 
-class InteractiveSegmentation: public SupervoxelSegmentation {
+class InteractiveSegmentation: public SupervoxelSegmentation,
+                               public GraphCutSegmentation {
 
     typedef pcl::PointXYZRGB PointT;
     typedef  pcl::FPFHSignature33 FPFHS;
@@ -112,8 +116,13 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     ros::Publisher pub_image_;
     ros::Publisher pub_pt_map_;
 
+    ros::Subscriber sub_screen_pt_;
+    cv::Point2i screen_pt_;
+    bool is_init_;
+  
     int min_cluster_size_;
-    
+    int num_threads_;
+  
  protected:
     void onInit();
     void subscribe();
@@ -121,6 +130,10 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
    
  public:
     InteractiveSegmentation();
+
+   virtual void screenPointCallback(
+      const geometry_msgs::PointStamped &);
+  
     virtual void callback(
        const sensor_msgs::Image::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &,
@@ -132,21 +145,43 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        cv::Mat &) const;
 
     void surfelLevelObjectHypothesis(
-       const pcl::PointCloud<PointT>::Ptr,
-       pcl::PointCloud<pcl::Normal>::Ptr,
-       std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &);
+        pcl::PointCloud<PointT>::Ptr,
+        pcl::PointCloud<pcl::Normal>::Ptr,
+        std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &);
+
     void updateSupervoxelClusters(
        std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> &,
        const uint32_t, const uint32_t);
+
+   
+    bool attentionSurfelRegionPointCloudMask(
+       const pcl::PointCloud<PointT>::Ptr, const Eigen::Vector4f,
+       pcl::PointIndices::Ptr);
+    void attentionSurfelRegionMask(
+       const cv::Mat, const cv::Point2i, cv::Mat &, cv::Rect &);
+   
    
     void pointLevelSimilarity(
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr, const std_msgs::Header);
 
+    float whiteNoiseKernel(const float);
+
+    void generateFeatureSaliencyMap(
+        const cv::Mat &, cv::Mat &);
+  
+    void viewPointSurfaceNormalOrientation(
+        pcl::PointCloud<PointT>::Ptr,
+        const pcl::PointCloud<pcl::Normal>::Ptr,
+        const Eigen::Vector3f, const Eigen::Vector3f);
+    void normalNeigbourOrientation(
+        const pcl::PointCloud<PointT>::Ptr,
+        const pcl::PointCloud<pcl::Normal>::Ptr,
+        pcl::PointCloud<PointT>::Ptr, const int);
    
     virtual Eigen::Vector4f cloudMeanNormal(
     const pcl::PointCloud<pcl::Normal>::Ptr,
-    bool = true);
+    bool = false);
     bool localVoxelConvexityCriteria(
         Eigen::Vector4f, Eigen::Vector4f,
         Eigen::Vector4f, Eigen::Vector4f,
@@ -166,6 +201,10 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        pcl::PointCloud<pcl::Normal>::Ptr,
        T = 0.05f, bool = false) const;
 
+    void pointIntensitySimilarity(
+       pcl::PointCloud<PointT>::Ptr,
+       const int);
+   
     void mlsSmoothPointCloud(
         const pcl::PointCloud<PointT>::Ptr,
         pcl::PointCloud<PointT>::Ptr,
