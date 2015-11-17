@@ -125,7 +125,7 @@ void InteractiveSegmentation::callback(
        sample_point_indices.indices.push_back(sample_index);
       if (is_init_) {
          // search 4 neigbours of selected surfel
-         int cs_nearest = 20;
+         int cs_nearest = 5;
          std::vector<int> point_idx_search;
          std::vector<float> point_squared_distance;
          pcl::KdTreeFLANN<pcl::PointXYZRGBA> kdtree;
@@ -142,8 +142,14 @@ void InteractiveSegmentation::callback(
          // just use the origin cloud and norm
          int k = 100;
          this->estimatePointCloudNormals<int>(cloud, normals, k, true);
-
+         Eigen::Vector4f attention_normal = this->cloudMeanNormal(
+            supervoxel_clusters.at(closest_surfel_index)->normals_);
+         Eigen::Vector4f attention_centroid = centroid_pt.getVector4fMap();
+         
          // select few points close to centroid as true object
+         pcl::PointCloud<PointT>::Ptr weight_cloud(new pcl::PointCloud<PointT>);
+         this->surfelSamplePointWeightMap(cloud, normals, centroid_pt,
+                                          attention_normal, weight_cloud);
          for (int i = 0; i < point_idx_search.size(); i++) {
            int idx = point_idx_search[i];
            pcl::PointXYZRGBA neigh_pt = centroid_cloud->points[idx];
@@ -155,17 +161,27 @@ void InteractiveSegmentation::callback(
             obj_pt.g = neigh_pt.g;
             obj_pt.b = neigh_pt.b;
             object_points->push_back(obj_pt);
-         }
-         Eigen::Vector4f attention_normal = this->cloudMeanNormal(
-            supervoxel_clusters.at(closest_surfel_index)->normals_);
-         Eigen::Vector4f attention_centroid = centroid_pt.getVector4fMap();
 
-         pcl::PointCloud<PointT>::Ptr weight_cloud(new pcl::PointCloud<PointT>);
-         this->surfelSamplePointWeightMap(cloud, normals, centroid_pt,
-                                          attention_normal, weight_cloud);
+            pcl::PointCloud<PointT>::Ptr weights(new pcl::PointCloud<PointT>);
+            this->surfelSamplePointWeightMap(cloud, normals, neigh_pt,
+                                             attention_normal, weights);
+
+            for (int x = 0; x < weights->size(); x++) {
+              weight_cloud->points[x].r += weights->points[x].r;
+              weight_cloud->points[x].b += weights->points[x].b;
+              weight_cloud->points[x].g += weights->points[x].g;
+            }
+         }
+
+         // normalize weights
+         for (int x = 0; x < weight_cloud->size(); x++) {
+           weight_cloud->points[x].r /= static_cast<float>(point_idx_search.size() + 1);
+           weight_cloud->points[x].g /= static_cast<float>(point_idx_search.size() + 1);
+           weight_cloud->points[x].b /= static_cast<float>(point_idx_search.size() + 1);
+         }
+
          cloud->clear();
          *cloud = *weight_cloud;
-
          
          std::cout << cloud->size() << "\t" << normals->size() << "\t"
                    << weight_cloud->size() << "\n";
@@ -179,8 +195,6 @@ void InteractiveSegmentation::callback(
               int idx = j + (i * image.cols);
               conv_weights.at<float>(i, j) =
                   weight_cloud->points[idx].r/255.0f;
-                  // connectivity_weights.at<float>(idx, 0) *
-                  // orientation_weights.at<float>(idx, 0);
               if (isnan(conv_weights.at<float>(i, j))) {
                  conv_weights.at<float>(i, j) = 0.0f;
               }
