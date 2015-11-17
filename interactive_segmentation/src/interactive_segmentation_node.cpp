@@ -125,7 +125,7 @@ void InteractiveSegmentation::callback(
        sample_point_indices.indices.push_back(sample_index);
       if (is_init_) {
          // search 4 neigbours of selected surfel
-         int cs_nearest = 10;
+         int cs_nearest = 20;
          std::vector<int> point_idx_search;
          std::vector<float> point_squared_distance;
          pcl::KdTreeFLANN<pcl::PointXYZRGBA> kdtree;
@@ -145,8 +145,8 @@ void InteractiveSegmentation::callback(
 
          // select few points close to centroid as true object
          for (int i = 0; i < point_idx_search.size(); i++) {
-            int idx = point_idx_search[i];
-            pcl::PointXYZRGBA neigh_pt = centroid_cloud->points[idx];
+           int idx = point_idx_search[i];
+           pcl::PointXYZRGBA neigh_pt = centroid_cloud->points[idx];
             PointT obj_pt;
             obj_pt.x = neigh_pt.x;
             obj_pt.y = neigh_pt.y;
@@ -156,105 +156,43 @@ void InteractiveSegmentation::callback(
             obj_pt.b = neigh_pt.b;
             object_points->push_back(obj_pt);
          }
-         std::cout << "\033[34m 2) SEARCHED \033[0m" << std::endl;
-         
          Eigen::Vector4f attention_normal = this->cloudMeanNormal(
             supervoxel_clusters.at(closest_surfel_index)->normals_);
          Eigen::Vector4f attention_centroid = centroid_pt.getVector4fMap();
 
+         pcl::PointCloud<PointT>::Ptr weight_cloud(new pcl::PointCloud<PointT>);
+         this->surfelSamplePointWeightMap(cloud, normals, centroid_pt,
+                                          attention_normal, weight_cloud);
+         cloud->clear();
+         *cloud = *weight_cloud;
+
          
-        std::cout << cloud->size() << "\t" << normals->size()  << "\n";
-
+         std::cout << cloud->size() << "\t" << normals->size() << "\t"
+                   << weight_cloud->size() << "\n";
         std::cout << "\033[34m 3) COMPUTING WEIGHTS \033[0m" << std::endl;
+
         
-        cv::Mat connectivity_weights;
-        cv::Mat orientation_weights;
-        for (int i = 0; i < normals->size(); i++) {
-            Eigen::Vector4f current_pt = cloud->points[i].getVector4fMap();
-            Eigen::Vector4f d = (attention_centroid - current_pt) /
-                (attention_centroid - current_pt).norm();
-            Eigen::Vector4f current_normal =
-               normals->points[i].getNormalVector4fMap();
-            // float connection = (attention_normal - current_normal).dot(d);
-            float connection = (current_pt - attention_centroid).dot(
-               current_normal);
-            if (connection <= 0.0f || isnan(connection)) {
-               connection = 0.0f;
-            } else {
-               connection = acos(current_normal.dot(attention_normal))/
-                  (2 * M_PI);
-            }
-            connectivity_weights.push_back(connection);
-
-            // orientation with respect to marked
-            Eigen::Vector3f viewPointVec = (cloud->points[i].getVector3fMap() -
-                                            centroid_pt.getVector3fMap());
-            Eigen::Vector3f surfaceNormalVec = normals->points[
-               i].getNormalVector3fMap() - attention_normal.head<3>();
-            float cross_norm = static_cast<float>(
-               surfaceNormalVec.cross(viewPointVec).norm());
-            float scalar_prod = static_cast<float>(
-               surfaceNormalVec.dot(viewPointVec));
-            float angle = atan2(cross_norm, scalar_prod);
-            float view_pt_weight = angle/(2.0 * CV_PI);
-            view_pt_weight = std::exp(-2.0f * view_pt_weight);
-            view_pt_weight * this->whiteNoiseKernel(view_pt_weight);
-            orientation_weights.push_back(view_pt_weight);
-            
-        }
-        cv::normalize(connectivity_weights, connectivity_weights, 0, 1,
-                      cv::NORM_MINMAX, -1, cv::Mat());
-        cv::normalize(orientation_weights, orientation_weights, 0, 1,
-                      cv::NORM_MINMAX, -1, cv::Mat());
-
-        // smoothing
-        const int filter_lenght = 3;
-        cv::GaussianBlur(connectivity_weights, connectivity_weights,
-                         cv::Size(filter_lenght, filter_lenght), 0, 0);
-        cv::GaussianBlur(orientation_weights, orientation_weights,
-                         cv::Size(filter_lenght, filter_lenght), 0, 0);
-
-        // morphological
-        int erosion_size = 2;
-        cv::Mat element = cv::getStructuringElement(
-           cv::MORPH_ELLIPSE,
-           cv::Size(2 * erosion_size + 1, 2 * erosion_size + 1),
-           cv::Point(erosion_size, erosion_size));
-        cv::erode(connectivity_weights, connectivity_weights, element);
-        cv::erode(orientation_weights, orientation_weights, element);
-        
-        // convolution of distribution
-        for (int i = 0; i < connectivity_weights.rows; i++) {
-           float pix_val = connectivity_weights.at<float>(i, 0);
-           connectivity_weights.at<float>(i, 0) = pix_val *
-              this->whiteNoiseKernel(pix_val);
-           pix_val *= this->whiteNoiseKernel(pix_val);
-           pix_val *= orientation_weights.at<float>(i, 0);
-           cloud->points[i].r = pix_val * 255;
-           cloud->points[i].b = pix_val * 255;
-           cloud->points[i].g = pix_val * 255;
-        }
-
         // weights for graph cut
         cv::Mat conv_weights = cv::Mat(image.size(), CV_32F);
         for (int i = 0; i < image.rows; i++) {
            for (int j = 0; j < image.cols; j++) {
               int idx = j + (i * image.cols);
               conv_weights.at<float>(i, j) =
-                  connectivity_weights.at<float>(idx, 0) *
-                  orientation_weights.at<float>(idx, 0);
+                  weight_cloud->points[idx].r/255.0f;
+                  // connectivity_weights.at<float>(idx, 0) *
+                  // orientation_weights.at<float>(idx, 0);
               if (isnan(conv_weights.at<float>(i, j))) {
                  conv_weights.at<float>(i, j) = 0.0f;
               }
            }
         }
-
+       
         // select the object mask
         
-        cv::Mat object_mask;
-        cv::Rect rect = cv::Rect(0, 0, 0, 0);
-        this->attentionSurfelRegionMask(conv_weights, screen_pt_,
-                                        object_mask, rect);
+        // cv::Mat object_mask;
+        // cv::Rect rect = cv::Rect(0, 0, 0, 0);
+        // this->attentionSurfelRegionMask(conv_weights, screen_pt_,
+        //                                 object_mask, rect);
         
 
         // get indices of the probable object mask
@@ -274,29 +212,110 @@ void InteractiveSegmentation::callback(
         cloud->clear();
         *cloud = *object_cloud;
         
-        cv::cvtColor(image, image, CV_RGB2BGR);
-        this->graphCutSegmentation(image, object_mask, rect, 1);
+        // cv::cvtColor(image, image, CV_RGB2BGR);
+        // this->graphCutSegmentation(image, object_mask, rect, 1);
 
 
         cv::imshow("weights", conv_weights);
         cv::waitKey(3);
         
         std::cout << cloud->size() << "\t" << normals->size() << std::endl;
-      }
-
+      }   // end if
       
       // cv::Mat saliency_img;
       // this->generateFeatureSaliencyMap(image, saliency_img);
       cv_bridge::CvImage pub_img(
           image_msg->header, sensor_msgs::image_encodings::BGR8, image);
       this->pub_image_.publish(pub_img.toImageMsg());
-    }
+    }  // end if
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
 }
+
+
+void InteractiveSegmentation::surfelSamplePointWeightMap(
+     const pcl::PointCloud<PointT>::Ptr cloud,
+     const pcl::PointCloud<pcl::Normal>::Ptr normals,
+     const pcl::PointXYZRGBA &centroid_pt,
+     const Eigen::Vector4f attention_normal,
+     pcl::PointCloud<PointT>::Ptr weights) {
+     if (cloud->empty() || normals->empty()) {
+       return;
+     }
+     Eigen::Vector4f attention_centroid = centroid_pt.getVector4fMap();
+     cv::Mat connectivity_weights;
+     cv::Mat orientation_weights;
+     for (int i = 0; i < normals->size(); i++) {
+       Eigen::Vector4f current_pt = cloud->points[i].getVector4fMap();
+       Eigen::Vector4f d = (attention_centroid - current_pt) /
+           (attention_centroid - current_pt).norm();
+       Eigen::Vector4f current_normal =
+           normals->points[i].getNormalVector4fMap();
+       // float connection = (attention_normal - current_normal).dot(d);
+       float connection = (current_pt - attention_centroid).dot(
+           current_normal);
+       if (connection <= 0.0f || isnan(connection)) {
+         connection = 0.0f;
+       } else {
+         connection = acos(current_normal.dot(attention_normal))/
+             (2 * M_PI);
+       }
+       connectivity_weights.push_back(connection);
+
+       // orientation with respect to marked
+       Eigen::Vector3f viewPointVec = (cloud->points[i].getVector3fMap() -
+                                       centroid_pt.getVector3fMap());
+       Eigen::Vector3f surfaceNormalVec = normals->points[
+           i].getNormalVector3fMap() - attention_normal.head<3>();
+       float cross_norm = static_cast<float>(
+           surfaceNormalVec.cross(viewPointVec).norm());
+       float scalar_prod = static_cast<float>(
+           surfaceNormalVec.dot(viewPointVec));
+       float angle = atan2(cross_norm, scalar_prod);
+       float view_pt_weight = angle/(2.0 * CV_PI);
+       view_pt_weight = std::exp(-2.0f * view_pt_weight);
+       view_pt_weight * this->whiteNoiseKernel(view_pt_weight);
+       orientation_weights.push_back(view_pt_weight);
+            
+     }
+     cv::normalize(connectivity_weights, connectivity_weights, 0, 1,
+                   cv::NORM_MINMAX, -1, cv::Mat());
+     cv::normalize(orientation_weights, orientation_weights, 0, 1,
+                   cv::NORM_MINMAX, -1, cv::Mat());
+
+     // smoothing
+     const int filter_lenght = 3;
+     cv::GaussianBlur(connectivity_weights, connectivity_weights,
+                      cv::Size(filter_lenght, filter_lenght), 0, 0);
+     cv::GaussianBlur(orientation_weights, orientation_weights,
+                      cv::Size(filter_lenght, filter_lenght), 0, 0);
+
+     // morphological
+     int erosion_size = 2;
+     cv::Mat element = cv::getStructuringElement(
+         cv::MORPH_ELLIPSE,
+         cv::Size(2 * erosion_size + 1, 2 * erosion_size + 1),
+         cv::Point(erosion_size, erosion_size));
+     cv::erode(connectivity_weights, connectivity_weights, element);
+     cv::erode(orientation_weights, orientation_weights, element);
+        
+     // convolution of distribution
+     pcl::copyPointCloud<PointT, PointT>(*cloud, *weights);
+     for (int i = 0; i < connectivity_weights.rows; i++) {
+       float pix_val = connectivity_weights.at<float>(i, 0);
+       connectivity_weights.at<float>(i, 0) = pix_val *
+           this->whiteNoiseKernel(pix_val);
+       pix_val *= this->whiteNoiseKernel(pix_val);
+       pix_val *= orientation_weights.at<float>(i, 0);
+       weights->points[i].r = pix_val * 255;
+       weights->points[i].b = pix_val * 255;
+       weights->points[i].g = pix_val * 255;
+     }
+}
+
 
 bool InteractiveSegmentation::attentionSurfelRegionPointCloudMask(
     const pcl::PointCloud<PointT>::Ptr weight_cloud,
