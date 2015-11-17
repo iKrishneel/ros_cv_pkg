@@ -3,11 +3,13 @@
   <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />
   <arg name="image" default="/camera/rgb/image_rect_color" />
   <!-- <include file="$(find interactive_segmentation)/launch/organized_multi_plane_segmentation.launch" /> -->
-  <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch" />
+  <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch">
+    <arg name="cloud" value="$(arg input_point)"/>
+  </include>
   <!-- <include file="$(find point_cloud_image_creator)/launch/point_cloud_image_creator.launch" /> -->
   <!-- <include file="$(find interactive_segmentation)/launch/edge_detector.launch" /> -->
   <!-- <include file="$(find interactive_segmentation)/launch/supervoxel_segmentation.launch" /> -->
-
+  
   
   <!-- <node pkg="nodelet" type="nodelet" name="passthrough" -->
   <!-- 	args="standalone pcl/PassThrough" output="screen"> -->
@@ -36,7 +38,7 @@
 
   <node pkg="image_view2" type="image_view2"
 	name="image_view2" output="screen">
-    <remap from="image" to="/camera/rgb/image_rect_color"/>
+    <remap from="image" to="$(arg image)"/>
   </node>
   
 </launch>

@@ -156,7 +156,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
    
     bool attentionSurfelRegionPointCloudMask(
        const pcl::PointCloud<PointT>::Ptr, const Eigen::Vector4f,
-       pcl::PointCloud<PointT>::Ptr);
+       pcl::PointIndices::Ptr);
     void attentionSurfelRegionMask(
        const cv::Mat, const cv::Point2i, cv::Mat &, cv::Rect &);
    

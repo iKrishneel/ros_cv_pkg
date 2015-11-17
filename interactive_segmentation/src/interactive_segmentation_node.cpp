@@ -250,13 +250,11 @@ void InteractiveSegmentation::callback(
         this->attentionSurfelRegionMask(conv_weights, screen_pt_,
                                         object_mask, rect);
 
-        pcl::PointCloud<PointT>::Ptr object_cloud(new pcl::PointCloud<PointT>);
+
+        pcl::PointIndices::Ptr prob_object_indices(new pcl::PointIndices);
         this->attentionSurfelRegionPointCloudMask(
-           cloud, attention_centroid, object_cloud);
-        std::cout << "Object Cloud: " << object_cloud->size() << std::endl;
-        
-        cloud->clear();
-        *cloud = *object_cloud;
+           cloud, attention_centroid, prob_object_indices);
+
         
         cv::cvtColor(image, image, CV_RGB2BGR);
         // this->graphCutSegmentation(image, object_mask, rect, 1);
@@ -285,7 +283,7 @@ void InteractiveSegmentation::callback(
 bool InteractiveSegmentation::attentionSurfelRegionPointCloudMask(
     const pcl::PointCloud<PointT>::Ptr weight_cloud,
     const Eigen::Vector4f centroid,
-    pcl::PointCloud<PointT>::Ptr object_cloud) {
+    pcl::PointIndices::Ptr prob_object_indices) {
     if (weight_cloud->empty()) {
       return false;
     }
@@ -324,8 +322,8 @@ bool InteractiveSegmentation::attentionSurfelRegionPointCloudMask(
        double dist = pcl::distances::l2(centroid, center);
        if (dist < min_distance) {
           min_distance = dist;
-          object_cloud->clear();
-          *object_cloud = *tmp_cloud;
+          prob_object_indices->indices.clear();
+          *prob_object_indices = *region_indices;
        }
     }
 }
