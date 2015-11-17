@@ -87,6 +87,8 @@ void InteractiveSegmentation::callback(
     uint32_t closest_surfel_index = INT_MAX;
     pcl::PointCloud<pcl::PointXYZRGBA>::Ptr centroid_cloud(
        new pcl::PointCloud<pcl::PointXYZRGBA>);
+    pcl::PointCloud<pcl::Normal>::Ptr surfel_normals(
+       new pcl::PointCloud<pcl::Normal>);
     for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr >::iterator it =
             supervoxel_clusters.begin(); it != supervoxel_clusters.end();
          it++) {
@@ -102,6 +104,7 @@ void InteractiveSegmentation::callback(
        }
        centroid_cloud->push_back(supervoxel_clusters.at(
                                     it->first)->centroid_);
+       *surfel_normals += *(supervoxel_clusters.at(it->first)->normals_);
     }
     if (closest_surfel_index == INT_MAX || isnan(closest_surfel_index)) {
        ROS_ERROR("NO SURFEL MARKED");
@@ -114,12 +117,6 @@ void InteractiveSegmentation::callback(
     bool is_point_level = true;
     if (is_point_level && !supervoxel_clusters.empty()) {
        pcl::PointIndices sample_point_indices;
-      // for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr >::iterator it =
-      // supervoxel_clusters.begin(); it != supervoxel_clusters.end(); it++) {
-      // get the attention points
-      // pcl::PointXYZRGBA centroid_pt = supervoxel_clusters.at(
-      //     it->first)->centroid_;
-
        // index of the sampled surfel points
        int sample_index = 0;
        sample_point_indices.indices.push_back(sample_index);
@@ -147,9 +144,12 @@ void InteractiveSegmentation::callback(
          Eigen::Vector4f attention_centroid = centroid_pt.getVector4fMap();
          
          // select few points close to centroid as true object
-         pcl::PointCloud<PointT>::Ptr weight_cloud(new pcl::PointCloud<PointT>);
+
+
+         cv::Mat weight_map;
          this->surfelSamplePointWeightMap(cloud, normals, centroid_pt,
-                                          attention_normal, weight_cloud);
+                                          attention_normal, weight_map);
+         
          for (int i = 0; i < point_idx_search.size(); i++) {
            int idx = point_idx_search[i];
            pcl::PointXYZRGBA neigh_pt = centroid_cloud->points[idx];
@@ -162,31 +162,31 @@ void InteractiveSegmentation::callback(
             obj_pt.b = neigh_pt.b;
             object_points->push_back(obj_pt);
 
-            pcl::PointCloud<PointT>::Ptr weights(new pcl::PointCloud<PointT>);
+            cv::Mat sample_weight_map;
+            Eigen::Vector4f idx_attn_normal = surfel_normals->points[
+               idx].getNormalVector4fMap();
             this->surfelSamplePointWeightMap(cloud, normals, neigh_pt,
-                                             attention_normal, weights);
-
-            for (int x = 0; x < weights->size(); x++) {
-              weight_cloud->points[x].r += weights->points[x].r;
-              weight_cloud->points[x].b += weights->points[x].b;
-              weight_cloud->points[x].g += weights->points[x].g;
-            }
+                                             idx_attn_normal,
+                                             sample_weight_map);
+            cv::Mat tmp;
+            cv::add(weight_map, sample_weight_map, tmp);
+            weight_map = tmp.clone();
          }
-
-         // normalize weights
-         for (int x = 0; x < weight_cloud->size(); x++) {
-           weight_cloud->points[x].r /= static_cast<float>(point_idx_search.size() + 1);
-           weight_cloud->points[x].g /= static_cast<float>(point_idx_search.size() + 1);
-           weight_cloud->points[x].b /= static_cast<float>(point_idx_search.size() + 1);
+         cv::normalize(weight_map, weight_map, 0, 1,
+                       cv::NORM_MINMAX, -1, cv::Mat());
+         
+         // normalize weights **REMOVE THIS CLOUD**
+         pcl::PointCloud<PointT>::Ptr weight_cloud(new pcl::PointCloud<PointT>);
+         for (int x = 0; x < weight_map.rows; x++) {
+            cloud->points[x].r = weight_map.at<float>(x, 0) * 255.0f;
+            cloud->points[x].g = weight_map.at<float>(x, 0) * 255.0f;
+            cloud->points[x].b = weight_map.at<float>(x, 0) * 255.0f;
          }
-
-         cloud->clear();
-         *cloud = *weight_cloud;
+         *weight_cloud = *cloud;
          
          std::cout << cloud->size() << "\t" << normals->size() << "\t"
                    << weight_cloud->size() << "\n";
         std::cout << "\033[34m 3) COMPUTING WEIGHTS \033[0m" << std::endl;
-
         
         // weights for graph cut
         cv::Mat conv_weights = cv::Mat(image.size(), CV_32F);
@@ -211,7 +211,8 @@ void InteractiveSegmentation::callback(
 
         // get indices of the probable object mask
         pcl::PointIndices::Ptr prob_object_indices(new pcl::PointIndices);
-        pcl::PointCloud<PointT>::Ptr prob_object_cloud(new pcl::PointCloud<PointT>);
+        pcl::PointCloud<PointT>::Ptr prob_object_cloud(
+           new pcl::PointCloud<PointT>);
         this->attentionSurfelRegionPointCloudMask(cloud, attention_centroid,
                                                   cloud_msg->header,
                                                   prob_object_cloud,
@@ -221,14 +222,11 @@ void InteractiveSegmentation::callback(
         pcl::PointCloud<PointT>::Ptr object_cloud(new pcl::PointCloud<PointT>);
         this->objectMinCutSegmentation(cloud, object_points,
                                        prob_object_cloud, object_cloud);
-        
-
         cloud->clear();
         *cloud = *object_cloud;
-        
+
         // cv::cvtColor(image, image, CV_RGB2BGR);
         // this->graphCutSegmentation(image, object_mask, rect, 1);
-
 
         cv::imshow("weights", conv_weights);
         cv::waitKey(3);
@@ -255,7 +253,8 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
      const pcl::PointCloud<pcl::Normal>::Ptr normals,
      const pcl::PointXYZRGBA &centroid_pt,
      const Eigen::Vector4f attention_normal,
-     pcl::PointCloud<PointT>::Ptr weights) {
+     cv::Mat &weights
+     /*pcl::PointCloud<PointT>::Ptr weights*/) {
      if (cloud->empty() || normals->empty()) {
        return;
      }
@@ -274,7 +273,7 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
        if (connection <= 0.0f || isnan(connection)) {
          connection = 0.0f;
        } else {
-         connection = acos(current_normal.dot(attention_normal))/
+         connection = cos(current_normal.dot(attention_normal))/
              (2 * M_PI);
        }
        connectivity_weights.push_back(connection);
@@ -308,7 +307,7 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
                       cv::Size(filter_lenght, filter_lenght), 0, 0);
 
      // morphological
-     int erosion_size = 2;
+     int erosion_size = 5;
      cv::Mat element = cv::getStructuringElement(
          cv::MORPH_ELLIPSE,
          cv::Size(2 * erosion_size + 1, 2 * erosion_size + 1),
@@ -317,16 +316,23 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
      cv::erode(orientation_weights, orientation_weights, element);
         
      // convolution of distribution
-     pcl::copyPointCloud<PointT, PointT>(*cloud, *weights);
+     // pcl::copyPointCloud<PointT, PointT>(*cloud, *weights);
+     weights = cv::Mat::zeros(static_cast<int>(cloud->size()), 1, CV_32F);
      for (int i = 0; i < connectivity_weights.rows; i++) {
        float pix_val = connectivity_weights.at<float>(i, 0);
        connectivity_weights.at<float>(i, 0) = pix_val *
            this->whiteNoiseKernel(pix_val);
        pix_val *= this->whiteNoiseKernel(pix_val);
        pix_val *= orientation_weights.at<float>(i, 0);
-       weights->points[i].r = pix_val * 255;
-       weights->points[i].b = pix_val * 255;
-       weights->points[i].g = pix_val * 255;
+
+       if (isnan(pix_val)) {
+          pix_val = 0.0f;
+       }
+       weights.at<float>(i, 0) = pix_val;
+       
+       // weights->points[i].r = pix_val * 255.0f;
+       // weights->points[i].b = pix_val * 255.0f;
+       // weights->points[i].g = pix_val * 255.0f;
      }
 }
 
@@ -373,7 +379,7 @@ bool InteractiveSegmentation::attentionSurfelRegionPointCloudMask(
        Eigen::Vector4f center;
        pcl::compute3DCentroid<PointT, float>(*tmp_cloud, center);
        double dist = pcl::distances::l2(centroid, center);
-       if (dist < min_distance) {         
+       if (dist < min_distance) {
           min_distance = dist;
           prob_object_indices->indices.clear();
           *prob_object_indices = *region_indices;

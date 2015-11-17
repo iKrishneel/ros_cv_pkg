@@ -171,8 +171,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
         const pcl::PointCloud<PointT>::Ptr,
         const pcl::PointCloud<pcl::Normal>::Ptr,
         const pcl::PointXYZRGBA &,
-        const Eigen::Vector4f,
-        pcl::PointCloud<PointT>::Ptr);
+        const Eigen::Vector4f, cv::Mat &);
+
   
     void pointLevelSimilarity(
        const pcl::PointCloud<PointT>::Ptr,
