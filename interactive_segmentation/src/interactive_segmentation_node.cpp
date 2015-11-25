@@ -122,7 +122,7 @@ void InteractiveSegmentation::callback(
        sample_point_indices.indices.push_back(sample_index);
       if (is_init_) {
          // search 4 neigbours of selected surfel
-         int cs_nearest = 5;
+         int cs_nearest = 1;
          std::vector<int> point_idx_search;
          std::vector<float> point_squared_distance;
          pcl::KdTreeFLANN<pcl::PointXYZRGBA> kdtree;
