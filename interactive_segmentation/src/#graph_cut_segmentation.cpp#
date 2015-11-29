@@ -1,12 +1,6 @@
 
 #include <interactive_segmentation/graph_cut_segmentation.h>
 
-/**
- * @function to perform graphcut iteration
- * @param: img is the image to perform GC Segmentation
- *       : rect is the defined object boundary
- *       : templ_img is the output of GC segmentation
- */
 
 cv::Mat GraphCutSegmentation::graphCutSegmentation(
     cv::Mat &image, cv::Mat &objMask, cv::Rect &rect, int iteration) {

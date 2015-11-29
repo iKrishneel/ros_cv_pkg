@@ -1,11 +1,4 @@
 
-//  Graph-Cut Segementation.h
-//  Handheld Object Tracking
-//
-//  Created by Chaudhary Krishneel on 3/21/14.
-//  Copyright (c) 2014 Chaudhary Krishneel. All rights reserved.
-//
-
 #ifndef _GRAPH_CUT_SEGMENTATION_
 #define _GRAPH_CUT_SEGMENTATION_
 
@@ -25,7 +18,7 @@ class GraphCutSegmentation {
     
  public:
     cv::Mat graphCutSegmentation(
-       cv::Mat &, cv::Mat &, cv::Rect &, int CV_DEFAULT(1));
+       cv::Mat &, cv::Mat &, cv::Rect &, int = 1);
 };
 
-#endif /* defined(_GRAPH_CUT_SEGMENTATION_) */
+#endif  // _GRAPH_CUT_SEGEMENTATION_

@@ -5,17 +5,28 @@
 #include <vector>
 
 PointCloudImageCreator::PointCloudImageCreator() {
+    pnh_.getParam("mask_image", this->is_mask_image_);
     this->subsribe();
     this->onInit();
 }
 
 void PointCloudImageCreator::onInit() {
+
     this->pub_image_ = pnh_.advertise<sensor_msgs::Image>(
-       "/cloud_image/output/image", 1);
-    this->pub_iimage_ = pnh_.advertise<sensor_msgs::Image>(
-       "/cloud_image/output/interpolated_image", 1);
-    this->pub_cloud_ = pnh_.advertise<sensor_msgs::PointCloud2>(
-       "/cloud_image/output/cloud", 1);
+      "/cloud_image/output/image", 1);
+    if (is_mask_image_) {
+       this->pub_fmask_ = pnh_.advertise<sensor_msgs::Image>(
+          "/cloud_image/output/foreground_mask", 1);
+       this->pub_bmask_ = pnh_.advertise<sensor_msgs::Image>(
+          "/cloud_image/output/background_mask", 1);
+    } else {
+       this->pub_image_ = pnh_.advertise<sensor_msgs::Image>(
+          "/cloud_image/output/image", 1);
+       this->pub_iimage_ = pnh_.advertise<sensor_msgs::Image>(
+          "/cloud_image/output/interpolated_image", 1);
+       this->pub_cloud_ = pnh_.advertise<sensor_msgs::PointCloud2>(
+          "/cloud_image/output/cloud", 1);
+    }
 }
 
 void PointCloudImageCreator::subsribe() {
@@ -25,6 +36,9 @@ void PointCloudImageCreator::subsribe() {
    
     this->sub_cloud_ = this->pnh_.subscribe(
        "input", 1, &PointCloudImageCreator::cloudCallback, this);
+
+    this->sub_image_ = this->pnh_.subscribe(
+       "in_image", 1, &PointCloudImageCreator::imageCallback, this);
 }
 
 void PointCloudImageCreator::cloudCallback(
@@ -37,30 +51,79 @@ void PointCloudImageCreator::cloudCallback(
     cv::Mat img_out = this->projectPointCloudToImagePlane(
        cloud, this->camera_info_, mask);
     cv::Mat interpolate_img = this->interpolateImage(img_out, mask);
-
-    cv_bridge::CvImagePtr image_msg(new cv_bridge::CvImage);
-    image_msg->header = cloud_msg->header;
-    image_msg->encoding = sensor_msgs::image_encodings::BGR8;
-    image_msg->image = img_out.clone();
-
-    cv_bridge::CvImagePtr iimage_msg(new cv_bridge::CvImage);
-    iimage_msg->header = cloud_msg->header;
-    iimage_msg->encoding = sensor_msgs::image_encodings::BGR8;
-    iimage_msg->image = interpolate_img.clone();
     
-    sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*cloud, ros_cloud);
-    ros_cloud.header = cloud_msg->header;
+    if (is_mask_image_) {
+       cv::Mat foreground_mask;
+       cv::Mat background_mask;
+       this->rect_ = this->createMaskImages(img_out,
+                                            foreground_mask,
+                                            background_mask);
+       this->foreground_mask_ = foreground_mask.clone();
+       
+       cv_bridge::CvImagePtr fmask_msg(new cv_bridge::CvImage);
+       cv_bridge::CvImagePtr bmask_msg(new cv_bridge::CvImage);
+       fmask_msg->header = cloud_msg->header;
+       fmask_msg->encoding = sensor_msgs::image_encodings::MONO8;
+       fmask_msg->image = foreground_mask.clone();
+       
+       bmask_msg->header = cloud_msg->header;
+       bmask_msg->encoding = sensor_msgs::image_encodings::MONO8;
+       bmask_msg->image = background_mask.clone();
 
-    pub_image_.publish(image_msg->toImageMsg());
-    pub_iimage_.publish(iimage_msg->toImageMsg());
-    pub_cloud_.publish(ros_cloud);
+       this->pub_fmask_.publish(fmask_msg->toImageMsg());
+       this->pub_bmask_.publish(bmask_msg->toImageMsg());
+       
+    } else {
+       sensor_msgs::PointCloud2 ros_cloud;
+       pcl::toROSMsg(*cloud, ros_cloud);
+       ros_cloud.header = cloud_msg->header;
+       pub_cloud_.publish(ros_cloud);
+       
+       // iimage_msg->header = cloud_msg->header;
+       // iimage_msg->encoding = sensor_msgs::image_encodings::BGR8;
+       // iimage_msg->image = interpolate_img.clone();
+
+       // cv_bridge::CvImagePtr image_msg(new cv_bridge::CvImage);
+       // image_msg->header = cloud_msg->header;
+       // image_msg->encoding = sensor_msgs::image_encodings::BGR8;
+       // image_msg->image = img_out.clone();
+       // pub_image_.publish(image_msg->toImageMsg());
+       // pub_iimage_.publish(iimage_msg->toImageMsg());
+    }
+    this->header_ = cloud_msg->header;
+
 }
 
 void PointCloudImageCreator::cameraInfoCallback(
     const sensor_msgs::CameraInfo::ConstPtr &info_msg) {
     boost::mutex::scoped_lock lock(this->lock_);
     camera_info_ = info_msg;
+}
+
+void PointCloudImageCreator::imageCallback(
+    const sensor_msgs::Image::ConstPtr &image_msg) {
+    cv::Mat in_image = cv_bridge::toCvShare(
+       image_msg, sensor_msgs::image_encodings::BGR8)->image;
+    boost::mutex::scoped_lock lock(mutex_);
+    if (is_mask_image_ && !this->foreground_mask_.empty()) {
+       /*
+       for (int j = 0; j < in_image.rows; j++) {
+          for (int i = 0; i < in_image.cols; i++) {
+             if (foreground_mask_.at<uchar>(j, i) == 0) {
+                in_image.at<cv::Vec3b>(j, i)[0] = 0;
+                in_image.at<cv::Vec3b>(j, i)[1] = 0;
+                in_image.at<cv::Vec3b>(j, i)[2] = 0;
+             }
+          }
+       }
+       */
+       in_image = in_image(this->rect_);
+    }
+    cv_bridge::CvImagePtr out_msg(new cv_bridge::CvImage);
+    out_msg->header = this->header_;
+    out_msg->encoding = sensor_msgs::image_encodings::BGR8;
+    out_msg->image = in_image.clone();
+    pub_image_.publish(out_msg->toImageMsg());
 }
 
 cv::Mat PointCloudImageCreator::projectPointCloudToImagePlane(
@@ -102,9 +165,9 @@ cv::Mat PointCloudImageCreator::projectPointCloudToImagePlane(
     std::vector<cv::Point2f> imagePoints;
     cv::projectPoints(objectPoints, rvec, translationMatrix,
                       cameraMatrix, distortionModel, imagePoints);
-    cv::Scalar white = cv::Scalar(255, 255, 255);
+    cv::Scalar color = cv::Scalar(0, 0, 0);
     cv::Mat image = cv::Mat(
-       camera_info->height, camera_info->width, CV_8UC3, white);
+       camera_info->height, camera_info->width, CV_8UC3, color);
     mask = cv::Mat::zeros(
        camera_info->height, camera_info->width, CV_32F);
     for (int i = 0; i < imagePoints.size(); i++) {
@@ -119,7 +182,6 @@ cv::Mat PointCloudImageCreator::projectPointCloudToImagePlane(
           mask.at<float>(y, x) = 255.0f;
        }
     }
-    // cv::imshow("image", mask);
     return image;
 }
 
@@ -168,7 +230,7 @@ void PointCloudImageCreator::cvMorphologicalOperations(
        return;
     }
     int erosion_size = 5;
-    int erosion_const = 5;
+    int erosion_const = 2;
     int erosion_type = cv::MORPH_ELLIPSE;
     cv::Mat element = cv::getStructuringElement(erosion_type,
        cv::Size(erosion_const * erosion_size + sizeof(char),
@@ -179,6 +241,47 @@ void PointCloudImageCreator::cvMorphologicalOperations(
     } else {
        cv::dilate(img, erosion_dst, element);
     }
+}
+
+cv::Rect PointCloudImageCreator::createMaskImages(
+    const cv::Mat &image, cv::Mat &foreground, cv::Mat &background) {
+    if (image.empty()) {
+       return cv::Rect(0, 0, 0, 0);
+    }
+    foreground = cv::Mat::zeros(image.size(), CV_8UC1);
+    background = cv::Mat(image.size(), CV_8UC1, cv::Scalar(255, 255, 255));
+    for (int j = 0; j < image.rows; j++) {
+       for (int i = 0; i < image.cols; i++) {
+          if (image.at<cv::Vec3b>(j, i)[0] > 0) {
+             foreground.at<uchar>(j, i) = 255;
+             background.at<uchar>(j, i) = 0;
+          }
+       }
+    }
+    const int padding = 5;
+    cv::Mat threshold_output = foreground.clone();
+    std::vector<std::vector<cv::Point> > contours;
+    std::vector<cv::Vec4i> hierarchy;
+    cv::findContours(threshold_output, contours, hierarchy,
+                     CV_RETR_EXTERNAL, CV_CHAIN_APPROX_SIMPLE, cv::Point(0, 0));
+    int area = 0;
+    cv::Rect rect = cv::Rect();
+    for (int i = 0; i < contours.size(); i++) {
+       cv::Rect a = cv::boundingRect(contours[i]);
+        if (a.area() > area) {
+            area = a.area();
+            rect = a;
+        }
+    }
+    rect.x = rect.x - padding;
+    rect.y = rect.y - padding;
+    rect.width = rect.width + (2 * padding);
+    rect.height = rect.height + (2 * padding);
+    
+    foreground = foreground(rect);
+    background = background(rect);
+    
+    return rect;
 }
 
 int main(int argc, char *argv[]) {
