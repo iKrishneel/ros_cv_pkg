@@ -24,6 +24,9 @@
 #include <opencv2/video/background_segm.hpp>
 
 #include <boost/thread/mutex.hpp>
+#include <boost/graph/grid_graph.hpp>
+#include <boost/graph/boykov_kolmogorov_max_flow.hpp>
+#include <boost/graph/iteration_macros.hpp>
 
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
@@ -110,7 +113,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
-
+   
     ros::Publisher pub_cloud_;
     ros::Publisher pub_prob_;
     ros::Publisher pub_voxels_;
@@ -172,7 +175,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
         const pcl::PointCloud<pcl::Normal>::Ptr,
         const pcl::PointXYZRGBA &,
         const Eigen::Vector4f, cv::Mat &);
-
+    void organizedMinCutMaxFlowSegmentation(
+       pcl::PointCloud<PointT>::Ptr, const int);
   
     void pointLevelSimilarity(
        const pcl::PointCloud<PointT>::Ptr,

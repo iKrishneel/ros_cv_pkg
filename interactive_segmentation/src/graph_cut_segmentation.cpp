@@ -17,19 +17,23 @@
 
 cv::Mat GraphCutSegmentation::graphCutSegmentation(
     cv::Mat &image, cv::Mat &objMask, cv::Rect &rect, int iteration) {
-   
+
+    cv::Mat img = image(rect);
+    cv::Mat o_mask = objMask(rect);
+    
     /* Create object mask from the probability map*/
-    cv::Mat mask = this->createMaskImage(objMask);
+    cv::Mat mask = this->createMaskImage(o_mask);
     
     cv::Mat fgdModel;
     cv::Mat bgdModel;
-
+    
+    
     if (rect.width == 0 || rect.height == 0) {
        return cv::Mat();
     }
     
     // cv::Mat mask = imask(rect).clone();
-    cv::Mat img = image;  // (rect).clone();
+    // cv::Mat img = image;  // (rect).clone();
     
     cv::grabCut(img, mask, rect, bgdModel, fgdModel,
                 static_cast<int>(iteration),
@@ -60,7 +64,7 @@ cv::Mat GraphCutSegmentation::graphCutSegmentation(
     // cv::imshow("mask", mask);
     cv::rectangle(model, rect, cv::Scalar(0, 255, 0), 2);
     cv::imshow("foreground", model);
-    cv::imshow("object", img);
+    cv::imshow("object", fgdModel);
     cv::imshow("input mask", mask);
        
     // return model(rect).clone();
@@ -77,7 +81,7 @@ cv::Mat GraphCutSegmentation::createMaskImage(cv::Mat &objMask) {
             }
         }
     }
-   return mask;
+    return mask;
 }
 
 cv::Rect GraphCutSegmentation::model_resize(cv::Mat &src) {
