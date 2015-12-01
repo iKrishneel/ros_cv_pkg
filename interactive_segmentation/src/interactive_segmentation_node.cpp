@@ -226,6 +226,7 @@ void InteractiveSegmentation::callback(
                                                   prob_object_cloud,
                                                   prob_object_indices);
 
+        
         // TMP
         pcl::PointCloud<PointT>::Ptr cov_cloud(new pcl::PointCloud<PointT>);
         this->computePointCloudCovarianceMatrix(prob_object_cloud, cov_cloud);
@@ -320,7 +321,7 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
                       cv::Size(filter_lenght, filter_lenght), 0, 0);
      cv::GaussianBlur(orientation_weights, orientation_weights,
                       cv::Size(filter_lenght, filter_lenght), 0, 0);
-     */
+     
      // morphological
      int erosion_size = 5;
      cv::Mat element = cv::getStructuringElement(
@@ -329,10 +330,9 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
          cv::Point(erosion_size, erosion_size));
      cv::dilate(connectivity_weights, connectivity_weights, element);
      cv::dilate(orientation_weights, orientation_weights, element);
-
-     // cv::erode(connectivity_weights, connectivity_weights, element);
-     // cv::erode(orientation_weights, orientation_weights, element);
-     
+     cv::erode(connectivity_weights, connectivity_weights, element);
+     cv::erode(orientation_weights, orientation_weights, element);
+     */
      
      // convolution of distribution
      // pcl::copyPointCloud<PointT, PointT>(*cloud, *weights);
@@ -429,8 +429,8 @@ void InteractiveSegmentation::objectMinCutSegmentation(
     segmentation.setForegroundPoints(object_points);
 
     const float sigma = 0.0001f;
-    const float radius = 0.05f;
-    const int k = 30;
+    const float radius = 0.1f;
+    const int k = 10;
     const float source_weight = 0.8f;
 
     segmentation.setSigma(sigma);
@@ -622,6 +622,8 @@ void InteractiveSegmentation::computePointCloudCovarianceMatrix(
     std::vector<float> curvature(cloud->size());
     float *curvature_ptr = &curvature[0];
 
+    std::vector<Eigen::Vector4f> principle_axis;
+    
     //******************
     // TODO(HERE): how to keep the attention_pt
     Eigen::Vector4f center;
@@ -648,8 +650,18 @@ void InteractiveSegmentation::computePointCloudCovarianceMatrix(
              covariance_matrix);
 
           Eigen::Vector3f eigen_vals;  // 2 > 1 > 0
-          pcl::eigen33(covariance_matrix, eigen_vals);
+          Eigen::Matrix3f eigen_vects;
+          pcl::eigen33(covariance_matrix, eigen_vects, eigen_vals);
 
+
+          // std::cout << eigen_vects(0, 2) << std::endl;
+          // std::cout << eigen_vects << "\n\n";
+          Eigen::Vector4f vec = Eigen::Vector4f(eigen_vects(0, 2),
+                                                eigen_vects(1, 2),
+                                                eigen_vects(2, 2), 1.0f);
+          principle_axis.push_back(vec);
+          
+          
           // eigen entropy
           float sum_entropy = 0.0f;
           float sum_eigen = 0.0f;
@@ -659,6 +671,8 @@ void InteractiveSegmentation::computePointCloudCovarianceMatrix(
           }
           eigen_entropy_ptr[i] = sum_entropy * -1.0f;
           sum_of_eigens_ptr[i] = sum_eigen;
+          // sum_of_eigens_ptr[i] = (eigen_vals(0) - eigen_vals(2)) / eigen_vals(1);
+          
           curvature_ptr[i] = (eigen_vals(0) / sum_eigen);
 
           // ****** TEMP
@@ -673,18 +687,36 @@ void InteractiveSegmentation::computePointCloudCovarianceMatrix(
     
     // pcl::PointCloud<PointT>::Ptr new_cloud(new pcl::PointCloud<PointT>);
     for (int i = 0; i < cloud->size(); i++) {
-       float dist_diff_sum = sum_of_eigens_ptr[index] - sum_of_eigens_ptr[i];
+      float dist_diff_sum = std::pow(sum_of_eigens_ptr[index] - sum_of_eigens_ptr[i], 2);
+      dist_diff_sum += dist_diff_sum;
+      dist_diff_sum = std::sqrt(dist_diff_sum);
+      // std::cout << "DIST: " << dist_diff_sum  << "\t";
        
-       float dist_diff_cur = curvature_ptr[index] - curvature_ptr[i];
+      float dist_diff_cur = std::pow(curvature_ptr[index] - curvature_ptr[i], 2);
+      dist_diff_cur += dist_diff_cur;
+      dist_diff_cur = std::sqrt(dist_diff_cur);
+      
        float dist_diff_ent = eigen_entropy_ptr[index] / eigen_entropy_ptr[i];
 
        dist_diff_sum += (dist_diff_cur + dist_diff_ent);
-       dist_diff_sum = std::sqrt(dist_diff_sum);
-       
-       float prob_sum = 1.0f/(1.0f + (dist_diff_sum * dist_diff_sum));
+       // dist_diff_sum = (dist_diff_cur);
+       // std::cout << "DIST: " << dist_diff_sum  << "\n";
+
+
+
+       double angle = pcl::getAngle3D(principle_axis[index], principle_axis[i]);
+       dist_diff_sum = angle;
+       float prob_sum = 1.0f/(1.0f + 0.5 * (dist_diff_sum * dist_diff_sum));
+
+
        // float prob_cur = 1.0f/(1.0f + (dist_diff_cur * dist_diff_cur));
        // float prob_ent = 1.0f/(1.0f + (dist_diff_ent * dist_diff_ent));
+       // if (angle < (M_PI / 2)) {
+       //   prob_sum = 0.0f;
+       // }
+       
        float prob = prob_sum;
+       
        PointT pt = cloud->points[i];
        pt.r = prob * pt.r;
        pt.g = prob * pt.g;
