@@ -178,6 +178,11 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
     void organizedMinCutMaxFlowSegmentation(
        pcl::PointCloud<PointT>::Ptr, const int);
   
+    void computePointCloudCovarianceMatrix(
+       const pcl::PointCloud<PointT>::Ptr,
+       pcl::PointCloud<PointT>::Ptr);
+
+
     void pointLevelSimilarity(
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr, const std_msgs::Header);

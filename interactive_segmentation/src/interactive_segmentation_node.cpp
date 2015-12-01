@@ -224,10 +224,18 @@ void InteractiveSegmentation::callback(
                                                   prob_object_cloud,
                                                   prob_object_indices);
 
-        this->organizedMinCutMaxFlowSegmentation(prob_object_cloud, index_pos);
+        // TMP
+        pcl::PointCloud<PointT>::Ptr cov_cloud(new pcl::PointCloud<PointT>);
+        this->computePointCloudCovarianceMatrix(prob_object_cloud, cov_cloud);
+        cloud->clear();
+        *cloud = *cov_cloud;
+        
+        
+        // this->organizedMinCutMaxFlowSegmentation(
+        //    prob_object_cloud, index_pos);
+        
         
         /*
-      
         // segmentation
         pcl::PointCloud<PointT>::Ptr object_cloud(new pcl::PointCloud<PointT>);
         this->objectMinCutSegmentation(cloud, object_points,
@@ -319,7 +327,11 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
          cv::Point(erosion_size, erosion_size));
      cv::dilate(connectivity_weights, connectivity_weights, element);
      cv::dilate(orientation_weights, orientation_weights, element);
-      
+
+     // cv::erode(connectivity_weights, connectivity_weights, element);
+     // cv::erode(orientation_weights, orientation_weights, element);
+     
+     
      // convolution of distribution
      // pcl::copyPointCloud<PointT, PointT>(*cloud, *weights);
      weights = cv::Mat::zeros(static_cast<int>(cloud->size()), 1, CV_32F);
@@ -589,6 +601,96 @@ void InteractiveSegmentation::surfelLevelObjectHypothesis(
     }
     supervoxel_clusters.clear();
 }
+
+
+void InteractiveSegmentation::computePointCloudCovarianceMatrix(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    pcl::PointCloud<PointT>::Ptr new_cloud) {
+    if (cloud->empty()) {
+       return;
+    }
+    float knearest = 0.03f;
+    pcl::KdTreeFLANN<PointT> kdtree;
+    kdtree.setInputCloud(cloud);
+
+    std::vector<float> eigen_entropy(cloud->size());
+    float *eigen_entropy_ptr = &eigen_entropy[0];
+    std::vector<float> sum_of_eigens(cloud->size());
+    float *sum_of_eigens_ptr = &sum_of_eigens[0];
+    std::vector<float> curvature(cloud->size());
+    float *curvature_ptr = &curvature[0];
+
+    //******************
+    // TODO(HERE): how to keep the attention_pt
+    Eigen::Vector4f center;
+    pcl::compute3DCentroid<PointT, float>(*cloud, center);
+    double distance = DBL_MAX;
+    int index = -1;
+    
+// #ifdef _OPENMP
+// #pragma omp parallel for num_threads(this->num_threads_) \
+//     shared(kdtree, eigen_entropy_ptr, sum_of_eigens_ptr, curvature_ptr)
+// #endif
+    for (int i = 0; i < cloud->size(); i++) {
+       PointT centroid_pt = cloud->points[i];
+       if (!isnan(centroid_pt.x) || !isnan(centroid_pt.y) ||
+           !isnan(centroid_pt.z)) {
+          std::vector<int> point_idx_search;
+          std::vector<float> point_squared_distance;
+          int search_out = kdtree.radiusSearch(
+          centroid_pt, knearest, point_idx_search, point_squared_distance);
+          Eigen::Matrix3f covariance_matrix;
+          uint32_t num_pt = pcl::computeCovarianceMatrix<PointT, float>(
+             *cloud, point_idx_search,
+             centroid_pt.getVector4fMap(),
+             covariance_matrix);
+
+          Eigen::Vector3f eigen_vals;  // 2 > 1 > 0
+          pcl::eigen33(covariance_matrix, eigen_vals);
+
+          // eigen entropy
+          float sum_entropy = 0.0f;
+          float sum_eigen = 0.0f;
+          for (int j = 0; j < 3; j++) {
+             sum_entropy += eigen_vals(j) * std::log(eigen_vals(j));
+             sum_eigen += eigen_vals(j);
+          }
+          eigen_entropy_ptr[i] = sum_entropy * -1.0f;
+          sum_of_eigens_ptr[i] = sum_eigen;
+          curvature_ptr[i] = (eigen_vals(0) / sum_eigen);
+
+          // ****** TEMP
+          double dist = pcl::distances::l2(
+             centroid_pt.getVector4fMap(), center);
+          if (dist < distance) {
+             index = i;
+          }
+       }
+    }
+
+    
+    // pcl::PointCloud<PointT>::Ptr new_cloud(new pcl::PointCloud<PointT>);
+    for (int i = 0; i < cloud->size(); i++) {
+       float dist_diff_sum = sum_of_eigens_ptr[index] - sum_of_eigens_ptr[i];
+       
+       float dist_diff_cur = curvature_ptr[index] / curvature_ptr[i];
+       float dist_diff_ent = eigen_entropy_ptr[index] / eigen_entropy_ptr[i];
+
+       dist_diff_sum += (dist_diff_cur + dist_diff_ent);
+       dist_diff_sum = std::sqrt(dist_diff_sum);
+       
+       float prob_sum = 1.0f/(1.0f + (dist_diff_sum * dist_diff_sum));
+       // float prob_cur = 1.0f/(1.0f + (dist_diff_cur * dist_diff_cur));
+       // float prob_ent = 1.0f/(1.0f + (dist_diff_ent * dist_diff_ent));
+       float prob = prob_sum;
+       PointT pt = cloud->points[i];
+       pt.r = prob * pt.r;
+       pt.g = prob * pt.g;
+       pt.b = prob * pt.b;
+       new_cloud->push_back(pt);
+    }
+}
+
 
 void InteractiveSegmentation::viewPointSurfaceNormalOrientation(
     pcl::PointCloud<PointT>::Ptr cloud,
@@ -1163,10 +1265,6 @@ void InteractiveSegmentation::organizedMinCutMaxFlowSegmentation(
        }
     }
     
-    
-
-    
-    
     const unsigned int D = 2;
     typedef boost::grid_graph<D> Graph;
     typedef boost::graph_traits<Graph>::vertex_descriptor VertexDescriptor;
@@ -1193,8 +1291,7 @@ void InteractiveSegmentation::organizedMinCutMaxFlowSegmentation(
         VertexIndex source_idx = get(boost::vertex_index, graph, src);
         VertexIndex target_idx = get(boost::vertex_index, graph, tgt);
         EdgeIndex edge_idx = get(boost::edge_index, graph, e);
-        capacity[edge_idx] = 255.0f -
-           fabs(weights[source_idx] - weights[target_idx]);
+        capacity[edge_idx] = fabs(weights[source_idx] - weights[target_idx]);
         reverse_edges[edge_idx] = edge(tgt, src, graph).first;
     }
     int sink_idx = selected_index;
