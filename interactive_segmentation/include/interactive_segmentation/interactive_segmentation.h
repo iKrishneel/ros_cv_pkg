@@ -24,6 +24,9 @@
 #include <opencv2/video/background_segm.hpp>
 
 #include <boost/thread/mutex.hpp>
+#include <boost/graph/grid_graph.hpp>
+#include <boost/graph/boykov_kolmogorov_max_flow.hpp>
+#include <boost/graph/iteration_macros.hpp>
 
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
@@ -40,7 +43,6 @@
 #include <pcl/kdtree/impl/kdtree_flann.hpp>
 #include <pcl/common/transforms.h>
 #include <pcl/filters/extract_indices.h>
-#include <pcl/segmentation/segment_differences.h>
 #include <pcl/octree/octree.h>
 #include <pcl/surface/concave_hull.h>
 #include <pcl/segmentation/extract_clusters.h>
@@ -51,6 +53,8 @@
 #include <pcl/point_types_conversion.h>
 #include <pcl/registration/distances.h>
 #include <pcl/features/don.h>
+#include <pcl/segmentation/segment_differences.h>
+#include <pcl/segmentation/min_cut_segmentation.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
@@ -109,8 +113,9 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
-
+   
     ros::Publisher pub_cloud_;
+    ros::Publisher pub_prob_;
     ros::Publisher pub_voxels_;
     ros::Publisher pub_indices_;
     ros::Publisher pub_image_;
@@ -156,11 +161,28 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
    
     bool attentionSurfelRegionPointCloudMask(
        const pcl::PointCloud<PointT>::Ptr, const Eigen::Vector4f,
+       const std_msgs::Header, pcl::PointCloud<PointT>::Ptr,
        pcl::PointIndices::Ptr);
     void attentionSurfelRegionMask(
        const cv::Mat, const cv::Point2i, cv::Mat &, cv::Rect &);
-   
-   
+    void objectMinCutSegmentation(
+       const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<PointT>::Ptr,
+       pcl::PointCloud<PointT>::Ptr);
+    void surfelSamplePointWeightMap(
+        const pcl::PointCloud<PointT>::Ptr,
+        const pcl::PointCloud<pcl::Normal>::Ptr,
+        const pcl::PointXYZRGBA &,
+        const Eigen::Vector4f, cv::Mat &);
+    void organizedMinCutMaxFlowSegmentation(
+       pcl::PointCloud<PointT>::Ptr, const int);
+  
+    void computePointCloudCovarianceMatrix(
+       const pcl::PointCloud<PointT>::Ptr,
+       pcl::PointCloud<PointT>::Ptr);
+
+
     void pointLevelSimilarity(
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr, const std_msgs::Header);
