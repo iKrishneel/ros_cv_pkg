@@ -163,6 +163,7 @@ void InteractiveSegmentation::callback(
             obj_pt.b = neigh_pt.b;
             object_points->push_back(obj_pt);
 
+            /*
             cv::Mat sample_weight_map;
             Eigen::Vector4f idx_attn_normal = surfel_normals->points[
                idx].getNormalVector4fMap();
@@ -172,6 +173,7 @@ void InteractiveSegmentation::callback(
             cv::Mat tmp;
             cv::add(weight_map, sample_weight_map, tmp);
             weight_map = tmp.clone();
+            */
          }
          cv::normalize(weight_map, weight_map, 0, 1,
                        cv::NORM_MINMAX, -1, cv::Mat());
@@ -427,8 +429,8 @@ void InteractiveSegmentation::objectMinCutSegmentation(
     segmentation.setForegroundPoints(object_points);
 
     const float sigma = 0.0001f;
-    const float radius = 0.06f;
-    const int k = 20;
+    const float radius = 0.05f;
+    const int k = 30;
     const float source_weight = 0.8f;
 
     segmentation.setSigma(sigma);
