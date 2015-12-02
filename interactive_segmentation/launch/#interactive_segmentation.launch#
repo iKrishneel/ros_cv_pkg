@@ -28,7 +28,7 @@
 
   <include file="$(find point_cloud_image_creator)/launch/point_cloud_image_creator.launch" >
     <arg name="input" value="/interactive_segmentation/output/selected_probability" />
-    <arg name="mask" value="true" />
+    <arg name="mask" value="false" />
     <arg name="image" value="$(arg image)" />
   </include>
 

@@ -140,6 +140,10 @@ void InteractiveSegmentation::callback(
          // just use the origin cloud and norm
          int k = 50;
          this->estimatePointCloudNormals<int>(cloud, normals, k, true);
+
+         // float k = 0.03f;
+         // this->estimatePointCloudNormals<float>(cloud, normals, k, false);
+         
          Eigen::Vector4f attention_normal = this->cloudMeanNormal(
             supervoxel_clusters.at(closest_surfel_index)->normals_);
          Eigen::Vector4f attention_centroid = centroid_pt.getVector4fMap();
@@ -226,7 +230,7 @@ void InteractiveSegmentation::callback(
                                                   prob_object_cloud,
                                                   prob_object_indices);
 
-        /*
+       
         // TMP
         pcl::PointCloud<PointT>::Ptr cov_cloud(new pcl::PointCloud<PointT>);
         this->computePointCloudCovarianceMatrix(prob_object_cloud, cov_cloud);
@@ -324,14 +328,14 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
                    cv::NORM_MINMAX, -1, cv::Mat());
      cv::normalize(orientation_weights, orientation_weights, 0, 1,
                    cv::NORM_MINMAX, -1, cv::Mat());
+
      
      // smoothing HERE
-     /*
-     const int filter_lenght = 3;
+     const int filter_lenght = 5;
      cv::GaussianBlur(connectivity_weights, connectivity_weights,
                       cv::Size(filter_lenght, filter_lenght), 0, 0);
      cv::GaussianBlur(orientation_weights, orientation_weights,
-                      cv::Size(filter_lenght, filter_lenght), 1.0, 1.0);
+                      cv::Size(filter_lenght, filter_lenght), 0.0, 0.0);
      /*
      // morphological
      int erosion_size = 5;
@@ -379,9 +383,10 @@ bool InteractiveSegmentation::attentionSurfelRegionPointCloudMask(
     }
     // removed zero points
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+    const float threshold = 0.0f * 255.0f;
     for (int i = 0; i < weight_cloud->size(); i++) {
        PointT pt = weight_cloud->points[i];
-       if (pt.r > 0 && pt.b > 0 && pt.g > 0 &&
+       if (pt.r > threshold && pt.b > threshold && pt.g > threshold &&
            !isnan(pt.x) && !isnan(pt.y) && !isnan(pt.z)) {
           cloud->push_back(pt);
        }
@@ -729,7 +734,6 @@ void InteractiveSegmentation::computePointCloudCovarianceMatrix(
        // }
        
        float prob = prob_sum;
-       
        PointT pt = cloud->points[i];
        pt.r = prob * pt.r;
        pt.g = prob * pt.g;

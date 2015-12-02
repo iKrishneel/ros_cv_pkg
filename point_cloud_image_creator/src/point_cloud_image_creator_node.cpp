@@ -6,6 +6,7 @@
 
 PointCloudImageCreator::PointCloudImageCreator() {
     pnh_.getParam("mask_image", this->is_mask_image_);
+    pnh_.getParam("roi_image", this->is_roi_);
     this->subsribe();
     this->onInit();
 }
@@ -277,10 +278,11 @@ cv::Rect PointCloudImageCreator::createMaskImages(
     rect.y = rect.y - padding;
     rect.width = rect.width + (2 * padding);
     rect.height = rect.height + (2 * padding);
-    
-    foreground = foreground(rect);
-    background = background(rect);
-    
+
+    if (this->is_roi_) {
+      foreground = foreground(rect);
+      background = background(rect);
+    }
     return rect;
 }
 

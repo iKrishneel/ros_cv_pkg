@@ -54,6 +54,7 @@ class PointCloudImageCreator {
  private:
     sensor_msgs::CameraInfo::ConstPtr camera_info_;
     bool is_mask_image_;
+    bool is_roi_;
     std_msgs::Header header_;
     cv::Mat foreground_mask_;
     cv::Rect rect_;

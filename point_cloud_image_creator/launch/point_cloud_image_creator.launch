@@ -1,6 +1,7 @@
 <launch>
   <arg name="input" default="/camera/depth_registered/points" />
   <arg name="mask" default="false" />
+  <arg name="roi" default="false" />
   <arg name="image" default="/camera/rgb/image_rect_color" />
   <node pkg="point_cloud_image_creator" type="point_cloud_image_creator_node"
 	name="point_cloud_image_creator" output="screen">
@@ -9,6 +10,9 @@
     <remap from="in_image" to="$(arg image)" />
     <param name="mask_image" value="$(arg mask)" type="bool" />
     <remap from="mask_image" to="/point_cloud_image_creator/mask_image" />
+
+    <param name="roi_image" value="$(arg roi)" type="bool" />
+    <remap from="roi_image" to="/point_cloud_image_creator/roi_image" />
    
   </node>
   <!-- <node pkg="image_view" type="image_view" -->
