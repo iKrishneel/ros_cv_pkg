@@ -226,7 +226,7 @@ void InteractiveSegmentation::callback(
                                                   prob_object_cloud,
                                                   prob_object_indices);
 
-        
+        /*
         // TMP
         pcl::PointCloud<PointT>::Ptr cov_cloud(new pcl::PointCloud<PointT>);
         this->computePointCloudCovarianceMatrix(prob_object_cloud, cov_cloud);
@@ -287,10 +287,11 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
        float connection = (current_pt - attention_centroid).dot(
            current_normal);
        if (connection <= 0.0f || isnan(connection)) {
-         connection = 0.0f;
+          connection = 0.0f;
        } else {
-         connection = cos(current_normal.dot(attention_normal))/
-             (1.0f * M_PI);
+         // connection = acos(current_normal.dot(attention_normal))/
+         //     (1.0f * M_PI);
+          connection = std::pow((current_normal.dot(attention_normal)), 2);
        }
        connectivity_weights.push_back(connection);
 
@@ -305,23 +306,28 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
            surfaceNormalVec.dot(viewPointVec));
        float angle = atan2(cross_norm, scalar_prod);
        float view_pt_weight = angle/(2.0 * CV_PI);
-       view_pt_weight = std::exp(-2.0f * view_pt_weight);
+       // view_pt_weight = std::exp(-1.0f * view_pt_weight);
+       if (isnan(angle)) {
+          view_pt_weight = 0.0f;
+       }
+       
        view_pt_weight * this->whiteNoiseKernel(view_pt_weight);
        orientation_weights.push_back(view_pt_weight);
      }
+     
      cv::normalize(connectivity_weights, connectivity_weights, 0, 1,
                    cv::NORM_MINMAX, -1, cv::Mat());
      cv::normalize(orientation_weights, orientation_weights, 0, 1,
                    cv::NORM_MINMAX, -1, cv::Mat());
-
-     // smoothing
-     /*
+     
+     // smoothing HERE
+     
      const int filter_lenght = 3;
      cv::GaussianBlur(connectivity_weights, connectivity_weights,
                       cv::Size(filter_lenght, filter_lenght), 0, 0);
      cv::GaussianBlur(orientation_weights, orientation_weights,
-                      cv::Size(filter_lenght, filter_lenght), 0, 0);
-     
+                      cv::Size(filter_lenght, filter_lenght), 1.0, 1.0);
+     /*
      // morphological
      int erosion_size = 5;
      cv::Mat element = cv::getStructuringElement(
@@ -342,8 +348,10 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
        connectivity_weights.at<float>(i, 0) = pix_val *
            this->whiteNoiseKernel(pix_val);
        pix_val *= this->whiteNoiseKernel(pix_val);
-       pix_val *= orientation_weights.at<float>(i, 0);
+       // pix_val *= orientation_weights.at<float>(i, 0);
 
+       pix_val = orientation_weights.at<float>(i, 0);
+       
        if (isnan(pix_val)) {
           pix_val = 0.0f;
        }
@@ -1083,8 +1091,8 @@ void InteractiveSegmentation::estimatePointCloudNormals(
 
 float InteractiveSegmentation::whiteNoiseKernel(
     const float pix_val) {
-    float weight = 1.0f / (std::sqrt(2.0f * M_PI) *
-                           exp(-1.0f *  (pix_val)));
+    float weight = (1.0f / (std::sqrt(2.0f * M_PI))) *
+                           exp(-1.0f * (pix_val));
     return weight;
 }
 
