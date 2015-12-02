@@ -149,7 +149,7 @@ void InteractiveSegmentation::callback(
 
          cv::Mat weight_map;
          this->surfelSamplePointWeightMap(cloud, normals, centroid_pt,
-                                          attention_normal, weight_map);
+                                          attention_normal, index_pos, weight_map);
          
          for (int i = 0; i < point_idx_search.size(); i++) {
            int idx = point_idx_search[i];
@@ -269,11 +269,11 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
      const pcl::PointCloud<pcl::Normal>::Ptr normals,
      const pcl::PointXYZRGBA &centroid_pt,
      const Eigen::Vector4f attention_normal,
-     cv::Mat &weights
+     const int attention_index, cv::Mat &weights
      /*pcl::PointCloud<PointT>::Ptr weights*/) {
      if (cloud->empty() || normals->empty()) {
        return;
-     }
+     }     
      Eigen::Vector4f attention_centroid = centroid_pt.getVector4fMap();
      cv::Mat connectivity_weights;
      cv::Mat orientation_weights;
@@ -305,13 +305,18 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
        float scalar_prod = static_cast<float>(
            surfaceNormalVec.dot(viewPointVec));
        float angle = atan2(cross_norm, scalar_prod);
-       float view_pt_weight = angle/(2.0 * CV_PI);
+       float view_pt_weight = (CV_PI - angle)/(2.0 * CV_PI);
+
+       
+       // view_pt_weight = 1.0f / (1.0f + (view_pt_weight * view_pt_weight));
+       
        // view_pt_weight = std::exp(-1.0f * view_pt_weight);
        if (isnan(angle)) {
           view_pt_weight = 0.0f;
        }
        
-       view_pt_weight * this->whiteNoiseKernel(view_pt_weight);
+       // view_pt_weight *= this->whiteNoiseKernel(view_pt_weight);
+       view_pt_weight *= this->whiteNoiseKernel(view_pt_weight, 0.0f, 0.50f);
        orientation_weights.push_back(view_pt_weight);
      }
      
@@ -321,7 +326,7 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
                    cv::NORM_MINMAX, -1, cv::Mat());
      
      // smoothing HERE
-     
+     /*
      const int filter_lenght = 3;
      cv::GaussianBlur(connectivity_weights, connectivity_weights,
                       cv::Size(filter_lenght, filter_lenght), 0, 0);
@@ -347,10 +352,10 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
        float pix_val = connectivity_weights.at<float>(i, 0);
        connectivity_weights.at<float>(i, 0) = pix_val *
            this->whiteNoiseKernel(pix_val);
-       pix_val *= this->whiteNoiseKernel(pix_val);
-       // pix_val *= orientation_weights.at<float>(i, 0);
+       // pix_val *= this->whiteNoiseKernel(pix_val);
+       pix_val *= orientation_weights.at<float>(i, 0);
 
-       pix_val = orientation_weights.at<float>(i, 0);
+       // pix_val = orientation_weights.at<float>(i, 0);
        
        if (isnan(pix_val)) {
           pix_val = 0.0f;
@@ -1090,10 +1095,15 @@ void InteractiveSegmentation::estimatePointCloudNormals(
 
 
 float InteractiveSegmentation::whiteNoiseKernel(
-    const float pix_val) {
-    float weight = (1.0f / (std::sqrt(2.0f * M_PI))) *
-                           exp(-1.0f * (pix_val));
-    return weight;
+    const float z, const float N, const float sigma) {
+
+    float val = static_cast<float>(z - N);
+    return static_cast<double>((1.0/(sqrt(2.0 * M_PI)) * sigma) *
+                               exp(-((val * val) / (2*sigma*sigma))));
+  
+    // float weight = (1.0f / (std::sqrt(2.0f * M_PI))) *
+    //                        exp(-1.0f * (pix_val - centr_val));
+    // return weight;
 }
 
 void InteractiveSegmentation::organizedMinCutMaxFlowSegmentation(
