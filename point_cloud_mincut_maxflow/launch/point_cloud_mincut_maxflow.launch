@@ -1,0 +1,9 @@
+<launch>
+  <arg name="input_cloud" default="/camera/depth_registered/points" />
+  <arg name="input_mask" default="/" />
+  <node pkg="point_cloud_mincut_maxflow" type="point_cloud_mincut_maxflow_node" name="point_cloud_mincut_maxflow" 
+	output="screen" >
+    <remap from="in_cloud" to="$(arg input_cloud)" />
+    <remap from="in_mask" to="$(arg input_mask)" />
+  </node>
+</launch>
