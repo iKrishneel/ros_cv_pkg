@@ -331,11 +331,11 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
 
      
      // smoothing HERE
-     const int filter_lenght = 5;
-     cv::GaussianBlur(connectivity_weights, connectivity_weights,
-                      cv::Size(filter_lenght, filter_lenght), 0, 0);
-     cv::GaussianBlur(orientation_weights, orientation_weights,
-                      cv::Size(filter_lenght, filter_lenght), 0.0, 0.0);
+     // const int filter_lenght = 5;
+     // cv::GaussianBlur(connectivity_weights, connectivity_weights,
+     //                  cv::Size(filter_lenght, filter_lenght), 0, 0);
+     // cv::GaussianBlur(orientation_weights, orientation_weights,
+     //                  cv::Size(filter_lenght, filter_lenght), 0.0, 0.0);
      /*
      // morphological
      int erosion_size = 5;
