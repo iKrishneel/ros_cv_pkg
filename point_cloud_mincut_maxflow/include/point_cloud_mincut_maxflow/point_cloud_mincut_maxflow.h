@@ -15,9 +15,16 @@
 #include <pcl/correspondence.h>
 #include <pcl/features/normal_3d_omp.h>
 
+#include <boost/graph/grid_graph.hpp>
+#include <boost/graph/boykov_kolmogorov_max_flow.hpp>
+#include <boost/graph/iteration_macros.hpp>
+#include <boost/graph/adjacency_list.hpp>
+
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
+// #include <point_cloud_mincut_maxflow/graph.h>
 
 #include <omp.h>
+#include <string>
 
 class PointCloudMinCutMaxFlow {
    
@@ -32,7 +39,47 @@ class PointCloudMinCutMaxFlow {
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_mask_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
-    int num_threads_;
+    typedef boost::adjacency_list_traits<
+       boost::vecS, boost::vecS, boost::directedS > Traits;
+    typedef boost::property<boost::vertex_predecessor_t,
+                            Traits::edge_descriptor> VertexPredecessor;
+    typedef boost::property<boost::vertex_distance_t, int32_t,
+                           VertexPredecessor> VertexDistance;
+    typedef boost::property<boost::vertex_color_t,
+                           boost::default_color_type,
+                           VertexDistance> VertexColor;
+    typedef boost::property< boost::vertex_index_t, int32_t,
+                            VertexColor>  VertexIndex;
+    typedef boost::property< boost::vertex_name_t, std::string,
+                        VertexIndex > VertexName;
+    typedef boost::property<boost::edge_reverse_t,
+                           Traits::edge_descriptor > EdgeReverse;
+    typedef boost::property<boost::edge_residual_capacity_t, double,
+                           EdgeReverse> EdgeResidualCapacity;
+    typedef boost::property<boost::edge_capacity_t, double,
+                            EdgeResidualCapacity> EdgeCapacity;
+    typedef boost::adjacency_list<boost::vecS, boost::vecS,
+                                  boost::directedS, VertexName,
+                                  EdgeCapacity> Graph;
+
+    typedef boost::property_map<Graph,
+                                boost::edge_capacity_t >::type CapacityMap;
+    typedef boost::property_map<Graph,
+                                boost::edge_reverse_t>::type ReverseEdgeMap;
+    typedef Traits::vertex_descriptor VertexDescriptor;
+    typedef boost::graph_traits<Graph>::edge_descriptor EdgeDescriptor;
+    typedef boost::graph_traits<Graph>::out_edge_iterator OutEdgeIterator;
+    typedef boost::graph_traits<Graph>::vertex_iterator VertexIterator;
+    typedef boost::property_map<
+       Graph, boost::edge_residual_capacity_t>::type ResidualCapacityMap;
+    typedef boost::property_map<Graph, boost::vertex_index_t>::type IndexMap;
+    typedef boost::graph_traits< Graph>::in_edge_iterator InEdgeIterator;
+    typedef boost::shared_ptr<Graph> GraphPtr;
+
+    std::vector<VertexDescriptor> vertices_;
+    std::vector<std::set<int> > edge_marker_;
+    VertexDescriptor source_;
+    VertexDescriptor sink_;
    
  protected:
     ros::Publisher pub_cloud_;
@@ -42,6 +89,10 @@ class PointCloudMinCutMaxFlow {
     void onInit();
     void subscribe();
     void unsubscribe();
+
+    int num_threads_;
+    int neigbour_size_;
+    bool is_search_;
    
  public:
     typedef pcl::PointXYZRGB PointT;
@@ -49,6 +100,19 @@ class PointCloudMinCutMaxFlow {
     void callback(
        const sensor_msgs::PointCloud2::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
+    bool nearestNeigbourSearch(
+       GraphPtr, const pcl::PointCloud<PointT>::Ptr, const int,
+       std::vector<pcl::PointIndices> &);
+    void makeAdjacencyGraph(
+      GraphPtr graph, const pcl::PointCloud<PointT>::Ptr,
+      const pcl::PointCloud<PointT>::Ptr);
+    void addEdgeToGraph(
+       GraphPtr graph, const int, const int, const float);
+    void assembleLabels(
+       std::vector<pcl::PointIndices> &, GraphPtr,
+       const ResidualCapacityMap &,
+       const pcl::PointCloud<PointT>::Ptr, const float);
+   
 };
 
 
