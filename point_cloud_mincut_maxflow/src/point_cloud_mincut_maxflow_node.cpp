@@ -124,17 +124,6 @@ void PointCloudMinCutMaxFlow::makeAdjacencyGraph(
     
     this->source_ = this->vertices_[cloud->size()];
     this->sink_ = this->vertices_[cloud->size() + sizeof(char)];
-
-
-    // TODO(HERE):  Make parallel
-    for (int i = 0; i < cloud->size(); i++) {
-       float src_weight = 0.80f;
-       // float sink_weight = neigbour_weights[i];
-       float sink_weight = 23.50f;
-       
-       this->addEdgeToGraph(static_cast<int>(source_), i, src_weight);
-       this->addEdgeToGraph(i, static_cast<int>(sink_), sink_weight);
-    }
     
     //! get neigbours and add edge
     std::vector<float> neigbour_weights;
@@ -145,6 +134,18 @@ void PointCloudMinCutMaxFlow::makeAdjacencyGraph(
           ROS_ERROR("ERROR: NEIGBHOUR SEARCH FAILED");
           return;
        }
+    }
+
+    // TODO(HERE):  Make parallel
+    for (int i = 0; i < cloud->size(); i++) {
+       float src_weight = 0.80f;
+       float sink_weight = neigbour_weights[i];
+       // float sink_weight = 23.50f;
+
+       std::cout << "SINK: " << sink_weight << std::endl;
+       
+       this->addEdgeToGraph(static_cast<int>(source_), i, src_weight);
+       this->addEdgeToGraph(i, static_cast<int>(sink_), sink_weight);
     }
 }
 
