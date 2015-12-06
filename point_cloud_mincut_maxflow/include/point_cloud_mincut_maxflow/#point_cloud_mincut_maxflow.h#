@@ -80,7 +80,7 @@ class PointCloudMinCutMaxFlow {
     typedef typename boost::graph_traits<
        Graph>::adjacency_iterator AdjacencyIterator;
     boost::shared_ptr<CapacityMap> capacity_;
-    boost::shared_ptr<ReverseEdgeMap> reverse_edges_;
+    oboost::shared_ptr<ReverseEdgeMap> reverse_edges_;
    
     std::vector<VertexDescriptor> vertices_;
     std::vector<std::set<int> > edge_marker_;
