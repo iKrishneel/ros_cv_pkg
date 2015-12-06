@@ -63,23 +63,23 @@ void PointCloudMinCutMaxFlow::callback(
     
     
     GraphPtr graph = GraphPtr(new Graph);
-    // this->graph_ = GraphPtr(new Graph);
+    this->graph_ = GraphPtr(new Graph);
     this->makeAdjacencyGraph(graph, cloud, mask_cloud);
 
     std::cout << "\033[34m Graph Build \033[0m" << std::endl;
     
     ResidualCapacityMap residual_capacity = boost::get(
-       boost::edge_residual_capacity, *graph);
+       boost::edge_residual_capacity, *graph_);
 
     std::cout << "\033[34m Capacity Done \033[0m" << std::endl;
     std::cout << "S-T Info: " << source_ << "\t"
               << sink_ << std::endl;
-    std::cout << "Graph Info: " << boost::num_edges(*graph) << "\t"
-              << boost::num_vertices(*graph)<< std::endl;
+    std::cout << "Graph Info: " << boost::num_edges(*graph_) << "\t"
+              << boost::num_vertices(*graph_)<< std::endl;
     
     
     double max_flow = boost::boykov_kolmogorov_max_flow(
-       *graph, this->source_, this->sink_);
+       *graph_, this->source_, this->sink_);
     std::cout << "DONE: " << max_flow  << std::endl;
     
 }
@@ -102,7 +102,7 @@ void PointCloudMinCutMaxFlow::makeAdjacencyGraph(
 
     // TODO(HERE):  Make parallel
     for (int i = 0; i < num_size; i++) {
-       this->vertices_[i] = boost::add_vertex(*graph);
+       this->vertices_[i] = boost::add_vertex(*graph_);
     }
 
     this->source_ = this->vertices_[cloud->size()];
@@ -114,7 +114,7 @@ void PointCloudMinCutMaxFlow::makeAdjacencyGraph(
     std::vector<float> neigbour_weights;
     if (this->is_search_) {
        bool is_search_ok = this->nearestNeigbourSearch(
-          graph, mask_cloud, this->neigbour_size_, neigbour_weights);
+          graph_, mask_cloud, this->neigbour_size_, neigbour_weights);
        if (!is_search_ok || neigbour_weights.empty()) {
           ROS_ERROR("ERROR: NEIGBHOUR SEARCH FAILED");
           return;
@@ -126,10 +126,10 @@ void PointCloudMinCutMaxFlow::makeAdjacencyGraph(
        float src_weight = 0.80f;
        // float sink_weight = neigbour_weights[i];
        float sink_weight = 0.50f;
-       this->addEdgeToGraph(graph, static_cast<int>(source_), i, src_weight);
-       // this->addEdgeToGraph(graph, i, static_cast<int>(source_), src_weight);
-       this->addEdgeToGraph(graph, static_cast<int>(sink_), i, sink_weight);
-       // this->addEdgeToGraph(graph, i, static_cast<int>(sink_), sink_weight);
+       this->addEdgeToGraph(graph_, static_cast<int>(source_), i, src_weight);
+       // this->addEdgeToGraph(graph_, i, static_cast<int>(source_), src_weight);
+       this->addEdgeToGraph(graph_, static_cast<int>(sink_), i, sink_weight);
+       // this->addEdgeToGraph(graph_, i, static_cast<int>(sink_), sink_weight);
     }
 
 }
@@ -169,8 +169,8 @@ bool PointCloudMinCutMaxFlow::nearestNeigbourSearch(
              // weight difference
              float weight = 1.0f - (
                 abs(cloud->points[i].r - cloud->points[j].r) / 255.0f);
-             this->addEdgeToGraph(graph, i, point_idx_search[j], weight);
-             this->addEdgeToGraph(graph, point_idx_search[j], i, weight);
+             this->addEdgeToGraph(graph_, i, point_idx_search[j], weight);
+             this->addEdgeToGraph(graph_, point_idx_search[j], i, weight);
              n_weights += weight;
           }
           n_weights /= static_cast<float>(point_idx_search.size());
@@ -197,9 +197,9 @@ void PointCloudMinCutMaxFlow::addEdgeToGraph(
     bool edge_was_added;
     bool reverse_edge_was_added = true;
     boost::tie(edge_des, edge_was_added) = boost::add_edge(
-       this->vertices_[source], this->vertices_[sink], *graph);
+       this->vertices_[source], this->vertices_[sink], *graph_);
     boost::tie(reverse_edge, reverse_edge_was_added) = boost::add_edge(
-       this->vertices_[sink], this->vertices_[source], *graph);
+       this->vertices_[sink], this->vertices_[source], *graph_);
     if (!edge_was_added || !reverse_edge_was_added) {
        ROS_ERROR("ERROR: EDGE ADD FAILED");
        return;
@@ -224,7 +224,7 @@ void PointCloudMinCutMaxFlow::assembleLabels(
     OutEdgeIterator edge_iter;
     OutEdgeIterator edge_end;
     for (boost::tie(edge_iter, edge_end) = boost::out_edges(
-            this->source_, *graph); edge_iter != edge_end; edge_iter++) {
+            this->source_, *graph_); edge_iter != edge_end; edge_iter++) {
        if (labels[edge_iter->m_target] == 1) {
           if (residual_capacity[*edge_iter] > epsilon) {
              clusters[1].indices.push_back(static_cast<int>(

@@ -13,6 +13,7 @@
 #include <pcl/point_types.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/correspondence.h>
+#include <pcl/filters/filter_indices.h>
 #include <pcl/features/normal_3d_omp.h>
 
 #include <boost/graph/grid_graph.hpp>
@@ -75,7 +76,8 @@ class PointCloudMinCutMaxFlow {
     typedef boost::property_map<Graph, boost::vertex_index_t>::type IndexMap;
     typedef boost::graph_traits< Graph>::in_edge_iterator InEdgeIterator;
     typedef boost::shared_ptr<Graph> GraphPtr;
-
+    GraphPtr graph_;
+   
     std::vector<VertexDescriptor> vertices_;
     std::vector<std::set<int> > edge_marker_;
     VertexDescriptor source_;
@@ -93,6 +95,8 @@ class PointCloudMinCutMaxFlow {
     int num_threads_;
     int neigbour_size_;
     bool is_search_;
+
+    int icounter;
    
  public:
     typedef pcl::PointXYZRGB PointT;
@@ -102,7 +106,7 @@ class PointCloudMinCutMaxFlow {
        const sensor_msgs::PointCloud2::ConstPtr &);
     bool nearestNeigbourSearch(
        GraphPtr, const pcl::PointCloud<PointT>::Ptr, const int,
-       std::vector<pcl::PointIndices> &);
+       std::vector<float> &);
     void makeAdjacencyGraph(
       GraphPtr graph, const pcl::PointCloud<PointT>::Ptr,
       const pcl::PointCloud<PointT>::Ptr);
