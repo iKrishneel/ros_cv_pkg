@@ -56,12 +56,6 @@ void PointCloudMinCutMaxFlow::callback(
        *cloud, *mask_cloud, removed_index);
     *cloud = *mask_cloud;
     
-    
-    std::cout << "DOING \t" << cloud->size() << std::endl;
-    std::cout << num_threads_ << "\t" << neigbour_size_ << "\t"
-              << is_search_ << std::endl;
-
-    
     this->graph_ = GraphPtr(new Graph);
     this->makeAdjacencyGraph(cloud, mask_cloud);
 
@@ -70,13 +64,12 @@ void PointCloudMinCutMaxFlow::callback(
     ResidualCapacityMap residual_capacity = boost::get(
        boost::edge_residual_capacity, *graph_);
 
+#ifdef DEBUG
     std::cout << "\033[34m Capacity Done \033[0m" << std::endl;
     std::cout << "S-T Info: " << source_ << "\t"
               << sink_ << std::endl;
     std::cout << "Graph Info: " << boost::num_edges(*graph_) << "\t"
               << boost::num_vertices(*graph_)<< std::endl;
-
-
     std::cout << "c flow values:" << std::endl;
     boost::property_map < Graph, boost::edge_capacity_t >::type
        capacity = boost::get(boost::edge_capacity, *graph_);
@@ -86,18 +79,14 @@ void PointCloudMinCutMaxFlow::callback(
          u_iter != u_end; ++u_iter) {
        for (boost::tie(ei, e_end) = boost::out_edges(*u_iter, *graph_);
             ei != e_end; ++ei) {
-          // if (capacity[*ei] > 0) {
-             // std::cout << "Capacity: " << capacity[*ei] << std::endl;
-          
              std::cout << "f " << *u_iter << " " << target(*ei, *graph_) << " "
                        << (capacity[*ei] - residual_capacity[*ei])
                        << std::endl;
-             // }
        }
     }
-
+#endif
     
-       double max_flow = boost::boykov_kolmogorov_max_flow(
+    double max_flow = boost::boykov_kolmogorov_max_flow(
        *graph_, this->source_, this->sink_);
     std::cout << "DONE: " << max_flow  << std::endl;
     
@@ -146,28 +135,17 @@ void PointCloudMinCutMaxFlow::makeAdjacencyGraph(
        this->addEdgeToGraph(static_cast<int>(source_), i, src_weight);
        this->addEdgeToGraph(i, static_cast<int>(sink_), sink_weight);
     }
-
-    std::cout << "TMP GRAPH SIZE 1: " <<
-       boost::num_edges(*graph_) << "\t"
-              << boost::num_vertices(*graph_) << std::endl;
-    
-    
     
     //! get neigbours and add edge
     std::vector<float> neigbour_weights;
-    // if (this->is_search_) {
+    if (this->is_search_) {
        bool is_search_ok = this->nearestNeigbourSearch(
           mask_cloud, this->neigbour_size_, neigbour_weights);
        if (!is_search_ok || neigbour_weights.empty()) {
           ROS_ERROR("ERROR: NEIGBHOUR SEARCH FAILED");
           return;
        }
-       // }
-
-      
-    std::cout << "TMP GRAPH SIZE: " <<
-       boost::num_edges(*graph_) << "\t"
-              << boost::num_vertices(*graph_) << std::endl;
+    }
 }
 
 bool PointCloudMinCutMaxFlow::nearestNeigbourSearch(
@@ -198,12 +176,9 @@ bool PointCloudMinCutMaxFlow::nearestNeigbourSearch(
              // weight difference
              float weight = 1.0f - (
                 abs(cloud->points[i].r - cloud->points[j].r) / 255.0f);
-
              if (isnan(weight)) {
-                std::cout << "IS NAN: " << i << "\t" << j << std::endl;
                 weight = 0.0f;
              }
-             
              this->addEdgeToGraph(i, point_idx_search[j], weight);
              this->addEdgeToGraph(point_idx_search[j], i, weight);
              n_weights += weight;
@@ -220,10 +195,7 @@ void PointCloudMinCutMaxFlow::addEdgeToGraph(
     const int source, const int sink, const float weight) {
     std::set<int>::iterator iter = this->edge_marker_[source].find(sink);
     if (iter != this->edge_marker_[source].end()) {
-       // ROS_WARN("ERROR: EDGE NOT ADDED, %d \t %d", source, sink);
        return;
-    } else {
-       // ROS_INFO("INFO: EDGE ADDED, %d \t %d", source, sink);
     }
     EdgeDescriptor edge_descriptor;
     EdgeDescriptor reverse_edge;
