@@ -1,10 +1,13 @@
 <launch>
+
+  <arg name="input" default="/camera/rgb/image_rect_color" />
+  
   <node pkg="image_optical_flow" type="image_optical_flow_node"
 	name="image_optical_flow" output="screen">
-    <remap from="input" to="/camera/rgb/image_rect_color"/>
+    <remap from="input" to="$(arg input)"/>
     <remap from="target" to="/image_optical_flow/output/image"/>
   </node>
-  <node pkg="image_view" type="image_view" name="image_view" output="screen">
+  <node pkg="image_view" type="image_view" name="optical_flow_view" output="screen">
     <remap from="image" to="/image_optical_flow/output/image" />
   </node>
 </launch>

@@ -174,7 +174,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
         const pcl::PointCloud<PointT>::Ptr,
         const pcl::PointCloud<pcl::Normal>::Ptr,
         const pcl::PointXYZRGBA &,
-        const Eigen::Vector4f, cv::Mat &);
+        const Eigen::Vector4f, const int, cv::Mat &);
     void organizedMinCutMaxFlowSegmentation(
        pcl::PointCloud<PointT>::Ptr, const int);
   
@@ -187,7 +187,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr, const std_msgs::Header);
 
-    float whiteNoiseKernel(const float);
+  float whiteNoiseKernel(const float, const float = 0.0f, const float = 0.0f);
 
     void generateFeatureSaliencyMap(
         const cv::Mat &, cv::Mat &);
@@ -209,14 +209,6 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
         Eigen::Vector4f, Eigen::Vector4f,
         const float = 0.0f);
     
-    virtual void pointCloudEdge(
-       pcl::PointCloud<PointT>::Ptr,
-       const cv::Mat &, const int = 50);
-    void computeEdgeCurvature(
-       const cv::Mat &,
-       const std::vector<std::vector<cv::Point> > &contours,
-       std::vector<std::vector<cv::Point> > &,
-       std::vector<std::vector<EdgeNormalDirectionPoint> >&);
     template<class T>
     void estimatePointCloudNormals(
        const pcl::PointCloud<PointT>::Ptr,
@@ -227,10 +219,6 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
        pcl::PointCloud<PointT>::Ptr,
        const int);
    
-    void mlsSmoothPointCloud(
-        const pcl::PointCloud<PointT>::Ptr,
-        pcl::PointCloud<PointT>::Ptr,
-        pcl::PointCloud<pcl::Normal>::Ptr);
 };
 
 

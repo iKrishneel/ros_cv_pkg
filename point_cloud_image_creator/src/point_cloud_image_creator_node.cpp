@@ -6,6 +6,7 @@
 
 PointCloudImageCreator::PointCloudImageCreator() {
     pnh_.getParam("mask_image", this->is_mask_image_);
+    pnh_.getParam("roi_image", this->is_roi_);
     this->subsribe();
     this->onInit();
 }
@@ -37,8 +38,10 @@ void PointCloudImageCreator::subsribe() {
     this->sub_cloud_ = this->pnh_.subscribe(
        "input", 1, &PointCloudImageCreator::cloudCallback, this);
 
-    this->sub_image_ = this->pnh_.subscribe(
-       "in_image", 1, &PointCloudImageCreator::imageCallback, this);
+    if (is_mask_image_) {
+      this->sub_image_ = this->pnh_.subscribe(
+          "in_image", 1, &PointCloudImageCreator::imageCallback, this);
+    }
 }
 
 void PointCloudImageCreator::cloudCallback(
@@ -78,17 +81,18 @@ void PointCloudImageCreator::cloudCallback(
        pcl::toROSMsg(*cloud, ros_cloud);
        ros_cloud.header = cloud_msg->header;
        pub_cloud_.publish(ros_cloud);
-       
-       // iimage_msg->header = cloud_msg->header;
-       // iimage_msg->encoding = sensor_msgs::image_encodings::BGR8;
-       // iimage_msg->image = interpolate_img.clone();
 
-       // cv_bridge::CvImagePtr image_msg(new cv_bridge::CvImage);
-       // image_msg->header = cloud_msg->header;
-       // image_msg->encoding = sensor_msgs::image_encodings::BGR8;
-       // image_msg->image = img_out.clone();
-       // pub_image_.publish(image_msg->toImageMsg());
-       // pub_iimage_.publish(iimage_msg->toImageMsg());
+       cv_bridge::CvImagePtr iimage_msg(new cv_bridge::CvImage);
+       iimage_msg->header = cloud_msg->header;
+       iimage_msg->encoding = sensor_msgs::image_encodings::BGR8;
+       iimage_msg->image = interpolate_img.clone();
+
+       cv_bridge::CvImagePtr image_msg(new cv_bridge::CvImage);
+       image_msg->header = cloud_msg->header;
+       image_msg->encoding = sensor_msgs::image_encodings::BGR8;
+       image_msg->image = img_out.clone();
+       pub_image_.publish(image_msg->toImageMsg());
+       pub_iimage_.publish(iimage_msg->toImageMsg());
     }
     this->header_ = cloud_msg->header;
 
@@ -277,10 +281,11 @@ cv::Rect PointCloudImageCreator::createMaskImages(
     rect.y = rect.y - padding;
     rect.width = rect.width + (2 * padding);
     rect.height = rect.height + (2 * padding);
-    
-    foreground = foreground(rect);
-    background = background(rect);
-    
+
+    if (this->is_roi_) {
+      foreground = foreground(rect);
+      background = background(rect);
+    }
     return rect;
 }
 

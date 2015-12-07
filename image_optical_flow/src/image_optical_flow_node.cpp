@@ -44,11 +44,11 @@ void ImageOpticalFlow::imageCallback(
     cv::cvtColor(image, img, CV_BGR2GRAY);
     cv::goodFeaturesToTrack(
        img, this->prev_pts_, 300, 0.01, 10, cv::Mat(), 3, false, 0.04);
-    if (icounter++ != 0) {
-       FeatureInfo info;
-       forwardBackwardMatchingAndFeatureCorrespondance(
-          this->prev_image_, image, info);
-    }
+    // if (icounter++ != 0) {
+    //    FeatureInfo info;
+    //    forwardBackwardMatchingAndFeatureCorrespondance(
+    //       this->prev_image_, image, info);
+    // }
     this->prev_image_ = cv_ptr->image.clone();
     
     ros::Duration(5).sleep();

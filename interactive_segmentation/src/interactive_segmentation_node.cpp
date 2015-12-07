@@ -140,6 +140,10 @@ void InteractiveSegmentation::callback(
          // just use the origin cloud and norm
          int k = 50;
          this->estimatePointCloudNormals<int>(cloud, normals, k, true);
+
+         // float k = 0.03f;
+         // this->estimatePointCloudNormals<float>(cloud, normals, k, false);
+         
          Eigen::Vector4f attention_normal = this->cloudMeanNormal(
             supervoxel_clusters.at(closest_surfel_index)->normals_);
          Eigen::Vector4f attention_centroid = centroid_pt.getVector4fMap();
@@ -149,7 +153,7 @@ void InteractiveSegmentation::callback(
 
          cv::Mat weight_map;
          this->surfelSamplePointWeightMap(cloud, normals, centroid_pt,
-                                          attention_normal, weight_map);
+                                          attention_normal, index_pos, weight_map);
          
          for (int i = 0; i < point_idx_search.size(); i++) {
            int idx = point_idx_search[i];
@@ -166,7 +170,7 @@ void InteractiveSegmentation::callback(
             /*
             cv::Mat sample_weight_map;
             Eigen::Vector4f idx_attn_normal = surfel_normals->points[
-               idx].getNormalVector4fMap();
+                idx].getNormalVector4fMap();
             this->surfelSamplePointWeightMap(cloud, normals, neigh_pt,
                                              idx_attn_normal,
                                              sample_weight_map);
@@ -226,6 +230,7 @@ void InteractiveSegmentation::callback(
                                                   prob_object_cloud,
                                                   prob_object_indices);
 
+       
         // TMP
         pcl::PointCloud<PointT>::Ptr cov_cloud(new pcl::PointCloud<PointT>);
         this->computePointCloudCovarianceMatrix(prob_object_cloud, cov_cloud);
@@ -268,11 +273,11 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
      const pcl::PointCloud<pcl::Normal>::Ptr normals,
      const pcl::PointXYZRGBA &centroid_pt,
      const Eigen::Vector4f attention_normal,
-     cv::Mat &weights
+     const int attention_index, cv::Mat &weights
      /*pcl::PointCloud<PointT>::Ptr weights*/) {
      if (cloud->empty() || normals->empty()) {
        return;
-     }
+     }     
      Eigen::Vector4f attention_centroid = centroid_pt.getVector4fMap();
      cv::Mat connectivity_weights;
      cv::Mat orientation_weights;
@@ -286,10 +291,11 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
        float connection = (current_pt - attention_centroid).dot(
            current_normal);
        if (connection <= 0.0f || isnan(connection)) {
-         connection = 0.0f;
+          connection = 0.0f;
        } else {
-         connection = cos(current_normal.dot(attention_normal))/
-             (1.0f * M_PI);
+         // connection = acos(current_normal.dot(attention_normal))/
+         //     (1.0f * M_PI);
+          connection = std::pow((current_normal.dot(attention_normal)), 2);
        }
        connectivity_weights.push_back(connection);
 
@@ -303,24 +309,34 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
        float scalar_prod = static_cast<float>(
            surfaceNormalVec.dot(viewPointVec));
        float angle = atan2(cross_norm, scalar_prod);
-       float view_pt_weight = angle/(2.0 * CV_PI);
-       view_pt_weight = std::exp(-2.0f * view_pt_weight);
-       view_pt_weight * this->whiteNoiseKernel(view_pt_weight);
+       float view_pt_weight = (CV_PI - angle)/(2.0 * CV_PI);
+
+       
+       // view_pt_weight = 1.0f / (1.0f + (view_pt_weight * view_pt_weight));
+       
+       // view_pt_weight = std::exp(-1.0f * view_pt_weight);
+       if (isnan(angle)) {
+          view_pt_weight = 0.0f;
+       }
+       
+       // view_pt_weight *= this->whiteNoiseKernel(view_pt_weight);
+       view_pt_weight *= this->whiteNoiseKernel(view_pt_weight, 0.0f, 0.50f);
        orientation_weights.push_back(view_pt_weight);
      }
+     
      cv::normalize(connectivity_weights, connectivity_weights, 0, 1,
                    cv::NORM_MINMAX, -1, cv::Mat());
      cv::normalize(orientation_weights, orientation_weights, 0, 1,
                    cv::NORM_MINMAX, -1, cv::Mat());
 
-     // smoothing
+     
+     // smoothing HERE
+     // const int filter_lenght = 5;
+     // cv::GaussianBlur(connectivity_weights, connectivity_weights,
+     //                  cv::Size(filter_lenght, filter_lenght), 0, 0);
+     // cv::GaussianBlur(orientation_weights, orientation_weights,
+     //                  cv::Size(filter_lenght, filter_lenght), 0.0, 0.0);
      /*
-     const int filter_lenght = 3;
-     cv::GaussianBlur(connectivity_weights, connectivity_weights,
-                      cv::Size(filter_lenght, filter_lenght), 0, 0);
-     cv::GaussianBlur(orientation_weights, orientation_weights,
-                      cv::Size(filter_lenght, filter_lenght), 0, 0);
-     */
      // morphological
      int erosion_size = 5;
      cv::Mat element = cv::getStructuringElement(
@@ -329,10 +345,9 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
          cv::Point(erosion_size, erosion_size));
      cv::dilate(connectivity_weights, connectivity_weights, element);
      cv::dilate(orientation_weights, orientation_weights, element);
-
-     // cv::erode(connectivity_weights, connectivity_weights, element);
-     // cv::erode(orientation_weights, orientation_weights, element);
-     
+     cv::erode(connectivity_weights, connectivity_weights, element);
+     cv::erode(orientation_weights, orientation_weights, element);
+     */
      
      // convolution of distribution
      // pcl::copyPointCloud<PointT, PointT>(*cloud, *weights);
@@ -341,9 +356,11 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
        float pix_val = connectivity_weights.at<float>(i, 0);
        connectivity_weights.at<float>(i, 0) = pix_val *
            this->whiteNoiseKernel(pix_val);
-       pix_val *= this->whiteNoiseKernel(pix_val);
+       // pix_val *= this->whiteNoiseKernel(pix_val);
        pix_val *= orientation_weights.at<float>(i, 0);
 
+       // pix_val = orientation_weights.at<float>(i, 0);
+       
        if (isnan(pix_val)) {
           pix_val = 0.0f;
        }
@@ -366,9 +383,10 @@ bool InteractiveSegmentation::attentionSurfelRegionPointCloudMask(
     }
     // removed zero points
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+    const float threshold = 0.0f * 255.0f;
     for (int i = 0; i < weight_cloud->size(); i++) {
        PointT pt = weight_cloud->points[i];
-       if (pt.r > 0 && pt.b > 0 && pt.g > 0 &&
+       if (pt.r > threshold && pt.b > threshold && pt.g > threshold &&
            !isnan(pt.x) && !isnan(pt.y) && !isnan(pt.z)) {
           cloud->push_back(pt);
        }
@@ -429,8 +447,8 @@ void InteractiveSegmentation::objectMinCutSegmentation(
     segmentation.setForegroundPoints(object_points);
 
     const float sigma = 0.0001f;
-    const float radius = 0.05f;
-    const int k = 30;
+    const float radius = 0.1f;
+    const int k = 10;
     const float source_weight = 0.8f;
 
     segmentation.setSigma(sigma);
@@ -622,6 +640,8 @@ void InteractiveSegmentation::computePointCloudCovarianceMatrix(
     std::vector<float> curvature(cloud->size());
     float *curvature_ptr = &curvature[0];
 
+    std::vector<Eigen::Vector4f> principle_axis;
+    
     //******************
     // TODO(HERE): how to keep the attention_pt
     Eigen::Vector4f center;
@@ -648,8 +668,18 @@ void InteractiveSegmentation::computePointCloudCovarianceMatrix(
              covariance_matrix);
 
           Eigen::Vector3f eigen_vals;  // 2 > 1 > 0
-          pcl::eigen33(covariance_matrix, eigen_vals);
+          Eigen::Matrix3f eigen_vects;
+          pcl::eigen33(covariance_matrix, eigen_vects, eigen_vals);
 
+
+          // std::cout << eigen_vects(0, 2) << std::endl;
+          // std::cout << eigen_vects << "\n\n";
+          Eigen::Vector4f vec = Eigen::Vector4f(eigen_vects(0, 2),
+                                                eigen_vects(1, 2),
+                                                eigen_vects(2, 2), 1.0f);
+          principle_axis.push_back(vec);
+          
+          
           // eigen entropy
           float sum_entropy = 0.0f;
           float sum_eigen = 0.0f;
@@ -659,6 +689,8 @@ void InteractiveSegmentation::computePointCloudCovarianceMatrix(
           }
           eigen_entropy_ptr[i] = sum_entropy * -1.0f;
           sum_of_eigens_ptr[i] = sum_eigen;
+          // sum_of_eigens_ptr[i] = (eigen_vals(0) - eigen_vals(2)) / eigen_vals(1);
+          
           curvature_ptr[i] = (eigen_vals(0) / sum_eigen);
 
           // ****** TEMP
@@ -673,17 +705,34 @@ void InteractiveSegmentation::computePointCloudCovarianceMatrix(
     
     // pcl::PointCloud<PointT>::Ptr new_cloud(new pcl::PointCloud<PointT>);
     for (int i = 0; i < cloud->size(); i++) {
-       float dist_diff_sum = sum_of_eigens_ptr[index] - sum_of_eigens_ptr[i];
+      float dist_diff_sum = std::pow(sum_of_eigens_ptr[index] - sum_of_eigens_ptr[i], 2);
+      dist_diff_sum += dist_diff_sum;
+      dist_diff_sum = std::sqrt(dist_diff_sum);
+      // std::cout << "DIST: " << dist_diff_sum  << "\t";
        
-       float dist_diff_cur = curvature_ptr[index] / curvature_ptr[i];
+      float dist_diff_cur = std::pow(curvature_ptr[index] - curvature_ptr[i], 2);
+      dist_diff_cur += dist_diff_cur;
+      dist_diff_cur = std::sqrt(dist_diff_cur);
+      
        float dist_diff_ent = eigen_entropy_ptr[index] / eigen_entropy_ptr[i];
 
        dist_diff_sum += (dist_diff_cur + dist_diff_ent);
-       dist_diff_sum = std::sqrt(dist_diff_sum);
-       
-       float prob_sum = 1.0f/(1.0f + (dist_diff_sum * dist_diff_sum));
+       // dist_diff_sum = (dist_diff_cur);
+       // std::cout << "DIST: " << dist_diff_sum  << "\n";
+
+
+
+       double angle = pcl::getAngle3D(principle_axis[index], principle_axis[i]);
+       dist_diff_sum = angle;
+       float prob_sum = 1.0f/(1.0f + 0.5 * (dist_diff_sum * dist_diff_sum));
+
+
        // float prob_cur = 1.0f/(1.0f + (dist_diff_cur * dist_diff_cur));
        // float prob_ent = 1.0f/(1.0f + (dist_diff_ent * dist_diff_ent));
+       // if (angle < (M_PI / 2)) {
+       //   prob_sum = 0.0f;
+       // }
+       
        float prob = prob_sum;
        PointT pt = cloud->points[i];
        pt.r = prob * pt.r;
@@ -1026,165 +1075,6 @@ Eigen::Vector4f InteractiveSegmentation::cloudMeanNormal(
     return n_mean;
 }
 
-
-// NOT USED
-void InteractiveSegmentation::pointCloudEdge(
-    pcl::PointCloud<PointT>::Ptr cloud,
-    const cv::Mat &image, const int contour_thresh) {
-    if (image.empty()) {
-       ROS_ERROR("-- Cannot eompute edge of empty image");
-       return;
-    }
-    cv::Mat edge_img;
-    cv::GaussianBlur(image, edge_img, cv::Size(3, 3), 1);
-    cv::Canny(edge_img, edge_img, 50, 150, 3, true);
-    std::vector<cv::Vec4i> hierarchy;
-    std::vector<std::vector<cv::Point> > contours;
-    cv::Mat cont_img = cv::Mat::zeros(image.size(), CV_8UC3);
-    cv::findContours(edge_img, contours, hierarchy, CV_RETR_LIST,
-                     CV_CHAIN_APPROX_NONE, cv::Point(0, 0));
-    std::vector<std::vector<cv::Point> > selected_contours;
-    for (int i = 0; i < contours.size(); i++) {
-       if (cv::contourArea(contours[i]) > contour_thresh) {
-          selected_contours.push_back(contours[i]);
-          cv::drawContours(cont_img, contours, i, cv::Scalar(0, 255, 0), 2);
-          for (int j = 0; j < contours[i].size(); j++) {
-             cv::circle(cont_img, contours[i][j], 1,
-                        cv::Scalar(255, 0, 0), -1);
-          }
-       }
-    }
-    std::vector<std::vector<EdgeNormalDirectionPoint> > normal_points;
-    std::vector<std::vector<cv::Point> > tangents;
-    this->computeEdgeCurvature(
-       cont_img, selected_contours, tangents, normal_points);
-    
-    cv::imshow("Contours", cont_img);
-    cv::waitKey(3);
-    
-    // pcl::PointCloud<pcl::Normal>::Ptr normals(
-    //    new pcl::PointCloud<pcl::Normal>);
-    // this->estimatePointCloudNormals(cloud, normals, 0.03f, false);
-    pcl::PointCloud<PointT>::Ptr concave_cloud(new pcl::PointCloud<PointT>);
-    for (int j = 0; j < normal_points.size(); j++) {
-       for (int i = 0; i < normal_points[j].size(); i++) {
-          EdgeNormalDirectionPoint point_info = normal_points[j][i];
-          cv::Point2f n_pt1 = point_info.normal_pt1;
-          cv::Point2f n_pt2 = point_info.normal_pt2;
-          cv::Point2f e_pt = (n_pt1 + n_pt2);
-          e_pt = cv::Point2f(e_pt.x/2, e_pt.y/2);
-          int ept_index = e_pt.x + (e_pt.y * image.cols);
-          int pt1_index = n_pt1.x + (n_pt1.y * image.cols);
-          int pt2_index = n_pt2.x + (n_pt2.y * image.cols);
-          
-          if (pt1_index > -1 && pt2_index > -1 &&  ept_index > -1 &&
-              pt1_index < static_cast<int>(cloud->size() + 1) &&
-              pt2_index < static_cast<int>(cloud->size() + 1) &&
-              ept_index < static_cast<int>(cloud->size() + 1)) {
-             Eigen::Vector3f ne_pt1 = cloud->points[pt1_index].getVector3fMap();
-             Eigen::Vector3f ne_pt2 = cloud->points[pt2_index].getVector3fMap();
-             Eigen::Vector3f ne_cntr = ((ne_pt1 - ne_pt2) / 2) + ne_pt2;
-             Eigen::Vector3f e_pt = cloud->points[ept_index].getVector3fMap();
-
-             
-             PointT pt = cloud->points[ept_index];
-             if (ne_cntr(2) < e_pt(2)
-                 /*|| isnan(e_pt(2)) || isnan(ne_cntr(2))*/) {
-                pt.r = 0;
-                pt.b = 0;
-                pt.g = 255;
-                concave_cloud->push_back(pt);
-             }             
-             /*
-             pcl::Normal n1 = normals->points[pt1_index];
-             pcl::Normal n2 = normals->points[pt2_index];
-             Eigen::Vector3f n1_vec = Eigen::Vector3f(
-                n1.normal_x, n1.normal_y, n1.normal_z);
-             Eigen::Vector3f n2_vec = Eigen::Vector3f(
-                n2.normal_x, n2.normal_y, n2.normal_z);
-             float cos_theta = n1_vec.dot(n2_vec) /
-                (n1_vec.norm() * n2_vec.norm());
-             float angle = std::acos(cos_theta);
-             std::cout << "Angle: " << angle * 180.0f/CV_PI << std::endl;
-             if (angle < CV_PI/3 && !isnan(angle)) {
-                PointT pt = cloud->points[ept_index];
-                pt.r = 255;
-                pt.b = 0;
-                pt.g = 0;
-                concave_cloud->push_back(pt);
-             }
-             */
-          }
-       }
-    }
-    cloud->clear();
-    pcl::copyPointCloud<PointT, PointT>(*concave_cloud, *cloud);
-}
-
-void InteractiveSegmentation::computeEdgeCurvature(
-    const cv::Mat &image,
-    const std::vector<std::vector<cv::Point> > &contours,
-    std::vector<std::vector<cv::Point> > &tangents,
-    std::vector<std::vector<EdgeNormalDirectionPoint> > &normal_points) {
-    if (contours.empty()) {
-       ROS_ERROR("-- no contours found");
-       return;
-    }
-    normal_points.clear();
-    cv::Mat img = image.clone();
-    for (int j = 0; j < contours.size(); j++) {
-       std::vector<cv::Point> tangent;
-       std::vector<float> t_gradient;
-       std::vector<EdgeNormalDirectionPoint> norm_tangt;
-       cv::Point2f edge_pt = contours[j].front();
-       cv::Point2f edge_tngt = contours[j].back() - contours[j][1];
-       tangent.push_back(edge_tngt);
-       float img_bw = (edge_tngt.y - edge_pt.y) / (edge_tngt.x - edge_pt.x);
-       t_gradient.push_back(img_bw);
-       const int neighbor_pts = 0;
-       if (contours[j].size() > 2) {
-          for (int i = sizeof(char) + neighbor_pts;
-               i < contours[j].size() - sizeof(char) - neighbor_pts;
-               i++) {
-             edge_pt = contours[j][i];
-             edge_tngt = contours[j][i-1-neighbor_pts] -
-                contours[j][i+1+neighbor_pts];
-            tangent.push_back(edge_tngt);
-            img_bw = (edge_tngt.y - edge_pt.y) / (edge_tngt.x - edge_pt.x);
-            t_gradient.push_back(img_bw);
-            cv::Point2f pt1 = edge_tngt + edge_pt;
-            cv::Point2f trans = pt1 - edge_pt;
-            cv::Point2f ortho_pt1 = edge_pt + cv::Point2f(-trans.y, trans.x);
-            cv::Point2f ortho_pt2 = edge_pt - cv::Point2f(-trans.y, trans.x);
-
-            float theta = std::atan2(ortho_pt1.y - ortho_pt2.y ,
-                                     ortho_pt1.x - ortho_pt2.x);
-            const float lenght = 10.0f;
-            float y1 = std::sin(theta) * lenght;
-            float x1 = std::cos(theta) * lenght;
-            float y2 = std::sin(CV_PI + theta) * lenght;
-            float x2 = std::cos(CV_PI + theta) * lenght;
-            
-            norm_tangt.push_back(EdgeNormalDirectionPoint(
-                                       ortho_pt1, ortho_pt2,
-                                       edge_pt - edge_tngt,
-                                       edge_pt + edge_tngt));
-
-
-            // cv::line(img, ortho_pt1, ortho_pt2, cv::Scalar(0, 255,
-            // 0), 1);
-            cv::line(img, cv::Point2f(x1, y1) + edge_pt,
-                     edge_pt + cv::Point2f(x2, y2), cv::Scalar(0, 255, 0), 1);
-            cv::line(img, edge_pt + edge_tngt, edge_pt -  edge_tngt,
-                     cv::Scalar(255, 0, 255), 1);
-          }
-      }
-       tangents.push_back(tangent);
-       normal_points.push_back(norm_tangt);
-    }
-    cv::imshow("tangent", img);
-}
-
 template<class T>
 void InteractiveSegmentation::estimatePointCloudNormals(
     const pcl::PointCloud<PointT>::Ptr cloud,
@@ -1207,42 +1097,17 @@ void InteractiveSegmentation::estimatePointCloudNormals(
     ne.compute(*normals);
 }
 
-void InteractiveSegmentation::mlsSmoothPointCloud(
-    const pcl::PointCloud<PointT>::Ptr cloud,
-    pcl::PointCloud<PointT>::Ptr scloud,
-    pcl::PointCloud<pcl::Normal>::Ptr normals) {
-    pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr mls_points(
-        new pcl::PointCloud<pcl::PointXYZRGBNormal>);
-    pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);
-    pcl::MovingLeastSquares<PointT, pcl::PointXYZRGBNormal> mls;
-    mls.setComputeNormals(true);
-    mls.setInputCloud(cloud);
-    mls.setPolynomialFit(true);
-    mls.setSearchMethod(tree);
-    mls.setSearchRadius(0.03);
-    mls.process(*mls_points);
-    for (int i = 0; i < mls_points->size(); i++) {
-      pcl::Normal norm;
-      norm.normal_x = mls_points->points[i].normal_x;
-      norm.normal_y = mls_points->points[i].normal_y;
-      norm.normal_z = mls_points->points[i].normal_z;
-      PointT pt;
-      pt.x = mls_points->points[i].x;
-      pt.y = mls_points->points[i].y;
-      pt.z = mls_points->points[i].z;
-      pt.r = mls_points->points[i].r;
-      pt.g = mls_points->points[i].g;
-      pt.b = mls_points->points[i].b;
-      normals->push_back(norm);
-      scloud->push_back(pt);
-    }
-}
 
 float InteractiveSegmentation::whiteNoiseKernel(
-    const float pix_val) {
-    float weight = 1.0f / (std::sqrt(2.0f * M_PI) *
-                           exp(-1.0f *  (pix_val)));
-    return weight;
+    const float z, const float N, const float sigma) {
+
+    float val = static_cast<float>(z - N);
+    return static_cast<double>((1.0/(sqrt(2.0 * M_PI)) * sigma) *
+                               exp(-((val * val) / (2*sigma*sigma))));
+  
+    // float weight = (1.0f / (std::sqrt(2.0f * M_PI))) *
+    //                        exp(-1.0f * (pix_val - centr_val));
+    // return weight;
 }
 
 void InteractiveSegmentation::organizedMinCutMaxFlowSegmentation(

@@ -14,7 +14,6 @@ ImageOpticalFlow::ImageOpticalFlow() :
 void ImageOpticalFlow::onInit() {
     this->pub_image_ = pnh_.advertise<sensor_msgs::Image>(
        "target", 1);
-   
 }
 
 void ImageOpticalFlow::subscribe() {
