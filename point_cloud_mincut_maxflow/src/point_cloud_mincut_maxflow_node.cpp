@@ -93,8 +93,8 @@ void PointCloudMinCutMaxFlow::callback(
        *graph_, this->source_, this->sink_);
 
     std::vector<pcl::PointIndices> clusters;
-    this->assembleLabels(clusters, this->graph_,
-                         residual_capacity, cloud, 0.0001);
+    this->assembleLabels(clusters, this->graph_, residual_capacity,
+                         cloud, 0.0001, cloud_msg->header);
     this->publishForegroundAndBackground(cloud, clusters, cloud_msg->header);
     
     std::cout << "DONE: " << max_flow  << std::endl;
@@ -229,7 +229,8 @@ void PointCloudMinCutMaxFlow::addEdgeToGraph(
 void PointCloudMinCutMaxFlow::assembleLabels(
     std::vector<pcl::PointIndices> &clusters, const GraphPtr graph,
     const ResidualCapacityMap &residual_capacity,
-    const pcl::PointCloud<PointT>::Ptr cloud, const float epsilon) {
+    const pcl::PointCloud<PointT>::Ptr cloud, const float epsilon,
+    const std_msgs::Header header) {
     std::vector<int> labels;
     labels.resize(cloud->size(), 0);
     for (int i = 0; i < cloud->size(); i++) {
@@ -252,6 +253,11 @@ void PointCloudMinCutMaxFlow::assembleLabels(
           }
        }
     }
+    jsk_recognition_msgs::ClusterPointIndices ros_indices;
+    ros_indices.cluster_indices = pcl_conversions::convertToROSPointIndices(
+       clusters, header);
+    ros_indices.header = header;
+    this->pub_indices_.publish(ros_indices);
 }
 
 void PointCloudMinCutMaxFlow::publishForegroundAndBackground(

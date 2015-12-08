@@ -37,4 +37,9 @@
     <remap from="is_search" to="/point_cloud_mincut_maxflow/is_search" />
     
   </node>
+
+  <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer" name="point_cloud_mincut_maxflow_decomposer">
+    <remap from="~input" to="voxelgrid/output" />
+    <remap from="~target" to="/point_cloud_mincut_maxflow/output/indices" />
+  </node>
 </launch>

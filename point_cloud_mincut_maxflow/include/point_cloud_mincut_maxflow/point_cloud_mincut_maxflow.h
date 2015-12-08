@@ -21,6 +21,7 @@
 #include <boost/graph/adjacency_list.hpp>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
+#include <jsk_recognition_utils/pcl_conversion_util.h>
 #include <std_msgs/Header.h>
 
 #include <omp.h>
@@ -120,8 +121,8 @@ class PointCloudMinCutMaxFlow {
        const int, const int, const float);
     void assembleLabels(
        std::vector<pcl::PointIndices> &, const GraphPtr,
-       const ResidualCapacityMap &,
-       const pcl::PointCloud<PointT>::Ptr, const float);
+       const ResidualCapacityMap &, const pcl::PointCloud<PointT>::Ptr,
+       const float, const std_msgs::Header);
     void publishForegroundAndBackground(
       const pcl::PointCloud<PointT>::Ptr,
       const std::vector<pcl::PointIndices> &,
