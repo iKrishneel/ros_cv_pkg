@@ -21,7 +21,7 @@
 #include <boost/graph/adjacency_list.hpp>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
-// #include <point_cloud_mincut_maxflow/graph.h>
+#include <std_msgs/Header.h>
 
 #include <omp.h>
 #include <string>
@@ -89,6 +89,8 @@ class PointCloudMinCutMaxFlow {
    
  protected:
     ros::Publisher pub_cloud_;
+    ros::Publisher pub_fgcloud_;
+    ros::Publisher pub_bgcloud_;
     ros::Publisher pub_obj_;
     ros::Publisher pub_indices_;
 
@@ -120,7 +122,10 @@ class PointCloudMinCutMaxFlow {
        std::vector<pcl::PointIndices> &, const GraphPtr,
        const ResidualCapacityMap &,
        const pcl::PointCloud<PointT>::Ptr, const float);
-   
+    void publishForegroundAndBackground(
+      const pcl::PointCloud<PointT>::Ptr,
+      const std::vector<pcl::PointIndices> &,
+      const std_msgs::Header);
 };
 
 

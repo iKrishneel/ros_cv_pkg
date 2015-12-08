@@ -14,8 +14,11 @@ PointCloudMinCutMaxFlow::PointCloudMinCutMaxFlow():
 void PointCloudMinCutMaxFlow::onInit() {
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/point_cloud_mincut_maxflow/output/cloud", 1);
-    this->pub_obj_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
-       "/point_cloud_mincut_maxflow/output/selected_probability", 1);
+    this->pub_fgcloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+       "/point_cloud_mincut_maxflow/output/foreground", 1);
+    this->pub_bgcloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+       "/point_cloud_mincut_maxflow/output/background", 1);
+    
     this->pub_indices_ = this->pnh_.advertise<
        jsk_recognition_msgs::ClusterPointIndices>(
           "/point_cloud_mincut_maxflow/output/indices", 1);
@@ -85,11 +88,16 @@ void PointCloudMinCutMaxFlow::callback(
        }
     }
 #endif
-    
+
     double max_flow = boost::boykov_kolmogorov_max_flow(
        *graph_, this->source_, this->sink_);
-    std::cout << "DONE: " << max_flow  << std::endl;
+
+    std::vector<pcl::PointIndices> clusters;
+    this->assembleLabels(clusters, this->graph_,
+                         residual_capacity, cloud, 0.0001);
+    this->publishForegroundAndBackground(cloud, clusters, cloud_msg->header);
     
+    std::cout << "DONE: " << max_flow  << std::endl;
 }
 
 void PointCloudMinCutMaxFlow::makeAdjacencyGraph(
@@ -116,8 +124,7 @@ void PointCloudMinCutMaxFlow::makeAdjacencyGraph(
     std::set<int> out_edges_marker;
     this->edge_marker_.clear();
     this->edge_marker_.resize(num_size, out_edges_marker);
-    
-    // TODO(HERE):  Make parallel
+
     for (int i = 0; i < num_size; i++) {
        this->vertices_[i] = boost::add_vertex(*graph_);
     }
@@ -136,13 +143,10 @@ void PointCloudMinCutMaxFlow::makeAdjacencyGraph(
        }
     }
 
-    // TODO(HERE):  Make parallel
     for (int i = 0; i < cloud->size(); i++) {
        float src_weight = 0.80f;
        float sink_weight = neigbour_weights[i];
        // float sink_weight = 23.50f;
-
-       std::cout << "SINK: " << sink_weight << std::endl;
        
        this->addEdgeToGraph(static_cast<int>(source_), i, src_weight);
        this->addEdgeToGraph(i, static_cast<int>(sink_), sink_weight);
@@ -159,11 +163,11 @@ bool PointCloudMinCutMaxFlow::nearestNeigbourSearch(
     pcl::KdTreeFLANN<PointT> kdtree;
     kdtree.setInputCloud(cloud);
     neigbour_weights.clear();
-    // neigbour_weights.reserve(cloud->size());
-    // float *nweight_ptr = &neigbour_weights[0];
-// #ifdef _OPENMP
-// #pragma omp parallel for num_threads(this->num_threads_) shared(nweight_ptr)
-// #endif
+    neigbour_weights.resize(cloud->size());
+    float *nweight_ptr = &neigbour_weights[0];
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(this->num_threads_) shared(nweight_ptr)
+#endif
     for (int i = 0; i < cloud->size(); i++) {
        std::vector<int> point_idx_search;
        std::vector<float> point_squared_distance;
@@ -185,8 +189,7 @@ bool PointCloudMinCutMaxFlow::nearestNeigbourSearch(
              n_weights += weight;
           }
           n_weights /= static_cast<float>(point_idx_search.size());
-          // nweight_ptr[i] = n_weights;
-          neigbour_weights.push_back(n_weights);
+          nweight_ptr[i] = n_weights;
        }
     }
     return true;
@@ -202,10 +205,16 @@ void PointCloudMinCutMaxFlow::addEdgeToGraph(
     EdgeDescriptor reverse_edge;
     bool edge_was_added;
     bool reverse_edge_was_added = true;
-    boost::tie(edge_descriptor, edge_was_added) = boost::add_edge(
-       this->vertices_[source], this->vertices_[sink], *graph_);
-    boost::tie(reverse_edge, reverse_edge_was_added) = boost::add_edge(
-       this->vertices_[sink], this->vertices_[source], *graph_);
+#ifdef _OPENMP
+#pragma omp critical
+#endif
+    {
+             boost::tie(edge_descriptor, edge_was_added) = boost::add_edge(
+             this->vertices_[source], this->vertices_[sink], *graph_);
+             boost::tie(reverse_edge, reverse_edge_was_added) = boost::add_edge(
+             this->vertices_[sink], this->vertices_[source], *graph_);
+          }
+    
     if (!edge_was_added || !reverse_edge_was_added) {
        ROS_ERROR("ERROR: EDGE ADD FAILED");
        return;
@@ -245,6 +254,40 @@ void PointCloudMinCutMaxFlow::assembleLabels(
     }
 }
 
+void PointCloudMinCutMaxFlow::publishForegroundAndBackground(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const std::vector<pcl::PointIndices> &clusters,
+    const std_msgs::Header header) {
+    if (cloud->empty()) {
+      return;
+    }
+    pcl::PointCloud<PointT>::Ptr fg_cloud(new pcl::PointCloud<PointT>);
+    pcl::PointCloud<PointT>::Ptr bg_cloud(new pcl::PointCloud<PointT>);
+    for (int i = 0; i < clusters[0].indices.size(); i++) {
+       int index = clusters[0].indices[i];
+       PointT pt = cloud->points[index];
+       pt.r = 255;
+       pt.g = 0;
+       pt.b = 0;
+       bg_cloud->push_back(pt);
+    }
+    for (int i = 0; i < clusters[1].indices.size(); i++) {
+       int index = clusters[1].indices[i];
+       PointT pt = cloud->points[index];
+       pt.r = 0;
+       pt.g = 255;
+       pt.b = 0;
+       fg_cloud->push_back(pt);
+    }
+    sensor_msgs::PointCloud2 ros_fgcloud;
+    pcl::toROSMsg(*fg_cloud, ros_fgcloud);
+    ros_fgcloud.header = header;
+    sensor_msgs::PointCloud2 ros_bgcloud;
+    pcl::toROSMsg(*bg_cloud, ros_bgcloud);
+    ros_bgcloud.header = header;
+    this->pub_fgcloud_.publish(ros_fgcloud);
+    this->pub_bgcloud_.publish(ros_bgcloud);
+}
 
 int main(int argc, char *argv[]) {
     ros::init(argc, argv, "point_cloud_mincut_maxflow");
