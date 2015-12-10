@@ -846,8 +846,15 @@ void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
     const float search_lenght = 0.15f;  // 15cm
     float distance = static_cast<float>(att_cam.norm());
 
-    for (int i = 0; i < 10; i++) {
-      Eigen::Vector3f region_pt = lines_cloud->points[i].getVector3fMap();
+    const float radius = 0.01f;
+    pcl::KdTreeFLANN<PointT> kdtree;
+    kdtree.setInputCloud(lines_cloud);    
+    
+// #ifdef _OPENMP
+    //      #pragma omp parallel for shared(kdtree) num_threads(this->num_threads_)
+// #endif
+    for (int k = 0; k < 1000; k++) {
+      Eigen::Vector3f region_pt = lines_cloud->points[k].getVector3fMap();
       Eigen::Vector3f direction = region_pt - attention_pt;
       Eigen::Vector3f att_qpt = region_pt - attention_pt;
       Eigen::Vector3f normal = att_qpt.cross(att_cam);
@@ -855,35 +862,108 @@ void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
       float next_ptx = 0.0f;
       float next_pty = 0.0f;
       float next_ptz = 0.0f;
-      bool shift_point = false;
+      float line_pos = 0.0f;
+      float stop_pos = search_lenght;
+      
       for (float j = step; j <= 1.0f; j += step) {        
         float line_ptx = attention_pt(0) + (j * direction(0));
         float line_pty = attention_pt(1) + (j * direction(1));
         float line_ptz = attention_pt(2) + (j * direction(2));
-
-        // for t = 0 find search each point
-        for (float i = -search_lenght; i < search_lenght; i += step) {
-          float vp_ptx = line_ptx + (i * att_cam(0));
-          float vp_pty = line_pty + (i * att_cam(1));
-          float vp_ptz = line_ptz + (i * att_cam(2));
-
-          // TODO (HERE): SEARCH FOR POINTS
-          bool is_point_found = false;
-          // **
-          if (is_point_found) {
-            // next_ptx = vp_ptx + (j * direction(0));
-            // next_pty = vp_pty + (j * direction(1));
-            // next_ptz = vp_ptz + (j * direction(2));
-          }
-          
-          PointT pt;
-          pt.x = vp_ptx;
-          pt.y = vp_pty;
-          pt.z = vp_ptz;
-          pt.g = 255;
-          cloud->push_back(pt);
-        }
         
+        // for t = 0 find search each point
+        bool istop_quadrant = true;  // help search quadrant where point was search last first
+        bool is_point_found = false;
+        std::vector<int> point_idx_search;
+        std::vector<float> point_radius_distance;
+        if (istop_quadrant) {
+
+          // std::cout <<"J: " << j  << "\n";
+          
+          for (float i = line_pos; i < stop_pos; i += step) {
+            float vp_ptx = line_ptx + (i * att_cam(0));
+            float vp_pty = line_pty + (i * att_cam(1));
+            float vp_ptz = line_ptz + (i * att_cam(2));
+
+            // TODO (HERE): SEARCH FOR POINTS
+            PointT search_pt;
+            search_pt.x = vp_ptx;
+            search_pt.y = vp_pty;
+            search_pt.z = vp_ptz;
+            search_pt.r = 255;
+            search_pt.g = 255;
+            search_pt.b = 255;
+            int search = kdtree.radiusSearch(search_pt, radius, point_idx_search,
+                                             point_radius_distance);
+            if (search > 0) {
+
+              // std::cout <<"\033[33m FOUND \033[0m"  << "\n";
+              
+              float dist = std::sqrt(std::pow(line_ptx - vp_ptx, 2) +
+                                     std::pow(line_pty - vp_pty, 2) +
+                                     std::pow(line_ptz - vp_ptz, 2));
+
+              next_ptx = vp_ptx + (j * direction(0));
+              next_pty = vp_pty + (j * direction(1));
+              next_ptz = vp_ptz + (j * direction(2));
+
+              line_pos = dist;
+              stop_pos = search_lenght;
+              is_point_found = true;
+            
+              break;
+            }
+            PointT pt;
+            pt.x = vp_ptx;
+            pt.y = vp_pty;
+            pt.z = vp_ptz;
+            pt.g = 255;
+            cloud->push_back(pt);
+          }
+        }
+        if (!is_point_found) {
+          for (float i = -stop_pos; i < line_pos; i += step) {
+            float vp_ptx = line_ptx + (i * att_cam(0));
+            float vp_pty = line_pty + (i * att_cam(1));
+            float vp_ptz = line_ptz + (i * att_cam(2));
+            
+            // TODO (HERE): SEARCH FOR POINTS
+            PointT search_pt;
+            search_pt.x = vp_ptx;
+            search_pt.y = vp_pty;
+            search_pt.z = vp_ptz;
+            search_pt.r = 255;
+            search_pt.g = 255;
+            search_pt.b = 255;
+            int search = kdtree.radiusSearch(search_pt, radius,
+                                             point_idx_search, point_radius_distance);
+            if (search > 0) {
+
+              // std::cout <<"\033[35m FOUND \033[0m"  << "\n";
+              
+              float dist = std::sqrt(std::pow(line_ptx - vp_ptx, 2) +
+                                     std::pow(line_pty - vp_pty, 2) +
+                                     std::pow(line_ptz - vp_ptz, 2));
+            
+              next_ptx = vp_ptx + (j * direction(0));
+              next_pty = vp_pty + (j * direction(1));
+              next_ptz = vp_ptz + (j * direction(2));
+
+              line_pos = -dist;
+              stop_pos = search_lenght;
+              is_point_found = true;
+              istop_quadrant = false;
+
+              break;
+            }
+            PointT pt;
+            pt.x = vp_ptx;
+            pt.y = vp_pty;
+            pt.z = vp_ptz;
+            pt.g = 255;
+            cloud->push_back(pt);
+          }
+        
+        }
         
         PointT pt;
         pt.x = line_ptx;
@@ -932,7 +1012,7 @@ void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
     rviz_normal.header = header;
     this->pub_normal_.publish(rviz_normal);
 
-    // ros::Duration(10).sleep();
+    //  ros::Duration(10).sleep();
     
     
 }
