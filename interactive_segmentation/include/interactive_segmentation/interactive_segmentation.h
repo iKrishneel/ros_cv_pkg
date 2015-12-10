@@ -76,29 +76,8 @@
 class InteractiveSegmentation: public SupervoxelSegmentation,
                                public GraphCutSegmentation {
 
-    typedef pcl::PointXYZRGB PointT;
-    typedef  pcl::FPFHSignature33 FPFHS;
-  
-    struct EdgeParam {
-       cv::Point index;
-       float orientation;
-       int contour_position;
-       bool flag;
-    };
-   
-    struct EdgeNormalDirectionPoint {
-       cv::Point2f normal_pt1;
-       cv::Point2f normal_pt2;
-       cv::Point2f tangent_pt1;
-       cv::Point2f tangent_pt2;
-       EdgeNormalDirectionPoint(
-          cv::Point2f np1 = cv::Point(),
-          cv::Point2f np2 = cv::Point(),
-          cv::Point2f t1 = cv::Point(),
-          cv::Point2f t2 = cv::Point()) :
-          normal_pt1(np1), normal_pt2(np2),
-          tangent_pt1(t1), tangent_pt2(t2) {}
-    };
+     typedef pcl::PointXYZRGB PointT;
+     typedef  pcl::FPFHSignature33 FPFHS;
    
  private:
     boost::mutex mutex_;
@@ -137,7 +116,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
  public:
     InteractiveSegmentation();
 
-   virtual void screenPointCallback(
+    virtual void screenPointCallback(
       const geometry_msgs::PointStamped &);
     virtual void callback(
        const sensor_msgs::Image::ConstPtr &,
