@@ -839,33 +839,15 @@ void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
         new pcl::PointCloud<pcl::PointXYZRGBNormal>);
 
-
     Eigen::Vector3f attention_pt = lines_cloud->points[200].getVector3fMap();
     Eigen::Vector3f camera_ref = Eigen::Vector3f(0.0, 0.0, 0.0);
     Eigen::Vector3f att_cam = camera_ref - attention_pt;
     
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 1000; i++) {
       Eigen::Vector3f region_pt = lines_cloud->points[i].getVector3fMap();
-      // Eigen::Vector3f region_pt = Eigen::Vector3f(0.0, 0.0, 1.0);
       Eigen::Vector3f direction = region_pt - attention_pt;
-
       Eigen::Vector3f att_qpt = region_pt - attention_pt;
       Eigen::Vector3f normal = att_qpt.cross(att_cam);
-
-      // std::cout <<"NORM: " << normal  << "\n\n";
-
-      pcl::PointXYZRGBNormal cpt;
-      cpt.x = region_pt(0);
-      cpt.y = region_pt(1);
-      cpt.z = region_pt(2);
-      cpt.r = 0;
-      cpt.g = 255;
-      cpt.b = 0;
-      cpt.normal_x = normal(0);
-      cpt.normal_y = normal(1);
-      cpt.normal_z = normal(2);
-      centroid_normal->push_back(cpt);
-       
       for (float j = 0; j <= 1.0f; j += step) {
         float line_ptx = attention_pt(0) + (j * direction(0));
         float line_pty = attention_pt(1) + (j * direction(1));
@@ -878,6 +860,34 @@ void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
         pt.r = 255;
         cloud->push_back(pt);
       }
+
+      // line in director of normal
+      for (float j = -1.0f; j <= 0.0f; j += step) {
+        float line_ptx = region_pt(0) + (j * normal(0));
+        float line_pty = region_pt(1) + (j * normal(1));
+        float line_ptz = region_pt(2) + (j * normal(2));
+
+        PointT pt;
+        pt.x = line_ptx;
+        pt.y = line_pty;
+        pt.z = line_ptz;
+        pt.b = 255;
+        cloud->push_back(pt);
+      }
+      
+      
+      
+      pcl::PointXYZRGBNormal cpt;
+      cpt.x = region_pt(0);
+      cpt.y = region_pt(1);
+      cpt.z = region_pt(2);
+      cpt.r = 0;
+      cpt.g = 255;
+      cpt.b = 0;
+      cpt.normal_x = normal(0);
+      cpt.normal_y = normal(1);
+      cpt.normal_z = normal(2);
+      centroid_normal->push_back(cpt);
     }
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
@@ -888,6 +898,9 @@ void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
     pcl::toROSMsg(*centroid_normal, rviz_normal);
     rviz_normal.header = header;
     this->pub_normal_.publish(rviz_normal);
+
+    ros::Duration(1).sleep();
+    
     
 }
 
