@@ -77,7 +77,7 @@ void InteractiveSegmentation::callback(
     // ---------------------------
     
     Eigen::Vector3f att_pt = Eigen::Vector3f(0, 0, 0.5);
-    selectedPointToRegionDistanceWeight(cloud, att_pt, 0.001, cloud_msg->header);
+    selectedPointToRegionDistanceWeight(cloud, att_pt, 0.005, cloud_msg->header);
     return;
     // ---------------------------
     
@@ -840,19 +840,51 @@ void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
         new pcl::PointCloud<pcl::PointXYZRGBNormal>);
 
     Eigen::Vector3f attention_pt = lines_cloud->points[200].getVector3fMap();
-    Eigen::Vector3f camera_ref = Eigen::Vector3f(0.0, 0.0, 0.0);
-    Eigen::Vector3f att_cam = camera_ref - attention_pt;
-    
-    for (int i = 0; i < 1000; i++) {
+    Eigen::Vector3f camera_viewpoint = Eigen::Vector3f(0.0, 0.0, 0.0);
+    Eigen::Vector3f att_cam = camera_viewpoint - attention_pt;
+
+    const float search_lenght = 0.15f;  // 15cm
+    float distance = static_cast<float>(att_cam.norm());
+
+    for (int i = 0; i < 10; i++) {
       Eigen::Vector3f region_pt = lines_cloud->points[i].getVector3fMap();
       Eigen::Vector3f direction = region_pt - attention_pt;
       Eigen::Vector3f att_qpt = region_pt - attention_pt;
       Eigen::Vector3f normal = att_qpt.cross(att_cam);
-      for (float j = 0; j <= 1.0f; j += step) {
+
+      float next_ptx = 0.0f;
+      float next_pty = 0.0f;
+      float next_ptz = 0.0f;
+      bool shift_point = false;
+      for (float j = step; j <= 1.0f; j += step) {        
         float line_ptx = attention_pt(0) + (j * direction(0));
         float line_pty = attention_pt(1) + (j * direction(1));
         float line_ptz = attention_pt(2) + (j * direction(2));
 
+        // for t = 0 find search each point
+        for (float i = -search_lenght; i < search_lenght; i += step) {
+          float vp_ptx = line_ptx + (i * att_cam(0));
+          float vp_pty = line_pty + (i * att_cam(1));
+          float vp_ptz = line_ptz + (i * att_cam(2));
+
+          // TODO (HERE): SEARCH FOR POINTS
+          bool is_point_found = false;
+          // **
+          if (is_point_found) {
+            // next_ptx = vp_ptx + (j * direction(0));
+            // next_pty = vp_pty + (j * direction(1));
+            // next_ptz = vp_ptz + (j * direction(2));
+          }
+          
+          PointT pt;
+          pt.x = vp_ptx;
+          pt.y = vp_pty;
+          pt.z = vp_ptz;
+          pt.g = 255;
+          cloud->push_back(pt);
+        }
+        
+        
         PointT pt;
         pt.x = line_ptx;
         pt.y = line_pty;
@@ -862,6 +894,7 @@ void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
       }
 
       // line in director of normal
+      /*
       for (float j = -1.0f; j <= 0.0f; j += step) {
         float line_ptx = region_pt(0) + (j * normal(0));
         float line_pty = region_pt(1) + (j * normal(1));
@@ -874,7 +907,7 @@ void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
         pt.b = 255;
         cloud->push_back(pt);
       }
-      
+      */
       
       
       pcl::PointXYZRGBNormal cpt;
@@ -899,7 +932,7 @@ void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
     rviz_normal.header = header;
     this->pub_normal_.publish(rviz_normal);
 
-    ros::Duration(1).sleep();
+    // ros::Duration(10).sleep();
     
     
 }
