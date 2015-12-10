@@ -650,12 +650,14 @@ void InteractiveSegmentation::computePointCloudCovarianceMatrix(
     
     // pcl::PointCloud<PointT>::Ptr new_cloud(new pcl::PointCloud<PointT>);
     for (int i = 0; i < cloud->size(); i++) {
-      float dist_diff_sum = std::pow(sum_of_eigens_ptr[index] - sum_of_eigens_ptr[i], 2);
+      float dist_diff_sum = std::pow(
+         sum_of_eigens_ptr[index] - sum_of_eigens_ptr[i], 2);
       dist_diff_sum += dist_diff_sum;
       dist_diff_sum = std::sqrt(dist_diff_sum);
       // std::cout << "DIST: " << dist_diff_sum  << "\t";
        
-      float dist_diff_cur = std::pow(curvature_ptr[index] - curvature_ptr[i], 2);
+      float dist_diff_cur = std::pow(
+         curvature_ptr[index] - curvature_ptr[i], 2);
       dist_diff_cur += dist_diff_cur;
       dist_diff_cur = std::sqrt(dist_diff_cur);
       
@@ -826,8 +828,12 @@ float InteractiveSegmentation::whiteNoiseKernel(
                                exp(-((val * val) / (2*sigma*sigma))));
 }
 
+
+
+
 void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
-    const pcl::PointCloud<PointT>::Ptr cloud, const Eigen::Vector3f attention_pts,
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const Eigen::Vector3f attention_pts,
     const float step, const std_msgs::Header header) {
     if (cloud->empty()) {
       return;
@@ -848,10 +854,10 @@ void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
 
     const float radius = 0.01f;
     pcl::KdTreeFLANN<PointT> kdtree;
-    kdtree.setInputCloud(lines_cloud);    
+    kdtree.setInputCloud(lines_cloud);
     
 // #ifdef _OPENMP
-    //      #pragma omp parallel for shared(kdtree) num_threads(this->num_threads_)
+// #pragma omp parallel for shared(kdtree) num_threads(this->num_threads_)
 // #endif
     for (int k = 0; k < 1000; k++) {
       Eigen::Vector3f region_pt = lines_cloud->points[k].getVector3fMap();
@@ -865,26 +871,23 @@ void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
       float line_pos = 0.0f;
       float stop_pos = search_lenght;
       
-      for (float j = step; j <= 1.0f; j += step) {        
+      for (float j = step; j <= 1.0f; j += step) {
         float line_ptx = attention_pt(0) + (j * direction(0));
         float line_pty = attention_pt(1) + (j * direction(1));
         float line_ptz = attention_pt(2) + (j * direction(2));
         
         // for t = 0 find search each point
-        bool istop_quadrant = true;  // help search quadrant where point was search last first
+        bool istop_quadrant = true;  // help search quadrant where
+                                     // point was search last first
         bool is_point_found = false;
         std::vector<int> point_idx_search;
         std::vector<float> point_radius_distance;
         if (istop_quadrant) {
-
-          // std::cout <<"J: " << j  << "\n";
-          
           for (float i = line_pos; i < stop_pos; i += step) {
             float vp_ptx = line_ptx + (i * att_cam(0));
             float vp_pty = line_pty + (i * att_cam(1));
             float vp_ptz = line_ptz + (i * att_cam(2));
-
-            // TODO (HERE): SEARCH FOR POINTS
+            
             PointT search_pt;
             search_pt.x = vp_ptx;
             search_pt.y = vp_pty;
@@ -892,12 +895,10 @@ void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
             search_pt.r = 255;
             search_pt.g = 255;
             search_pt.b = 255;
-            int search = kdtree.radiusSearch(search_pt, radius, point_idx_search,
+            int search = kdtree.radiusSearch(search_pt, radius,
+                                             point_idx_search,
                                              point_radius_distance);
             if (search > 0) {
-
-              // std::cout <<"\033[33m FOUND \033[0m"  << "\n";
-              
               float dist = std::sqrt(std::pow(line_ptx - vp_ptx, 2) +
                                      std::pow(line_pty - vp_pty, 2) +
                                      std::pow(line_ptz - vp_ptz, 2));
@@ -925,8 +926,6 @@ void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
             float vp_ptx = line_ptx + (i * att_cam(0));
             float vp_pty = line_pty + (i * att_cam(1));
             float vp_ptz = line_ptz + (i * att_cam(2));
-            
-            // TODO (HERE): SEARCH FOR POINTS
             PointT search_pt;
             search_pt.x = vp_ptx;
             search_pt.y = vp_pty;
@@ -935,11 +934,9 @@ void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
             search_pt.g = 255;
             search_pt.b = 255;
             int search = kdtree.radiusSearch(search_pt, radius,
-                                             point_idx_search, point_radius_distance);
+                                             point_idx_search,
+                                             point_radius_distance);
             if (search > 0) {
-
-              // std::cout <<"\033[35m FOUND \033[0m"  << "\n";
-              
               float dist = std::sqrt(std::pow(line_ptx - vp_ptx, 2) +
                                      std::pow(line_pty - vp_pty, 2) +
                                      std::pow(line_ptz - vp_ptz, 2));
