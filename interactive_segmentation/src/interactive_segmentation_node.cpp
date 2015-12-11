@@ -83,17 +83,17 @@ void InteractiveSegmentation::callback(
        this->pub_voxels_.publish(ros_voxels);
        this->pub_indices_.publish(ros_indices);
     }
+  
     double closest_surfel = FLT_MAX;
     uint32_t closest_surfel_index = INT_MAX;
     pcl::PointCloud<pcl::PointXYZRGBA>::Ptr centroid_cloud(
        new pcl::PointCloud<pcl::PointXYZRGBA>);
     pcl::PointCloud<pcl::Normal>::Ptr surfel_normals(
        new pcl::PointCloud<pcl::Normal>);
-    int index_pos;
+    int index_pos = screen_pt_.x + (screen_pt_.y * image.cols);
     for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr >::iterator it =
             supervoxel_clusters.begin(); it != supervoxel_clusters.end();
          it++) {
-       index_pos = screen_pt_.x + (screen_pt_.y * image.cols);
        Eigen::Vector4f selected_pt = cloud->points[
           index_pos].getVector4fMap();
        Eigen::Vector4f surfel_pt = supervoxel_clusters.at(
@@ -107,6 +107,7 @@ void InteractiveSegmentation::callback(
                                     it->first)->centroid_);
        *surfel_normals += *(supervoxel_clusters.at(it->first)->normals_);
     }
+  
     if (closest_surfel_index == INT_MAX || isnan(closest_surfel_index)) {
        ROS_ERROR("NO SURFEL MARKED");
        return;

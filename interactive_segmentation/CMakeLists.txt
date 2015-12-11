@@ -118,8 +118,7 @@ include_directories(
 add_executable(interactive_segmentation_node
   src/interactive_segmentation_node.cpp
   src/supervoxel_segmentation.cpp
-  src/saliency_map_generator.cpp
-  src/graph_cut_segmentation.cpp)
+  src/saliency_map_generator.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes

@@ -146,7 +146,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     void generateFeatureSaliencyMap(const cv::Mat &,
                                     cv::Mat &);
     virtual Eigen::Vector4f
-    cloudMeanNormal(constpcl::PointCloud<pcl::Normal>::Ptr,
+    cloudMeanNormal(const pcl::PointCloud<pcl::Normal>::Ptr,
                     bool = false);
     bool localVoxelConvexityCriteria(Eigen::Vector4f, Eigen::Vector4f,
                                      Eigen::Vector4f, Eigen::Vector4f,
