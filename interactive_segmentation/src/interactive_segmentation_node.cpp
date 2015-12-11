@@ -69,13 +69,6 @@ void InteractiveSegmentation::callback(
     pcl::fromROSMsg(*cloud_msg, *cloud);
     
     std::cout << "MAIN RUNNING: " << is_init_  << "\n";
-
-    Eigen::Vector3f attent_pt = Eigen::Vector3f(
-       this->screen_pt_.x, this->screen_pt_.y, 0);
-    this->selectedPointToRegionDistanceWeight(
-       cloud, attent_pt, 0.01f, info_msg);
-    return;
-    
     
     bool is_surfel_level = true;
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
@@ -239,12 +232,19 @@ void InteractiveSegmentation::callback(
 
        
         // TMP
+        /*
         pcl::PointCloud<PointT>::Ptr cov_cloud(new pcl::PointCloud<PointT>);
         this->computePointCloudCovarianceMatrix(prob_object_cloud, cov_cloud);
         cloud->clear();
         *cloud = *cov_cloud;
-        
-        
+        */
+       
+        Eigen::Vector3f attent_pt = Eigen::Vector3f(
+           this->screen_pt_.x, this->screen_pt_.y, 0);
+        this->selectedPointToRegionDistanceWeight(
+           cloud, attent_pt, 0.01f, info_msg);
+       
+           
         // this->organizedMinCutMaxFlowSegmentation(
         //    prob_object_cloud, index_pos);
         
@@ -330,7 +330,7 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
        view_pt_weight *= this->whiteNoiseKernel(view_pt_weight, 0.0f, 0.50f);
        orientation_weights.push_back(view_pt_weight);
      }
-     
+     /*
      cv::normalize(connectivity_weights, connectivity_weights, 0, 1,
                    cv::NORM_MINMAX, -1, cv::Mat());
      cv::normalize(orientation_weights, orientation_weights, 0, 1,
@@ -471,71 +471,6 @@ void InteractiveSegmentation::objectMinCutSegmentation(
               << "\t" << object_cloud->size() << std::endl;
 }
 
-
-void InteractiveSegmentation::attentionSurfelRegionMask(
-    const cv::Mat conv_weights, const cv::Point2i screen_pt,
-    cv::Mat &object_mask, cv::Rect &rect) {
-    if (conv_weights.empty()) {
-       return;
-    }
-    // create mask
-    cv::Mat img_bw = cv::Mat::zeros(conv_weights.size(), CV_8UC1);
-    for (int j = 0; j < img_bw.rows; j++) {
-       for (int i = 0; i < img_bw.cols; i++) {
-          if (conv_weights.at<float>(j, i) > 0.0f) {
-             img_bw.at<uchar>(j, i) = 255;
-          }
-       }
-    }
-    // compute the contours
-    cv::Mat grad_x, grad_y;
-    cv::Mat abs_grad_x, abs_grad_y;
-    cv::Sobel(img_bw, grad_x, CV_16S, 1, 0, 3, 1, 0, cv::BORDER_DEFAULT);
-    cv::convertScaleAbs(grad_x, abs_grad_x);
-    cv::Sobel(img_bw, grad_y, CV_16S, 0, 1, 3, 1, 0, cv::BORDER_DEFAULT);
-    cv::convertScaleAbs(grad_y, abs_grad_y);
-    cv::addWeighted(abs_grad_x, 0.5, abs_grad_y, 0.5, 0, img_bw);
-    std::vector<std::vector<cv::Point> > contours;
-    std::vector<cv::Vec4i> hierarchy;
-    cv::findContours(img_bw, contours, hierarchy, CV_RETR_TREE,
-                     CV_CHAIN_APPROX_SIMPLE, cv::Point(0, 0));
-    // check the contour point belongs to
-    cv::Mat mask_img = cv::Mat::zeros(img_bw.rows, img_bw.cols, CV_8UC3);
-    int index = -1;
-    for (int i = 0; i < contours.size(); i++) {
-       double dist = cv::pointPolygonTest(
-          contours[i], cv::Point2f(static_cast<float>(screen_pt.x),
-                                   static_cast<float>(screen_pt.y)),
-          false);
-       if (dist > -1) {
-          index = i;
-          cv::drawContours(mask_img, contours, i,
-                           cv::Scalar(255, 255, 255), CV_FILLED);
-       }
-    }
-    if (index != -1) {
-       rect = cv::boundingRect(contours[index]);
-       const int padding = 20;
-       rect.x -= padding;
-       rect.y -= padding;
-       rect.width += (2 * padding);
-       rect.height += (2 * padding);
-    }
-    object_mask = cv::Mat::zeros(conv_weights.size(), CV_32F);
-    for (int j = 0; j < mask_img.rows; j++) {
-       for (int i = 0; i < mask_img.cols; i++) {
-          cv::Vec3b pix_val = mask_img.at<cv::Vec3b>(j, i);
-          if (pix_val[0] > 0) {
-             float conv_weight = conv_weights.at<float>(j, i);
-             object_mask.at<float>(j, i) = conv_weight;
-             // object_mask.at<float>(j, i) = 1.0f;
-          }
-       }
-    }
-    // cv::bitwise_or(conv_weights, object_mask, object_mask);
-    // cv::imshow("contour", mask_img);
-    cv::imshow("masked", object_mask);
-}
 
 void InteractiveSegmentation::generateFeatureSaliencyMap(
     const cv::Mat &img, cv::Mat &saliency_img) {
@@ -696,7 +631,9 @@ void InteractiveSegmentation::computePointCloudCovarianceMatrix(
           }
           eigen_entropy_ptr[i] = sum_entropy * -1.0f;
           sum_of_eigens_ptr[i] = sum_eigen;
-          // sum_of_eigens_ptr[i] = (eigen_vals(0) - eigen_vals(2)) / eigen_vals(1);
+          // sum_of_eigens_ptr[i] = (eigen_vals(0) - eigen_vals(2)) /
+          // eigen_vals(1);
+          
           
           curvature_ptr[i] = (eigen_vals(0) / sum_eigen);
 
@@ -710,14 +647,17 @@ void InteractiveSegmentation::computePointCloudCovarianceMatrix(
     }
 
     
-    // pcl::PointCloud<PointT>::Ptr new_cloud(new pcl::PointCloud<PointT>);
+    // pcl::PointCloud<PointT>::Ptr new_cloud(new
+    // pcl::PointCloud<PointT>);
     for (int i = 0; i < cloud->size(); i++) {
-      float dist_diff_sum = std::pow(sum_of_eigens_ptr[index] - sum_of_eigens_ptr[i], 2);
+      float dist_diff_sum = std::pow(
+         sum_of_eigens_ptr[index] - sum_of_eigens_ptr[i], 2);
       dist_diff_sum += dist_diff_sum;
       dist_diff_sum = std::sqrt(dist_diff_sum);
       // std::cout << "DIST: " << dist_diff_sum  << "\t";
        
-      float dist_diff_cur = std::pow(curvature_ptr[index] - curvature_ptr[i], 2);
+      float dist_diff_cur = std::pow(
+         curvature_ptr[index] - curvature_ptr[i], 2);
       dist_diff_cur += dist_diff_cur;
       dist_diff_cur = std::sqrt(dist_diff_cur);
       
@@ -750,112 +690,7 @@ void InteractiveSegmentation::computePointCloudCovarianceMatrix(
 }
 
 
-void InteractiveSegmentation::viewPointSurfaceNormalOrientation(
-    pcl::PointCloud<PointT>::Ptr cloud,
-    const pcl::PointCloud<pcl::Normal>::Ptr cloud_normal,
-    const Eigen::Vector3f cenVec, const Eigen::Vector3f norVec) {
-    if (cloud->empty() || cloud_normal->empty()) {
-      ROS_ERROR("ERROR: Point Cloud | Normal vector is empty...");
-      return;
-    }
-    pcl::PointCloud<PointT>::Ptr point_orientation(
-       new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointT, PointT>(*cloud, *point_orientation);
-#ifdef _OPENMP
-#pragma omp parallel for shared(point_orientation) \
-   num_threads(this->num_threads_)
-#endif
-    for (int i = 0; i < cloud->size(); i++) {
-       Eigen::Vector3f viewPointVec =
-          (cloud->points[i].getVector3fMap() - cenVec);
-       Eigen::Vector3f surfaceNormalVec = cloud_normal->points[
-          i].getNormalVector3fMap() - norVec;
-      float cross_norm = static_cast<float>(
-          surfaceNormalVec.cross(viewPointVec).norm());
-      float scalar_prod = static_cast<float>(
-          surfaceNormalVec.dot(viewPointVec));
-      float angle = atan2(cross_norm, scalar_prod);
-      float pix_val = angle/(2.0 * CV_PI);
-      pix_val = std::exp(-2.0f * pix_val);
-      pix_val * this->whiteNoiseKernel(pix_val);
-        
-      PointT *pt = &point_orientation->points[i];
-      pt->x = cloud->points[i].x;
-      pt->y = cloud->points[i].y;
-      pt->z = cloud->points[i].z;
-      pt->r = pix_val * 255;
-      pt->g = pix_val * 255;
-      pt->b = pix_val * 255;
-    }
-    cloud->clear();
-    pcl::copyPointCloud<PointT, PointT>(*point_orientation, *cloud);
-}
 
-void InteractiveSegmentation::normalNeigbourOrientation(
-    const pcl::PointCloud<PointT>::Ptr cloud,
-    const pcl::PointCloud<pcl::Normal>::Ptr normals,
-    pcl::PointCloud<PointT>::Ptr orientation, const int k) {
-    if (cloud->size() != normals->size()) {
-       ROS_ERROR("ERROR. INCORRECT SIZE");
-      return;
-    }
-    pcl::KdTreeFLANN<PointT> kdtree;
-    kdtree.setInputCloud(cloud);
-    pcl::copyPointCloud<PointT, PointT>(*cloud, *orientation);
-#ifdef _OPENMP
-#pragma omp parallel for shared(orientation) num_threads(this->num_threads_)
-#endif
-    for (int i = 0; i < cloud->size(); i++) {
-       std::vector<int> point_idx_search;
-       std::vector<float> point_squared_distance;
-       int search_out = 0;
-       bool is_knn = true;       
-       if (is_knn) {
-          search_out = kdtree.nearestKSearch(
-             cloud->points[i], 40, point_idx_search, point_squared_distance);
-       } else {
-          search_out = kdtree.radiusSearch(
-             cloud->points[i], 0.02, point_idx_search, point_squared_distance);
-       }
-      
-       Eigen::Vector4f normal = normals->points[i].getNormalVector4fMap();
-       float sum = 0.0f;
-       for (int j = 0; j < point_idx_search.size(); j++) {
-          int index = point_idx_search.at(j);
-          Eigen::Vector4f n_normal =
-             normals->points[index].getNormalVector4fMap();
-          sum += normal.dot(n_normal);
-          float diff = (cloud->points[i].getVector4fMap() -
-                        cloud->points[index].getVector4fMap()).dot(normal);
-          if (diff > 0.0f) {
-             // sum += static_cast<float>(
-             // std::pow(1 - (normal.dot(n_normal)), 2));
-          } else {
-             // sum = static_cast<float>(1 - (normal.dot(n_normal)));
-          }
-       }
-       sum /= static_cast<float>(point_idx_search.size());
-       PointT pt = cloud->points[i];
-       // pt.r = sum * 255;
-       // pt.g = sum * 255;
-       // pt.b = sum * 255;
-       // pt.r = normals->points[i].normal_x * 1.0;
-       // pt.g = normals->points[i].normal_y * 1.0;
-       // pt.b = normals->points[i].normal_z * 1.0;
-       // std::cout << pt.r + pt.g + pt.b << std::endl;
-       //-----
-       // Eigen::Vector4f normal = normals->points[i].getNormalVector4fMap();
-       Eigen::Vector4f gravity = Eigen::Vector4f(0, 1.0, 0.0, 1.0);
-       // float sum = (normal-gravity).dot(cloud->points[i].getVector4fMap());
-       // // float sum = (normal).dot(gravity) *
-       // // float sum =   (cloud->points[i].getVector4fMap()).dot(gravity);
-       // PointT pt = cloud->points[i];
-       pt.r = sum * 255;
-       pt.g = sum * 255;
-       pt.b = sum * 255;
-       orientation->points[i] = pt;
-    }
-}
 
 void InteractiveSegmentation::updateSupervoxelClusters(
     std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> &supervoxel_clusters,
@@ -921,122 +756,6 @@ void InteractiveSegmentation::pointIntensitySimilarity(
     }
 }
 
-
-void InteractiveSegmentation::pointLevelSimilarity(
-    const pcl::PointCloud<PointT>::Ptr cloud,
-    const pcl::PointCloud<pcl::Normal>::Ptr normals,
-    const std_msgs::Header header) {
-    if (cloud->empty() || normals->empty()) {
-       return;
-    }
-     pcl::PointCloud<PointT>::Ptr out_cloud(new pcl::PointCloud<PointT>);
-     pcl::copyPointCloud<PointT, PointT>(*cloud, *out_cloud);
-     
-     pcl::KdTreeFLANN<PointT> kdtree;
-     kdtree.setInputCloud(cloud);
-     bool is_knn = true;
-     float search_dim = 0.025f;
-#ifdef _OPENMP
-     #pragma omp parallel for
-#endif
-     for (int i = 0; i < cloud->size(); i++) {
-
-        pcl::PointXYZHSV hsv;
-       pcl::PointXYZRGBtoXYZHSV(cloud->points[i], hsv);
-       std::vector<int> point_idx_search;
-       std::vector<float> point_squared_distance;
-       PointT pt = cloud->points[i];
-       int search_out = 0;
-       if (is_knn) {
-         search_out = kdtree.nearestKSearch(
-             pt, 40, point_idx_search, point_squared_distance);
-       } else {
-         search_out = kdtree.radiusSearch(
-             pt, search_dim, point_idx_search, point_squared_distance);
-       }
-       double sum = 0.0;
-       for (size_t k = 0; k < point_idx_search.size(); k++) {
-         int index = point_idx_search[k];
-
-         pcl::PointXYZHSV n_hsv;
-         pcl::PointXYZRGBtoXYZHSV(cloud->points[index], n_hsv);
-
-         double dist_color = std::sqrt(std::pow((hsv.h - n_hsv.h), 2) +
-                                       std::pow((hsv.s - n_hsv.s), 2));
-         dist_color = (255.0 - dist_color)/255.0;
-         
-         Eigen::Vector4f i_point = cloud->points[i].getVector4fMap();
-         Eigen::Vector4f k_point = cloud->points[k].getVector4fMap();
-         double dist_point = pcl::distances::l2(i_point, k_point);
-         
-         double dist_fpfh = 0.0;
-         // dist_fpfh = cv::compareHist(fpfh_hist.row(i),
-         //                                    fpfh_hist.row(index),
-         //                                    CV_COMP_CORREL);
-
-         Eigen::Vector4f norm = Eigen::Vector4f(
-            normals->points[i].normal_x,
-            normals->points[i].normal_y,
-            normals->points[i].normal_z, 1.0f);
-         Eigen::Vector4f n_norm = Eigen::Vector4f(
-            normals->points[index].normal_x,
-            normals->points[index].normal_y,
-            normals->points[index].normal_z, 1.0f);
-         dist_fpfh = pcl::distances::l2(norm, n_norm);
-
-         double distance = std::sqrt(
-            std::pow(dist_color, 2)
-            // + std::pow(dist_fpfh, 2)
-            + std::pow(dist_point, 2)
-            );
-         
-         sum += distance;
-       }
-       sum /= static_cast<double>(point_idx_search.size());
-       
-       double intensity = 255.0;
-       out_cloud->points[i].r = intensity * sum;
-       out_cloud->points[i].b = intensity * sum;
-       out_cloud->points[i].g = intensity * sum;
-     }
-
-     sensor_msgs::PointCloud2 ros_cloud;
-     pcl::toROSMsg(*out_cloud, ros_cloud);
-     ros_cloud.header = header;
-     this->pub_pt_map_.publish(ros_cloud);
-
-  }
-
-
-void InteractiveSegmentation::computePointFPFH(
-    const pcl::PointCloud<PointT>::Ptr cloud,
-    const pcl::PointCloud<pcl::Normal>::Ptr normals,
-    cv::Mat &histogram) const {
-    if (cloud->empty() || normals->empty()) {
-      ROS_ERROR("-- ERROR: cannot compute FPFH");
-      return;
-    }
-    pcl::FPFHEstimationOMP<PointT, pcl::Normal, FPFHS> fpfh;
-    fpfh.setInputCloud(cloud);
-    fpfh.setInputNormals(normals);
-    pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);
-    fpfh.setSearchMethod(tree);
-    fpfh.setRadiusSearch(0.05);
-    pcl::PointCloud<FPFHS>::Ptr fpfhs(new pcl::PointCloud<FPFHS>());
-    fpfh.compute(*fpfhs);
-    const int hist_dim = 33;
-    histogram = cv::Mat::zeros(
-        static_cast<int>(fpfhs->size()), hist_dim, CV_32F);
-#ifdef _OPENMP
-#pragma omp parallel for collapse(2) shared(histogram)
-#endif
-    for (int i = 0; i < fpfhs->size(); i++) {
-      for (int j = 0; j < hist_dim; j++) {
-        histogram.at<float>(i, j) = fpfhs->points[i].histogram[j];
-      }
-    }
-    cv::normalize(histogram, histogram, 0, 1, cv::NORM_MINMAX, -1, cv::Mat());
-}
 
 bool InteractiveSegmentation::localVoxelConvexityCriteria(
     Eigen::Vector4f c_centroid, Eigen::Vector4f c_normal,
@@ -1160,6 +879,8 @@ void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
                    if (is_discont) {
                       // reduce the weight
                       image.at<cv::Vec3b>(j, i)[0] = 255;
+                      image.at<cv::Vec3b>(j, i)[1] = 0;
+                      image.at<cv::Vec3b>(j, i)[2] = 0;
                       break;
                    }
                 }
