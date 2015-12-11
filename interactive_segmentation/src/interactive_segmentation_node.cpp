@@ -69,6 +69,10 @@ void InteractiveSegmentation::callback(
     pcl::fromROSMsg(*cloud_msg, *cloud);
     
     std::cout << "MAIN RUNNING: " << is_init_  << "\n";
+
+    this->highCurvatureConcaveBoundary(cloud, cloud_msg->header);
+    return;
+
     
     bool is_surfel_level = true;
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
@@ -331,6 +335,8 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
        if (isnan(angle)) {
           view_pt_weight = 0.0f;
        }
+
+       // TODO(HERE): CENTERED GAUSSIAN WEIGHTS
        
        // view_pt_weight *= this->whiteNoiseKernel(view_pt_weight);
        view_pt_weight *= this->whiteNoiseKernel(view_pt_weight, 0.0f, 15.0f);
@@ -940,6 +946,70 @@ cv::Mat InteractiveSegmentation::projectPointCloudToImagePlane(
     return image;
 }
 
+void InteractiveSegmentation::highCurvatureConcaveBoundary(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const std_msgs::Header header) {
+    if (cloud->empty()) {
+       ROS_ERROR("ERROR: INPUT CLOUD EMPTY FOR HIGH CURV. EST.");
+       return;
+    }
+
+    std::vector<int> indices;
+    pcl::PointCloud<PointT>::Ptr curv_cloud(new pcl::PointCloud<PointT>);
+    pcl::removeNaNFromPointCloud(*cloud, *curv_cloud, indices);
+    
+    int k = 50;
+    pcl::PointCloud<pcl::Normal>::Ptr normals(
+       new pcl::PointCloud<pcl::Normal>);
+    this->estimatePointCloudNormals<int>(curv_cloud, normals, k, true);
+    
+    std::vector<int> point_idx_search;
+    std::vector<float> point_squared_distance;
+    pcl::KdTreeFLANN<PointT> kdtree;
+    kdtree.setInputCloud(curv_cloud);
+    int radius = 50;
+    for (int i = 0; i < curv_cloud->size(); i++) {
+       PointT centroid_pt = curv_cloud->points[i];
+       if (!isnan(centroid_pt.x) || !isnan(centroid_pt.y) ||
+           !isnan(centroid_pt.z)) {
+          int search_out = kdtree.nearestKSearch(
+             centroid_pt, radius, point_idx_search, point_squared_distance);
+          Eigen::Vector4f seed_vector = normals->points[
+             i].getNormalVector4fMap();
+          float max_diff = 0.0f;
+          float min_diff = FLT_MAX;
+          for (int j = 1; j < point_idx_search.size(); j++) {
+             int index = point_idx_search[j];
+             Eigen::Vector4f neigh_norm = normals->points[
+                index].getNormalVector4fMap();
+             float dot_prod = neigh_norm.dot(seed_vector) / (
+                neigh_norm.norm() * seed_vector.norm());
+             if (dot_prod > max_diff) {
+                max_diff = dot_prod;
+             }
+             if (dot_prod < min_diff) {
+                min_diff = dot_prod;
+             }
+          }
+          float variance = max_diff - min_diff;
+          if (variance > 0.10f) {
+             centroid_pt.r = 255 * variance;
+             centroid_pt.b = 0;
+             centroid_pt.g = 0;
+             curv_cloud->points[i] = centroid_pt;
+          }
+          point_idx_search.clear();
+          point_squared_distance.clear();
+       }
+    }
+
+    std::cout << "COMPLETED" << std::endl;
+    
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*curv_cloud, ros_cloud);
+    ros_cloud.header = header;
+    this->pub_cloud_.publish(ros_cloud);
+}
 
 
 int main(int argc, char *argv[]) {
