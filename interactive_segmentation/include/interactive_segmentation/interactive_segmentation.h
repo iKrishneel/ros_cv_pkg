@@ -63,6 +63,7 @@
 #include <std_msgs/Header.h>
 #include <std_msgs/Bool.h>
 #include <std_msgs/Int64.h>
+#include <sensor_msgs/CameraInfo.h>
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/PoseArray.h>
 #include <geometry_msgs/PointStamped.h>
@@ -106,12 +107,12 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
     typedef pcl::SupervoxelClustering<PointT>::VoxelAdjacencyList AdjacencyList;
     typedef message_filters::sync_policies::ApproximateTime<
        sensor_msgs::Image,
-      sensor_msgs::PointCloud2,
+       sensor_msgs::CameraInfo,
        sensor_msgs::PointCloud2> SyncPolicy;
 
     message_filters::Subscriber<sensor_msgs::Image> sub_image_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
-    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
+    message_filters::Subscriber<sensor_msgs::CameraInfo> sub_info_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
    
     ros::Publisher pub_cloud_;
@@ -136,12 +137,12 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
  public:
     InteractiveSegmentation();
 
-   virtual void screenPointCallback(
+    virtual void screenPointCallback(
       const geometry_msgs::PointStamped &);
   
     virtual void callback(
        const sensor_msgs::Image::ConstPtr &,
-       const sensor_msgs::PointCloud2::ConstPtr &,
+       const sensor_msgs::CameraInfo::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
 
     void computePointFPFH(
@@ -175,8 +176,6 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
         const pcl::PointCloud<pcl::Normal>::Ptr,
         const pcl::PointXYZRGBA &,
         const Eigen::Vector4f, const int, cv::Mat &);
-    void organizedMinCutMaxFlowSegmentation(
-       pcl::PointCloud<PointT>::Ptr, const int);
   
     void computePointCloudCovarianceMatrix(
        const pcl::PointCloud<PointT>::Ptr,
@@ -218,6 +217,13 @@ class InteractiveSegmentation: public SupervoxelSegmentation,
     void pointIntensitySimilarity(
        pcl::PointCloud<PointT>::Ptr,
        const int);
+
+    void selectedPointToRegionDistanceWeight(
+       const pcl::PointCloud<PointT>::Ptr, const Eigen::Vector3f,
+       const float, const sensor_msgs::CameraInfo::ConstPtr);
+    cv::Mat projectPointCloudToImagePlane(
+       const pcl::PointCloud<PointT>::Ptr,
+       const sensor_msgs::CameraInfo::ConstPtr &, cv::Mat &, cv::Mat &);
    
 };
 

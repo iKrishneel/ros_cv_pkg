@@ -1,5 +1,6 @@
 <launch>
   <arg name="input_point" default="/camera/depth_registered/points" />
+  <arg name="input_info" default="/camera/depth_registered/camera_info" />
   <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />
   <arg name="image" default="/camera/rgb/image_rect_color" />
 
@@ -11,7 +12,7 @@
 	type="interactive_segmentation_node" output="screen" clear_params="true">
     <remap from="input_image" to="$(arg image)" />
     <remap from="input_cloud" to="$(arg filter_point)" /> 
-    <remap from="input_normal" to="$(arg input_point)" />
+    <remap from="input_info" to="$(arg input_info)" />
     <remap from="input_screen" to="/camera/rgb/image_rect_color/screenpoint" />
 
   </node>
@@ -33,8 +34,8 @@
   </include>
 
   <!-- erode dilate node -->
-  <node pkg="jsk_perception" name="erode_mask_image" type="erode_mask_image"
-	output="screen" >
-    <remap from="~input" to="/cloud_image/output/foreground_mask" />
-  </node>
+  <!-- <node pkg="jsk_perception" name="erode_mask_image" type="erode_mask_image" -->
+  <!-- 	output="screen" > -->
+  <!--   <remap from="~input" to="/cloud_image/output/foreground_mask" /> -->
+  <!-- </node> -->
 </launch>

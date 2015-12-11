@@ -35,18 +35,18 @@ void InteractiveSegmentation::subscribe() {
       "input_screen", 1, &InteractiveSegmentation::screenPointCallback, this);
   
        this->sub_image_.subscribe(this->pnh_, "input_image", 1);
-       this->sub_normal_.subscribe(this->pnh_, "input_normal", 1);
+       this->sub_info_.subscribe(this->pnh_, "input_info", 1);
        this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
        this->sync_ = boost::make_shared<message_filters::Synchronizer<
           SyncPolicy> >(100);
-       sync_->connectInput(sub_image_, sub_normal_, sub_cloud_);
+       sync_->connectInput(sub_image_, sub_info_, sub_cloud_);
        sync_->registerCallback(boost::bind(&InteractiveSegmentation::callback,
                                            this, _1, _2, _3));
 }
 
 void InteractiveSegmentation::unsubscribe() {
     this->sub_cloud_.unsubscribe();
-    this->sub_normal_.unsubscribe();
+    this->sub_info_.unsubscribe();
     this->sub_image_.unsubscribe();
 }
 
@@ -60,7 +60,7 @@ void InteractiveSegmentation::screenPointCallback(
 
 void InteractiveSegmentation::callback(
     const sensor_msgs::Image::ConstPtr &image_msg,
-    const sensor_msgs::PointCloud2::ConstPtr &normal_msg,
+    const sensor_msgs::CameraInfo::ConstPtr &info_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
     boost::mutex::scoped_lock lock(this->mutex_);
     cv::Mat image = cv_bridge::toCvShare(
@@ -69,6 +69,13 @@ void InteractiveSegmentation::callback(
     pcl::fromROSMsg(*cloud_msg, *cloud);
     
     std::cout << "MAIN RUNNING: " << is_init_  << "\n";
+
+    Eigen::Vector3f attent_pt = Eigen::Vector3f(
+       this->screen_pt_.x, this->screen_pt_.y, 0);
+    this->selectedPointToRegionDistanceWeight(
+       cloud, attent_pt, 0.01f, info_msg);
+    return;
+    
     
     bool is_surfel_level = true;
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
@@ -1104,86 +1111,140 @@ float InteractiveSegmentation::whiteNoiseKernel(
     float val = static_cast<float>(z - N);
     return static_cast<double>((1.0/(sqrt(2.0 * M_PI)) * sigma) *
                                exp(-((val * val) / (2*sigma*sigma))));
-  
-    // float weight = (1.0f / (std::sqrt(2.0f * M_PI))) *
-    //                        exp(-1.0f * (pix_val - centr_val));
-    // return weight;
+
 }
 
-void InteractiveSegmentation::organizedMinCutMaxFlowSegmentation(
-    pcl::PointCloud<PointT>::Ptr cloud, const int selected_index) {
-    if (cloud->empty() || cloud->height == 1) {
-       ROS_ERROR("ERROR: Empty cloud for segmentation");
-       return;
+void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const Eigen::Vector3f attention_pts, const float step,
+    const sensor_msgs::CameraInfo::ConstPtr info) {
+    if (cloud->empty()) {
+      return;
     }
+    cv::Mat mask;
+    cv::Mat depth_map;
+    cv::Mat image = this->projectPointCloudToImagePlane(
+       cloud, info, mask, depth_map);
 
-    // make the neigbourbood
-    int knearest = 8;
-    std::vector<int> point_idx_search;
-    std::vector<float> point_squared_distance;
-    pcl::KdTreeFLANN<PointT> kdtree;
-    kdtree.setInputCloud(cloud);
-    for (int i = 0; i < cloud->size(); i++) {
-       PointT centroid_pt = cloud->points[i];
-       if (!isnan(centroid_pt.x) || !isnan(centroid_pt.y) ||
-           !isnan(centroid_pt.z)) {
-          int search_out = kdtree.nearestKSearch(
-             centroid_pt, knearest, point_idx_search, point_squared_distance);
+    const int threshold = 5;
+    cv::Point2f attent_pt = cv::Point2f(attention_pts(0), attention_pts(1));
+
+    std::cout << "RUNNING" << std::endl;
+    for (int j = 0; j < mask.rows; j++) {
+       for (int i = 0; i < mask.cols; i++) {
+          if (mask.at<float>(j, i) == 255) {
+             float angle = std::atan2(j - attent_pt.y, i - attent_pt.x);
+             float dist = cv::norm(cv::Point2f(i, j) - attent_pt);
+             int discontinuity_counter = 0;
+             int discontinuity_history[threshold];
+             for (float y = 0.0f; y < dist; y += 2.0f) {
+                cv::Point next_pt = cv::Point(
+                   attent_pt.x + y * std::cos(angle),
+                   attent_pt.y + y * std::sin(angle));
+                if (mask.at<float>(next_pt.y, next_pt.x) != 255) {
+                   discontinuity_history[discontinuity_counter] = 1;
+                } else {
+                   discontinuity_history[discontinuity_counter] = 0;
+                }
+                if (discontinuity_counter++ == threshold) {
+                   bool is_discont = false;
+                   for (int x = threshold - 1; x >= 0; x--) {
+                      if (discontinuity_history[x] == 0) {
+                         is_discont = false;
+                         discontinuity_counter = 0;
+                         break;
+                      } else {
+                         is_discont = true;
+                      }
+                   }
+                   if (is_discont) {
+                      // reduce the weight
+                      image.at<cv::Vec3b>(j, i)[0] = 255;
+                      break;
+                   }
+                }
+             }
+          }
        }
     }
     
-    const unsigned int D = 2;
-    typedef boost::grid_graph<D> Graph;
-    typedef boost::graph_traits<Graph>::vertex_descriptor VertexDescriptor;
-    typedef boost::graph_traits<Graph>::edge_descriptor EdgeDescriptor;
-    typedef boost::graph_traits<Graph>::vertices_size_type VertexIndex;
-    typedef boost::graph_traits<Graph>::edges_size_type EdgeIndex;
-
-    boost::array<std::size_t, D> lengths = {{cloud->width, cloud->height}};
-    Graph graph(lengths, false);
-
-    const int kSize = cloud->size();
-    float weights[kSize];
-    for (int i = 0; i < cloud->size(); i++) {
-       weights[i] = static_cast<float>(cloud->points[i].r);
-    }
-    std::vector<int> groups(num_vertices(graph));
-    std::vector<float> residual_capacity(num_edges(graph));
-    std::vector<float> capacity(num_edges(graph));
-    std::vector<EdgeDescriptor> reverse_edges(num_edges(graph));
-
-    BGL_FORALL_EDGES(e, graph, Graph) {
-        VertexDescriptor src = source(e, graph);
-        VertexDescriptor tgt = target(e, graph);
-        VertexIndex source_idx = get(boost::vertex_index, graph, src);
-        VertexIndex target_idx = get(boost::vertex_index, graph, tgt);
-        EdgeIndex edge_idx = get(boost::edge_index, graph, e);
-        capacity[edge_idx] = fabs(weights[source_idx] - weights[target_idx]);
-        reverse_edges[edge_idx] = edge(tgt, src, graph).first;
-    }
-    int sink_idx = selected_index;
-    int target_idx = 0;
-    VertexDescriptor s = vertex(sink_idx, graph);
-    VertexDescriptor t = vertex(target_idx, graph);
+    cv::circle(image, cv::Point(attention_pts(0), attention_pts(1)), 5,
+               cv::Scalar(0, 255, 0), -1);
     
-     boykov_kolmogorov_max_flow(
-        graph,
-        make_iterator_property_map(&capacity[0], get(
-                                      boost::edge_index, graph)),
-        make_iterator_property_map(&residual_capacity[0],
-                                   get(boost::edge_index, graph)),
-        make_iterator_property_map(&reverse_edges[0],
-                                   get(boost::edge_index, graph)),
-        make_iterator_property_map(&groups[0], get(boost::vertex_index, graph)),
-        get(boost::vertex_index, graph), s, t);
-
-     for (size_t index=0; index < groups.size(); ++index) {
-        if ((index%lengths[0] == 0) && index) {
-           std::cout << std::endl;
-        }
-        std::cout << groups[index] << " ";
-     }
+    // interpolate the image to fill small holes
+    // get marked point
+    // compute distance
+    
+    
+    
+    // cv::imshow("mask", mask);
+    cv::imshow("image", image);
+    // cv::imshow("depth", depth_map);
+    cv::waitKey(3);
 }
+
+cv::Mat InteractiveSegmentation::projectPointCloudToImagePlane(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const sensor_msgs::CameraInfo::ConstPtr &camera_info,
+    cv::Mat &mask, cv::Mat &depth_map) {
+    if (cloud->empty()) {
+       ROS_ERROR("INPUT CLOUD EMPTY");
+       return cv::Mat();
+    }
+    cv::Mat objectPoints = cv::Mat(static_cast<int>(cloud->size()), 3, CV_32F);
+    for (int i = 0; i < cloud->size(); i++) {
+       objectPoints.at<float>(i, 0) = cloud->points[i].x;
+       objectPoints.at<float>(i, 1) = cloud->points[i].y;
+       objectPoints.at<float>(i, 2) = cloud->points[i].z;
+    }
+    float K[9];
+    float R[9];
+    for (int i = 0; i < 9; i++) {
+       K[i] = camera_info->K[i];
+       R[i] = camera_info->R[i];
+    }
+    cv::Mat cameraMatrix = cv::Mat(3, 3, CV_32F, K);
+    cv::Mat rotationMatrix = cv::Mat(3, 3, CV_32F, R);
+    float tvec[3];
+    tvec[0] = camera_info->P[3];
+    tvec[1] = camera_info->P[7];
+    tvec[2] = camera_info->P[11];
+    cv::Mat translationMatrix = cv::Mat(3, 1, CV_32F, tvec);
+
+    float D[5];
+    for (int i = 0; i < 5; i++) {
+       D[i] = camera_info->D[i];
+    }
+    cv::Mat distortionModel = cv::Mat(5, 1, CV_32F, D);
+    cv::Mat rvec;
+    cv::Rodrigues(rotationMatrix, rvec);
+    
+    std::vector<cv::Point2f> imagePoints;
+    cv::projectPoints(objectPoints, rvec, translationMatrix,
+                      cameraMatrix, distortionModel, imagePoints);
+    cv::Scalar color = cv::Scalar(0, 0, 0);
+    cv::Mat image = cv::Mat(
+       camera_info->height, camera_info->width, CV_8UC3, color);
+    mask = cv::Mat::zeros(
+       camera_info->height, camera_info->width, CV_32F);
+    depth_map = cv::Mat::zeros(
+       camera_info->height, camera_info->width, CV_8UC1);
+    for (int i = 0; i < imagePoints.size(); i++) {
+       int x = imagePoints[i].x;
+       int y = imagePoints[i].y;
+       if (!isnan(x) && !isnan(y) && (x >= 0 && x <= image.cols) &&
+           (y >= 0 && y <= image.rows)) {
+          image.at<cv::Vec3b>(y, x)[2] = cloud->points[i].r;
+          image.at<cv::Vec3b>(y, x)[1] = cloud->points[i].g;
+          image.at<cv::Vec3b>(y, x)[0] = cloud->points[i].b;
+          
+          mask.at<float>(y, x) = 255.0f;
+          depth_map.at<uchar>(y, x) = (cloud->points[i].z / 10.0f) * 255.0f;
+       }
+    }
+    return image;
+}
+
 
 
 int main(int argc, char *argv[]) {
