@@ -129,10 +129,6 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const pcl::PointCloud<PointT>::Ptr, const Eigen::Vector4f,
        const std_msgs::Header, pcl::PointCloud<PointT>::Ptr,
        pcl::PointIndices::Ptr);
-    void objectMinCutSegmentation(const pcl::PointCloud<PointT>::Ptr,
-                                  const pcl::PointCloud<PointT>::Ptr,
-                                  const pcl::PointCloud<PointT>::Ptr,
-                                  pcl::PointCloud<PointT>::Ptr);
     void surfelSamplePointWeightMap(const pcl::PointCloud<PointT>::Ptr,
                                     const pcl::PointCloud<pcl::Normal>::Ptr,
                                     const pcl::PointXYZRGBA &,

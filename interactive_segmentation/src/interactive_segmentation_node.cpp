@@ -91,6 +91,7 @@ void InteractiveSegmentation::callback(
     pcl::PointCloud<pcl::Normal>::Ptr surfel_normals(
        new pcl::PointCloud<pcl::Normal>);
     int index_pos = screen_pt_.x + (screen_pt_.y * image.cols);
+
     for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr >::iterator it =
             supervoxel_clusters.begin(); it != supervoxel_clusters.end();
          it++) {
@@ -107,7 +108,7 @@ void InteractiveSegmentation::callback(
                                     it->first)->centroid_);
        *surfel_normals += *(supervoxel_clusters.at(it->first)->normals_);
     }
-  
+   
     if (closest_surfel_index == INT_MAX || isnan(closest_surfel_index)) {
        ROS_ERROR("NO SURFEL MARKED");
        return;
@@ -135,12 +136,14 @@ void InteractiveSegmentation::callback(
              isnan(centroid_pt.z)) {
             return;
          }
+         /*
          int search_out = kdtree.nearestKSearch(
             centroid_pt, cs_nearest, point_idx_search, point_squared_distance);
-         
+         */
          // just use the origin cloud and norm
          int k = 50;
          this->estimatePointCloudNormals<int>(cloud, normals, k, true);
+
 
          // float k = 0.03f;
          // this->estimatePointCloudNormals<float>(cloud, normals, k, false);
@@ -151,11 +154,13 @@ void InteractiveSegmentation::callback(
          
          // select few points close to centroid as true object
 
-
+         std::cout << "\033[34m 2) COMPUTING WEIGHTS \033[0m" << std::endl;
          cv::Mat weight_map;
          this->surfelSamplePointWeightMap(cloud, normals, centroid_pt,
-                                          attention_normal, index_pos, weight_map);
-         
+                                          attention_normal, index_pos,
+                                          weight_map);
+
+         /*
          for (int i = 0; i < point_idx_search.size(); i++) {
            int idx = point_idx_search[i];
            pcl::PointXYZRGBA neigh_pt = centroid_cloud->points[idx];
@@ -168,20 +173,21 @@ void InteractiveSegmentation::callback(
             obj_pt.b = neigh_pt.b;
             object_points->push_back(obj_pt);
 
-            /*
-            cv::Mat sample_weight_map;
-            Eigen::Vector4f idx_attn_normal = surfel_normals->points[
-                idx].getNormalVector4fMap();
-            this->surfelSamplePointWeightMap(cloud, normals, neigh_pt,
-                                             idx_attn_normal,
-                                             sample_weight_map);
-            cv::Mat tmp;
-            cv::add(weight_map, sample_weight_map, tmp);
-            weight_map = tmp.clone();
-            */
+          
+            // cv::Mat sample_weight_map;
+            // Eigen::Vector4f idx_attn_normal = surfel_normals->points[
+            //     idx].getNormalVector4fMap();
+            // this->surfelSamplePointWeightMap(cloud, normals, neigh_pt,
+            //                                  idx_attn_normal,
+            //                                  sample_weight_map);
+            // cv::Mat tmp;
+            // cv::add(weight_map, sample_weight_map, tmp);
+            // weight_map = tmp.clone();
+           
          }
          cv::normalize(weight_map, weight_map, 0, 1,
                        cv::NORM_MINMAX, -1, cv::Mat());
+         */
          
          // normalize weights **REMOVE THIS CLOUD**
          pcl::PointCloud<PointT>::Ptr weight_cloud(new pcl::PointCloud<PointT>);
@@ -194,9 +200,10 @@ void InteractiveSegmentation::callback(
          
          std::cout << cloud->size() << "\t" << normals->size() << "\t"
                    << weight_cloud->size() << "\n";
-        std::cout << "\033[34m 3) COMPUTING WEIGHTS \033[0m" << std::endl;
+        std::cout << "\033[34m 3) OBJECT MASK EXTRACTION \033[0m" << std::endl;
         
         // weights for graph cut
+        /*
         cv::Mat conv_weights = cv::Mat(image.size(), CV_32F);
         for (int i = 0; i < image.rows; i++) {
            for (int j = 0; j < image.cols; j++) {
@@ -208,18 +215,6 @@ void InteractiveSegmentation::callback(
               }
            }
         }
-       
-        // select the object mask
-        /*
-        cv::Mat object_mask;
-        cv::Rect rect = cv::Rect(0, 0, 0, 0);
-        this->attentionSurfelRegionMask(conv_weights, screen_pt_,
-                                        object_mask, rect);
-        cv::cvtColor(image, image, CV_RGB2BGR);
-        this->graphCutSegmentation(image, object_mask, rect, 1);
-
-        cv::imshow("weights", conv_weights);
-        cv::waitKey(3);
         */
         
         // get indices of the probable object mask
@@ -239,16 +234,14 @@ void InteractiveSegmentation::callback(
         cloud->clear();
         *cloud = *cov_cloud;
         */
-       
+
+
         Eigen::Vector3f attent_pt = Eigen::Vector3f(
            this->screen_pt_.x, this->screen_pt_.y, 0);
         this->selectedPointToRegionDistanceWeight(
-           cloud, attent_pt, 0.01f, info_msg);
-       
+           prob_object_cloud, attent_pt, 0.01f, info_msg);
+
            
-        // this->organizedMinCutMaxFlowSegmentation(
-        //    prob_object_cloud, index_pos);
-        
         
         /*
         // segmentation
@@ -262,8 +255,7 @@ void InteractiveSegmentation::callback(
         std::cout << cloud->size() << "\t" << normals->size() << std::endl;
       }   // end if
       
-      // cv::Mat saliency_img;
-      // this->generateFeatureSaliencyMap(image, saliency_img);
+
       cv_bridge::CvImage pub_img(
           image_msg->header, sensor_msgs::image_encodings::BGR8, image);
       this->pub_image_.publish(pub_img.toImageMsg());
@@ -285,10 +277,15 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
      /*pcl::PointCloud<PointT>::Ptr weights*/) {
      if (cloud->empty() || normals->empty()) {
        return;
-     }     
+     }
      Eigen::Vector4f attention_centroid = centroid_pt.getVector4fMap();
-     cv::Mat connectivity_weights;
-     cv::Mat orientation_weights;
+     cv::Mat connectivity_weights = cv::Mat::zeros(normals->size(), 1, CV_32F);
+     // cv::Mat orientation_weights;
+     cv::Mat orientation_weights = cv::Mat::zeros(normals->size(), 1, CV_32F);
+
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(this->num_threads_)
+#endif
      for (int i = 0; i < normals->size(); i++) {
        Eigen::Vector4f current_pt = cloud->points[i].getVector4fMap();
        Eigen::Vector4f d = (attention_centroid - current_pt) /
@@ -298,52 +295,61 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
        // float connection = (attention_normal - current_normal).dot(d);
        float connection = (current_pt - attention_centroid).dot(
            current_normal);
-       if (connection <= 0.0f || isnan(connection)) {
+       if (connection < 0.0f || isnan(connection)) {
           connection = 0.0f;
        } else {
          // connection = acos(current_normal.dot(attention_normal))/
          //     (1.0f * M_PI);
           connection = std::pow((current_normal.dot(attention_normal)), 2);
        }
-       connectivity_weights.push_back(connection);
+       // connectivity_weights.push_back(connection);
+       connectivity_weights.at<float>(i, 0) = connection;
+       /*     
+       Eigen::Vector3f view_point_vec = (cloud->points[i].getVector3fMap() -
+                                         centroid_pt.getVector3fMap());
+       */
+       
+       Eigen::Vector3f view_point_vec = (cloud->points[i].getVector3fMap() -
+                                         centroid_pt.getVector3fMap());
+       Eigen::Vector3f surface_normal_vec = normals->points[
+          i].getNormalVector3fMap();
+       /*
+       Eigen::Vector3f surface_normal_vec = normals->points[
+          i].getNormalVector3fMap() - attention_normal.head<3>();
+       */
 
-       // orientation with respect to marked
-       Eigen::Vector3f viewPointVec = (cloud->points[i].getVector3fMap() -
-                                       centroid_pt.getVector3fMap());
-       Eigen::Vector3f surfaceNormalVec = normals->points[
-           i].getNormalVector3fMap() - attention_normal.head<3>();
+       
        float cross_norm = static_cast<float>(
-           surfaceNormalVec.cross(viewPointVec).norm());
+           surface_normal_vec.cross(view_point_vec).norm());
        float scalar_prod = static_cast<float>(
-           surfaceNormalVec.dot(viewPointVec));
+           surface_normal_vec.dot(view_point_vec));
        float angle = atan2(cross_norm, scalar_prod);
-       float view_pt_weight = (CV_PI - angle)/(2.0 * CV_PI);
-
        
+       float view_pt_weight = (CV_PI - angle)/(1.0 * CV_PI);
        // view_pt_weight = 1.0f / (1.0f + (view_pt_weight * view_pt_weight));
-       
        // view_pt_weight = std::exp(-1.0f * view_pt_weight);
        if (isnan(angle)) {
           view_pt_weight = 0.0f;
        }
        
        // view_pt_weight *= this->whiteNoiseKernel(view_pt_weight);
-       view_pt_weight *= this->whiteNoiseKernel(view_pt_weight, 0.0f, 0.50f);
-       orientation_weights.push_back(view_pt_weight);
+       view_pt_weight *= this->whiteNoiseKernel(view_pt_weight, 0.0f, 15.0f);
+       // orientation_weights.push_back(view_pt_weight);
+       orientation_weights.at<float>(i, 0) = view_pt_weight;
      }
-     /*
+     
      cv::normalize(connectivity_weights, connectivity_weights, 0, 1,
                    cv::NORM_MINMAX, -1, cv::Mat());
      cv::normalize(orientation_weights, orientation_weights, 0, 1,
                    cv::NORM_MINMAX, -1, cv::Mat());
-
-     
+                   
      // smoothing HERE
-     // const int filter_lenght = 5;
-     // cv::GaussianBlur(connectivity_weights, connectivity_weights,
-     //                  cv::Size(filter_lenght, filter_lenght), 0, 0);
-     // cv::GaussianBlur(orientation_weights, orientation_weights,
-     //                  cv::Size(filter_lenght, filter_lenght), 0.0, 0.0);
+     /*
+     const int filter_lenght = 5;
+     cv::GaussianBlur(connectivity_weights, connectivity_weights,
+                      cv::Size(filter_lenght, filter_lenght), 0, 0);
+     cv::GaussianBlur(orientation_weights, orientation_weights,
+                      cv::Size(filter_lenght, filter_lenght), 0.0, 0.0);
      /*
      // morphological
      int erosion_size = 5;
@@ -356,10 +362,12 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
      cv::erode(connectivity_weights, connectivity_weights, element);
      cv::erode(orientation_weights, orientation_weights, element);
      */
-     
      // convolution of distribution
      // pcl::copyPointCloud<PointT, PointT>(*cloud, *weights);
      weights = cv::Mat::zeros(static_cast<int>(cloud->size()), 1, CV_32F);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(this->num_threads_) shared(weights)
+#endif
      for (int i = 0; i < connectivity_weights.rows; i++) {
        float pix_val = connectivity_weights.at<float>(i, 0);
        connectivity_weights.at<float>(i, 0) = pix_val *
@@ -437,41 +445,6 @@ bool InteractiveSegmentation::attentionSurfelRegionPointCloudMask(
     ros_cloud.header = header;
     this->pub_prob_.publish(ros_cloud);
 }
-
-void InteractiveSegmentation::objectMinCutSegmentation(
-    const pcl::PointCloud<PointT>::Ptr cloud,
-    const pcl::PointCloud<PointT>::Ptr object_points,
-    const pcl::PointCloud<PointT>::Ptr prob_object_cloud,
-    pcl::PointCloud<PointT>::Ptr object_cloud) {
-    if (cloud->empty() || object_points->empty()) {
-       return;
-    }
-
-    std::cout << "\033[35mFILTER SIZE: " << prob_object_cloud->size()
-              << "\t" << object_points->size() << std::endl;
-    
-    pcl::MinCutSegmentation<PointT> segmentation;
-    segmentation.setInputCloud(prob_object_cloud);
-    segmentation.setForegroundPoints(object_points);
-
-    const float sigma = 0.0001f;
-    const float radius = 0.1f;
-    const int k = 10;
-    const float source_weight = 0.8f;
-
-    segmentation.setSigma(sigma);
-    segmentation.setRadius(radius);
-    segmentation.setNumberOfNeighbours(k);
-    segmentation.setSourceWeight(source_weight);
-
-    std::vector<pcl::PointIndices> clusters;
-    segmentation.extract(clusters);
-    *object_cloud = *(segmentation.getColoredCloud());
-    
-    std::cout << "MAX FLOW: " << segmentation.getMaxFlow()
-              << "\t" << object_cloud->size() << std::endl;
-}
-
 
 void InteractiveSegmentation::generateFeatureSaliencyMap(
     const cv::Mat &img, cv::Mat &saliency_img) {
