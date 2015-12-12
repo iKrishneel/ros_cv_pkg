@@ -69,10 +69,6 @@ void InteractiveSegmentation::callback(
     pcl::fromROSMsg(*cloud_msg, *cloud);
     
     std::cout << "MAIN RUNNING: " << is_init_  << "\n";
-
-    this->highCurvatureConcaveBoundary(cloud, cloud_msg->header);
-    return;
-
     
     bool is_surfel_level = true;
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
@@ -112,7 +108,6 @@ void InteractiveSegmentation::callback(
                                     it->first)->centroid_);
        *surfel_normals += *(supervoxel_clusters.at(it->first)->normals_);
     }
-   
     if (closest_surfel_index == INT_MAX || isnan(closest_surfel_index)) {
        ROS_ERROR("NO SURFEL MARKED");
        return;
@@ -121,6 +116,8 @@ void InteractiveSegmentation::callback(
     std::cout << "\033[34m 1) SELECTED \033[0m" << std::endl;
 
     pcl::PointCloud<PointT>::Ptr object_points(new pcl::PointCloud<PointT>);
+    *object_points = *cloud;
+    
     bool is_point_level = true;
     if (is_point_level && !supervoxel_clusters.empty()) {
        pcl::PointIndices sample_point_indices;
@@ -225,7 +222,8 @@ void InteractiveSegmentation::callback(
         pcl::PointIndices::Ptr prob_object_indices(new pcl::PointIndices);
         pcl::PointCloud<PointT>::Ptr prob_object_cloud(
            new pcl::PointCloud<PointT>);
-        this->attentionSurfelRegionPointCloudMask(cloud, attention_centroid,
+        this->attentionSurfelRegionPointCloudMask(cloud,
+                                                  attention_centroid,
                                                   cloud_msg->header,
                                                   prob_object_cloud,
                                                   prob_object_indices);
@@ -245,6 +243,9 @@ void InteractiveSegmentation::callback(
         this->selectedPointToRegionDistanceWeight(
            prob_object_cloud, attent_pt, 0.01f, info_msg);
 
+
+        this->highCurvatureConcaveBoundary(
+           prob_object_cloud, cloud_msg->header);
            
         
         /*
@@ -1013,7 +1014,7 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*curv_cloud, ros_cloud);
     ros_cloud.header = header;
-    this->pub_cloud_.publish(ros_cloud);
+    this->pub_pt_map_.publish(ros_cloud);
 }
 
 

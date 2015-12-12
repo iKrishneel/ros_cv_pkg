@@ -3,7 +3,8 @@
   <arg name="input_info" default="/camera/depth_registered/camera_info" />
   <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />
   <arg name="image" default="/camera/rgb/image_rect_color" />
-
+  <arg name="SUPERVOXEL" default="false" />
+  
   <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch">
     <arg name="cloud" value="$(arg input_point)"/>
   </include>
@@ -18,10 +19,12 @@
   </node>
 
   <!-- temp commented -->
-  <!-- <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer" name="supervoxel_segmentation_decomposer"> -->
-  <!--   <remap from="~input" to="/interactive_segmentation/output/supervoxels" /> -->
-  <!--   <remap from="~target" to="/interactive_segmentation/output/indices" /> -->
-  <!-- </node> -->
+  <group if="$(arg SUPERVOXEL)" >
+    <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer" name="supervoxel_segmentation_decomposer">
+      <remap from="~input" to="/interactive_segmentation/output/supervoxels" />
+      <remap from="~target" to="/interactive_segmentation/output/indices" />
+    </node>
+  </group>
 
   <node pkg="image_view2" type="image_view2"
 	name="image_view2" output="screen">
