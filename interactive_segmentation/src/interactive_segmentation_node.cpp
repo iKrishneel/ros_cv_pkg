@@ -737,16 +737,13 @@ void InteractiveSegmentation::pointIntensitySimilarity(
 }
 
 
-bool InteractiveSegmentation::localVoxelConvexityCriteria(
-    Eigen::Vector4f c_centroid, Eigen::Vector4f c_normal,
-    Eigen::Vector4f n_centroid, Eigen::Vector4f n_normal,
-    const float threshold) {
-    c_centroid(3) = 0.0f;
-    c_normal(3) = 0.0f;
+int InteractiveSegmentation::localVoxelConvexityCriteria(
+    Eigen::Vector4f c_centroid, Eigen::Vector4f n_centroid,
+    Eigen::Vector4f n_normal, const float threshold) {
     if ((n_centroid - c_centroid).dot(n_normal) > 0) {
-        return true;
+        return 1;
     } else {
-        return false;
+        return -1;
     }
 }
 
@@ -962,44 +959,52 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     pcl::PointCloud<pcl::Normal>::Ptr normals(
        new pcl::PointCloud<pcl::Normal>);
     this->estimatePointCloudNormals<int>(curv_cloud, normals, k, true);
-    
-    std::vector<int> point_idx_search;
-    std::vector<float> point_squared_distance;
+
     pcl::KdTreeFLANN<PointT> kdtree;
     kdtree.setInputCloud(curv_cloud);
-    int radius = 50;
+    int search = 50;
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(this->num_threads_) shared(kdtree)
+#endif
     for (int i = 0; i < curv_cloud->size(); i++) {
        PointT centroid_pt = curv_cloud->points[i];
        if (!isnan(centroid_pt.x) || !isnan(centroid_pt.y) ||
            !isnan(centroid_pt.z)) {
+          std::vector<int> point_idx_search;
+          std::vector<float> point_squared_distance;
           int search_out = kdtree.nearestKSearch(
-             centroid_pt, radius, point_idx_search, point_squared_distance);
+             centroid_pt, search, point_idx_search, point_squared_distance);
           Eigen::Vector4f seed_vector = normals->points[
              i].getNormalVector4fMap();
           float max_diff = 0.0f;
           float min_diff = FLT_MAX;
+          
+          int concave_sum = 0;
           for (int j = 1; j < point_idx_search.size(); j++) {
              int index = point_idx_search[j];
              Eigen::Vector4f neigh_norm = normals->points[
                 index].getNormalVector4fMap();
              float dot_prod = neigh_norm.dot(seed_vector) / (
                 neigh_norm.norm() * seed_vector.norm());
+             
              if (dot_prod > max_diff) {
                 max_diff = dot_prod;
              }
              if (dot_prod < min_diff) {
                 min_diff = dot_prod;
              }
+
+             concave_sum += this->localVoxelConvexityCriteria(
+                centroid_pt.getVector4fMap(), curv_cloud->points[
+                   index].getVector4fMap(), neigh_norm);
           }
           float variance = max_diff - min_diff;
-          if (variance > 0.10f) {
+          if (variance > 0.10f && concave_sum <= 0) {
              centroid_pt.r = 255 * variance;
              centroid_pt.b = 0;
              centroid_pt.g = 0;
              curv_cloud->points[i] = centroid_pt;
           }
-          point_idx_search.clear();
-          point_squared_distance.clear();
        }
     }
 

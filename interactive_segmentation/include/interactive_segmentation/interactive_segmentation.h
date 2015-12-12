@@ -144,9 +144,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     virtual Eigen::Vector4f
     cloudMeanNormal(const pcl::PointCloud<pcl::Normal>::Ptr,
                     bool = false);
-    bool localVoxelConvexityCriteria(Eigen::Vector4f, Eigen::Vector4f,
-                                     Eigen::Vector4f, Eigen::Vector4f,
-                                     const float = 0.0f);
+    int localVoxelConvexityCriteria(Eigen::Vector4f, Eigen::Vector4f,
+                                     Eigen::Vector4f, const float = 0.0f);
     template<class T>
     void estimatePointCloudNormals(const pcl::PointCloud<PointT>::Ptr,
                                    pcl::PointCloud<pcl::Normal>::Ptr,
