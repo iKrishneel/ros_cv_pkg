@@ -122,8 +122,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
                           const sensor_msgs::PointCloud2::ConstPtr &);
     void selectedVoxelObjectHypothesis(
        const std::map<uint32_t, pcl::Supervoxel<
-       PointT>::Ptr > supervoxel_clusters,
-       const pcl::PointCloud<pcl::PointXYZRGBA>::Ptr, const uint32_t,
+       PointT>::Ptr > supervoxel_clusters, const uint32_t,
        pcl::PointCloud<PointT>::Ptr, const sensor_msgs::CameraInfo::ConstPtr &);
    
     void surfelLevelObjectHypothesis(

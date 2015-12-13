@@ -5,7 +5,7 @@
 #include <vector>
 
 InteractiveSegmentation::InteractiveSegmentation():
-    min_cluster_size_(50), is_init_(false),
+    min_cluster_size_(30), is_init_(true),
     num_threads_(8) {
     pnh_.getParam("num_threads", this->num_threads_);
     this->subscribe();
@@ -98,29 +98,35 @@ void InteractiveSegmentation::callback(
     for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr >::iterator it =
             supervoxel_clusters.begin(); it != supervoxel_clusters.end();
          it++) {
-       Eigen::Vector4f selected_pt = cloud->points[
-          index_pos].getVector4fMap();
-       Eigen::Vector4f surfel_pt = supervoxel_clusters.at(
-          it->first)->centroid_.getVector4fMap();
-       double dist = pcl::distances::l2(selected_pt, surfel_pt);
-       if (!isnan(dist) && dist < closest_surfel) {
-          closest_surfel = dist;
-          closest_surfel_index = static_cast<int>(it->first);
+       // Eigen::Vector4f selected_pt = cloud->points[
+       //    index_pos].getVector4fMap();
+       // Eigen::Vector4f surfel_pt = supervoxel_clusters.at(
+       //    it->first)->centroid_.getVector4fMap();
+       if (supervoxel_clusters.at(it->first)->voxels_->size() >
+           this->min_cluster_size_) {
+          std::cout << "\033[32m Voxel #: \033[0m"  << it->first << std::endl;
+          this->selectedVoxelObjectHypothesis(supervoxel_clusters,
+                                              it->first, cloud, info_msg);
        }
+       
+       // double dist = pcl::distances::l2(selected_pt, surfel_pt);
+       // if (!isnan(dist) && dist < closest_surfel) {
+       //    closest_surfel = dist;
+       //    closest_surfel_index = static_cast<int>(it->first);
+       // }
+
+       
        centroid_cloud->push_back(supervoxel_clusters.at(
                                     it->first)->centroid_);
        *surfel_normals += *(supervoxel_clusters.at(it->first)->normals_);
     }
+    
     if (closest_surfel_index == INT_MAX || isnan(closest_surfel_index)) {
        ROS_ERROR("NO SURFEL MARKED");
        return;
     }
     
     std::cout << "\033[34m 1) SELECTED \033[0m" << std::endl;
-
-    this->selectedVoxelObjectHypothesis(supervoxel_clusters, centroid_cloud,
-                                        closest_surfel_index, cloud,
-                                        info_msg);
 
     
     sensor_msgs::PointCloud2 ros_cloud;
@@ -132,7 +138,6 @@ void InteractiveSegmentation::callback(
 
 void InteractiveSegmentation::selectedVoxelObjectHypothesis(
     const std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > supervoxel_clusters,
-    const pcl::PointCloud<pcl::PointXYZRGBA>::Ptr centroid_cloud,
     const uint32_t closest_surfel_index, pcl::PointCloud<PointT>::Ptr cloud,
     const sensor_msgs::CameraInfo::ConstPtr &info_msg) {
     pcl::PointCloud<PointT>::Ptr object_points(new pcl::PointCloud<PointT>);
@@ -145,11 +150,13 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
        sample_point_indices.indices.push_back(sample_index);
        if (is_init_) {
           // search 4 neigbours of selected surfel
+          /*
           int cs_nearest = 1;
           std::vector<int> point_idx_search;
           std::vector<float> point_squared_distance;
           pcl::KdTreeFLANN<pcl::PointXYZRGBA> kdtree;
           kdtree.setInputCloud(centroid_cloud);
+          */
           pcl::PointXYZRGBA centroid_pt = supervoxel_clusters.at(
              closest_surfel_index)->centroid_;
           if (isnan(centroid_pt.x) || isnan(centroid_pt.y) ||
