@@ -120,7 +120,7 @@ void InteractiveSegmentation::callback(
 
     this->selectedVoxelObjectHypothesis(supervoxel_clusters, centroid_cloud,
                                         closest_surfel_index, cloud,
-                                        info_msg, cloud_msg->header);
+                                        info_msg);
 
     
     sensor_msgs::PointCloud2 ros_cloud;
@@ -134,8 +134,7 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
     const std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > supervoxel_clusters,
     const pcl::PointCloud<pcl::PointXYZRGBA>::Ptr centroid_cloud,
     const uint32_t closest_surfel_index, pcl::PointCloud<PointT>::Ptr cloud,
-    const sensor_msgs::CameraInfo::ConstPtr &info_msg,
-    const std_msgs::Header header) {
+    const sensor_msgs::CameraInfo::ConstPtr &info_msg) {
     pcl::PointCloud<PointT>::Ptr object_points(new pcl::PointCloud<PointT>);
     *object_points = *cloud;
     bool is_point_level = true;
@@ -178,10 +177,10 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
           // select few points close to centroid as true object
 
           std::cout << "\033[34m 2) COMPUTING WEIGHTS \033[0m" << std::endl;
-          int index_pos = screen_pt_.x + (screen_pt_.y * 640);
+          int index_pos = 0;
           cv::Mat weight_map;
           this->surfelSamplePointWeightMap(cloud, normals, centroid_pt,
-                                           attention_normal, index_pos,
+                                           attention_normal,
                                            weight_map);
 
           /*
@@ -202,7 +201,6 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
              // Eigen::Vector4f idx_attn_normal = surfel_normals->points[
              //     idx].getNormalVector4fMap();
              // this->surfelSamplePointWeightMap(cloud, normals, neigh_pt,
-             //                                  idx_attn_normal,
              //                                  sample_weight_map);
              // cv::Mat tmp;
              // cv::add(weight_map, sample_weight_map, tmp);
@@ -247,7 +245,8 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
           pcl::PointCloud<PointT>::Ptr prob_object_cloud(
              new pcl::PointCloud<PointT>);
           this->attentionSurfelRegionPointCloudMask(cloud, attention_centroid,
-                                                    header, prob_object_cloud,
+                                                    info_msg->header,
+                                                    prob_object_cloud,
                                                     prob_object_indices);
 
        
@@ -266,7 +265,8 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
              prob_object_cloud, attent_pt, 0.01f, info_msg);
 
 
-          this->highCurvatureConcaveBoundary(prob_object_cloud, header);
+          this->highCurvatureConcaveBoundary(prob_object_cloud,
+                                             info_msg->header);
 
         
           std::cout << cloud->size() << "\t" << normals->size() << std::endl;
@@ -282,8 +282,7 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
      const pcl::PointCloud<PointT>::Ptr cloud,
      const pcl::PointCloud<pcl::Normal>::Ptr normals,
      const pcl::PointXYZRGBA &centroid_pt,
-     const Eigen::Vector4f attention_normal,
-     const int attention_index, cv::Mat &weights
+     const Eigen::Vector4f attention_normal, cv::Mat &weights
      /*pcl::PointCloud<PointT>::Ptr weights*/) {
      if (cloud->empty() || normals->empty()) {
        return;

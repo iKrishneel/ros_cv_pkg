@@ -124,8 +124,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const std::map<uint32_t, pcl::Supervoxel<
        PointT>::Ptr > supervoxel_clusters,
        const pcl::PointCloud<pcl::PointXYZRGBA>::Ptr, const uint32_t,
-       pcl::PointCloud<PointT>::Ptr, const sensor_msgs::CameraInfo::ConstPtr &,
-       const std_msgs::Header);
+       pcl::PointCloud<PointT>::Ptr, const sensor_msgs::CameraInfo::ConstPtr &);
    
     void surfelLevelObjectHypothesis(
        pcl::PointCloud<PointT>::Ptr,
@@ -141,8 +140,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     void surfelSamplePointWeightMap(const pcl::PointCloud<PointT>::Ptr,
                                     const pcl::PointCloud<pcl::Normal>::Ptr,
                                     const pcl::PointXYZRGBA &,
-                                    const Eigen::Vector4f, const int,
-                                    cv::Mat &);
+                                    const Eigen::Vector4f, cv::Mat &);
     void computePointCloudCovarianceMatrix(const pcl::PointCloud<PointT>::Ptr,
                                            pcl::PointCloud<PointT>::Ptr);
     float whiteNoiseKernel(const float,
