@@ -102,6 +102,9 @@ void InteractiveSegmentation::callback(
     const int sv_size = static_cast<int>(supervoxel_clusters.size());
     std::vector<int> aligned_indices(sv_size);
     int *a_indices = &aligned_indices[0];
+    std::vector<uint32_t> supervoxel_index(sv_size);
+    uint32_t *sv_index = &supervoxel_index[0];
+    bool flag_bit[sv_size];
     int icount = 0;
     for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr >::iterator it =
             supervoxel_clusters.begin(); it != supervoxel_clusters.end();
@@ -127,8 +130,10 @@ void InteractiveSegmentation::callback(
              }
           }
        }
-       a_indices[icount++] = ind;
-       std::cout << a_indices[icount - 1] << "\t" << ind << std::endl;
+       a_indices[icount] = ind;
+       sv_index[icount] = it->first;
+       flag_bit[icount] = false;
+       icount++;
     }
     
     
@@ -136,16 +141,24 @@ void InteractiveSegmentation::callback(
     pcl::copyPointCloud<PointT, PointT>(*cloud, *in_cloud);
     pcl::PointCloud<PointT>::Ptr non_object_cloud(new pcl::PointCloud<PointT>);
     
-    for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr >::iterator it =
-            supervoxel_clusters.begin(); it != supervoxel_clusters.end();
-         it++) {
-    // for (int i = 0; i < sv_size; i++) {
-       if (supervoxel_clusters.at(it->first)->voxels_->size() >
-           this->min_cluster_size_) {
+    // for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr >::iterator it =
+    //         supervoxel_clusters.begin(); it != supervoxel_clusters.end();
+    //      it++) {
+    
+    for (int i = 0; i < sv_size; i++) {
+       if (supervoxel_clusters.at(supervoxel_index[i])->voxels_->size() >
+           this->min_cluster_size_ && !flag_bit[i]) {
+
+          std::cout << "\nDEBUG: STARTING ON SELECTED" << std::endl;
+          
           pcl::PointIndices::Ptr prob_object_indices(new pcl::PointIndices);
           this->selectedVoxelObjectHypothesis(prob_object_indices,
-                                              supervoxel_clusters, it->first,
+                                              supervoxel_clusters,
+                                              supervoxel_index[i],
                                               cloud, info_msg);
+
+          std::cout << "\nDEBUG: OBJECT REGION MARKED" << std::endl;
+          
           non_object_cloud->clear();
           pcl::copyPointCloud<PointT, PointT>(*in_cloud,
                                               *non_object_cloud);
@@ -156,24 +169,48 @@ void InteractiveSegmentation::callback(
              pt.y = std::numeric_limits<float>::quiet_NaN();
              pt.z = std::numeric_limits<float>::quiet_NaN();
              non_object_cloud->points[idx] = pt;
+
+             // flagout removed sv centroid
+             for (int k = 0; k < sv_size; k++) {
+                if (idx == a_indices[k]) {
+                   flag_bit[k] = true;
+                }
+             }
           }
-          pcl::removeNaNFromPointCloud<PointT>(*non_object_cloud,
-                                               *non_object_cloud,
-                                               nan_indices);
+
+          std::cout << "\nDEBUG: VOXEL SELECTED" << std::endl;
+          
+          nan_indices.clear();
           cloud->clear();
-          pcl::copyPointCloud<PointT, PointT>(*in_cloud, *cloud);
+
+          for (int k = 0; k < non_object_cloud->size(); k++) {
+             PointT noc_pt = non_object_cloud->points[k];
+             if (!isnan(noc_pt.x) || !isnan(noc_pt.y) || !isnan(noc_pt.z)) {
+                cloud->push_back(noc_pt);
+             }
+          }
+
+          
+          // pcl::removeNaNFromPointCloud<PointT>(*non_object_cloud,
+          //                                      *cloud, nan_indices);
+
+          // pcl::copyPointCloud<PointT, PointT>(*in_cloud, *cloud);
           // pcl::copyPointCloud<PointT, PointT>(*non_object_cloud, *cloud);
 
+          std::cout << "\nDEBUG: PUBLISHING" << std::endl;
+          
           sensor_msgs::PointCloud2 ros_cloud;
-          pcl::toROSMsg(*non_object_cloud, ros_cloud);
+          // pcl::toROSMsg(*non_object_cloud, ros_cloud);
+          pcl::toROSMsg(*cloud, ros_cloud);
           ros_cloud.header = cloud_msg->header;
           this->pub_cloud_.publish(ros_cloud);
+          
        } else {
-          ROS_INFO("\033[32m SKIPPPED %d \033[0m", it->first);
+          ROS_INFO("\033[32m SKIPPPED %d \033[0m", supervoxel_index[i]);
        }
-       centroid_cloud->push_back(supervoxel_clusters.at(
-                                    it->first)->centroid_);
-       *surfel_normals += *(supervoxel_clusters.at(it->first)->normals_);
+       // centroid_cloud->push_back(supervoxel_clusters.at(
+       //                              it->first)->centroid_);
+       // *surfel_normals += *(supervoxel_clusters.at(it->first)->normals_);
     }
     
     std::cout << "\033[34m 1) ALL VALID REGION LABELED \033[0m" << std::endl;
@@ -207,32 +244,9 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
               isnan(centroid_pt.z)) {
              return;
           }
-          /*
-            int search_out = kdtree.nearestKSearch(
-            centroid_pt, cs_nearest, point_idx_search, point_squared_distance);
-          */
 
-          // check if point is empty
-          pcl::KdTreeFLANN<PointT> kdtree;
-          kdtree.setInputCloud(cloud);
-          std::vector<int> point_neigbours;
-          std::vector<float> point_neigbour_dist;
-          const float radius_threshold = 0.02f;
-          PointT interest_pt;
-          interest_pt.x = centroid_pt.x;
-          interest_pt.y = centroid_pt.y;
-          interest_pt.z = centroid_pt.z;
-          interest_pt.b = centroid_pt.b;
-          interest_pt.g = centroid_pt.g;
-          interest_pt.r = centroid_pt.r;
-          kdtree.radiusSearch(interest_pt, radius_threshold,
-                              point_neigbours, point_neigbour_dist);
-          std::cout << "NEIBOUFR SIZE: " << point_neigbours.size()
-                    << "\n"<< std::endl;
 
-          if (point_neigbours.size() < 2) {
-             return;
-          }
+          std::cout << "\n\t DUBUG: COMPUTING NORMAL" << std::endl;
           
           // just use the origin cloud and norm
           int k = 50;
@@ -240,7 +254,8 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
              new pcl::PointCloud<pcl::Normal>);
           this->estimatePointCloudNormals<int>(cloud, normals, k, true);
 
-
+          std::cout << "\n\t DUBUG: NORMAL COMPUTED" << std::endl;
+          
           // float k = 0.03f;
           // this->estimatePointCloudNormals<float>(cloud, normals, k, false);
          
