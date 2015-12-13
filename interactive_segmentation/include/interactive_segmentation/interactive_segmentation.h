@@ -1,3 +1,5 @@
+// Copyright (C) 2015 by Krishneel Chaudhary, JSK Lab,
+// The University of Tokyo, Japan
 
 #ifndef _INTERACTIVE_SEGMENTATION_H_
 #define _INTERACTIVE_SEGMENTATION_H_

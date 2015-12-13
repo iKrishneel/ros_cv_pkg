@@ -4,6 +4,7 @@
   <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />
   <arg name="image" default="/camera/rgb/image_rect_color" />
   <arg name="SUPERVOXEL" default="false" />
+  <arg name="num_threads" default="8" />
   
   <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch">
     <arg name="cloud" value="$(arg input_point)"/>

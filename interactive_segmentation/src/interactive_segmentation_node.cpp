@@ -1,3 +1,5 @@
+// Copyright (C) 2015 by Krishneel Chaudhary, JSK Lab,
+// The University of Tokyo, Japan
 
 #include <interactive_segmentation/interactive_segmentation.h>
 #include <vector>
@@ -5,6 +7,7 @@
 InteractiveSegmentation::InteractiveSegmentation():
     min_cluster_size_(50), is_init_(false),
     num_threads_(8) {
+    pnh_.getParam("num_threads", this->num_threads_);
     this->subscribe();
     this->onInit();
 }
@@ -67,8 +70,8 @@ void InteractiveSegmentation::callback(
        image_msg, image_msg->encoding)->image;
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-    
-    std::cout << "MAIN RUNNING: " << is_init_  << "\n";
+
+    ROS_INFO("\033[32m DEBUG: PROCESSING CALLBACK \033[0m");
     
     bool is_surfel_level = true;
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
@@ -84,7 +87,7 @@ void InteractiveSegmentation::callback(
        this->pub_indices_.publish(ros_indices);
     }
   
-    double closest_surfel = FLT_MAX;
+    double closest_surfel = DBL_MAX;
     uint32_t closest_surfel_index = INT_MAX;
     pcl::PointCloud<pcl::PointXYZRGBA>::Ptr centroid_cloud(
        new pcl::PointCloud<pcl::PointXYZRGBA>);
