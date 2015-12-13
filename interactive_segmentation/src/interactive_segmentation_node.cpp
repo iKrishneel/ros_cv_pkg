@@ -118,161 +118,163 @@ void InteractiveSegmentation::callback(
     
     std::cout << "\033[34m 1) SELECTED \033[0m" << std::endl;
 
+    this->selectedVoxelObjectHypothesis(supervoxel_clusters, centroid_cloud,
+                                        closest_surfel_index, cloud,
+                                        info_msg, cloud_msg->header);
+
+    
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*cloud, ros_cloud);
+    ros_cloud.header = cloud_msg->header;
+    this->pub_cloud_.publish(ros_cloud);
+}
+
+
+void InteractiveSegmentation::selectedVoxelObjectHypothesis(
+    const std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > supervoxel_clusters,
+    const pcl::PointCloud<pcl::PointXYZRGBA>::Ptr centroid_cloud,
+    const uint32_t closest_surfel_index, pcl::PointCloud<PointT>::Ptr cloud,
+    const sensor_msgs::CameraInfo::ConstPtr &info_msg,
+    const std_msgs::Header header) {
     pcl::PointCloud<PointT>::Ptr object_points(new pcl::PointCloud<PointT>);
     *object_points = *cloud;
-    
     bool is_point_level = true;
     if (is_point_level && !supervoxel_clusters.empty()) {
        pcl::PointIndices sample_point_indices;
        // index of the sampled surfel points
        int sample_index = 0;
        sample_point_indices.indices.push_back(sample_index);
-      if (is_init_) {
-         // search 4 neigbours of selected surfel
-         int cs_nearest = 1;
-         std::vector<int> point_idx_search;
-         std::vector<float> point_squared_distance;
-         pcl::KdTreeFLANN<pcl::PointXYZRGBA> kdtree;
-         kdtree.setInputCloud(centroid_cloud);
-         pcl::PointXYZRGBA centroid_pt = supervoxel_clusters.at(
-            closest_surfel_index)->centroid_;
-         if (isnan(centroid_pt.x) || isnan(centroid_pt.y) ||
-             isnan(centroid_pt.z)) {
-            return;
-         }
-         /*
-         int search_out = kdtree.nearestKSearch(
+       if (is_init_) {
+          // search 4 neigbours of selected surfel
+          int cs_nearest = 1;
+          std::vector<int> point_idx_search;
+          std::vector<float> point_squared_distance;
+          pcl::KdTreeFLANN<pcl::PointXYZRGBA> kdtree;
+          kdtree.setInputCloud(centroid_cloud);
+          pcl::PointXYZRGBA centroid_pt = supervoxel_clusters.at(
+             closest_surfel_index)->centroid_;
+          if (isnan(centroid_pt.x) || isnan(centroid_pt.y) ||
+              isnan(centroid_pt.z)) {
+             return;
+          }
+          /*
+            int search_out = kdtree.nearestKSearch(
             centroid_pt, cs_nearest, point_idx_search, point_squared_distance);
-         */
-         // just use the origin cloud and norm
-         int k = 50;
-         this->estimatePointCloudNormals<int>(cloud, normals, k, true);
+          */
+          // just use the origin cloud and norm
+          int k = 50;
+          pcl::PointCloud<pcl::Normal>::Ptr normals(
+             new pcl::PointCloud<pcl::Normal>);
+          this->estimatePointCloudNormals<int>(cloud, normals, k, true);
 
 
-         // float k = 0.03f;
-         // this->estimatePointCloudNormals<float>(cloud, normals, k, false);
+          // float k = 0.03f;
+          // this->estimatePointCloudNormals<float>(cloud, normals, k, false);
          
-         Eigen::Vector4f attention_normal = this->cloudMeanNormal(
-            supervoxel_clusters.at(closest_surfel_index)->normals_);
-         Eigen::Vector4f attention_centroid = centroid_pt.getVector4fMap();
+          Eigen::Vector4f attention_normal = this->cloudMeanNormal(
+             supervoxel_clusters.at(closest_surfel_index)->normals_);
+          Eigen::Vector4f attention_centroid = centroid_pt.getVector4fMap();
          
-         // select few points close to centroid as true object
+          // select few points close to centroid as true object
 
-         std::cout << "\033[34m 2) COMPUTING WEIGHTS \033[0m" << std::endl;
-         cv::Mat weight_map;
-         this->surfelSamplePointWeightMap(cloud, normals, centroid_pt,
-                                          attention_normal, index_pos,
-                                          weight_map);
+          std::cout << "\033[34m 2) COMPUTING WEIGHTS \033[0m" << std::endl;
+          int index_pos = screen_pt_.x + (screen_pt_.y * 640);
+          cv::Mat weight_map;
+          this->surfelSamplePointWeightMap(cloud, normals, centroid_pt,
+                                           attention_normal, index_pos,
+                                           weight_map);
 
-         /*
-         for (int i = 0; i < point_idx_search.size(); i++) {
-           int idx = point_idx_search[i];
-           pcl::PointXYZRGBA neigh_pt = centroid_cloud->points[idx];
-            PointT obj_pt;
-            obj_pt.x = neigh_pt.x;
-            obj_pt.y = neigh_pt.y;
-            obj_pt.z = neigh_pt.z;
-            obj_pt.r = neigh_pt.r;
-            obj_pt.g = neigh_pt.g;
-            obj_pt.b = neigh_pt.b;
-            object_points->push_back(obj_pt);
+          /*
+          for (int i = 0; i < point_idx_search.size(); i++) {
+             int idx = point_idx_search[i];
+             pcl::PointXYZRGBA neigh_pt = centroid_cloud->points[idx];
+             PointT obj_pt;
+             obj_pt.x = neigh_pt.x;
+             obj_pt.y = neigh_pt.y;
+             obj_pt.z = neigh_pt.z;
+             obj_pt.r = neigh_pt.r;
+             obj_pt.g = neigh_pt.g;
+             obj_pt.b = neigh_pt.b;
+             object_points->push_back(obj_pt);
 
           
-            // cv::Mat sample_weight_map;
-            // Eigen::Vector4f idx_attn_normal = surfel_normals->points[
-            //     idx].getNormalVector4fMap();
-            // this->surfelSamplePointWeightMap(cloud, normals, neigh_pt,
-            //                                  idx_attn_normal,
-            //                                  sample_weight_map);
-            // cv::Mat tmp;
-            // cv::add(weight_map, sample_weight_map, tmp);
-            // weight_map = tmp.clone();
+             // cv::Mat sample_weight_map;
+             // Eigen::Vector4f idx_attn_normal = surfel_normals->points[
+             //     idx].getNormalVector4fMap();
+             // this->surfelSamplePointWeightMap(cloud, normals, neigh_pt,
+             //                                  idx_attn_normal,
+             //                                  sample_weight_map);
+             // cv::Mat tmp;
+             // cv::add(weight_map, sample_weight_map, tmp);
+             // weight_map = tmp.clone();
            
-         }
-         cv::normalize(weight_map, weight_map, 0, 1,
-                       cv::NORM_MINMAX, -1, cv::Mat());
-         */
+          }
+          cv::normalize(weight_map, weight_map, 0, 1,
+                        cv::NORM_MINMAX, -1, cv::Mat());
+          */
          
-         // normalize weights **REMOVE THIS CLOUD**
-         pcl::PointCloud<PointT>::Ptr weight_cloud(new pcl::PointCloud<PointT>);
-         for (int x = 0; x < weight_map.rows; x++) {
-            cloud->points[x].r = weight_map.at<float>(x, 0) * 255.0f;
-            cloud->points[x].g = weight_map.at<float>(x, 0) * 255.0f;
-            cloud->points[x].b = weight_map.at<float>(x, 0) * 255.0f;
-         }
-         *weight_cloud = *cloud;
+          // normalize weights **REMOVE THIS CLOUD**
+          pcl::PointCloud<PointT>::Ptr weight_cloud(
+             new pcl::PointCloud<PointT>);
+          for (int x = 0; x < weight_map.rows; x++) {
+             cloud->points[x].r = weight_map.at<float>(x, 0) * 255.0f;
+             cloud->points[x].g = weight_map.at<float>(x, 0) * 255.0f;
+             cloud->points[x].b = weight_map.at<float>(x, 0) * 255.0f;
+          }
+          *weight_cloud = *cloud;
          
-         std::cout << cloud->size() << "\t" << normals->size() << "\t"
-                   << weight_cloud->size() << "\n";
-        std::cout << "\033[34m 3) OBJECT MASK EXTRACTION \033[0m" << std::endl;
+          std::cout << cloud->size() << "\t" << normals->size() << "\t"
+                    << weight_cloud->size() << "\n";
+          std::cout << "\033[34m 3) OBJECT MASK EXTRACTION \033[0m" << std::endl;
         
-        // weights for graph cut
-        /*
-        cv::Mat conv_weights = cv::Mat(image.size(), CV_32F);
-        for (int i = 0; i < image.rows; i++) {
-           for (int j = 0; j < image.cols; j++) {
-              int idx = j + (i * image.cols);
-              conv_weights.at<float>(i, j) =
-                  weight_cloud->points[idx].r/255.0f;
-              if (isnan(conv_weights.at<float>(i, j))) {
-                 conv_weights.at<float>(i, j) = 0.0f;
-              }
-           }
-        }
-        */
+          // weights for graph cut
+          /*
+          cv::Mat conv_weights = cv::Mat(image.size(), CV_32F);
+          for (int i = 0; i < image.rows; i++) {
+             for (int j = 0; j < image.cols; j++) {
+                int idx = j + (i * image.cols);
+                conv_weights.at<float>(i, j) =
+                   weight_cloud->points[idx].r/255.0f;
+                if (isnan(conv_weights.at<float>(i, j))) {
+                   conv_weights.at<float>(i, j) = 0.0f;
+                }
+             }
+          }
+          */
         
-        // get indices of the probable object mask
-        pcl::PointIndices::Ptr prob_object_indices(new pcl::PointIndices);
-        pcl::PointCloud<PointT>::Ptr prob_object_cloud(
-           new pcl::PointCloud<PointT>);
-        this->attentionSurfelRegionPointCloudMask(cloud,
-                                                  attention_centroid,
-                                                  cloud_msg->header,
-                                                  prob_object_cloud,
-                                                  prob_object_indices);
+             // get indices of the probable object mask
+             pcl::PointIndices::Ptr prob_object_indices(new pcl::PointIndices);
+          pcl::PointCloud<PointT>::Ptr prob_object_cloud(
+             new pcl::PointCloud<PointT>);
+          this->attentionSurfelRegionPointCloudMask(cloud, attention_centroid,
+                                                    header, prob_object_cloud,
+                                                    prob_object_indices);
 
        
-        // TMP
-        /*
-        pcl::PointCloud<PointT>::Ptr cov_cloud(new pcl::PointCloud<PointT>);
-        this->computePointCloudCovarianceMatrix(prob_object_cloud, cov_cloud);
-        cloud->clear();
-        *cloud = *cov_cloud;
-        */
+          // TMP
+          /*
+            pcl::PointCloud<PointT>::Ptr cov_cloud(new pcl::PointCloud<PointT>);
+            this->computePointCloudCovarianceMatrix(prob_object_cloud, cov_cloud);
+            cloud->clear();
+            *cloud = *cov_cloud;
+            */
 
 
-        Eigen::Vector3f attent_pt = Eigen::Vector3f(
-           this->screen_pt_.x, this->screen_pt_.y, 0);
-        this->selectedPointToRegionDistanceWeight(
-           prob_object_cloud, attent_pt, 0.01f, info_msg);
+          Eigen::Vector3f attent_pt = Eigen::Vector3f(
+             this->screen_pt_.x, this->screen_pt_.y, 0);
+          this->selectedPointToRegionDistanceWeight(
+             prob_object_cloud, attent_pt, 0.01f, info_msg);
 
 
-        this->highCurvatureConcaveBoundary(
-           prob_object_cloud, cloud_msg->header);
-           
+          this->highCurvatureConcaveBoundary(prob_object_cloud, header);
+
         
-        /*
-        // segmentation
-        pcl::PointCloud<PointT>::Ptr object_cloud(new pcl::PointCloud<PointT>);
-        this->objectMinCutSegmentation(cloud, object_points,
-                                       prob_object_cloud, object_cloud);
-        cloud->clear();
-        *cloud = *object_cloud;
-        */
-        
-        std::cout << cloud->size() << "\t" << normals->size() << std::endl;
-      }   // end if
-      
-
-      cv_bridge::CvImage pub_img(
-          image_msg->header, sensor_msgs::image_encodings::BGR8, image);
-      this->pub_image_.publish(pub_img.toImageMsg());
-    }  // end if
-    
-    sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*cloud, ros_cloud);
-    ros_cloud.header = cloud_msg->header;
-    this->pub_cloud_.publish(ros_cloud);
+          std::cout << cloud->size() << "\t" << normals->size() << std::endl;
+       }
+       // cv_bridge::CvImage pub_img(
+       //    image_msg->header, sensor_msgs::image_encodings::BGR8, image);
+       // this->pub_image_.publish(pub_img.toImageMsg());
+    }
 }
 
 
