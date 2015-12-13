@@ -91,35 +91,28 @@ void InteractiveSegmentation::callback(
        this->pub_indices_.publish(ros_indices);
     }
   
-    double closest_surfel = DBL_MAX;
-    uint32_t closest_surfel_index = INT_MAX;
+
     pcl::PointCloud<pcl::PointXYZRGBA>::Ptr centroid_cloud(
        new pcl::PointCloud<pcl::PointXYZRGBA>);
     pcl::PointCloud<pcl::Normal>::Ptr surfel_normals(
        new pcl::PointCloud<pcl::Normal>);
-    int index_pos = screen_pt_.x + (screen_pt_.y * image.cols);
 
 
     // TEMP
     pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*cloud, *in_cloud);
-    
+    pcl::PointCloud<PointT>::Ptr non_object_cloud(new pcl::PointCloud<PointT>);
     
     for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr >::iterator it =
             supervoxel_clusters.begin(); it != supervoxel_clusters.end();
          it++) {
        if (supervoxel_clusters.at(it->first)->voxels_->size() >
-           this->min_cluster_size_) {
+           this->min_cluster_size_) {          
           pcl::PointIndices::Ptr prob_object_indices(new pcl::PointIndices);
           this->selectedVoxelObjectHypothesis(prob_object_indices,
                                               supervoxel_clusters, it->first,
                                               cloud, info_msg);
-          
-          std::cout << "\033[32m Voxel #: \033[0m"  << it->first << std::endl;
-          // TODO(here):  remove segmented region from the cloud
-
-          pcl::PointCloud<PointT>::Ptr non_object_cloud(
-             new pcl::PointCloud<PointT>);
+          non_object_cloud->clear();
           pcl::copyPointCloud<PointT, PointT>(*in_cloud,
                                               *non_object_cloud);
           for (int j = 0; j < prob_object_indices->indices.size(); j++) {
@@ -133,16 +126,16 @@ void InteractiveSegmentation::callback(
           pcl::removeNaNFromPointCloud<PointT>(*non_object_cloud,
                                                *non_object_cloud,
                                                nan_indices);
-             
           cloud->clear();
           pcl::copyPointCloud<PointT, PointT>(*in_cloud, *cloud);
-             
-          sensor_msgs::PointCloud2 ros_cloud1;
-          pcl::toROSMsg(*non_object_cloud, ros_cloud1);
-          ros_cloud1.header = cloud_msg->header;
-          this->pub_cloud_.publish(ros_cloud1);
+          // pcl::copyPointCloud<PointT, PointT>(*non_object_cloud, *cloud);
 
-          // ros::Duration(1).sleep();
+          sensor_msgs::PointCloud2 ros_cloud;
+          pcl::toROSMsg(*non_object_cloud, ros_cloud);
+          ros_cloud.header = cloud_msg->header;
+          this->pub_cloud_.publish(ros_cloud);
+       } else {
+          ROS_INFO("\033[32m SKIPPPED %d \033[0m", it->first);
        }
        centroid_cloud->push_back(supervoxel_clusters.at(
                                     it->first)->centroid_);
@@ -184,6 +177,29 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
             int search_out = kdtree.nearestKSearch(
             centroid_pt, cs_nearest, point_idx_search, point_squared_distance);
           */
+
+          // check if point is empty
+          pcl::KdTreeFLANN<PointT> kdtree;
+          kdtree.setInputCloud(cloud);
+          std::vector<int> point_neigbours;
+          std::vector<float> point_neigbour_dist;
+          const float radius_threshold = 0.02f;
+          PointT interest_pt;
+          interest_pt.x = centroid_pt.x;
+          interest_pt.y = centroid_pt.y;
+          interest_pt.z = centroid_pt.z;
+          interest_pt.b = centroid_pt.b;
+          interest_pt.g = centroid_pt.g;
+          interest_pt.r = centroid_pt.r;
+          kdtree.radiusSearch(interest_pt, radius_threshold,
+                              point_neigbours, point_neigbour_dist);
+          std::cout << "NEIBOUFR SIZE: " << point_neigbours.size()
+                    << "\n"<< std::endl;
+
+          if (point_neigbours.size() < 2) {
+             return;
+          }
+          
           // just use the origin cloud and norm
           int k = 50;
           pcl::PointCloud<pcl::Normal>::Ptr normals(
@@ -445,9 +461,6 @@ bool InteractiveSegmentation::attentionSurfelRegionPointCloudMask(
           prob_indices->indices.push_back(i);
        }
     }
-
-    std::cout << "DEBUG: " << cloud->size() << std::endl;
-    
     pcl::PointIndices::Ptr indices(new pcl::PointIndices);
     pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
     tree->setInputCloud(cloud);
@@ -458,14 +471,11 @@ bool InteractiveSegmentation::attentionSurfelRegionPointCloudMask(
     euclidean_clustering.setMinClusterSize(10);
     euclidean_clustering.setMaxClusterSize(25000);
     euclidean_clustering.setSearchMethod(tree);
-
-    // euclidean_clustering.setInputCloud(cloud);
     euclidean_clustering.setInputCloud(weight_cloud);
     euclidean_clustering.setIndices(prob_indices);
     euclidean_clustering.extract(cluster_indices);
     double min_distance = DBL_MAX;
     pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
-    // eifilter->setInputCloud(cloud);
     eifilter->setInputCloud(weight_cloud);
     for (int i = 0; i < cluster_indices.size(); i++) {
        pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
