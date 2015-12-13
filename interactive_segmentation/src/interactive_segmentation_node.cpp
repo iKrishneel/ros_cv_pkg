@@ -98,7 +98,40 @@ void InteractiveSegmentation::callback(
        new pcl::PointCloud<pcl::Normal>);
 
 
-    // TEMP
+    // align supervoxel centroid to current point cloud
+    const int sv_size = static_cast<int>(supervoxel_clusters.size());
+    std::vector<int> aligned_indices(sv_size);
+    int *a_indices = &aligned_indices[0];
+    int icount = 0;
+    for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr >::iterator it =
+            supervoxel_clusters.begin(); it != supervoxel_clusters.end();
+         it++) {
+       Eigen::Vector4f cur_centroid = supervoxel_clusters.at(
+          it->first)->centroid_.getVector4fMap();
+       double distance = DBL_MAX;
+       int ind = -1;
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(this->num_threads_) \
+    shared(distance, ind)
+#endif
+       for (int i = 0; i < cloud->size(); i++) {
+          Eigen::Vector4f cloud_pt = cloud->points[i].getVector4fMap();
+          double dist = pcl::distances::l2(cur_centroid, cloud_pt);
+          if (dist < distance) {
+#ifdef _OPENMP
+#pragma omp critical
+#endif
+             {
+                distance = dist;
+                ind = i;
+             }
+          }
+       }
+       a_indices[icount++] = ind;
+       std::cout << a_indices[icount - 1] << "\t" << ind << std::endl;
+    }
+    
+    
     pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*cloud, *in_cloud);
     pcl::PointCloud<PointT>::Ptr non_object_cloud(new pcl::PointCloud<PointT>);
@@ -106,8 +139,9 @@ void InteractiveSegmentation::callback(
     for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr >::iterator it =
             supervoxel_clusters.begin(); it != supervoxel_clusters.end();
          it++) {
+    // for (int i = 0; i < sv_size; i++) {
        if (supervoxel_clusters.at(it->first)->voxels_->size() >
-           this->min_cluster_size_) {          
+           this->min_cluster_size_) {
           pcl::PointIndices::Ptr prob_object_indices(new pcl::PointIndices);
           this->selectedVoxelObjectHypothesis(prob_object_indices,
                                               supervoxel_clusters, it->first,
