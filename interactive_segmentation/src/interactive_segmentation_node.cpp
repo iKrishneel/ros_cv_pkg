@@ -136,29 +136,18 @@ void InteractiveSegmentation::callback(
        icount++;
     }
     
-    
     pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*cloud, *in_cloud);
     pcl::PointCloud<PointT>::Ptr non_object_cloud(new pcl::PointCloud<PointT>);
-    
-    // for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr >::iterator it =
-    //         supervoxel_clusters.begin(); it != supervoxel_clusters.end();
-    //      it++) {
-    
+
     for (int i = 0; i < sv_size; i++) {
        if (supervoxel_clusters.at(supervoxel_index[i])->voxels_->size() >
            this->min_cluster_size_ && !flag_bit[i]) {
-
-          std::cout << "\nDEBUG: STARTING ON SELECTED" << std::endl;
-          
           pcl::PointIndices::Ptr prob_object_indices(new pcl::PointIndices);
           this->selectedVoxelObjectHypothesis(prob_object_indices,
                                               supervoxel_clusters,
                                               supervoxel_index[i],
                                               cloud, info_msg);
-
-          std::cout << "\nDEBUG: OBJECT REGION MARKED" << std::endl;
-          
           non_object_cloud->clear();
           pcl::copyPointCloud<PointT, PointT>(*in_cloud,
                                               *non_object_cloud);
@@ -169,38 +158,23 @@ void InteractiveSegmentation::callback(
              pt.y = std::numeric_limits<float>::quiet_NaN();
              pt.z = std::numeric_limits<float>::quiet_NaN();
              non_object_cloud->points[idx] = pt;
-
-             // flagout removed sv centroid
              for (int k = 0; k < sv_size; k++) {
                 if (idx == a_indices[k]) {
                    flag_bit[k] = true;
                 }
              }
           }
-
-          std::cout << "\nDEBUG: VOXEL SELECTED" << std::endl;
-          
-          nan_indices.clear();
           cloud->clear();
-
+          cloud->resize(non_object_cloud->size());
           for (int k = 0; k < non_object_cloud->size(); k++) {
              PointT noc_pt = non_object_cloud->points[k];
              if (!isnan(noc_pt.x) || !isnan(noc_pt.y) || !isnan(noc_pt.z)) {
-                cloud->push_back(noc_pt);
+                // cloud->push_back(noc_pt);
+                cloud->points[k] = noc_pt;
              }
           }
-
-          
-          // pcl::removeNaNFromPointCloud<PointT>(*non_object_cloud,
-          //                                      *cloud, nan_indices);
-
-          // pcl::copyPointCloud<PointT, PointT>(*in_cloud, *cloud);
-          // pcl::copyPointCloud<PointT, PointT>(*non_object_cloud, *cloud);
-
-          std::cout << "\nDEBUG: PUBLISHING" << std::endl;
           
           sensor_msgs::PointCloud2 ros_cloud;
-          // pcl::toROSMsg(*non_object_cloud, ros_cloud);
           pcl::toROSMsg(*cloud, ros_cloud);
           ros_cloud.header = cloud_msg->header;
           this->pub_cloud_.publish(ros_cloud);
@@ -244,21 +218,13 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
               isnan(centroid_pt.z)) {
              return;
           }
-
-
-          std::cout << "\n\t DUBUG: COMPUTING NORMAL" << std::endl;
           
           // just use the origin cloud and norm
           int k = 50;
           pcl::PointCloud<pcl::Normal>::Ptr normals(
              new pcl::PointCloud<pcl::Normal>);
           this->estimatePointCloudNormals<int>(cloud, normals, k, true);
-
-          std::cout << "\n\t DUBUG: NORMAL COMPUTED" << std::endl;
-          
-          // float k = 0.03f;
-          // this->estimatePointCloudNormals<float>(cloud, normals, k, false);
-         
+                   
           Eigen::Vector4f attention_normal = this->cloudMeanNormal(
              supervoxel_clusters.at(closest_surfel_index)->normals_);
           Eigen::Vector4f attention_centroid = centroid_pt.getVector4fMap();
@@ -445,7 +411,7 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
                    cv::NORM_MINMAX, -1, cv::Mat());
                    
      // smoothing HERE
-     /*
+     
      const int filter_lenght = 5;
      cv::GaussianBlur(connectivity_weights, connectivity_weights,
                       cv::Size(filter_lenght, filter_lenght), 0, 0);
