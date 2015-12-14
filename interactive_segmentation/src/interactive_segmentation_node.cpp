@@ -77,6 +77,8 @@ void InteractiveSegmentation::callback(
     pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, nan_indices);
 
     ROS_INFO("\033[32m DEBUG: PROCESSING CALLBACK \033[0m");
+
+    // this->highCurvatureConcaveBoundary(cloud, cloud, cloud_msg->header);
     
     bool is_surfel_level = true;
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
@@ -223,7 +225,7 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
           }
           
           // just use the origin cloud and norm
-          int k = 50;
+          int k = 20;
           pcl::PointCloud<pcl::Normal>::Ptr normals(
              new pcl::PointCloud<pcl::Normal>);
           this->estimatePointCloudNormals<int>(cloud, normals, k, true);
@@ -325,8 +327,11 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
           this->selectedPointToRegionDistanceWeight(
              prob_object_cloud, attent_pt, 0.01f, info_msg);
 
-          
-          this->highCurvatureConcaveBoundary(prob_object_cloud,
+          pcl::PointCloud<PointT>::Ptr high_curvature_filterd(
+             new pcl::PointCloud<PointT>);
+          // TODO(HERE):  filter the normal and feed it in
+          this->highCurvatureConcaveBoundary(high_curvature_filterd,
+                                             prob_object_cloud,
                                              info_msg->header);
 
           
@@ -1015,16 +1020,19 @@ cv::Mat InteractiveSegmentation::projectPointCloudToImagePlane(
 }
 
 void InteractiveSegmentation::highCurvatureConcaveBoundary(
+    pcl::PointCloud<PointT>::Ptr filtered_cloud,
     const pcl::PointCloud<PointT>::Ptr cloud,
     const std_msgs::Header header) {
     if (cloud->empty()) {
        ROS_ERROR("ERROR: INPUT CLOUD EMPTY FOR HIGH CURV. EST.");
        return;
     }
-
     std::vector<int> indices;
     pcl::PointCloud<PointT>::Ptr curv_cloud(new pcl::PointCloud<PointT>);
     pcl::removeNaNFromPointCloud(*cloud, *curv_cloud, indices);
+
+    filtered_cloud->clear();
+    filtered_cloud->resize(static_cast<int>(curv_cloud->size()));
     
     int k = 50;
     pcl::PointCloud<pcl::Normal>::Ptr normals(
@@ -1034,6 +1042,8 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     pcl::KdTreeFLANN<PointT> kdtree;
     kdtree.setInputCloud(curv_cloud);
     int search = 50;
+
+    int icount = 0;
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(this->num_threads_) shared(kdtree)
 #endif
@@ -1075,6 +1085,8 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
              centroid_pt.b = 0;
              centroid_pt.g = 0;
              curv_cloud->points[i] = centroid_pt;
+          } else {
+             filtered_cloud->points[icount++] = centroid_pt;
           }
        }
     }
