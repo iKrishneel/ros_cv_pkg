@@ -40,11 +40,12 @@ void InteractiveSegmentation::subscribe() {
        this->sub_image_.subscribe(this->pnh_, "input_image", 1);
        this->sub_info_.subscribe(this->pnh_, "input_info", 1);
        this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
+       this->sub_normal_.subscribe(this->pnh_, "input_normal", 1);
        this->sync_ = boost::make_shared<message_filters::Synchronizer<
           SyncPolicy> >(100);
-       sync_->connectInput(sub_image_, sub_info_, sub_cloud_);
+       sync_->connectInput(sub_image_, sub_info_, sub_cloud_, sub_normal_);
        sync_->registerCallback(boost::bind(&InteractiveSegmentation::callback,
-                                           this, _1, _2, _3));
+                                           this, _1, _2, _3, _4));
 }
 
 void InteractiveSegmentation::unsubscribe() {
@@ -64,17 +65,17 @@ void InteractiveSegmentation::screenPointCallback(
 void InteractiveSegmentation::callback(
     const sensor_msgs::Image::ConstPtr &image_msg,
     const sensor_msgs::CameraInfo::ConstPtr &info_msg,
-    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
+    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
+    const sensor_msgs::PointCloud2::ConstPtr &normal_msg) {
     boost::mutex::scoped_lock lock(this->mutex_);
     cv::Mat image = cv_bridge::toCvShare(
        image_msg, image_msg->encoding)->image;
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-
-
+        
     std::vector<int> nan_indices;
     pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, nan_indices);
-    
+
     ROS_INFO("\033[32m DEBUG: PROCESSING CALLBACK \033[0m");
     
     bool is_surfel_level = true;
@@ -140,6 +141,9 @@ void InteractiveSegmentation::callback(
     pcl::copyPointCloud<PointT, PointT>(*cloud, *in_cloud);
     pcl::PointCloud<PointT>::Ptr non_object_cloud(new pcl::PointCloud<PointT>);
 
+
+    std::cout << "\033[33m # of SuperVoxels: \033[0m"  << sv_size << std::endl;
+    
     for (int i = 0; i < sv_size; i++) {
        if (supervoxel_clusters.at(supervoxel_index[i])->voxels_->size() >
            this->min_cluster_size_ && !flag_bit[i]) {
@@ -187,8 +191,8 @@ void InteractiveSegmentation::callback(
        // *surfel_normals += *(supervoxel_clusters.at(it->first)->normals_);
     }
     
-    std::cout << "\033[34m 1) ALL VALID REGION LABELED \033[0m" << std::endl;
-
+    std::cout << "\n\033[34m 1) ALL VALID REGION LABELED \033[0m" << std::endl;
+    ros::Duration(10).sleep();
     /*
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
@@ -196,7 +200,6 @@ void InteractiveSegmentation::callback(
     this->pub_cloud_.publish(ros_cloud);
     */
 }
-
 
 void InteractiveSegmentation::selectedVoxelObjectHypothesis(
     pcl::PointIndices::Ptr prob_object_indices,
@@ -224,6 +227,8 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
           pcl::PointCloud<pcl::Normal>::Ptr normals(
              new pcl::PointCloud<pcl::Normal>);
           this->estimatePointCloudNormals<int>(cloud, normals, k, true);
+
+          
                    
           Eigen::Vector4f attention_normal = this->cloudMeanNormal(
              supervoxel_clusters.at(closest_surfel_index)->normals_);
@@ -383,7 +388,8 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
           i].getNormalVector3fMap() - attention_normal.head<3>();
        */
 
-       
+
+       // TODO(HERE):  add Gaussian centered at selected
        float cross_norm = static_cast<float>(
            surface_normal_vec.cross(view_point_vec).norm());
        float scalar_prod = static_cast<float>(
@@ -411,13 +417,15 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
                    cv::NORM_MINMAX, -1, cv::Mat());
                    
      // smoothing HERE
-     
+     /*
      const int filter_lenght = 5;
      cv::GaussianBlur(connectivity_weights, connectivity_weights,
                       cv::Size(filter_lenght, filter_lenght), 0, 0);
      cv::GaussianBlur(orientation_weights, orientation_weights,
-                      cv::Size(filter_lenght, filter_lenght), 0.0, 0.0);
-     /*
+                      cv::Size(filter_lenght, filter_lenght), 0.0,
+     0.0);
+     */
+     
      // morphological
      int erosion_size = 5;
      cv::Mat element = cv::getStructuringElement(
@@ -428,7 +436,7 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
      cv::dilate(orientation_weights, orientation_weights, element);
      cv::erode(connectivity_weights, connectivity_weights, element);
      cv::erode(orientation_weights, orientation_weights, element);
-     */
+     
      // convolution of distribution
      // pcl::copyPointCloud<PointT, PointT>(*cloud, *weights);
      weights = cv::Mat::zeros(static_cast<int>(cloud->size()), 1, CV_32F);

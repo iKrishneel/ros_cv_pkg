@@ -87,10 +87,12 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     typedef message_filters::sync_policies::ApproximateTime<
        sensor_msgs::Image,
        sensor_msgs::CameraInfo,
+       sensor_msgs::PointCloud2,
        sensor_msgs::PointCloud2> SyncPolicy;
 
     message_filters::Subscriber<sensor_msgs::Image> sub_image_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
     message_filters::Subscriber<sensor_msgs::CameraInfo> sub_info_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
    
@@ -119,6 +121,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
       const geometry_msgs::PointStamped &);
     virtual void callback(const sensor_msgs::Image::ConstPtr &,
                           const sensor_msgs::CameraInfo::ConstPtr &,
+                          const sensor_msgs::PointCloud2::ConstPtr &,
                           const sensor_msgs::PointCloud2::ConstPtr &);
     void selectedVoxelObjectHypothesis(
        pcl::PointIndices::Ptr,
