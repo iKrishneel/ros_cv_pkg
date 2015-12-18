@@ -5,7 +5,7 @@
 #include <vector>
 
 InteractiveSegmentation::InteractiveSegmentation():
-    min_cluster_size_(30), is_init_(true),
+    min_cluster_size_(100), is_init_(true),
     num_threads_(8) {
     pnh_.getParam("num_threads", this->num_threads_);
     this->subscribe();
@@ -77,8 +77,26 @@ void InteractiveSegmentation::callback(
     pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, nan_indices);
 
     ROS_INFO("\033[32m DEBUG: PROCESSING CALLBACK \033[0m");
+    
+    // ----------------------------------------
+    this->highCurvatureConcaveBoundary(cloud, cloud, cloud_msg->header);
+    cv::Mat mask_img;
+    cv::Mat depth_img;
+    mask_img = this->projectPointCloudToImagePlane(cloud, info_msg,
+                                                   mask_img, depth_img);
+    cv_bridge::CvImagePtr pub_msg(new cv_bridge::CvImage);
+    pub_msg->header = info_msg->header;
+    pub_msg->encoding = sensor_msgs::image_encodings::BGR8;
+    pub_msg->image = mask_img.clone();
+    this->pub_image_.publish(pub_msg);
+    
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*cloud, ros_cloud);
+    ros_cloud.header = cloud_msg->header;
+    this->pub_cloud_.publish(ros_cloud);
+    return;
 
-    // this->highCurvatureConcaveBoundary(cloud, cloud, cloud_msg->header);
+    // ----------------------------------------
     
     bool is_surfel_level = true;
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
@@ -145,7 +163,7 @@ void InteractiveSegmentation::callback(
 
 
     std::cout << "\033[33m # of SuperVoxels: \033[0m"  << sv_size << std::endl;
-    
+
     for (int i = 0; i < sv_size; i++) {
        if (supervoxel_clusters.at(supervoxel_index[i])->voxels_->size() >
            this->min_cluster_size_ && !flag_bit[i]) {
@@ -225,7 +243,7 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
           }
           
           // just use the origin cloud and norm
-          int k = 20;
+          int k = 100;
           pcl::PointCloud<pcl::Normal>::Ptr normals(
              new pcl::PointCloud<pcl::Normal>);
           this->estimatePointCloudNormals<int>(cloud, normals, k, true);
@@ -430,7 +448,7 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
                       cv::Size(filter_lenght, filter_lenght), 0.0,
      0.0);
      */
-     
+     /*
      // morphological
      int erosion_size = 5;
      cv::Mat element = cv::getStructuringElement(
@@ -441,7 +459,8 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
      cv::dilate(orientation_weights, orientation_weights, element);
      cv::erode(connectivity_weights, connectivity_weights, element);
      cv::erode(orientation_weights, orientation_weights, element);
-     
+     */
+        
      // convolution of distribution
      // pcl::copyPointCloud<PointT, PointT>(*cloud, *weights);
      weights = cv::Mat::zeros(static_cast<int>(cloud->size()), 1, CV_32F);
@@ -496,7 +515,7 @@ bool InteractiveSegmentation::attentionSurfelRegionPointCloudMask(
     cluster_indices.clear();
     pcl::EuclideanClusterExtraction<PointT> euclidean_clustering;
     euclidean_clustering.setClusterTolerance(0.01f);
-    euclidean_clustering.setMinClusterSize(10);
+    euclidean_clustering.setMinClusterSize(this->min_cluster_size_);
     euclidean_clustering.setMaxClusterSize(25000);
     euclidean_clustering.setSearchMethod(tree);
     euclidean_clustering.setInputCloud(weight_cloud);
@@ -965,11 +984,11 @@ cv::Mat InteractiveSegmentation::projectPointCloudToImagePlane(
        ROS_ERROR("INPUT CLOUD EMPTY");
        return cv::Mat();
     }
-    cv::Mat objectPoints = cv::Mat(static_cast<int>(cloud->size()), 3, CV_32F);
+    cv::Mat object_points = cv::Mat(static_cast<int>(cloud->size()), 3, CV_32F);
     for (int i = 0; i < cloud->size(); i++) {
-       objectPoints.at<float>(i, 0) = cloud->points[i].x;
-       objectPoints.at<float>(i, 1) = cloud->points[i].y;
-       objectPoints.at<float>(i, 2) = cloud->points[i].z;
+       object_points.at<float>(i, 0) = cloud->points[i].x;
+       object_points.at<float>(i, 1) = cloud->points[i].y;
+       object_points.at<float>(i, 2) = cloud->points[i].z;
     }
     float K[9];
     float R[9];
@@ -977,25 +996,25 @@ cv::Mat InteractiveSegmentation::projectPointCloudToImagePlane(
        K[i] = camera_info->K[i];
        R[i] = camera_info->R[i];
     }
-    cv::Mat cameraMatrix = cv::Mat(3, 3, CV_32F, K);
-    cv::Mat rotationMatrix = cv::Mat(3, 3, CV_32F, R);
+    cv::Mat camera_matrix = cv::Mat(3, 3, CV_32F, K);
+    cv::Mat rotation_matrix = cv::Mat(3, 3, CV_32F, R);
     float tvec[3];
     tvec[0] = camera_info->P[3];
     tvec[1] = camera_info->P[7];
     tvec[2] = camera_info->P[11];
-    cv::Mat translationMatrix = cv::Mat(3, 1, CV_32F, tvec);
+    cv::Mat translation_matrix = cv::Mat(3, 1, CV_32F, tvec);
 
     float D[5];
     for (int i = 0; i < 5; i++) {
        D[i] = camera_info->D[i];
     }
-    cv::Mat distortionModel = cv::Mat(5, 1, CV_32F, D);
+    cv::Mat distortion_model = cv::Mat(5, 1, CV_32F, D);
     cv::Mat rvec;
-    cv::Rodrigues(rotationMatrix, rvec);
+    cv::Rodrigues(rotation_matrix, rvec);
     
-    std::vector<cv::Point2f> imagePoints;
-    cv::projectPoints(objectPoints, rvec, translationMatrix,
-                      cameraMatrix, distortionModel, imagePoints);
+    std::vector<cv::Point2f> image_points;
+    cv::projectPoints(object_points, rvec, translation_matrix,
+                      camera_matrix, distortion_model, image_points);
     cv::Scalar color = cv::Scalar(0, 0, 0);
     cv::Mat image = cv::Mat(
        camera_info->height, camera_info->width, CV_8UC3, color);
@@ -1003,9 +1022,9 @@ cv::Mat InteractiveSegmentation::projectPointCloudToImagePlane(
        camera_info->height, camera_info->width, CV_32F);
     depth_map = cv::Mat::zeros(
        camera_info->height, camera_info->width, CV_8UC1);
-    for (int i = 0; i < imagePoints.size(); i++) {
-       int x = imagePoints[i].x;
-       int y = imagePoints[i].y;
+    for (int i = 0; i < image_points.size(); i++) {
+       int x = image_points[i].x;
+       int y = image_points[i].y;
        if (!isnan(x) && !isnan(y) && (x >= 0 && x <= image.cols) &&
            (y >= 0 && y <= image.rows)) {
           image.at<cv::Vec3b>(y, x)[2] = cloud->points[i].r;
@@ -1085,12 +1104,17 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
              centroid_pt.b = 0;
              centroid_pt.g = 0;
              curv_cloud->points[i] = centroid_pt;
+             
+             // filtered_cloud->points[icount++] = centroid_pt;
           } else {
              filtered_cloud->points[icount++] = centroid_pt;
           }
        }
     }
 
+    curv_cloud->clear();
+    *curv_cloud = *filtered_cloud;
+    
     std::cout << "COMPLETED" << std::endl;
     
     sensor_msgs::PointCloud2 ros_cloud;
