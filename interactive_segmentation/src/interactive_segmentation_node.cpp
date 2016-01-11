@@ -1053,7 +1053,7 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     filtered_cloud->clear();
     filtered_cloud->resize(static_cast<int>(curv_cloud->size()));
     
-    int k = 50;
+    int k = 100;
     pcl::PointCloud<pcl::Normal>::Ptr normals(
        new pcl::PointCloud<pcl::Normal>);
     this->estimatePointCloudNormals<int>(curv_cloud, normals, k, true);
