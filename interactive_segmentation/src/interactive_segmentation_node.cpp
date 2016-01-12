@@ -1053,14 +1053,14 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     filtered_cloud->clear();
     filtered_cloud->resize(static_cast<int>(curv_cloud->size()));
     
-    int k = 100;
+    int k = 50;
     pcl::PointCloud<pcl::Normal>::Ptr normals(
        new pcl::PointCloud<pcl::Normal>);
     this->estimatePointCloudNormals<int>(curv_cloud, normals, k, true);
 
     pcl::KdTreeFLANN<PointT> kdtree;
     kdtree.setInputCloud(curv_cloud);
-    int search = 50;
+    int search = 100;
 
     int icount = 0;
 #ifdef _OPENMP
@@ -1105,7 +1105,7 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
              centroid_pt.g = 0;
              curv_cloud->points[i] = centroid_pt;
              
-             // filtered_cloud->points[icount++] = centroid_pt;
+             filtered_cloud->points[icount++] = centroid_pt;
           } else {
              filtered_cloud->points[icount++] = centroid_pt;
           }
