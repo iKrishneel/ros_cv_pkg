@@ -79,6 +79,7 @@ void InteractiveSegmentation::callback(
     ROS_INFO("\033[32m DEBUG: PROCESSING CALLBACK \033[0m");
     
     // ----------------------------------------
+
     this->highCurvatureConcaveBoundary(cloud, cloud, cloud_msg->header);
     cv::Mat mask_img;
     cv::Mat depth_img;
@@ -94,8 +95,8 @@ void InteractiveSegmentation::callback(
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
+    
     return;
-
     // ----------------------------------------
     
     bool is_surfel_level = true;
@@ -351,7 +352,6 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
           this->highCurvatureConcaveBoundary(high_curvature_filterd,
                                              prob_object_cloud,
                                              info_msg->header);
-
           
           std::cout << cloud->size() << "\t" << normals->size() << std::endl;
        }
@@ -884,7 +884,7 @@ void InteractiveSegmentation::estimatePointCloudNormals(
     }
     pcl::NormalEstimationOMP<PointT, pcl::Normal> ne;
     ne.setInputCloud(cloud);
-    ne.setNumberOfThreads(16);
+    ne.setNumberOfThreads(this->num_threads_);
     pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT> ());
     ne.setSearchMethod(tree);
     if (use_knn) {
@@ -985,6 +985,9 @@ cv::Mat InteractiveSegmentation::projectPointCloudToImagePlane(
        return cv::Mat();
     }
     cv::Mat object_points = cv::Mat(static_cast<int>(cloud->size()), 3, CV_32F);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(this->num_threads_)
+#endif
     for (int i = 0; i < cloud->size(); i++) {
        object_points.at<float>(i, 0) = cloud->points[i].x;
        object_points.at<float>(i, 1) = cloud->points[i].y;
@@ -1022,6 +1025,9 @@ cv::Mat InteractiveSegmentation::projectPointCloudToImagePlane(
        camera_info->height, camera_info->width, CV_32F);
     depth_map = cv::Mat::zeros(
        camera_info->height, camera_info->width, CV_8UC1);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(this->num_threads_)
+#endif
     for (int i = 0; i < image_points.size(); i++) {
        int x = image_points[i].x;
        int y = image_points[i].y;
@@ -1060,9 +1066,10 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
 
     pcl::KdTreeFLANN<PointT> kdtree;
     kdtree.setInputCloud(curv_cloud);
-    int search = 100;
+    int search = 50;
 
     int icount = 0;
+    const float concave_thresh = 0.30f;
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(this->num_threads_) shared(kdtree)
 #endif
@@ -1099,7 +1106,7 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
                    index].getVector4fMap(), neigh_norm);
           }
           float variance = max_diff - min_diff;
-          if (variance > 0.10f && concave_sum <= 0) {
+          if (variance > concave_thresh && concave_sum <= 0) {
              centroid_pt.r = 255 * variance;
              centroid_pt.b = 0;
              centroid_pt.g = 0;
@@ -1107,15 +1114,22 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
              
              filtered_cloud->points[icount++] = centroid_pt;
           } else {
-             filtered_cloud->points[icount++] = centroid_pt;
+            // filtered_cloud->points[icount++] = centroid_pt;
           }
        }
     }
 
-    curv_cloud->clear();
-    *curv_cloud = *filtered_cloud;
+    // curv_cloud->clear();
+    // *curv_cloud = *filtered_cloud;
     
-    std::cout << "COMPLETED" << std::endl;
+    // filter the outliers
+    // pcl::StatisticalOutlierRemoval<PointT> sor;
+    // sor.setInputCloud(filtered_cloud);
+    // sor.setMeanK(10);
+    // sor.setStddevMulThresh(1.0f);
+    // sor.filter(*curv_cloud);
+
+    ROS_INFO("\033[31m COMPLETED \033[0m");
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*curv_cloud, ros_cloud);

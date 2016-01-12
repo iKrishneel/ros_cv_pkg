@@ -57,6 +57,7 @@
 #include <pcl/features/don.h>
 #include <pcl/segmentation/segment_differences.h>
 #include <pcl/segmentation/min_cut_segmentation.h>
+#include <pcl/filters/statistical_outlier_removal.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
