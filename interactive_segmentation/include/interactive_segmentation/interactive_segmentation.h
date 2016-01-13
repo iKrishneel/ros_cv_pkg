@@ -96,7 +96,16 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
     message_filters::Subscriber<sensor_msgs::CameraInfo> sub_info_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
-   
+
+    // user mark the point
+    typedef message_filters::sync_policies::ApproximateTime<
+      geometry_msgs::PointStamped,
+      sensor_msgs::PointCloud2> UsrSyncPolicy;
+
+    message_filters::Subscriber<geometry_msgs::PointStamped> sub_screen_pt_;
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_orig_cloud_;
+    boost::shared_ptr<message_filters::Synchronizer<UsrSyncPolicy> >usr_sync_;
+  
     ros::Publisher pub_cloud_;
     ros::Publisher pub_prob_;
     ros::Publisher pub_voxels_;
@@ -104,7 +113,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     ros::Publisher pub_image_;
     ros::Publisher pub_pt_map_;
 
-    ros::Subscriber sub_screen_pt_;
+    PointT user_marked_pt_;
     cv::Point2i screen_pt_;
     bool is_init_;
   
@@ -118,8 +127,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
    
  public:
     InteractiveSegmentation();
-    virtual void screenPointCallback(
-      const geometry_msgs::PointStamped &);
+  virtual void screenPointCallback(const geometry_msgs::PointStamped::ConstPtr &,
+                                     const sensor_msgs::PointCloud2::ConstPtr &);
     virtual void callback(const sensor_msgs::Image::ConstPtr &,
                           const sensor_msgs::CameraInfo::ConstPtr &,
                           const sensor_msgs::PointCloud2::ConstPtr &,

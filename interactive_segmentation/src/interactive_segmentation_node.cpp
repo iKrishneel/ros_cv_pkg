@@ -34,9 +34,17 @@ void InteractiveSegmentation::onInit() {
 
 void InteractiveSegmentation::subscribe() {
 
-       this->sub_screen_pt_ = this->pnh_.subscribe(
-      "input_screen", 1, &InteractiveSegmentation::screenPointCallback, this);
-  
+      //  this->sub_screen_pt_ = this->pnh_.subscribe(
+      // "input_screen", 1, &InteractiveSegmentation::screenPointCallback, this);
+
+       this->sub_screen_pt_.subscribe(this->pnh_, "input_screen", 1);
+       this->sub_orig_cloud_.subscribe(this->pnh_, "input_orig_cloud", 1);
+       this->usr_sync_ = boost::make_shared<message_filters::Synchronizer<
+         UsrSyncPolicy> >(100);
+       usr_sync_->connectInput(sub_screen_pt_, sub_orig_cloud_);
+       usr_sync_->registerCallback(boost::bind(
+           &InteractiveSegmentation::screenPointCallback, this, _1, _2));
+       
        this->sub_image_.subscribe(this->pnh_, "input_image", 1);
        this->sub_info_.subscribe(this->pnh_, "input_info", 1);
        this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
@@ -55,11 +63,23 @@ void InteractiveSegmentation::unsubscribe() {
 }
 
 void InteractiveSegmentation::screenPointCallback(
-    const geometry_msgs::PointStamped &screen_msg) {
-    int x = screen_msg.point.x;
-    int y = screen_msg.point.y;
+    const geometry_msgs::PointStamped::ConstPtr &screen_msg,
+    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
+    int x = screen_msg->point.x;
+    int y = screen_msg->point.y;
     this->screen_pt_ = cv::Point2i(x, y);
-    this->is_init_ = true;
+    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+    pcl::fromROSMsg(*cloud_msg, *cloud);
+    if (cloud->height == 1) {
+      return;
+    }
+    const int index = x + (y * cloud->width);
+    this->user_marked_pt_ = cloud->points[index];
+    if (!isnan(user_marked_pt_.x) &&
+        !isnan(user_marked_pt_.y) &&
+        !isnan(user_marked_pt_.z)) {
+      this->is_init_ = true;
+    }
 }
 
 void InteractiveSegmentation::callback(
@@ -1055,7 +1075,7 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     std::vector<int> indices;
     pcl::PointCloud<PointT>::Ptr curv_cloud(new pcl::PointCloud<PointT>);
     pcl::removeNaNFromPointCloud(*cloud, *curv_cloud, indices);
-
+    
     filtered_cloud->clear();
     filtered_cloud->resize(static_cast<int>(curv_cloud->size()));
     
@@ -1128,7 +1148,7 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     // sor.setMeanK(10);
     // sor.setStddevMulThresh(1.0f);
     // sor.filter(*curv_cloud);
-
+    
     ROS_INFO("\033[31m COMPLETED \033[0m");
     
     sensor_msgs::PointCloud2 ros_cloud;
