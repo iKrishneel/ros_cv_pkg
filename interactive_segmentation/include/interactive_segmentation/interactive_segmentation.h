@@ -73,6 +73,7 @@
 
 #include <interactive_segmentation/supervoxel_segmentation.h>
 #include <interactive_segmentation/saliency_map_generator.h>
+#include <interactive_segmentation/OutlierFiltering.h>
 
 #include <omp.h>
 
@@ -113,6 +114,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     ros::Publisher pub_image_;
     ros::Publisher pub_pt_map_;
 
+    ros::ServiceClient srv_client_;
     PointT user_marked_pt_;
     cv::Point2i screen_pt_;
     bool is_init_;
@@ -181,7 +183,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     void highCurvatureConcaveBoundary(
        pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<PointT>::Ptr, const std_msgs::Header);
-   
+    void edgeBoundaryOutlierFiltering(
+        const pcl::PointCloud<PointT>::Ptr);
 };
 
 

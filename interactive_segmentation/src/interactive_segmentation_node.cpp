@@ -8,6 +8,10 @@ InteractiveSegmentation::InteractiveSegmentation():
     min_cluster_size_(100), is_init_(true),
     num_threads_(8) {
     pnh_.getParam("num_threads", this->num_threads_);
+
+    this->srv_client_ = this->pnh_.serviceClient<
+      interactive_segmentation::OutlierFiltering>("outlier_filtering_srv");
+    
     this->subscribe();
     this->onInit();
 }
@@ -1157,6 +1161,13 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     this->pub_pt_map_.publish(ros_cloud);
 }
 
+void interactive_segmentation::edgeBoundaryOutlierFiltering(
+    const pcl::PointCloud<PointT>::Ptr cloud) {
+    if (cloud->empty()) {
+      ROS_WARN("SKIPPING OUTLIER FILTERING");
+      return;
+    }   
+}
 
 int main(int argc, char *argv[]) {
     ros::init(argc, argv, "interactive_segmentation");
