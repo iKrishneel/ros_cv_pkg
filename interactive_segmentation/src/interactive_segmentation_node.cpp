@@ -1161,12 +1161,27 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     this->pub_pt_map_.publish(ros_cloud);
 }
 
-void interactive_segmentation::edgeBoundaryOutlierFiltering(
+void InteractiveSegmentation::edgeBoundaryOutlierFiltering(
     const pcl::PointCloud<PointT>::Ptr cloud) {
     if (cloud->empty()) {
       ROS_WARN("SKIPPING OUTLIER FILTERING");
       return;
-    }   
+    }
+    int min_samples = 8;
+    float max_distance = 0.01f;
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*cloud, ros_cloud);
+    interactive_segmentation::OutlierFiltering of_srv;
+    of_srv.request.max_distance = static_cast<float>(max_distance);
+    of_srv.request.min_samples = static_cast<int>(min_samples);
+    of_srv.request.points = ros_cloud;
+    if (this->srv_client_.call(of_srv)) {
+      int max_label = of_srv.response.argmax_label;
+      if (max_label == -1) {
+        return;
+      }
+      // TODO: label the data
+    }
 }
 
 int main(int argc, char *argv[]) {
