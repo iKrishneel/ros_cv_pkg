@@ -38,9 +38,6 @@ void InteractiveSegmentation::onInit() {
 
 void InteractiveSegmentation::subscribe() {
 
-      //  this->sub_screen_pt_ = this->pnh_.subscribe(
-      // "input_screen", 1, &InteractiveSegmentation::screenPointCallback, this);
-
        this->sub_screen_pt_.subscribe(this->pnh_, "input_screen", 1);
        this->sub_orig_cloud_.subscribe(this->pnh_, "input_orig_cloud", 1);
        this->usr_sync_ = boost::make_shared<message_filters::Synchronizer<
@@ -1083,19 +1080,19 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     filtered_cloud->clear();
     filtered_cloud->resize(static_cast<int>(curv_cloud->size()));
     
-    int k = 50;
+    int k = 50;  // thresholds
     pcl::PointCloud<pcl::Normal>::Ptr normals(
        new pcl::PointCloud<pcl::Normal>);
     this->estimatePointCloudNormals<int>(curv_cloud, normals, k, true);
 
     pcl::KdTreeFLANN<PointT> kdtree;
     kdtree.setInputCloud(curv_cloud);
-    int search = 50;
+    int search = 50;  // thresholds
 
     int icount = 0;
-    const float concave_thresh = 0.30f;
+    const float concave_thresh = 0.30f;  // thresholds
 #ifdef _OPENMP
-#pragma omp parallel for num_threads(this->num_threads_) shared(kdtree)
+#pragma omp parallel for num_threads(this->num_threads_) shared(kdtree, icount)
 #endif
     for (int i = 0; i < curv_cloud->size(); i++) {
        PointT centroid_pt = curv_cloud->points[i];
@@ -1135,23 +1132,42 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
              centroid_pt.b = 0;
              centroid_pt.g = 0;
              curv_cloud->points[i] = centroid_pt;
-             
-             filtered_cloud->points[icount++] = centroid_pt;
+             filtered_cloud->points[icount] = centroid_pt;
+#ifdef _OPENMP
+#pragma omp atomic
+#endif
+             icount++;
           } else {
             // filtered_cloud->points[icount++] = centroid_pt;
           }
        }
     }
 
-    // curv_cloud->clear();
+    curv_cloud->clear();
     // *curv_cloud = *filtered_cloud;
+    // clear oversize memory
+    for (int i = 0; i < filtered_cloud->size(); i++) {
+       PointT pt = filtered_cloud->points[i];
+       if (pt.x != 0.0f && pt.y != 0.0f && pt.z != 0.0f) {
+          curv_cloud->push_back(pt);
+       }
+    }
     
     // filter the outliers
-    // pcl::StatisticalOutlierRemoval<PointT> sor;
-    // sor.setInputCloud(filtered_cloud);
-    // sor.setMeanK(10);
-    // sor.setStddevMulThresh(1.0f);
-    // sor.filter(*curv_cloud);
+    // this->edgeBoundaryOutlierFiltering(curv_cloud);
+    
+    ROS_INFO("\033[32m FILTERING OUTLIER \033[0m");
+
+    const float search_radius_thresh = 0.01f;  // thresholds
+    cont int min_neigbor_thresh = 50;
+    pcl::RadiusOutlierRemoval<PointT>::Ptr filter_ror;
+    filter_ror->setInputCloud(curv_cloud);
+    filter_ror->setRadiusSearch(search_radius_thresh);
+    filter_ror->setMinNeighborsInRadius(min_neigbor_thresh);
+    filter_ror->filter(*filtered_cloud);
+    
+    curv_cloud->clear();
+    *curv_cloud = *filtered_cloud;
     
     ROS_INFO("\033[31m COMPLETED \033[0m");
     
@@ -1164,9 +1180,12 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
 void InteractiveSegmentation::edgeBoundaryOutlierFiltering(
     const pcl::PointCloud<PointT>::Ptr cloud) {
     if (cloud->empty()) {
-      ROS_WARN("SKIPPING OUTLIER FILTERING");
-      return;
+       ROS_WARN("SKIPPING OUTLIER FILTERING");
+       return;
     }
+
+    std::cout << "INPUT SIZE: " << cloud->size() << std::endl;
+    
     int min_samples = 8;
     float max_distance = 0.01f;
     sensor_msgs::PointCloud2 ros_cloud;
@@ -1176,11 +1195,19 @@ void InteractiveSegmentation::edgeBoundaryOutlierFiltering(
     of_srv.request.min_samples = static_cast<int>(min_samples);
     of_srv.request.points = ros_cloud;
     if (this->srv_client_.call(of_srv)) {
-      int max_label = of_srv.response.argmax_label;
-      if (max_label == -1) {
-        return;
-      }
-      // TODO: label the data
+       int max_label = of_srv.response.argmax_label;
+       if (max_label == -1) {
+          return;
+       }
+       std::vector<pcl::PointCloud<PointT>::Ptr> boundary_clusters;
+       for (int i = 0; i < of_srv.response.labels.size(); i++) {
+          if (of_srv.response.indices[i] == max_label) {
+             
+          }
+       }
+    } else {
+       ROS_ERROR("ERROR! FAILED TO CALL CLUSTERING MODULE\n");
+       return;
     }
 }
 

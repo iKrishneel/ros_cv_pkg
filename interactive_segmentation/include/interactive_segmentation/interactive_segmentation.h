@@ -57,6 +57,7 @@
 #include <pcl/features/don.h>
 #include <pcl/segmentation/segment_differences.h>
 #include <pcl/segmentation/min_cut_segmentation.h>
+#include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/filters/statistical_outlier_removal.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
@@ -129,8 +130,9 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
    
  public:
     InteractiveSegmentation();
-  virtual void screenPointCallback(const geometry_msgs::PointStamped::ConstPtr &,
-                                     const sensor_msgs::PointCloud2::ConstPtr &);
+    virtual void screenPointCallback(
+       const geometry_msgs::PointStamped::ConstPtr &,
+       const sensor_msgs::PointCloud2::ConstPtr &);
     virtual void callback(const sensor_msgs::Image::ConstPtr &,
                           const sensor_msgs::CameraInfo::ConstPtr &,
                           const sensor_msgs::PointCloud2::ConstPtr &,
