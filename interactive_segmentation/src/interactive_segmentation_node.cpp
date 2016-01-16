@@ -28,7 +28,9 @@ void InteractiveSegmentation::onInit() {
           "/interactive_segmentation/output/indices", 1);
     this->pub_voxels_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
           "/interactive_segmentation/output/supervoxels", 1);
-    
+
+    this->pub_normal_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+       "/interactive_segmentation/output/normal", sizeof(char));
     
     this->pub_pt_map_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
         "/interactive_segmentation/output/point_map", 1);
@@ -1129,8 +1131,9 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
                    index].getVector4fMap(), neigh_norm);
           }
           float variance = max_diff - min_diff;
-          if (variance > concave_thresh && concave_sum <= 0) {
-             // if (variance > 0.10 && variance < 1.0f && concave_sum > 0) {
+
+          // if (variance > concave_thresh && concave_sum <= 0) {
+          if (variance > 0.10 && variance < 1.0f && concave_sum > 0) {
              centroid_pt.r = 255 * variance;
              centroid_pt.b = 0;
              centroid_pt.g = 0;
@@ -1144,6 +1147,15 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
           } else {
             // filtered_cloud->points[icount++] = centroid_pt;
           }
+/*
+          if (variance > 0.10 && variance < 1.0f && concave_sum > 0) {
+             centroid_pt.g = 255 * variance;
+             centroid_pt.b = 0;
+             centroid_pt.r = 0;
+             curv_cloud->points[i] = centroid_pt;
+             filtered_cloud->push_back(centroid_pt);  // order is not import.
+          }
+          */
        }
     }
 
@@ -1175,6 +1187,18 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     *curv_cloud = *filtered_cloud;
     
     ROS_INFO("\033[31m COMPLETED \033[0m");
+
+
+    // get interest point
+    pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
+    this->estimateAnchorPoints(
+       anchor_points, curv_cloud, curv_cloud, header);
+    sensor_msgs::PointCloud2 ros_ap;
+    pcl::toROSMsg(*anchor_points, ros_ap);
+    ros_ap.header = header;
+    this->pub_prob_.publish(ros_ap);
+
+
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*curv_cloud, ros_cloud);
@@ -1182,6 +1206,144 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     this->pub_pt_map_.publish(ros_cloud);
 }
 
+bool InteractiveSegmentation::estimateAnchorPoints(
+    pcl::PointCloud<PointT>::Ptr anchor_points,
+    const pcl::PointCloud<PointT>::Ptr convex_points,
+    const pcl::PointCloud<PointT>::Ptr concave_points,
+    const std_msgs::Header header) {
+    if (convex_points->empty()) {
+       ROS_ERROR("NO BOUNDARY REGION TO SELECT POINTS");
+       return false;
+    }
+    // NOTE: if not concave pt then r is smallest y to selected point
+
+    std::vector<pcl::PointIndices> cluster_convx;
+    std::vector<pcl::PointIndices> cluster_concv;
+    pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
+    this->doEuclideanClustering(
+       cluster_convx, convex_points, prob_indices);
+    if (cluster_convx.empty()) {
+       return false;
+    }
+
+    // select highest point in y - dir
+    float height = -FLT_MAX;
+    pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
+    eifilter->setInputCloud(convex_points);
+    for (int i = 0; i < cluster_convx.size(); i++) {
+       pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
+       *region_indices = cluster_convx[i];
+       eifilter->setIndices(region_indices);
+       pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
+       eifilter->filter(*tmp_cloud);
+       Eigen::Vector4f center;
+       pcl::compute3DCentroid<PointT, float>(*tmp_cloud, center);
+       if (center(1) > height) {
+          anchor_points->clear();
+          pcl::copyPointCloud<PointT, PointT>(*tmp_cloud, *anchor_points);
+          height = center(1);
+       }
+    }
+
+    // fit plane model
+    pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
+    pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
+    pcl::SACSegmentation<PointT> seg;
+    seg.setOptimizeCoefficients(true);
+    seg.setModelType(pcl::SACMODEL_PLANE);
+    seg.setMethodType(pcl::SAC_RANSAC);
+    seg.setDistanceThreshold(0.02);
+    seg.setInputCloud(anchor_points);
+    seg.segment(*inliers, *coefficients);
+    if (inliers->indices.size() == 0) {
+       ROS_ERROR ("Could not estimate a planar model for the given dataset.");
+       return -1;
+    }
+    std::cerr << "Model coefficients: " << coefficients->values[0] << " "
+              << coefficients->values[1] << " "
+              << coefficients->values[2] << " "
+              << coefficients->values[3] << std::endl;
+
+    float a = coefficients->values[0];
+    float b = coefficients->values[1];
+    float c = coefficients->values[2];
+    float d = coefficients->values[3];
+    /*
+    Eigen::Vector3f pt_1 = Eigen::Vector3f(-d/a, 0, 0);
+    Eigen::Vector3f pt_2 = Eigen::Vector3f(0, -d/b, 0);
+    Eigen::Vector3f pt_3 = Eigen::Vector3f(0, 0, 0);
+
+    Eigen::Vector3f ppt_2 = pt_2 - pt_1;
+    Eigen::Vector3f ppt_3 = pt_3 - pt_1;
+
+    anchor_points->clear();
+    for (float y = 0.0f; y < 1.0f; y += 0.01f) {
+       for (float x = 0.0f; x < 1.0f; x += 0.01f) {
+          PointT pt;
+          pt.x = pt_1(0) + ppt_2(0) * x + ppt_3(0) * y;
+          pt.y = pt_1(1) + ppt_2(1) * x + ppt_3(1) * y;
+          pt.z = pt_1(2) + ppt_2(2) * x + ppt_3(2) * y;
+          pt.g = 255;
+          anchor_points->push_back(pt);
+       }
+    }
+    */
+    
+    Eigen::Vector4f centroid;
+    pcl::compute3DCentroid<PointT, float>(*anchor_points, centroid);
+    std::cout << centroid << std::endl;
+    pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
+       new pcl::PointCloud<pcl::PointXYZRGBNormal>);
+    pcl::PointXYZRGBNormal pt;
+    pt.x = centroid(0);
+    pt.y = centroid(1);
+    pt.z = centroid(2);
+    pt.r = 255;
+    pt.g = 0;
+    pt.b = 255;
+    pt.normal_x = a/c;
+    pt.normal_y = b/c;
+    pt.normal_z = c/c;
+    centroid_normal->push_back(pt);
+    sensor_msgs::PointCloud2 rviz_normal;
+    pcl::toROSMsg(*centroid_normal, rviz_normal);
+    rviz_normal.header = header;
+    this->pub_normal_.publish(rviz_normal);
+       
+    
+    // select a point on convex pts
+    // for (int i = 0; i < convex_points->size(); i++) {
+       
+    // }
+
+}
+
+void InteractiveSegmentation::doEuclideanClustering(
+    std::vector<pcl::PointIndices> &cluster_indices,
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointIndices::Ptr prob_indices, const float tolerance_thresh,
+    const int min_size_thresh, const int max_size_thresh) {
+    cluster_indices.clear();
+    if (cloud->empty()) {
+       return;
+    }
+    pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
+    tree->setInputCloud(cloud);
+    pcl::EuclideanClusterExtraction<PointT> euclidean_clustering;
+    euclidean_clustering.setClusterTolerance(tolerance_thresh);
+    euclidean_clustering.setMinClusterSize(min_size_thresh);
+    euclidean_clustering.setMaxClusterSize(max_size_thresh);
+    euclidean_clustering.setSearchMethod(tree);
+    euclidean_clustering.setInputCloud(cloud);
+    if (!prob_indices->indices.empty()) {
+       euclidean_clustering.setIndices(prob_indices);
+    }
+    euclidean_clustering.extract(cluster_indices);
+}
+
+/**
+ * un-used function for serivce call
+ */
 void InteractiveSegmentation::edgeBoundaryOutlierFiltering(
     const pcl::PointCloud<PointT>::Ptr cloud) {
     if (cloud->empty()) {

@@ -59,6 +59,9 @@
 #include <pcl/segmentation/min_cut_segmentation.h>
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/filters/statistical_outlier_removal.h>
+#include <pcl/sample_consensus/method_types.h>
+#include <pcl/sample_consensus/model_types.h>
+#include <pcl/segmentation/sac_segmentation.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
@@ -109,6 +112,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     boost::shared_ptr<message_filters::Synchronizer<UsrSyncPolicy> >usr_sync_;
   
     ros::Publisher pub_cloud_;
+    ros::Publisher pub_normal_;
     ros::Publisher pub_prob_;
     ros::Publisher pub_voxels_;
     ros::Publisher pub_indices_;
@@ -185,6 +189,17 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     void highCurvatureConcaveBoundary(
        pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<PointT>::Ptr, const std_msgs::Header);
+    bool estimateAnchorPoints(
+       pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<PointT>::Ptr, const std_msgs::Header);
+
+    void doEuclideanClustering(
+       std::vector<pcl::PointIndices> &cluster_indices,
+       const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointIndices::Ptr, const float = 0.02f,
+       const int = 30, const int = 20000);
+   
     void edgeBoundaryOutlierFiltering(
         const pcl::PointCloud<PointT>::Ptr);
 };
