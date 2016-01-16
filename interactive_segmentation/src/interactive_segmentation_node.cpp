@@ -1078,7 +1078,7 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     pcl::removeNaNFromPointCloud(*cloud, *curv_cloud, indices);
     
     filtered_cloud->clear();
-    filtered_cloud->resize(static_cast<int>(curv_cloud->size()));
+    // filtered_cloud->resize(static_cast<int>(curv_cloud->size()));
     
     int k = 50;  // thresholds
     pcl::PointCloud<pcl::Normal>::Ptr normals(
@@ -1130,15 +1130,16 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
           }
           float variance = max_diff - min_diff;
           if (variance > concave_thresh && concave_sum <= 0) {
-          // if (variance > 0.1 && variance < concave_thresh && concave_sum > 0) {
+             // if (variance > 0.10 && variance < 1.0f && concave_sum > 0) {
              centroid_pt.r = 255 * variance;
              centroid_pt.b = 0;
              centroid_pt.g = 0;
              curv_cloud->points[i] = centroid_pt;
-             filtered_cloud->points[icount] = centroid_pt;
-#ifdef _OPENMP
-#pragma omp atomic
-#endif
+             // filtered_cloud->points[icount] = centroid_pt;
+             filtered_cloud->push_back(centroid_pt);  // order is not import.
+// #ifdef _OPENMP
+// #pragma omp atomic
+// #endif
              icount++;
           } else {
             // filtered_cloud->points[icount++] = centroid_pt;
