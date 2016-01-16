@@ -1100,8 +1100,10 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
            !isnan(centroid_pt.z)) {
           std::vector<int> point_idx_search;
           std::vector<float> point_squared_distance;
-          int search_out = kdtree.nearestKSearch(
-             centroid_pt, search, point_idx_search, point_squared_distance);
+          // int search_out = kdtree.nearestKSearch(
+          //    centroid_pt, search, point_idx_search, point_squared_distance);
+          int search_out = kdtree.radiusSearch(
+             centroid_pt, 0.01f, point_idx_search, point_squared_distance);
           Eigen::Vector4f seed_vector = normals->points[
              i].getNormalVector4fMap();
           float max_diff = 0.0f;
@@ -1127,8 +1129,8 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
                    index].getVector4fMap(), neigh_norm);
           }
           float variance = max_diff - min_diff;
-          // if (variance > concave_thresh && concave_sum <= 0) {
-          if (variance > 0.1 && variance < concave_thresh && concave_sum > 0) {
+          if (variance > concave_thresh && concave_sum <= 0) {
+          // if (variance > 0.1 && variance < concave_thresh && concave_sum > 0) {
              centroid_pt.r = 255 * variance;
              centroid_pt.b = 0;
              centroid_pt.g = 0;
@@ -1159,7 +1161,6 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     
     ROS_INFO("\033[32m FILTERING OUTLIER \033[0m");
 
-    
     const float search_radius_thresh = 0.01f;  // thresholds
     const int min_neigbor_thresh = 50;
     pcl::RadiusOutlierRemoval<PointT>::Ptr filter_ror(
@@ -1171,7 +1172,6 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     
     curv_cloud->clear();
     *curv_cloud = *filtered_cloud;
-
     
     ROS_INFO("\033[31m COMPLETED \033[0m");
     
