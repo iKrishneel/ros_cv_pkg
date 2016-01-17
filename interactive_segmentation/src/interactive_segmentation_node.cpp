@@ -29,8 +29,8 @@ void InteractiveSegmentation::onInit() {
     this->pub_voxels_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
           "/interactive_segmentation/output/supervoxels", 1);
 
-    this->pub_normal_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
-       "/interactive_segmentation/output/normal", sizeof(char));
+    // this->pub_normal_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+    //    "/interactive_segmentation/output/normal", sizeof(char));
     
     this->pub_pt_map_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
         "/interactive_segmentation/output/point_map", 1);
@@ -1132,8 +1132,8 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
           }
           float variance = max_diff - min_diff;
 
-          // if (variance > concave_thresh && concave_sum <= 0) {
-          if (variance > 0.10 && variance < 1.0f && concave_sum > 0) {
+          if (variance > concave_thresh && concave_sum <= 0) {
+          // if (variance > 0.10 && variance < 1.0f && concave_sum > 0) {
              centroid_pt.r = 255 * variance;
              centroid_pt.b = 0;
              centroid_pt.g = 0;
@@ -1288,28 +1288,6 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        }
     }
     */
-    
-    Eigen::Vector4f centroid;
-    pcl::compute3DCentroid<PointT, float>(*anchor_points, centroid);
-    std::cout << centroid << std::endl;
-    pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
-       new pcl::PointCloud<pcl::PointXYZRGBNormal>);
-    pcl::PointXYZRGBNormal pt;
-    pt.x = centroid(0);
-    pt.y = centroid(1);
-    pt.z = centroid(2);
-    pt.r = 255;
-    pt.g = 0;
-    pt.b = 255;
-    pt.normal_x = a/c;
-    pt.normal_y = b/c;
-    pt.normal_z = c/c;
-    centroid_normal->push_back(pt);
-    sensor_msgs::PointCloud2 rviz_normal;
-    pcl::toROSMsg(*centroid_normal, rviz_normal);
-    rviz_normal.header = header;
-    this->pub_normal_.publish(rviz_normal);
-       
     
     // select a point on convex pts
     // for (int i = 0; i < convex_points->size(); i++) {
