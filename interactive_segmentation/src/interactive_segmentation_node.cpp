@@ -95,10 +95,13 @@ void InteractiveSegmentation::callback(
        image_msg, image_msg->encoding)->image;
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-        
+    // pcl::PointCloud<pcl::Normal>::Ptr in_normals(
+    //    new pcl::PointCloud<pcl::Normal>);
+    // pcl::fromROSMsg(*normal_msg, *in_normals);
+    
     std::vector<int> nan_indices;
     pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, nan_indices);
-
+        
     ROS_INFO("\033[32m DEBUG: PROCESSING CALLBACK \033[0m");
     
     // ----------------------------------------
@@ -1075,9 +1078,10 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
        ROS_ERROR("ERROR: INPUT CLOUD EMPTY FOR HIGH CURV. EST.");
        return;
     }
-    std::vector<int> indices;
+    // std::vector<int> indices;
     pcl::PointCloud<PointT>::Ptr curv_cloud(new pcl::PointCloud<PointT>);
-    pcl::removeNaNFromPointCloud(*cloud, *curv_cloud, indices);
+    // pcl::removeNaNFromPointCloud(*cloud, *curv_cloud, indices);
+    *curv_cloud = *cloud;
     
     filtered_cloud->clear();
     // filtered_cloud->resize(static_cast<int>(curv_cloud->size()));
@@ -1086,7 +1090,7 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     pcl::PointCloud<pcl::Normal>::Ptr normals(
        new pcl::PointCloud<pcl::Normal>);
     this->estimatePointCloudNormals<int>(curv_cloud, normals, k, true);
-
+    
     pcl::KdTreeFLANN<PointT> kdtree;
     kdtree.setInputCloud(curv_cloud);
     int search = 50;  // thresholds
@@ -1185,9 +1189,6 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     
     curv_cloud->clear();
     *curv_cloud = *filtered_cloud;
-    
-    ROS_INFO("\033[31m COMPLETED \033[0m");
-
 
     // get interest point
     pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
@@ -1197,13 +1198,13 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     pcl::toROSMsg(*anchor_points, ros_ap);
     ros_ap.header = header;
     this->pub_prob_.publish(ros_ap);
-
-
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*curv_cloud, ros_cloud);
     ros_cloud.header = header;
     this->pub_pt_map_.publish(ros_cloud);
+
+    ROS_INFO("\033[31m COMPLETED \033[0m");
 }
 
 bool InteractiveSegmentation::estimateAnchorPoints(
@@ -1256,7 +1257,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     seg.setInputCloud(anchor_points);
     seg.segment(*inliers, *coefficients);
     if (inliers->indices.size() == 0) {
-       ROS_ERROR ("Could not estimate a planar model for the given dataset.");
+       ROS_ERROR("Could not estimate a planar model for the given dataset.");
        return -1;
     }
     std::cerr << "Model coefficients: " << coefficients->values[0] << " "
