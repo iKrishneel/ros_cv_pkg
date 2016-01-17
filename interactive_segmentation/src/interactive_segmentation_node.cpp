@@ -29,8 +29,8 @@ void InteractiveSegmentation::onInit() {
     this->pub_voxels_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
           "/interactive_segmentation/output/supervoxels", 1);
 
-    // this->pub_normal_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
-    //    "/interactive_segmentation/output/normal", sizeof(char));
+    this->pub_normal_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+       "/interactive_segmentation/output/normal", 1);
     
     this->pub_pt_map_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
         "/interactive_segmentation/output/point_map", 1);
@@ -1246,6 +1246,75 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        }
     }
 
+
+    // select two points on the anchor points region
+    Eigen::Vector4f center;
+    pcl::compute3DCentroid<PointT, float>(*anchor_points, center);
+
+    double max_dist_pt = 0;
+    int indx1 = -1;
+    for (int i = 0; i < anchor_points->size(); i++) {
+       double d = pcl::distances::l2(
+          center, anchor_points->points[i].getVector4fMap());
+       if (d > max_dist_pt) {
+          max_dist_pt = d;
+          indx1 = i;
+       }
+    }
+    max_dist_pt = 0;
+    int indx2 = -1;
+    for (int i = 0; i < anchor_points->size(); i++) {
+       double d = pcl::distances::l2(
+          anchor_points->points[indx1].getVector4fMap(),
+          anchor_points->points[i].getVector4fMap());
+       if (d > max_dist_pt) {
+          max_dist_pt = d;
+          indx2 = i;
+       }
+    }
+    
+    Eigen::Vector3f point_a = anchor_points->points[indx1].getVector3fMap();
+    // point_a(0) = 0.0f;
+    // point_a(1) = 0.0f;
+    point_a(2) += 0.30f;
+
+    std::cout << point_a << "\n" << std::endl;
+    
+    Eigen::Vector3f point_b = anchor_points->points[
+       indx2].getVector3fMap() - point_a;
+
+    Eigen::Vector3f point_c = center.head<3>() - point_a;
+    Eigen::Vector3f normal_vec = point_b.cross(point_c);
+
+    float sum = normal_vec(0) +  normal_vec(1) +  normal_vec(2);
+    normal_vec(0) /= sum;
+    normal_vec(1) /= sum;
+    normal_vec(2) /= sum;
+    std::cout << "NORMAL: " << normal_vec << std::endl;
+
+    pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
+       new pcl::PointCloud<pcl::PointXYZRGBNormal>);
+    pcl::PointXYZRGBNormal pt;
+     pt.x = anchor_points->points[0].x;
+     pt.y = anchor_points->points[0].y;
+     pt.z = anchor_points->points[0].z;
+     pt.r = 255;
+     pt.g = 0;
+     pt.b = 255;
+     pt.normal_x = normal_vec(0);
+     pt.normal_y = normal_vec(1);
+     pt.normal_z = normal_vec(2);
+     centroid_normal->push_back(pt);
+     centroid_normal->push_back(pt);
+     centroid_normal->push_back(pt);
+        
+        
+    sensor_msgs::PointCloud2 rviz_normal;
+    pcl::toROSMsg(*centroid_normal, rviz_normal);
+    rviz_normal.header = header;
+    this->pub_normal_.publish(rviz_normal);
+    
+    /*
     // fit plane model
     pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
     pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
@@ -1269,17 +1338,16 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     float b = coefficients->values[1];
     float c = coefficients->values[2];
     float d = coefficients->values[3];
-    /*
-    Eigen::Vector3f pt_1 = Eigen::Vector3f(-d/a, 0, 0);
-    Eigen::Vector3f pt_2 = Eigen::Vector3f(0, -d/b, 0);
-    Eigen::Vector3f pt_3 = Eigen::Vector3f(0, 0, 0);
-
-    Eigen::Vector3f ppt_2 = pt_2 - pt_1;
-    Eigen::Vector3f ppt_3 = pt_3 - pt_1;
-
+    */
+    
+    
+    Eigen::Vector3f pt_1 = point_a;
+    Eigen::Vector3f ppt_2 = point_b;
+    Eigen::Vector3f ppt_3 = point_c;
+    
     anchor_points->clear();
-    for (float y = 0.0f; y < 1.0f; y += 0.01f) {
-       for (float x = 0.0f; x < 1.0f; x += 0.01f) {
+    for (float y = -1.0f; y < 1.0f; y += 0.01f) {
+       for (float x = -1.0f; x < 1.0f; x += 0.01f) {
           PointT pt;
           pt.x = pt_1(0) + ppt_2(0) * x + ppt_3(0) * y;
           pt.y = pt_1(1) + ppt_2(1) * x + ppt_3(1) * y;
@@ -1288,7 +1356,8 @@ bool InteractiveSegmentation::estimateAnchorPoints(
           anchor_points->push_back(pt);
        }
     }
-    */
+
+
     
     // select a point on convex pts
     // for (int i = 0; i < convex_points->size(); i++) {
