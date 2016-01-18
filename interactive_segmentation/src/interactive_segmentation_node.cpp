@@ -26,6 +26,7 @@ void InteractiveSegmentation::onInit() {
     this->pub_indices_ = this->pnh_.advertise<
        jsk_recognition_msgs::ClusterPointIndices>(
           "/interactive_segmentation/output/indices", 1);
+    
     this->pub_voxels_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
           "/interactive_segmentation/output/supervoxels", 1);
 
@@ -34,6 +35,13 @@ void InteractiveSegmentation::onInit() {
     
     this->pub_pt_map_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
         "/interactive_segmentation/output/point_map", 1);
+
+    this->pub_concave_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+        "/interactive_segmentation/output/concave_edge", 1);
+
+    this->pub_convex_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+        "/interactive_segmentation/output/convex_edge", 1);
+    
     this->pub_image_ = this->pnh_.advertise<sensor_msgs::Image>(
        "/interactive_segmentation/output/image", 1);
 }
@@ -1157,13 +1165,25 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
           }
        }
     }
-
-    std::cout << "SIZE: " << convex_edge_points->size()  << "\n";
-    *concave_edge_points = *convex_edge_points;
     
     // filter the outliers
-    this->edgeBoundaryOutlierFiltering(concave_edge_points);
-    // this->edgeBoundaryOutlierFiltering(convex_edge_points);
+#ifdef _OPENMP
+#pragma omp parallel sections
+#endif
+    {
+#ifdef _OPENMP
+#pragma omp section
+#endif
+      {
+        this->edgeBoundaryOutlierFiltering(concave_edge_points);
+      }
+#ifdef _OPENMP
+#pragma omp section
+#endif
+      {
+        this->edgeBoundaryOutlierFiltering(convex_edge_points);
+      }
+    }
     
     curv_cloud->clear();
     *curv_cloud = *concave_edge_points;
@@ -1178,10 +1198,15 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     this->pub_prob_.publish(ros_ap);
     // ------------------------------
     
-    sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*concave_edge_points, ros_cloud);
-    ros_cloud.header = header;
-    this->pub_pt_map_.publish(ros_cloud);
+    sensor_msgs::PointCloud2 ros_cccloud;
+    pcl::toROSMsg(*concave_edge_points, ros_cccloud);
+    ros_cccloud.header = header;
+    this->pub_concave_.publish(ros_cccloud);
+
+    sensor_msgs::PointCloud2 ros_cvcloud;
+    pcl::toROSMsg(*convex_edge_points, ros_cvcloud);
+    ros_cvcloud.header = header;
+    this->pub_convex_.publish(ros_cvcloud);
 
     ROS_INFO("\033[31m COMPLETED \033[0m");
 }

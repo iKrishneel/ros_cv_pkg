@@ -112,6 +112,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     boost::shared_ptr<message_filters::Synchronizer<UsrSyncPolicy> >usr_sync_;
   
     ros::Publisher pub_cloud_;
+    ros::Publisher pub_convex_;
+    ros::Publisher pub_concave_;
     ros::Publisher pub_normal_;
     ros::Publisher pub_prob_;
     ros::Publisher pub_voxels_;
