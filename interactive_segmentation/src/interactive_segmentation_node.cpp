@@ -1181,7 +1181,7 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
 #pragma omp section
 #endif
       {
-        this->edgeBoundaryOutlierFiltering(convex_edge_points);
+        this->edgeBoundaryOutlierFiltering(convex_edge_points, 0.01f, 100);
       }
     }
 
@@ -1195,16 +1195,19 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     pcl::toROSMsg(*anchor_points, ros_ap);
     ros_ap.header = header;
     this->pub_prob_.publish(ros_ap);
-    
-    sensor_msgs::PointCloud2 ros_cccloud;
-    pcl::toROSMsg(*concave_edge_points, ros_cccloud);
-    ros_cccloud.header = header;
-    this->pub_concave_.publish(ros_cccloud);
 
-    sensor_msgs::PointCloud2 ros_cvcloud;
-    pcl::toROSMsg(*convex_edge_points, ros_cvcloud);
-    ros_cvcloud.header = header;
-    this->pub_convex_.publish(ros_cvcloud);
+    bool is_pub = true;
+    if (is_pub) {
+      sensor_msgs::PointCloud2 ros_cccloud;
+      pcl::toROSMsg(*concave_edge_points, ros_cccloud);
+      ros_cccloud.header = header;
+      this->pub_concave_.publish(ros_cccloud);
+
+      sensor_msgs::PointCloud2 ros_cvcloud;
+      pcl::toROSMsg(*convex_edge_points, ros_cvcloud);
+      ros_cvcloud.header = header;
+      this->pub_convex_.publish(ros_cvcloud);
+    }
 
     ROS_INFO("\033[31m COMPLETED \033[0m");
 }
@@ -1222,11 +1225,29 @@ bool InteractiveSegmentation::estimateAnchorPoints(
 
     std::vector<pcl::PointIndices> cluster_convx;
     std::vector<pcl::PointIndices> cluster_concv;
-    pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
-    this->doEuclideanClustering(
-       cluster_convx, convex_points, prob_indices);
+#ifdef _OPENMP
+#pragma omp parallel sections
+#endif
+    {
+#ifdef _OPENMP
+#pragma omp section
+#endif
+      {
+        pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
+        this->doEuclideanClustering(cluster_convx, convex_points, prob_indices);
+      }
+#ifdef _OPENMP
+#pragma omp section
+#endif
+      {
+        pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
+        this->doEuclideanClustering(cluster_concv, concave_points, prob_indices);
+      }
+    }
+
+    // select point in direction of normal few dist away
     if (cluster_convx.empty()) {
-       return false;
+      // TODO: 
     }
 
     // select highest point in y - dir
@@ -1249,7 +1270,6 @@ bool InteractiveSegmentation::estimateAnchorPoints(
           center_index = i;
        }
     }
-
 
     // select two points on the anchor points region
     double max_dist_pt = 0;
