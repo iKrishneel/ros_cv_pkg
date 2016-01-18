@@ -1229,6 +1229,8 @@ bool InteractiveSegmentation::estimateAnchorPoints(
 
     // select highest point in y - dir
     float height = -FLT_MAX;
+    Eigen::Vector4f center;
+    int center_index = -1;
     pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
     eifilter->setInputCloud(convex_points);
     for (int i = 0; i < cluster_convx.size(); i++) {
@@ -1237,20 +1239,17 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        eifilter->setIndices(region_indices);
        pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
        eifilter->filter(*tmp_cloud);
-       Eigen::Vector4f center;
        pcl::compute3DCentroid<PointT, float>(*tmp_cloud, center);
        if (center(1) > height) {
           anchor_points->clear();
           pcl::copyPointCloud<PointT, PointT>(*tmp_cloud, *anchor_points);
           height = center(1);
+          center_index = i;
        }
     }
 
 
     // select two points on the anchor points region
-    Eigen::Vector4f center;
-    pcl::compute3DCentroid<PointT, float>(*anchor_points, center);
-
     double max_dist_pt = 0;
     int indx1 = -1;
     for (int i = 0; i < anchor_points->size(); i++) {
@@ -1277,8 +1276,6 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     // point_a(0) = 0.0f;
     // point_a(1) = 0.0f;
     point_a(2) += 0.30f;
-
-    std::cout << point_a << "\n" << std::endl;
     
     Eigen::Vector3f point_b = anchor_points->points[
        indx2].getVector3fMap() - point_a;
@@ -1290,7 +1287,6 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     normal_vec(0) /= sum;
     normal_vec(1) /= sum;
     normal_vec(2) /= sum;
-    std::cout << "NORMAL: " << normal_vec << std::endl;
 
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
        new pcl::PointCloud<pcl::PointXYZRGBNormal>);
@@ -1307,38 +1303,11 @@ bool InteractiveSegmentation::estimateAnchorPoints(
      centroid_normal->push_back(pt);
      centroid_normal->push_back(pt);
      centroid_normal->push_back(pt);
-        
-        
+     
     sensor_msgs::PointCloud2 rviz_normal;
     pcl::toROSMsg(*centroid_normal, rviz_normal);
     rviz_normal.header = header;
     this->pub_normal_.publish(rviz_normal);
-    
-    /*
-    // fit plane model
-    pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients);
-    pcl::PointIndices::Ptr inliers (new pcl::PointIndices);
-    pcl::SACSegmentation<PointT> seg;
-    seg.setOptimizeCoefficients(true);
-    seg.setModelType(pcl::SACMODEL_PLANE);
-    seg.setMethodType(pcl::SAC_RANSAC);
-    seg.setDistanceThreshold(0.02);
-    seg.setInputCloud(anchor_points);
-    seg.segment(*inliers, *coefficients);
-    if (inliers->indices.size() == 0) {
-       ROS_ERROR("Could not estimate a planar model for the given dataset.");
-       return -1;
-    }
-    std::cerr << "Model coefficients: " << coefficients->values[0] << " "
-              << coefficients->values[1] << " "
-              << coefficients->values[2] << " "
-              << coefficients->values[3] << std::endl;
-
-    float a = coefficients->values[0];
-    float b = coefficients->values[1];
-    float c = coefficients->values[2];
-    float d = coefficients->values[3];
-    */
     
     
     Eigen::Vector3f pt_1 = point_a;
@@ -1357,12 +1326,64 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        }
     }
 
-
+    // for selected convex mid-point
+    double object_lenght_thresh = 0.50;
+    double nearest_cc_dist = DBL_MAX;
+    Eigen::Vector4f cc_pt;
+    for (int i = 0; i < concave_points->size(); i++) {
+       cc_pt = concave_points->points[i].getVector4fMap();
+       if (cc_pt(1) < center(1)) {
+          double d = pcl::distances::l2(cc_pt, center);
+          if (d < nearest_cc_dist && d < object_lenght_thresh) {
+             nearest_cc_dist = d;
+          }
+       }
+    }
+    float ap_search_radius = static_cast<float>(nearest_cc_dist)/2.0f;
+    float ap_search_angle = static_cast<float>(pcl::getAngle3D(center, cc_pt));
     
-    // select a point on convex pts
-    // for (int i = 0; i < convex_points->size(); i++) {
-       
-    // }
+    // find points ap_search_rad away
+    pcl::KdTreeFLANN<PointT> kdtree;
+    kdtree.setInputCloud(anchor_points);
+    std::vector<int> point_idx_search;
+    std::vector<float> point_squared_distance;
+    int search_out = kdtree.radiusSearch(anchor_points->points[center_index],
+                                         ap_search_radius, point_idx_search,
+                                         point_squared_distance);
+    int ap_index_1 = -1;
+    for (int i = 0; i < point_idx_search.size(); i++) {
+       Eigen::Vector4f pt = anchor_points->points[
+          point_idx_search[i]].getVector4fMap();
+       double d = pcl::distances::l2(cc_pt, pt);
+       double ang = pcl::getAngle3D(cc_pt, pt);
+       if (d > (ap_search_radius - 0.005f) &&
+           ang > (ap_search_angle - M_PI/36) &&
+           ang < (ap_search_angle + M_PI/36)) {
+          ap_index_1 = i;
+          break;
+       }
+    }
+    if (ap_index_1 == -1) {
+       return false;
+    }
+
+    // get second point furtherest away from ap_index_1
+    double ap_dist_far = 0;
+    int ap_index_2 = -1;
+    for (int i = 0; i < point_idx_search.size(); i++) {
+       double d = pcl::distances::l2(anchor_points->points[i].getVector4fMap(),
+                          anchor_points->points[ap_index_1].getVector4fMap());
+       if (d > ap_dist_far) {
+          ap_dist_far = d;
+          ap_index_2 = 1;
+       }
+    }
+
+    if (ap_index_2 == -1) {
+       // process with ap_index_1 only
+    } else {
+       // use both
+    }
 
 }
 
