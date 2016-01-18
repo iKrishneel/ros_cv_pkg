@@ -1,0 +1,7 @@
+sensor_msgs/PointCloud2 points
+float64 max_distance
+int64 min_samples
+---
+int64[] labels
+int64[] indices
+int64 argmax_label

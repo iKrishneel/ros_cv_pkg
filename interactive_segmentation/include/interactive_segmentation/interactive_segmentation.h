@@ -57,6 +57,11 @@
 #include <pcl/features/don.h>
 #include <pcl/segmentation/segment_differences.h>
 #include <pcl/segmentation/min_cut_segmentation.h>
+#include <pcl/filters/radius_outlier_removal.h>
+#include <pcl/filters/statistical_outlier_removal.h>
+#include <pcl/sample_consensus/method_types.h>
+#include <pcl/sample_consensus/model_types.h>
+#include <pcl/segmentation/sac_segmentation.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
@@ -72,6 +77,7 @@
 
 #include <interactive_segmentation/supervoxel_segmentation.h>
 #include <interactive_segmentation/saliency_map_generator.h>
+#include <interactive_segmentation/OutlierFiltering.h>
 
 #include <omp.h>
 
@@ -95,15 +101,26 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
     message_filters::Subscriber<sensor_msgs::CameraInfo> sub_info_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
-   
+
+    // user mark the point
+    typedef message_filters::sync_policies::ApproximateTime<
+      geometry_msgs::PointStamped,
+      sensor_msgs::PointCloud2> UsrSyncPolicy;
+
+    message_filters::Subscriber<geometry_msgs::PointStamped> sub_screen_pt_;
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_orig_cloud_;
+    boost::shared_ptr<message_filters::Synchronizer<UsrSyncPolicy> >usr_sync_;
+  
     ros::Publisher pub_cloud_;
+    ros::Publisher pub_normal_;
     ros::Publisher pub_prob_;
     ros::Publisher pub_voxels_;
     ros::Publisher pub_indices_;
     ros::Publisher pub_image_;
     ros::Publisher pub_pt_map_;
 
-    ros::Subscriber sub_screen_pt_;
+    ros::ServiceClient srv_client_;
+    PointT user_marked_pt_;
     cv::Point2i screen_pt_;
     bool is_init_;
   
@@ -118,7 +135,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
  public:
     InteractiveSegmentation();
     virtual void screenPointCallback(
-      const geometry_msgs::PointStamped &);
+       const geometry_msgs::PointStamped::ConstPtr &,
+       const sensor_msgs::PointCloud2::ConstPtr &);
     virtual void callback(const sensor_msgs::Image::ConstPtr &,
                           const sensor_msgs::CameraInfo::ConstPtr &,
                           const sensor_msgs::PointCloud2::ConstPtr &,
@@ -169,9 +187,21 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const pcl::PointCloud<PointT>::Ptr,
        const sensor_msgs::CameraInfo::ConstPtr &, cv::Mat &, cv::Mat &);
     void highCurvatureConcaveBoundary(
+       pcl::PointCloud<PointT>::Ptr, const pcl::PointCloud<PointT>::Ptr,
+       const std_msgs::Header);
+    bool estimateAnchorPoints(
        pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<PointT>::Ptr, const std_msgs::Header);
+
+    void doEuclideanClustering(
+       std::vector<pcl::PointIndices> &cluster_indices,
+       const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointIndices::Ptr, const float = 0.02f,
+       const int = 30, const int = 20000);
    
+    void edgeBoundaryOutlierFiltering(
+        const pcl::PointCloud<PointT>::Ptr);
 };
 
 

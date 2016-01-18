@@ -8,6 +8,10 @@ InteractiveSegmentation::InteractiveSegmentation():
     min_cluster_size_(100), is_init_(true),
     num_threads_(8) {
     pnh_.getParam("num_threads", this->num_threads_);
+
+    this->srv_client_ = this->pnh_.serviceClient<
+      interactive_segmentation::OutlierFiltering>("outlier_filtering_srv");
+    
     this->subscribe();
     this->onInit();
 }
@@ -24,7 +28,9 @@ void InteractiveSegmentation::onInit() {
           "/interactive_segmentation/output/indices", 1);
     this->pub_voxels_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
           "/interactive_segmentation/output/supervoxels", 1);
-    
+
+    this->pub_normal_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+       "/interactive_segmentation/output/normal", 1);
     
     this->pub_pt_map_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
         "/interactive_segmentation/output/point_map", 1);
@@ -34,9 +40,14 @@ void InteractiveSegmentation::onInit() {
 
 void InteractiveSegmentation::subscribe() {
 
-       this->sub_screen_pt_ = this->pnh_.subscribe(
-      "input_screen", 1, &InteractiveSegmentation::screenPointCallback, this);
-  
+       this->sub_screen_pt_.subscribe(this->pnh_, "input_screen", 1);
+       this->sub_orig_cloud_.subscribe(this->pnh_, "input_orig_cloud", 1);
+       this->usr_sync_ = boost::make_shared<message_filters::Synchronizer<
+         UsrSyncPolicy> >(100);
+       usr_sync_->connectInput(sub_screen_pt_, sub_orig_cloud_);
+       usr_sync_->registerCallback(boost::bind(
+           &InteractiveSegmentation::screenPointCallback, this, _1, _2));
+       
        this->sub_image_.subscribe(this->pnh_, "input_image", 1);
        this->sub_info_.subscribe(this->pnh_, "input_info", 1);
        this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
@@ -55,11 +66,23 @@ void InteractiveSegmentation::unsubscribe() {
 }
 
 void InteractiveSegmentation::screenPointCallback(
-    const geometry_msgs::PointStamped &screen_msg) {
-    int x = screen_msg.point.x;
-    int y = screen_msg.point.y;
+    const geometry_msgs::PointStamped::ConstPtr &screen_msg,
+    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
+    int x = screen_msg->point.x;
+    int y = screen_msg->point.y;
     this->screen_pt_ = cv::Point2i(x, y);
-    this->is_init_ = true;
+    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+    pcl::fromROSMsg(*cloud_msg, *cloud);
+    if (cloud->height == 1) {
+      return;
+    }
+    const int index = x + (y * cloud->width);
+    this->user_marked_pt_ = cloud->points[index];
+    if (!isnan(user_marked_pt_.x) &&
+        !isnan(user_marked_pt_.y) &&
+        !isnan(user_marked_pt_.z)) {
+      this->is_init_ = true;
+    }
 }
 
 void InteractiveSegmentation::callback(
@@ -72,13 +95,17 @@ void InteractiveSegmentation::callback(
        image_msg, image_msg->encoding)->image;
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-        
+    // pcl::PointCloud<pcl::Normal>::Ptr in_normals(
+    //    new pcl::PointCloud<pcl::Normal>);
+    // pcl::fromROSMsg(*normal_msg, *in_normals);
+    
     std::vector<int> nan_indices;
     pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, nan_indices);
-
+        
     ROS_INFO("\033[32m DEBUG: PROCESSING CALLBACK \033[0m");
     
     // ----------------------------------------
+
     this->highCurvatureConcaveBoundary(cloud, cloud, cloud_msg->header);
     cv::Mat mask_img;
     cv::Mat depth_img;
@@ -94,8 +121,8 @@ void InteractiveSegmentation::callback(
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
+    
     return;
-
     // ----------------------------------------
     
     bool is_surfel_level = true;
@@ -351,7 +378,6 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
           this->highCurvatureConcaveBoundary(high_curvature_filterd,
                                              prob_object_cloud,
                                              info_msg->header);
-
           
           std::cout << cloud->size() << "\t" << normals->size() << std::endl;
        }
@@ -884,7 +910,7 @@ void InteractiveSegmentation::estimatePointCloudNormals(
     }
     pcl::NormalEstimationOMP<PointT, pcl::Normal> ne;
     ne.setInputCloud(cloud);
-    ne.setNumberOfThreads(16);
+    ne.setNumberOfThreads(this->num_threads_);
     pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT> ());
     ne.setSearchMethod(tree);
     if (use_knn) {
@@ -985,6 +1011,9 @@ cv::Mat InteractiveSegmentation::projectPointCloudToImagePlane(
        return cv::Mat();
     }
     cv::Mat object_points = cv::Mat(static_cast<int>(cloud->size()), 3, CV_32F);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(this->num_threads_)
+#endif
     for (int i = 0; i < cloud->size(); i++) {
        object_points.at<float>(i, 0) = cloud->points[i].x;
        object_points.at<float>(i, 1) = cloud->points[i].y;
@@ -1022,6 +1051,9 @@ cv::Mat InteractiveSegmentation::projectPointCloudToImagePlane(
        camera_info->height, camera_info->width, CV_32F);
     depth_map = cv::Mat::zeros(
        camera_info->height, camera_info->width, CV_8UC1);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(this->num_threads_)
+#endif
     for (int i = 0; i < image_points.size(); i++) {
        int x = image_points[i].x;
        int y = image_points[i].y;
@@ -1046,25 +1078,27 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
        ROS_ERROR("ERROR: INPUT CLOUD EMPTY FOR HIGH CURV. EST.");
        return;
     }
-    std::vector<int> indices;
+    // std::vector<int> indices;
     pcl::PointCloud<PointT>::Ptr curv_cloud(new pcl::PointCloud<PointT>);
-    pcl::removeNaNFromPointCloud(*cloud, *curv_cloud, indices);
-
-    filtered_cloud->clear();
-    filtered_cloud->resize(static_cast<int>(curv_cloud->size()));
+    // pcl::removeNaNFromPointCloud(*cloud, *curv_cloud, indices);
+    *curv_cloud = *cloud;
     
-    int k = 50;
+    filtered_cloud->clear();
+    // filtered_cloud->resize(static_cast<int>(curv_cloud->size()));
+    
+    int k = 50;  // thresholds
     pcl::PointCloud<pcl::Normal>::Ptr normals(
        new pcl::PointCloud<pcl::Normal>);
     this->estimatePointCloudNormals<int>(curv_cloud, normals, k, true);
-
+    
     pcl::KdTreeFLANN<PointT> kdtree;
     kdtree.setInputCloud(curv_cloud);
-    int search = 100;
+    int search = 50;  // thresholds
 
     int icount = 0;
+    const float concave_thresh = 0.30f;  // thresholds
 #ifdef _OPENMP
-#pragma omp parallel for num_threads(this->num_threads_) shared(kdtree)
+#pragma omp parallel for num_threads(this->num_threads_) shared(kdtree, icount)
 #endif
     for (int i = 0; i < curv_cloud->size(); i++) {
        PointT centroid_pt = curv_cloud->points[i];
@@ -1072,8 +1106,10 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
            !isnan(centroid_pt.z)) {
           std::vector<int> point_idx_search;
           std::vector<float> point_squared_distance;
-          int search_out = kdtree.nearestKSearch(
-             centroid_pt, search, point_idx_search, point_squared_distance);
+          // int search_out = kdtree.nearestKSearch(
+          //    centroid_pt, search, point_idx_search, point_squared_distance);
+          int search_out = kdtree.radiusSearch(
+             centroid_pt, 0.01f, point_idx_search, point_squared_distance);
           Eigen::Vector4f seed_vector = normals->points[
              i].getNormalVector4fMap();
           float max_diff = 0.0f;
@@ -1099,30 +1135,317 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
                    index].getVector4fMap(), neigh_norm);
           }
           float variance = max_diff - min_diff;
-          if (variance > 0.10f && concave_sum <= 0) {
+
+          if (variance > concave_thresh && concave_sum <= 0) {
+          // if (variance > 0.10 && variance < 1.0f && concave_sum > 0) {
              centroid_pt.r = 255 * variance;
              centroid_pt.b = 0;
              centroid_pt.g = 0;
              curv_cloud->points[i] = centroid_pt;
-             
-             filtered_cloud->points[icount++] = centroid_pt;
+             // filtered_cloud->points[icount] = centroid_pt;
+             filtered_cloud->push_back(centroid_pt);  // order is not import.
+// #ifdef _OPENMP
+// #pragma omp atomic
+// #endif
+             icount++;
           } else {
-             filtered_cloud->points[icount++] = centroid_pt;
+            // filtered_cloud->points[icount++] = centroid_pt;
           }
+/*
+          if (variance > 0.10 && variance < 1.0f && concave_sum > 0) {
+             centroid_pt.g = 255 * variance;
+             centroid_pt.b = 0;
+             centroid_pt.r = 0;
+             curv_cloud->points[i] = centroid_pt;
+             filtered_cloud->push_back(centroid_pt);  // order is not import.
+          }
+          */
        }
     }
 
     curv_cloud->clear();
-    *curv_cloud = *filtered_cloud;
+    // *curv_cloud = *filtered_cloud;
+    // clear oversize memory
+    for (int i = 0; i < filtered_cloud->size(); i++) {
+       PointT pt = filtered_cloud->points[i];
+       if (pt.x != 0.0f && pt.y != 0.0f && pt.z != 0.0f) {
+          curv_cloud->push_back(pt);
+       }
+    }
     
-    std::cout << "COMPLETED" << std::endl;
+    // filter the outliers
+    // this->edgeBoundaryOutlierFiltering(curv_cloud);
+    
+    ROS_INFO("\033[32m FILTERING OUTLIER \033[0m");
+
+    const float search_radius_thresh = 0.01f;  // thresholds
+    const int min_neigbor_thresh = 50;
+    pcl::RadiusOutlierRemoval<PointT>::Ptr filter_ror(
+       new pcl::RadiusOutlierRemoval<PointT>);
+    filter_ror->setInputCloud(curv_cloud);
+    filter_ror->setRadiusSearch(search_radius_thresh);
+    filter_ror->setMinNeighborsInRadius(min_neigbor_thresh);
+    filter_ror->filter(*filtered_cloud);
+    
+    curv_cloud->clear();
+    *curv_cloud = *filtered_cloud;
+
+    // get interest point
+    pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
+    this->estimateAnchorPoints(
+       anchor_points, curv_cloud, curv_cloud, header);
+    sensor_msgs::PointCloud2 ros_ap;
+    pcl::toROSMsg(*anchor_points, ros_ap);
+    ros_ap.header = header;
+    this->pub_prob_.publish(ros_ap);
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*curv_cloud, ros_cloud);
     ros_cloud.header = header;
     this->pub_pt_map_.publish(ros_cloud);
+
+    ROS_INFO("\033[31m COMPLETED \033[0m");
 }
 
+bool InteractiveSegmentation::estimateAnchorPoints(
+    pcl::PointCloud<PointT>::Ptr anchor_points,
+    const pcl::PointCloud<PointT>::Ptr convex_points,
+    const pcl::PointCloud<PointT>::Ptr concave_points,
+    const std_msgs::Header header) {
+    if (convex_points->empty()) {
+       ROS_ERROR("NO BOUNDARY REGION TO SELECT POINTS");
+       return false;
+    }
+    // NOTE: if not concave pt then r is smallest y to selected point
+
+    std::vector<pcl::PointIndices> cluster_convx;
+    std::vector<pcl::PointIndices> cluster_concv;
+    pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
+    this->doEuclideanClustering(
+       cluster_convx, convex_points, prob_indices);
+    if (cluster_convx.empty()) {
+       return false;
+    }
+
+    // select highest point in y - dir
+    float height = -FLT_MAX;
+    Eigen::Vector4f center;
+    int center_index = -1;
+    pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
+    eifilter->setInputCloud(convex_points);
+    for (int i = 0; i < cluster_convx.size(); i++) {
+       pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
+       *region_indices = cluster_convx[i];
+       eifilter->setIndices(region_indices);
+       pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
+       eifilter->filter(*tmp_cloud);
+       pcl::compute3DCentroid<PointT, float>(*tmp_cloud, center);
+       if (center(1) > height) {
+          anchor_points->clear();
+          pcl::copyPointCloud<PointT, PointT>(*tmp_cloud, *anchor_points);
+          height = center(1);
+          center_index = i;
+       }
+    }
+
+
+    // select two points on the anchor points region
+    double max_dist_pt = 0;
+    int indx1 = -1;
+    for (int i = 0; i < anchor_points->size(); i++) {
+       double d = pcl::distances::l2(
+          center, anchor_points->points[i].getVector4fMap());
+       if (d > max_dist_pt) {
+          max_dist_pt = d;
+          indx1 = i;
+       }
+    }
+    max_dist_pt = 0;
+    int indx2 = -1;
+    for (int i = 0; i < anchor_points->size(); i++) {
+       double d = pcl::distances::l2(
+          anchor_points->points[indx1].getVector4fMap(),
+          anchor_points->points[i].getVector4fMap());
+       if (d > max_dist_pt) {
+          max_dist_pt = d;
+          indx2 = i;
+       }
+    }
+    
+    Eigen::Vector3f point_a = anchor_points->points[indx1].getVector3fMap();
+    // point_a(0) = 0.0f;
+    // point_a(1) = 0.0f;
+    point_a(2) += 0.30f;
+    
+    Eigen::Vector3f point_b = anchor_points->points[
+       indx2].getVector3fMap() - point_a;
+
+    Eigen::Vector3f point_c = center.head<3>() - point_a;
+    Eigen::Vector3f normal_vec = point_b.cross(point_c);
+
+    float sum = normal_vec(0) +  normal_vec(1) +  normal_vec(2);
+    normal_vec(0) /= sum;
+    normal_vec(1) /= sum;
+    normal_vec(2) /= sum;
+
+    pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
+       new pcl::PointCloud<pcl::PointXYZRGBNormal>);
+    pcl::PointXYZRGBNormal pt;
+     pt.x = anchor_points->points[0].x;
+     pt.y = anchor_points->points[0].y;
+     pt.z = anchor_points->points[0].z;
+     pt.r = 255;
+     pt.g = 0;
+     pt.b = 255;
+     pt.normal_x = normal_vec(0);
+     pt.normal_y = normal_vec(1);
+     pt.normal_z = normal_vec(2);
+     centroid_normal->push_back(pt);
+     centroid_normal->push_back(pt);
+     centroid_normal->push_back(pt);
+     
+    sensor_msgs::PointCloud2 rviz_normal;
+    pcl::toROSMsg(*centroid_normal, rviz_normal);
+    rviz_normal.header = header;
+    this->pub_normal_.publish(rviz_normal);
+    
+    
+    Eigen::Vector3f pt_1 = point_a;
+    Eigen::Vector3f ppt_2 = point_b;
+    Eigen::Vector3f ppt_3 = point_c;
+    
+    anchor_points->clear();
+    for (float y = -1.0f; y < 1.0f; y += 0.01f) {
+       for (float x = -1.0f; x < 1.0f; x += 0.01f) {
+          PointT pt;
+          pt.x = pt_1(0) + ppt_2(0) * x + ppt_3(0) * y;
+          pt.y = pt_1(1) + ppt_2(1) * x + ppt_3(1) * y;
+          pt.z = pt_1(2) + ppt_2(2) * x + ppt_3(2) * y;
+          pt.g = 255;
+          anchor_points->push_back(pt);
+       }
+    }
+
+    // for selected convex mid-point
+    double object_lenght_thresh = 0.50;
+    double nearest_cc_dist = DBL_MAX;
+    Eigen::Vector4f cc_pt;
+    for (int i = 0; i < concave_points->size(); i++) {
+       cc_pt = concave_points->points[i].getVector4fMap();
+       if (cc_pt(1) < center(1)) {
+          double d = pcl::distances::l2(cc_pt, center);
+          if (d < nearest_cc_dist && d < object_lenght_thresh) {
+             nearest_cc_dist = d;
+          }
+       }
+    }
+    float ap_search_radius = static_cast<float>(nearest_cc_dist)/2.0f;
+    float ap_search_angle = static_cast<float>(pcl::getAngle3D(center, cc_pt));
+    
+    // find points ap_search_rad away
+    pcl::KdTreeFLANN<PointT> kdtree;
+    kdtree.setInputCloud(anchor_points);
+    std::vector<int> point_idx_search;
+    std::vector<float> point_squared_distance;
+    int search_out = kdtree.radiusSearch(anchor_points->points[center_index],
+                                         ap_search_radius, point_idx_search,
+                                         point_squared_distance);
+    int ap_index_1 = -1;
+    for (int i = 0; i < point_idx_search.size(); i++) {
+       Eigen::Vector4f pt = anchor_points->points[
+          point_idx_search[i]].getVector4fMap();
+       double d = pcl::distances::l2(cc_pt, pt);
+       double ang = pcl::getAngle3D(cc_pt, pt);
+       if (d > (ap_search_radius - 0.005f) &&
+           ang > (ap_search_angle - M_PI/36) &&
+           ang < (ap_search_angle + M_PI/36)) {
+          ap_index_1 = i;
+          break;
+       }
+    }
+    if (ap_index_1 == -1) {
+       return false;
+    }
+
+    // get second point furtherest away from ap_index_1
+    double ap_dist_far = 0;
+    int ap_index_2 = -1;
+    for (int i = 0; i < point_idx_search.size(); i++) {
+       double d = pcl::distances::l2(anchor_points->points[i].getVector4fMap(),
+                          anchor_points->points[ap_index_1].getVector4fMap());
+       if (d > ap_dist_far) {
+          ap_dist_far = d;
+          ap_index_2 = 1;
+       }
+    }
+
+    if (ap_index_2 == -1) {
+       // process with ap_index_1 only
+    } else {
+       // use both
+    }
+
+}
+
+void InteractiveSegmentation::doEuclideanClustering(
+    std::vector<pcl::PointIndices> &cluster_indices,
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointIndices::Ptr prob_indices, const float tolerance_thresh,
+    const int min_size_thresh, const int max_size_thresh) {
+    cluster_indices.clear();
+    if (cloud->empty()) {
+       return;
+    }
+    pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
+    tree->setInputCloud(cloud);
+    pcl::EuclideanClusterExtraction<PointT> euclidean_clustering;
+    euclidean_clustering.setClusterTolerance(tolerance_thresh);
+    euclidean_clustering.setMinClusterSize(min_size_thresh);
+    euclidean_clustering.setMaxClusterSize(max_size_thresh);
+    euclidean_clustering.setSearchMethod(tree);
+    euclidean_clustering.setInputCloud(cloud);
+    if (!prob_indices->indices.empty()) {
+       euclidean_clustering.setIndices(prob_indices);
+    }
+    euclidean_clustering.extract(cluster_indices);
+}
+
+/**
+ * un-used function for serivce call
+ */
+void InteractiveSegmentation::edgeBoundaryOutlierFiltering(
+    const pcl::PointCloud<PointT>::Ptr cloud) {
+    if (cloud->empty()) {
+       ROS_WARN("SKIPPING OUTLIER FILTERING");
+       return;
+    }
+
+    std::cout << "INPUT SIZE: " << cloud->size() << std::endl;
+    
+    int min_samples = 8;
+    float max_distance = 0.01f;
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*cloud, ros_cloud);
+    interactive_segmentation::OutlierFiltering of_srv;
+    of_srv.request.max_distance = static_cast<float>(max_distance);
+    of_srv.request.min_samples = static_cast<int>(min_samples);
+    of_srv.request.points = ros_cloud;
+    if (this->srv_client_.call(of_srv)) {
+       int max_label = of_srv.response.argmax_label;
+       if (max_label == -1) {
+          return;
+       }
+       std::vector<pcl::PointCloud<PointT>::Ptr> boundary_clusters;
+       for (int i = 0; i < of_srv.response.labels.size(); i++) {
+          if (of_srv.response.indices[i] == max_label) {
+             
+          }
+       }
+    } else {
+       ROS_ERROR("ERROR! FAILED TO CALL CLUSTERING MODULE\n");
+       return;
+    }
+}
 
 int main(int argc, char *argv[]) {
     ros::init(argc, argv, "interactive_segmentation");
