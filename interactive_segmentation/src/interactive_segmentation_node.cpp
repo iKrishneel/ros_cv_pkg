@@ -114,7 +114,10 @@ void InteractiveSegmentation::callback(
     
     // ----------------------------------------
 
-    this->highCurvatureConcaveBoundary(cloud, cloud, cloud_msg->header);
+    pcl::PointCloud<PointT>::Ptr concave_edge_points(new pcl::PointCloud<PointT>);
+    pcl::PointCloud<PointT>::Ptr convex_edge_points(new pcl::PointCloud<PointT>); 
+    this->highCurvatureConcaveBoundary(
+        concave_edge_points, convex_edge_points, cloud, cloud_msg->header);
     cv::Mat mask_img;
     cv::Mat depth_img;
     mask_img = this->projectPointCloudToImagePlane(cloud, info_msg,
@@ -383,10 +386,11 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
           pcl::PointCloud<PointT>::Ptr high_curvature_filterd(
              new pcl::PointCloud<PointT>);
           // TODO(HERE):  filter the normal and feed it in
+          /*
           this->highCurvatureConcaveBoundary(high_curvature_filterd,
                                              prob_object_cloud,
                                              info_msg->header);
-          
+          */
           std::cout << cloud->size() << "\t" << normals->size() << std::endl;
        }
        // cv_bridge::CvImage pub_img(
@@ -1080,22 +1084,20 @@ cv::Mat InteractiveSegmentation::projectPointCloudToImagePlane(
 
 void InteractiveSegmentation::highCurvatureConcaveBoundary(
     pcl::PointCloud<PointT>::Ptr concave_edge_points,
-    const pcl::PointCloud<PointT>::Ptr cloud,
-    const std_msgs::Header header) {
+    pcl::PointCloud<PointT>::Ptr convex_edge_points,
+    const pcl::PointCloud<PointT>::Ptr cloud, const std_msgs::Header header) {
     if (cloud->empty()) {
        ROS_ERROR("ERROR: INPUT CLOUD EMPTY FOR HIGH CURV. EST.");
        return;
     }
-    pcl::PointCloud<PointT>::Ptr convex_edge_points(new pcl::PointCloud<PointT>);
     *convex_edge_points = *cloud;
-    
-    pcl::PointCloud<PointT>::Ptr curv_cloud(new pcl::PointCloud<PointT>);
-    *curv_cloud = *cloud;
+    *concave_edge_points = *cloud;
     
     concave_edge_points->clear();
     convex_edge_points->clear();
-    // concave_edge_points->resize(static_cast<int>(curv_cloud->size()));
-    // convex_edge_points->resize(static_cast<int>(curv_cloud->size()));
+
+    pcl::PointCloud<PointT>::Ptr curv_cloud(new pcl::PointCloud<PointT>);
+    *curv_cloud = *cloud;
     
     int k = 50;  // thresholds
     pcl::PointCloud<pcl::Normal>::Ptr normals(
@@ -1148,7 +1150,6 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
           float variance = max_diff - min_diff;
           
           if (variance > concave_thresh && concave_sum <= 0) {
-          // if (variance > 0.10 && variance < 1.0f && concave_sum > 0) {
              centroid_pt.r = 255 * variance;
              centroid_pt.b = 0;
              centroid_pt.g = 0;
@@ -1165,7 +1166,6 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
           }
        }
     }
-    
     // filter the outliers
 #ifdef _OPENMP
 #pragma omp parallel sections
@@ -1184,19 +1184,17 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
         this->edgeBoundaryOutlierFiltering(convex_edge_points);
       }
     }
-    
-    curv_cloud->clear();
-    *curv_cloud = *concave_edge_points;
 
     // get interest point ----------
     pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
     this->estimateAnchorPoints(
-       anchor_points, curv_cloud, curv_cloud, header);
+       anchor_points, convex_edge_points, concave_edge_points, header);
+
+    // ------------------------------
     sensor_msgs::PointCloud2 ros_ap;
     pcl::toROSMsg(*anchor_points, ros_ap);
     ros_ap.header = header;
     this->pub_prob_.publish(ros_ap);
-    // ------------------------------
     
     sensor_msgs::PointCloud2 ros_cccloud;
     pcl::toROSMsg(*concave_edge_points, ros_cccloud);

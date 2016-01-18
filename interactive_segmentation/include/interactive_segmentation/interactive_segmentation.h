@@ -189,8 +189,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const pcl::PointCloud<PointT>::Ptr,
        const sensor_msgs::CameraInfo::ConstPtr &, cv::Mat &, cv::Mat &);
     void highCurvatureConcaveBoundary(
-       pcl::PointCloud<PointT>::Ptr, const pcl::PointCloud<PointT>::Ptr,
-       const std_msgs::Header);
+       pcl::PointCloud<PointT>::Ptr, pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<PointT>::Ptr, const std_msgs::Header);
     bool estimateAnchorPoints(
        pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<PointT>::Ptr,
