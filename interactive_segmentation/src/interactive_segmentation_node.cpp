@@ -9,8 +9,8 @@ InteractiveSegmentation::InteractiveSegmentation():
     num_threads_(8) {
     pnh_.getParam("num_threads", this->num_threads_);
 
-    this->srv_client_ = this->pnh_.serviceClient<
-      interactive_segmentation::OutlierFiltering>("outlier_filtering_srv");
+    // this->srv_client_ = this->pnh_.serviceClient<
+    //   interactive_segmentation::OutlierFiltering>("outlier_filtering_srv");
     
     this->subscribe();
     this->onInit();
@@ -1071,20 +1071,23 @@ cv::Mat InteractiveSegmentation::projectPointCloudToImagePlane(
 }
 
 void InteractiveSegmentation::highCurvatureConcaveBoundary(
-    pcl::PointCloud<PointT>::Ptr filtered_cloud,
+    pcl::PointCloud<PointT>::Ptr concave_edge_points,
     const pcl::PointCloud<PointT>::Ptr cloud,
     const std_msgs::Header header) {
     if (cloud->empty()) {
        ROS_ERROR("ERROR: INPUT CLOUD EMPTY FOR HIGH CURV. EST.");
        return;
     }
-    // std::vector<int> indices;
+    pcl::PointCloud<PointT>::Ptr convex_edge_points(new pcl::PointCloud<PointT>);
+    *convex_edge_points = *cloud;
+    
     pcl::PointCloud<PointT>::Ptr curv_cloud(new pcl::PointCloud<PointT>);
-    // pcl::removeNaNFromPointCloud(*cloud, *curv_cloud, indices);
     *curv_cloud = *cloud;
     
-    filtered_cloud->clear();
-    // filtered_cloud->resize(static_cast<int>(curv_cloud->size()));
+    concave_edge_points->clear();
+    convex_edge_points->clear();
+    // concave_edge_points->resize(static_cast<int>(curv_cloud->size()));
+    // convex_edge_points->resize(static_cast<int>(curv_cloud->size()));
     
     int k = 50;  // thresholds
     pcl::PointCloud<pcl::Normal>::Ptr normals(
@@ -1098,7 +1101,7 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     int icount = 0;
     const float concave_thresh = 0.30f;  // thresholds
 #ifdef _OPENMP
-#pragma omp parallel for num_threads(this->num_threads_) shared(kdtree, icount)
+#pragma omp parallel for num_threads(this->num_threads_) shared(kdtree)
 #endif
     for (int i = 0; i < curv_cloud->size(); i++) {
        PointT centroid_pt = curv_cloud->points[i];
@@ -1135,62 +1138,37 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
                    index].getVector4fMap(), neigh_norm);
           }
           float variance = max_diff - min_diff;
-
+          
           if (variance > concave_thresh && concave_sum <= 0) {
           // if (variance > 0.10 && variance < 1.0f && concave_sum > 0) {
              centroid_pt.r = 255 * variance;
              centroid_pt.b = 0;
              centroid_pt.g = 0;
-             curv_cloud->points[i] = centroid_pt;
-             // filtered_cloud->points[icount] = centroid_pt;
-             filtered_cloud->push_back(centroid_pt);  // order is not import.
-// #ifdef _OPENMP
-// #pragma omp atomic
-// #endif
-             icount++;
-          } else {
-            // filtered_cloud->points[icount++] = centroid_pt;
+             // curv_cloud->points[i] = centroid_pt;
+             // concave_edge_points->points[icount] = centroid_pt;
+             concave_edge_points->push_back(centroid_pt);  // order is not import.
           }
-/*
-          if (variance > 0.10 && variance < 1.0f && concave_sum > 0) {
+          if (variance > 0.10f && variance < 1.0f && concave_sum > 0) {
              centroid_pt.g = 255 * variance;
              centroid_pt.b = 0;
              centroid_pt.r = 0;
-             curv_cloud->points[i] = centroid_pt;
-             filtered_cloud->push_back(centroid_pt);  // order is not import.
+             // concave_edge_points->push_back(centroid_pt);  // order is not import.
+             convex_edge_points->push_back(centroid_pt);
           }
-          */
        }
     }
 
-    curv_cloud->clear();
-    // *curv_cloud = *filtered_cloud;
-    // clear oversize memory
-    for (int i = 0; i < filtered_cloud->size(); i++) {
-       PointT pt = filtered_cloud->points[i];
-       if (pt.x != 0.0f && pt.y != 0.0f && pt.z != 0.0f) {
-          curv_cloud->push_back(pt);
-       }
-    }
+    std::cout << "SIZE: " << convex_edge_points->size()  << "\n";
+    *concave_edge_points = *convex_edge_points;
     
     // filter the outliers
-    // this->edgeBoundaryOutlierFiltering(curv_cloud);
-    
-    ROS_INFO("\033[32m FILTERING OUTLIER \033[0m");
-
-    const float search_radius_thresh = 0.01f;  // thresholds
-    const int min_neigbor_thresh = 50;
-    pcl::RadiusOutlierRemoval<PointT>::Ptr filter_ror(
-       new pcl::RadiusOutlierRemoval<PointT>);
-    filter_ror->setInputCloud(curv_cloud);
-    filter_ror->setRadiusSearch(search_radius_thresh);
-    filter_ror->setMinNeighborsInRadius(min_neigbor_thresh);
-    filter_ror->filter(*filtered_cloud);
+    this->edgeBoundaryOutlierFiltering(concave_edge_points);
+    // this->edgeBoundaryOutlierFiltering(convex_edge_points);
     
     curv_cloud->clear();
-    *curv_cloud = *filtered_cloud;
+    *curv_cloud = *concave_edge_points;
 
-    // get interest point
+    // get interest point ----------
     pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
     this->estimateAnchorPoints(
        anchor_points, curv_cloud, curv_cloud, header);
@@ -1198,9 +1176,10 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     pcl::toROSMsg(*anchor_points, ros_ap);
     ros_ap.header = header;
     this->pub_prob_.publish(ros_ap);
+    // ------------------------------
     
     sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*curv_cloud, ros_cloud);
+    pcl::toROSMsg(*concave_edge_points, ros_cloud);
     ros_cloud.header = header;
     this->pub_pt_map_.publish(ros_cloud);
 
@@ -1410,41 +1389,23 @@ void InteractiveSegmentation::doEuclideanClustering(
     euclidean_clustering.extract(cluster_indices);
 }
 
-/**
- * un-used function for serivce call
- */
 void InteractiveSegmentation::edgeBoundaryOutlierFiltering(
-    const pcl::PointCloud<PointT>::Ptr cloud) {
+    pcl::PointCloud<PointT>::Ptr cloud, const float search_radius_thresh,
+    const int min_neigbor_thresh) {
     if (cloud->empty()) {
        ROS_WARN("SKIPPING OUTLIER FILTERING");
        return;
     }
-
-    std::cout << "INPUT SIZE: " << cloud->size() << std::endl;
-    
-    int min_samples = 8;
-    float max_distance = 0.01f;
-    sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*cloud, ros_cloud);
-    interactive_segmentation::OutlierFiltering of_srv;
-    of_srv.request.max_distance = static_cast<float>(max_distance);
-    of_srv.request.min_samples = static_cast<int>(min_samples);
-    of_srv.request.points = ros_cloud;
-    if (this->srv_client_.call(of_srv)) {
-       int max_label = of_srv.response.argmax_label;
-       if (max_label == -1) {
-          return;
-       }
-       std::vector<pcl::PointCloud<PointT>::Ptr> boundary_clusters;
-       for (int i = 0; i < of_srv.response.labels.size(); i++) {
-          if (of_srv.response.indices[i] == max_label) {
-             
-          }
-       }
-    } else {
-       ROS_ERROR("ERROR! FAILED TO CALL CLUSTERING MODULE\n");
-       return;
-    }
+    ROS_INFO("\033[32m FILTERING OUTLIER \033[0m");
+    pcl::PointCloud<PointT>::Ptr concave_edge_points(new pcl::PointCloud<PointT>);
+    pcl::RadiusOutlierRemoval<PointT>::Ptr filter_ror(
+       new pcl::RadiusOutlierRemoval<PointT>);
+    filter_ror->setInputCloud(cloud);
+    filter_ror->setRadiusSearch(search_radius_thresh);
+    filter_ror->setMinNeighborsInRadius(min_neigbor_thresh);
+    filter_ror->filter(*concave_edge_points);
+    cloud->clear();
+    pcl::copyPointCloud<PointT, PointT>(*concave_edge_points, *cloud);
 }
 
 int main(int argc, char *argv[]) {
