@@ -114,14 +114,16 @@ void InteractiveSegmentation::callback(
     
     // ----------------------------------------
 
-    pcl::PointCloud<PointT>::Ptr concave_edge_points(new pcl::PointCloud<PointT>);
-    pcl::PointCloud<PointT>::Ptr convex_edge_points(new pcl::PointCloud<PointT>); 
+    pcl::PointCloud<PointT>::Ptr concave_edge_points(
+       new pcl::PointCloud<PointT>);
+    pcl::PointCloud<PointT>::Ptr convex_edge_points(
+       new pcl::PointCloud<PointT>);
     this->highCurvatureConcaveBoundary(
         concave_edge_points, convex_edge_points, cloud, cloud_msg->header);
     cv::Mat mask_img;
     cv::Mat depth_img;
-    mask_img = this->projectPointCloudToImagePlane(concave_edge_points, info_msg,
-                                                   mask_img, depth_img);
+    mask_img = this->projectPointCloudToImagePlane(
+       concave_edge_points, info_msg, mask_img, depth_img);
     cv_bridge::CvImagePtr pub_msg(new cv_bridge::CvImage);
     pub_msg->header = info_msg->header;
     pub_msg->encoding = sensor_msgs::image_encodings::BGR8;
@@ -1155,13 +1157,12 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
              centroid_pt.g = 0;
              // curv_cloud->points[i] = centroid_pt;
              // concave_edge_points->points[icount] = centroid_pt;
-             concave_edge_points->push_back(centroid_pt);  // order is not import.
+             concave_edge_points->push_back(centroid_pt);
           }
           if (variance > 0.10f && variance < 1.0f && concave_sum > 0) {
              centroid_pt.g = 255 * variance;
              centroid_pt.b = 0;
              centroid_pt.r = 0;
-             // concave_edge_points->push_back(centroid_pt);  // order is not import.
              convex_edge_points->push_back(centroid_pt);
           }
        }
@@ -1294,7 +1295,9 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     center(3) = 1.0f;
     
     // for selected convex mid-point
-    // TODO: search thru each clusters in convex_edge so it can be easy to extract the cluster
+    // TODO(.): search thru each clusters in convex_edge so it can be
+    // easy to extract the cluster
+    
     double object_lenght_thresh = 0.50;
     double nearest_cv_dist = DBL_MAX;
     Eigen::Vector4f cc_nearest_cv_pt;
@@ -1312,7 +1315,8 @@ bool InteractiveSegmentation::estimateAnchorPoints(
         Eigen::Vector4f cv_pt = tmp_cloud->points[j].getVector4fMap();
         if (cv_pt(1) < center(1)) {
           double d = pcl::distances::l2(cv_pt, center);
-          // std::cout << "\t\t distance: " << d   << "\n" << cv_pt << "\n\n" << center << "\n";
+          // std::cout << "\t\t distance: " << d   << "\n" << cv_pt <<
+          // "\n\n" << center << "\n";
           if (d < nearest_cv_dist && d < object_lenght_thresh) {
             nearest_cv_dist = d;
             cc_nearest_cluster_idx = i;
@@ -1327,19 +1331,9 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     //           << "\t" << nearest_cv_dist  << "\n";
     // return 1;
     
-    // for (int i = 0; i < convex_points->size(); i++) {
-    //    cv_pt = convex_points->points[i].getVector4fMap();
-    //    if (cv_pt(1) < center(1)) {
-    //       double d = pcl::distances::l2(cv_pt, center);
-    //       if (d < nearest_cv_dist && d < object_lenght_thresh && cv_pt(1) > center(1)) {
-    //          nearest_cv_dist = d;
-    //       }
-    //    }
-    // }
-
-    
     float ap_search_radius = static_cast<float>(nearest_cv_dist)/2.0f;
-    // float ap_search_angle = static_cast<float>(pcl::getAngle3D(center, cc_nearest_cv_pt));
+    // float ap_search_angle = static_cast<float>(
+    //    pcl::getAngle3D(center, cc_nearest_cv_pt));
     
     // find 2 points on object cloud points ap_search_radius away
     pcl::KdTreeFLANN<PointT> kdtree;
@@ -1353,8 +1347,9 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     cc_center_pt.r = 255;
     cc_center_pt.g = 0;
     cc_center_pt.b = 0;
-    int search_out = kdtree.radiusSearch(cc_center_pt, ap_search_radius,
-                                         point_idx_search, point_squared_distance);
+    int search_out = kdtree.radiusSearch(cc_center_pt,
+                                         ap_search_radius, point_idx_search,
+                                         point_squared_distance);
 
     std::cout << "\033[33m NEIGBOUR INFO: \033[0m" << point_idx_search.size()
               << "\t" << ap_search_radius << "\n";
@@ -1368,7 +1363,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        double d = pcl::distances::l2(cc_nearest_cv_pt, pt);
 
        // double ang = pcl::getAngle3D(cc_nearest_cv_pt, pt);
-       // TODO(HERE): filter the points cross in the plane 
+       // TODO(HERE): filter the points cross in the plane
        if (d > far_point_dist && pt(1) > cc_nearest_cv_pt(1)) {
           far_point_dist = d;
           ap_index_1 = point_idx_search[i];
