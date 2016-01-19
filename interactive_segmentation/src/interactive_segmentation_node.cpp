@@ -124,9 +124,14 @@ void InteractiveSegmentation::callback(
     cv::Mat depth_img;
     mask_img = this->projectPointCloudToImagePlane(
        concave_edge_points, info_msg, mask_img, depth_img);
+
+    cv::cvtColor(mask_img, mask_img, CV_BGR2GRAY);
+    cv::threshold(mask_img, mask_img, 0, 255,
+                  CV_THRESH_BINARY | CV_THRESH_OTSU);
+    
     cv_bridge::CvImagePtr pub_msg(new cv_bridge::CvImage);
     pub_msg->header = info_msg->header;
-    pub_msg->encoding = sensor_msgs::image_encodings::BGR8;
+    pub_msg->encoding = sensor_msgs::image_encodings::MONO8;
     pub_msg->image = mask_img.clone();
     this->pub_image_.publish(pub_msg);
     
@@ -1481,7 +1486,8 @@ void InteractiveSegmentation::edgeBoundaryOutlierFiltering(
        return;
     }
     ROS_INFO("\033[32m FILTERING OUTLIER \033[0m");
-    pcl::PointCloud<PointT>::Ptr concave_edge_points(new pcl::PointCloud<PointT>);
+    pcl::PointCloud<PointT>::Ptr concave_edge_points(
+       new pcl::PointCloud<PointT>);
     pcl::RadiusOutlierRemoval<PointT>::Ptr filter_ror(
        new pcl::RadiusOutlierRemoval<PointT>);
     filter_ror->setInputCloud(cloud);

@@ -1,13 +1,11 @@
 <launch>
-  <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch" />
-  <node pkg="interactive_segmentation" name="interactive_segmentation"
-	type="interactive_segmentation_node" output="screen">
-    <remap from="input_image" to="/camera/rgb/image_rect_color" />
-    <remap from="input_edge" to="/edge/image" />
-    <remap from="input_cloud" to="/camera/depth_registered/points" />
-
-    <!--<remap from="input_image" to="/camera/rgb/image_rect_color" />
-    <remap from="input_edge" to="/edge/image" />
-    <remap from="input_cloud" to="/plane_extraction/output_nonplane_cloud" /> -->
+  <node pkg="jsk_perception" type="dilate_mask_image" name="dilate_mask_image">
+    <remap from="~input" to="/interactive_segmentation/output/image" />
+  </node>
+  <node pkg="jsk_perception" type="skeletonization" name="skeletonization">
+    <remap from="~input" to="/dilate_mask_image/output" />
+  </node>
+  <node pkg="image_view" type="image_view" name="edge_view" >
+    <remap from="image" to="/skeletonization/image_output" />
   </node>
 </launch>

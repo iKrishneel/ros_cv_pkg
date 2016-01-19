@@ -79,6 +79,10 @@
 #include <interactive_segmentation/saliency_map_generator.h>
 #include <interactive_segmentation/OutlierFiltering.h>
 
+
+#include <jsk_perception/skeletonization.h>
+
+
 #include <omp.h>
 
 class InteractiveSegmentation: public SupervoxelSegmentation {
