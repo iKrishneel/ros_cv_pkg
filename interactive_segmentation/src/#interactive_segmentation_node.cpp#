@@ -1500,7 +1500,6 @@ bool InteractiveSegmentation::skeletonization2D(
     cv::cvtColor(mask_img, mask_img, CV_BGR2GRAY);
     cv::threshold(mask_img, mask_img, 0, 255,
                   CV_THRESH_BINARY | CV_THRESH_OTSU);
-
     int erosion_size = 5;
     cv::Mat element = cv::getStructuringElement(
        cv::MORPH_ELLIPSE,

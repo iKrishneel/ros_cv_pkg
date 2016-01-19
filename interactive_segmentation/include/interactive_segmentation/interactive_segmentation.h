@@ -79,9 +79,7 @@
 #include <interactive_segmentation/saliency_map_generator.h>
 #include <interactive_segmentation/OutlierFiltering.h>
 
-
 #include <jsk_perception/skeletonization.h>
-
 
 #include <omp.h>
 
@@ -204,9 +202,12 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointIndices::Ptr, bool = true, const float = 0.02f,
        const int = 30, const int = 20000);
-   
     void edgeBoundaryOutlierFiltering(
-        const pcl::PointCloud<PointT>::Ptr, const float = 0.01f, const int = 50);
+        const pcl::PointCloud<PointT>::Ptr,
+        const float = 0.01f, const int = 50);
+    bool skeletonization2D(
+       pcl::PointCloud<PointT>::Ptr,
+       const sensor_msgs::CameraInfo::ConstPtr &);
 };
 
 
