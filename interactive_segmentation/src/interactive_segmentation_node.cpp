@@ -120,7 +120,7 @@ void InteractiveSegmentation::callback(
         concave_edge_points, convex_edge_points, cloud, cloud_msg->header);
     cv::Mat mask_img;
     cv::Mat depth_img;
-    mask_img = this->projectPointCloudToImagePlane(cloud, info_msg,
+    mask_img = this->projectPointCloudToImagePlane(concave_edge_points, info_msg,
                                                    mask_img, depth_img);
     cv_bridge::CvImagePtr pub_msg(new cv_bridge::CvImage);
     pub_msg->header = info_msg->header;
@@ -1187,10 +1187,35 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
 
     // get interest point ----------
     pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
+    /*
+    pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points);
     this->estimateAnchorPoints(
        anchor_points, convex_edge_points, concave_edge_points, header);
-
+    */
     // ------------------------------
+
+    /*
+    pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
+    pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
+    pcl::SACSegmentation<PointT> seg;
+    seg.setOptimizeCoefficients(true);
+    seg.setModelType(pcl::SACMODEL_LINE);
+    seg.setMethodType(pcl::SAC_RANSAC);
+    seg.setDistanceThreshold(0.01f);
+    seg.setInputCloud(concave_edge_points);
+    seg.segment(*inliers, *coefficients);
+    
+    if (!inliers->indices.empty()) {
+      pcl::PointCloud<PointT>::Ptr f_edge(new pcl::PointCloud<PointT>);
+      for (int i = 0; i < inliers->indices.size(); i++) {
+        f_edge->push_back(concave_edge_points->points[inliers->indices[i]]);
+      }
+      concave_edge_points->clear();
+      *concave_edge_points = *f_edge;
+    }
+    */
+    
+    
     sensor_msgs::PointCloud2 ros_ap;
     pcl::toROSMsg(*anchor_points, ros_ap);
     ros_ap.header = header;
@@ -1217,7 +1242,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     const pcl::PointCloud<PointT>::Ptr convex_points,
     const pcl::PointCloud<PointT>::Ptr concave_points,
     const std_msgs::Header header) {
-    if (convex_points->empty()) {
+    if (anchor_points->empty()) {
        ROS_ERROR("NO BOUNDARY REGION TO SELECT POINTS");
        return false;
     }
@@ -1256,88 +1281,136 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     if (cluster_convx.empty()) {
       // TODO: 
     }
-
-    // select highest point in y - dir
+    
     float height = -FLT_MAX;
-    Eigen::Vector4f center;
     int center_index = -1;
-    pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
-    eifilter->setInputCloud(concave_points);
-    for (int i = 0; i < cluster_concv.size(); i++) {
-       pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
-       *region_indices = cluster_concv[i];
-       eifilter->setIndices(region_indices);
-       pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
-       eifilter->filter(*tmp_cloud);
-       pcl::compute3DCentroid<PointT, float>(*tmp_cloud, center);
-       if (center(1) > height) {
-          anchor_points->clear();
-          pcl::copyPointCloud<PointT, PointT>(*tmp_cloud, *anchor_points);
-          height = center(1);
-          center_index = i;
-       }
+    Eigen::Vector4f center;
+    for (int i = 0; i < concave_edge_centroids.size(); i++) {
+      if (concave_edge_centroids[i](1) > height) {
+        center_index = i;
+        center = concave_edge_centroids[i];
+      }
     }
-
+    center(3) = 1.0f;
+    
     // for selected convex mid-point
     // TODO: search thru each clusters in convex_edge so it can be easy to extract the cluster
     double object_lenght_thresh = 0.50;
     double nearest_cv_dist = DBL_MAX;
-    Eigen::Vector4f cv_pt;
-    for (int i = 0; i < convex_points->size(); i++) {
-       cv_pt = convex_points->points[i].getVector4fMap();
-       if (cv_pt(1) < center(1)) {
+    Eigen::Vector4f cc_nearest_cv_pt;
+    int cc_nearest_cluster_idx = -1;
+    int cc_nearest_pt_idx = -1;
+    pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
+    eifilter->setInputCloud(convex_points);
+    for (int i = 0; i < cluster_convx.size(); i++) {
+      pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
+      *region_indices = cluster_convx[i];
+      eifilter->setIndices(region_indices);
+      pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
+      eifilter->filter(*tmp_cloud);
+      for (int j = 0; j < tmp_cloud->size(); j++) {
+        Eigen::Vector4f cv_pt = tmp_cloud->points[j].getVector4fMap();
+        if (cv_pt(1) < center(1)) {
           double d = pcl::distances::l2(cv_pt, center);
-          if (d < nearest_cv_dist && d < object_lenght_thresh && cv_pt(1) > center(1)) {
-             nearest_cv_dist = d;
+          // std::cout << "\t\t distance: " << d   << "\n" << cv_pt << "\n\n" << center << "\n";
+          if (d < nearest_cv_dist && d < object_lenght_thresh) {
+            nearest_cv_dist = d;
+            cc_nearest_cluster_idx = i;
+            cc_nearest_pt_idx = j;
+            cc_nearest_cv_pt = cv_pt;
           }
-       }
+        }
+      }
     }
-    float ap_search_radius = static_cast<float>(nearest_cv_dist)/2.0f;
-    float ap_search_angle = static_cast<float>(pcl::getAngle3D(center, cv_pt));
+
+    // std::cout << "DEBUG: " << cc_nearest_pt_idx << "\t" << center_index
+    //           << "\t" << nearest_cv_dist  << "\n";
+    // return 1;
     
-    // find 2 points on convex_edge ap_search_radius away
+    // for (int i = 0; i < convex_points->size(); i++) {
+    //    cv_pt = convex_points->points[i].getVector4fMap();
+    //    if (cv_pt(1) < center(1)) {
+    //       double d = pcl::distances::l2(cv_pt, center);
+    //       if (d < nearest_cv_dist && d < object_lenght_thresh && cv_pt(1) > center(1)) {
+    //          nearest_cv_dist = d;
+    //       }
+    //    }
+    // }
+
+    
+    float ap_search_radius = static_cast<float>(nearest_cv_dist)/2.0f;
+    // float ap_search_angle = static_cast<float>(pcl::getAngle3D(center, cc_nearest_cv_pt));
+    
+    // find 2 points on object cloud points ap_search_radius away
     pcl::KdTreeFLANN<PointT> kdtree;
-    kdtree.setInputCloud(convex_points);
+    kdtree.setInputCloud(anchor_points);
     std::vector<int> point_idx_search;
     std::vector<float> point_squared_distance;
-    int search_out = kdtree.radiusSearch(anchor_points->points[center_index],
-                                         ap_search_radius, point_idx_search,
-                                         point_squared_distance);
+    PointT cc_center_pt;
+    cc_center_pt.x = cc_nearest_cv_pt(0);
+    cc_center_pt.y = cc_nearest_cv_pt(1);
+    cc_center_pt.z = cc_nearest_cv_pt(2);
+    cc_center_pt.r = 255;
+    cc_center_pt.g = 0;
+    cc_center_pt.b = 0;
+    int search_out = kdtree.radiusSearch(cc_center_pt, ap_search_radius,
+                                         point_idx_search, point_squared_distance);
+
+    std::cout << "\033[33m NEIGBOUR INFO: \033[0m" << point_idx_search.size()
+              << "\t" << ap_search_radius << "\n";
+    
+    
     int ap_index_1 = -1;
+    double far_point_dist = 0;
     for (int i = 0; i < point_idx_search.size(); i++) {
-       Eigen::Vector4f pt = convex_points->points[
-          point_idx_search[i]].getVector4fMap();
-       double d = pcl::distances::l2(cv_pt, pt);
-       double ang = pcl::getAngle3D(cv_pt, pt);
-       if (d > (ap_search_radius - 0.005f) &&
-           ang > (ap_search_angle - M_PI/36) &&
-           ang < (ap_search_angle + M_PI/36)) {
-          ap_index_1 = i;
-          break;
+       Eigen::Vector4f pt = anchor_points->points[
+           point_idx_search[i]].getVector4fMap();
+       double d = pcl::distances::l2(cc_nearest_cv_pt, pt);
+
+       // double ang = pcl::getAngle3D(cc_nearest_cv_pt, pt);
+       // TODO(HERE): filter the points cross in the plane 
+       if (d > far_point_dist && pt(1) > cc_nearest_cv_pt(1)) {
+          far_point_dist = d;
+          ap_index_1 = point_idx_search[i];
        }
     }
+    // TODO: UNKNOWN--> complete
     if (ap_index_1 == -1) {
-       return false;
+      ROS_ERROR("ERROR: COMPUTING THE ANCHOR POINTS");
+      return false;
     }
-
-    // get second point furtherest away from ap_index_1
-    double ap_dist_far = 0;
+    
+    far_point_dist = 0;
     int ap_index_2 = -1;
     for (int i = 0; i < point_idx_search.size(); i++) {
-       double d = pcl::distances::l2(anchor_points->points[i].getVector4fMap(),
-                          anchor_points->points[ap_index_1].getVector4fMap());
-       if (d > ap_dist_far) {
-          ap_dist_far = d;
-          ap_index_2 = 1;
+       double d = pcl::distances::l2(anchor_points->points[
+           point_idx_search[i]].getVector4fMap(), anchor_points->points[
+               ap_index_1].getVector4fMap());
+       if (d > far_point_dist) {
+          far_point_dist = d;
+          ap_index_2 = point_idx_search[i];
        }
     }
-
+    
     if (ap_index_2 == -1) {
        // process with ap_index_1 only
     } else {
        // use both
     }
 
+    std::cout << "\n\n\033[34m ANCHOR POINTS: \033[0m" << ap_index_1 << ", "
+              << ap_index_2 << "\tDIST: " << nearest_cv_dist << "\n";
+
+    pcl::PointCloud<PointT>::Ptr ap_pt(new pcl::PointCloud<PointT>);
+    // ap_pt->push_back(anchor_points->points[ap_index_1]);
+    // ap_pt->push_back(anchor_points->points[ap_index_2]);
+    ap_pt->push_back(cc_center_pt);
+    
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*ap_pt, ros_cloud);
+    // pcl::toROSMsg(*anchor_points, ros_cloud);
+    ros_cloud.header = header;
+    this->pub_pt_map_.publish(ros_cloud);
     // ----------------------------------------------------------
     /*
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
