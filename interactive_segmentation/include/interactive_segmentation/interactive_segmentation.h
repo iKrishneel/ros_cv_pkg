@@ -195,11 +195,10 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<PointT>::Ptr, const std_msgs::Header);
-
-    void doEuclideanClustering(
+    std::vector<Eigen::Vector4f> doEuclideanClustering(
        std::vector<pcl::PointIndices> &cluster_indices,
        const pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointIndices::Ptr, const float = 0.02f,
+       const pcl::PointIndices::Ptr, bool = true, const float = 0.02f,
        const int = 30, const int = 20000);
    
     void edgeBoundaryOutlierFiltering(

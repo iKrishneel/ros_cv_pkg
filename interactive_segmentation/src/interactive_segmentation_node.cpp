@@ -1225,6 +1225,8 @@ bool InteractiveSegmentation::estimateAnchorPoints(
 
     std::vector<pcl::PointIndices> cluster_convx;
     std::vector<pcl::PointIndices> cluster_concv;
+    std::vector<Eigen::Vector4f> convex_edge_centroids;
+    std::vector<Eigen::Vector4f> concave_edge_centroids;
 #ifdef _OPENMP
 #pragma omp parallel sections
 #endif
@@ -1234,17 +1236,22 @@ bool InteractiveSegmentation::estimateAnchorPoints(
 #endif
       {
         pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
-        this->doEuclideanClustering(cluster_convx, convex_points, prob_indices);
+        convex_edge_centroids = this->doEuclideanClustering(
+            cluster_convx, convex_points, prob_indices);
       }
 #ifdef _OPENMP
 #pragma omp section
 #endif
       {
         pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
-        this->doEuclideanClustering(cluster_concv, concave_points, prob_indices);
+        concave_edge_centroids = this->doEuclideanClustering(
+            cluster_concv, concave_points, prob_indices);
       }
     }
 
+    std::cout << "CENTROID INFO: " << convex_edge_centroids.size() << "\t"
+              << concave_edge_centroids.size() << "\n";
+    
     // select point in direction of normal few dist away
     if (cluster_convx.empty()) {
       // TODO: 
@@ -1271,62 +1278,6 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        }
     }
 
-    /*
-    // select two points on the anchor points region
-    double max_dist_pt = 0;
-    int indx1 = -1;
-    for (int i = 0; i < anchor_points->size(); i++) {
-       double d = pcl::distances::l2(
-          center, anchor_points->points[i].getVector4fMap());
-       if (d > max_dist_pt) {
-          max_dist_pt = d;
-          indx1 = i;
-       }
-    }
-    max_dist_pt = 0;
-    int indx2 = -1;
-    for (int i = 0; i < anchor_points->size(); i++) {
-       double d = pcl::distances::l2(
-          anchor_points->points[indx1].getVector4fMap(),
-          anchor_points->points[i].getVector4fMap());
-       if (d > max_dist_pt) {
-          max_dist_pt = d;
-          indx2 = i;
-       }
-    }
-    
-    Eigen::Vector3f point_a = anchor_points->points[indx1].getVector3fMap();
-    // point_a(0) = 0.0f;
-    // point_a(1) = 0.0f;
-    point_a(2) += 0.30f;
-    
-    Eigen::Vector3f point_b = anchor_points->points[
-       indx2].getVector3fMap() - point_a;
-
-    Eigen::Vector3f point_c = center.head<3>() - point_a;
-    Eigen::Vector3f normal_vec = point_b.cross(point_c);
-
-    float sum = normal_vec(0) +  normal_vec(1) +  normal_vec(2);
-    normal_vec(0) /= sum;
-    normal_vec(1) /= sum;
-    normal_vec(2) /= sum;
-    
-    Eigen::Vector3f pt_1 = point_a;
-    Eigen::Vector3f ppt_2 = point_b;
-    Eigen::Vector3f ppt_3 = point_c;
-    
-    anchor_points->clear();
-    for (float y = -1.0f; y < 1.0f; y += 0.01f) {
-       for (float x = -1.0f; x < 1.0f; x += 0.01f) {
-          PointT pt;
-          pt.x = pt_1(0) + ppt_2(0) * x + ppt_3(0) * y;
-          pt.y = pt_1(1) + ppt_2(1) * x + ppt_3(1) * y;
-          pt.z = pt_1(2) + ppt_2(2) * x + ppt_3(2) * y;
-          pt.g = 255;
-          anchor_points->push_back(pt);
-       }
-    }
-    */
     // for selected convex mid-point
     // TODO: search thru each clusters in convex_edge so it can be easy to extract the cluster
     double object_lenght_thresh = 0.50;
@@ -1343,8 +1294,6 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     }
     float ap_search_radius = static_cast<float>(nearest_cv_dist)/2.0f;
     float ap_search_angle = static_cast<float>(pcl::getAngle3D(center, cv_pt));
-
-
     
     // find 2 points on convex_edge ap_search_radius away
     pcl::KdTreeFLANN<PointT> kdtree;
@@ -1415,14 +1364,17 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     // ----------------------------------------------------------
 }
 
-void InteractiveSegmentation::doEuclideanClustering(
+std::vector<Eigen::Vector4f>
+InteractiveSegmentation::doEuclideanClustering(
     std::vector<pcl::PointIndices> &cluster_indices,
     const pcl::PointCloud<PointT>::Ptr cloud,
-    const pcl::PointIndices::Ptr prob_indices, const float tolerance_thresh,
-    const int min_size_thresh, const int max_size_thresh) {
+    const pcl::PointIndices::Ptr prob_indices, bool is_centroid,
+    const float tolerance_thresh, const int min_size_thresh,
+    const int max_size_thresh) {
     cluster_indices.clear();
+    std::vector<Eigen::Vector4f> cluster_centroids;
     if (cloud->empty()) {
-       return;
+       return cluster_centroids;
     }
     pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
     tree->setInputCloud(cloud);
@@ -1436,6 +1388,21 @@ void InteractiveSegmentation::doEuclideanClustering(
        euclidean_clustering.setIndices(prob_indices);
     }
     euclidean_clustering.extract(cluster_indices);
+    pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
+    eifilter->setInputCloud(cloud);
+    if (is_centroid) {
+      for (int i = 0; i < cluster_indices.size(); i++) {
+        pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
+        *region_indices = cluster_indices[i];
+        eifilter->setIndices(region_indices);
+        pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
+        eifilter->filter(*tmp_cloud);
+        Eigen::Vector4f center;
+        pcl::compute3DCentroid<PointT, float>(*tmp_cloud, center);
+        cluster_centroids.push_back(center);
+      }
+    }
+    return cluster_centroids;
 }
 
 void InteractiveSegmentation::edgeBoundaryOutlierFiltering(

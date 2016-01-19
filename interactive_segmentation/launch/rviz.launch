@@ -1,0 +1,4 @@
+<launch>
+  <node pkg="rviz" type="rviz" name="interactive_segmentation_rviz"
+	args=" -d $(find interactive_segmentation)/rviz/interactive_segmentation.rviz"/>
+</launch>

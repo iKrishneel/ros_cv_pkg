@@ -7,6 +7,7 @@
   <arg name="image" default="/camera/rgb/image_rect_color" />
   <arg name="SUPERVOXEL" default="false" />
   <arg name="num_threads" default="8" />
+  <arg name="RVIZ" default="false" />
   
   <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch">
     <arg name="cloud" value="$(arg input_point)"/>
@@ -42,9 +43,9 @@
     <remap from="image" to="$(arg image)"/>
   </node>
 
-  <node pkg="rviz" type="rviz" name="interactive_segmentation_rviz"
-	args=" -d $(find interactive_segmentation)/rviz/interactive_segmentation.rviz"/>
-
+  <group if="$(arg RVIZ)" >
+      <include file="$(find interactive_segmentation)/launch/rviz.launch"/>
+  </group>
   
   <!-- temp commented -->
   <!-- <include file="$(find point_cloud_image_creator)/launch/point_cloud_image_creator.launch" > -->
