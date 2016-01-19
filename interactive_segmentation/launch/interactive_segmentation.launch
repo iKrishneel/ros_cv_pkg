@@ -42,6 +42,10 @@
     <remap from="image" to="$(arg image)"/>
   </node>
 
+  <node pkg="rviz" type="rviz" name="interactive_segmentation_rviz"
+	args=" -d $(find interactive_segmentation)/rviz/interactive_segmentation.rviz"/>
+
+  
   <!-- temp commented -->
   <!-- <include file="$(find point_cloud_image_creator)/launch/point_cloud_image_creator.launch" > -->
   <!--   <arg name="input" value="/interactive_segmentation/output/selected_probability" /> -->
