@@ -121,10 +121,12 @@ void InteractiveSegmentation::callback(
     this->highCurvatureConcaveBoundary(
         concave_edge_points, convex_edge_points, cloud, cloud_msg->header);
 
-    this->skeletonization2D(concave_edge_points, original_cloud, info_msg);
+    this->skeletonization2D(convex_edge_points, original_cloud,
+                            info_msg, cv::Scalar(0, 0, 255));
     
     sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*cloud, ros_cloud);
+    // pcl::toROSMsg(*cloud, ros_cloud);
+    pcl::toROSMsg(*convex_edge_points, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
     
@@ -1489,7 +1491,7 @@ void InteractiveSegmentation::edgeBoundaryOutlierFiltering(
 bool InteractiveSegmentation::skeletonization2D(
     pcl::PointCloud<PointT>::Ptr cloud,
     const pcl::PointCloud<PointT>::Ptr original_cloud,
-    const sensor_msgs::CameraInfo::ConstPtr &camera_info) {
+    const sensor_msgs::CameraInfo::ConstPtr &camera_info, const cv::Scalar color) {
     if (cloud->empty() && original_cloud->height > 1) {
        ROS_WARN("EMPTY CLOUD SKIPPING SKELETONIZATION");
        return false;
@@ -1508,18 +1510,27 @@ bool InteractiveSegmentation::skeletonization2D(
        cv::Point(erosion_size, erosion_size));
     cv::dilate(mask_img, mask_img, element);
     cv::erode(mask_img, mask_img, element);
-
-    
-    cv::imshow("bin", mask_img);
-    
     boost::shared_ptr<jsk_perception::Skeletonization> skeleton(
        new jsk_perception::Skeletonization());
     skeleton->skeletonization(mask_img);
 
     // HERE filter the skeleton region of the original point cloud
-    
-    cv::imshow("skeleton", mask_img);
-    cv::waitKey(3);
+    cloud->clear();
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) num_threads(this->num_threads_)
+#endif
+    for (int j = 0; j < mask_img.rows; j++) {
+      for (int i = 0; i < mask_img.cols; i++) {
+        if (mask_img.at<float>(j, i) == 1.0f) {
+          int index = i + (j * mask_img.cols);
+          PointT pt = original_cloud->points[index];
+          pt.r = color.val[2];
+          pt.g = color.val[1];
+          pt.b = color.val[0];
+          cloud->push_back(pt);
+        }
+      }
+    }
     
     cv_bridge::CvImagePtr pub_msg(new cv_bridge::CvImage);
     pub_msg->header = camera_info->header;

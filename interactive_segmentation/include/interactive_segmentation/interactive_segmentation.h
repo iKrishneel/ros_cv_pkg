@@ -208,7 +208,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     bool skeletonization2D(
        pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<PointT>::Ptr,
-       const sensor_msgs::CameraInfo::ConstPtr &);
+       const sensor_msgs::CameraInfo::ConstPtr &, const cv::Scalar);
 };
 
 
