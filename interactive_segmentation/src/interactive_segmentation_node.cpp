@@ -120,10 +120,20 @@ void InteractiveSegmentation::callback(
        new pcl::PointCloud<PointT>);
     pcl::PointCloud<PointT>::Ptr convex_edge_points(
        new pcl::PointCloud<PointT>);
-    this->highCurvatureConcaveBoundary(concave_edge_points, convex_edge_points,
+    this->highCurvatureEdgeBoundary(concave_edge_points, convex_edge_points,
                                        cloud, original_cloud,
                                        cloud_msg->header);
+    
+    pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points);
+    this->estimateAnchorPoints(anchor_points, convex_edge_points,
+                               concave_edge_points, original_cloud,
+                               cloud_msg->header);
 
+    sensor_msgs::PointCloud2 ros_ap;
+    pcl::toROSMsg(*anchor_points, ros_ap);
+    ros_ap.header = cloud_msg->header;
+    this->pub_prob_.publish(ros_ap);
     /*
     pcl::PointIndices::Ptr edge_cv_indices(new pcl::PointIndices);
     this->skeletonization2D(convex_edge_points, edge_cv_indices,
@@ -390,7 +400,7 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
              new pcl::PointCloud<PointT>);
           // TODO(HERE):  filter the normal and feed it in
           /*
-          this->highCurvatureConcaveBoundary(high_curvature_filterd,
+          this->highCurvatureEdgeBoundary(high_curvature_filterd,
                                              prob_object_cloud,
                                              info_msg->header);
           */
@@ -1088,7 +1098,7 @@ cv::Mat InteractiveSegmentation::projectPointCloudToImagePlane(
     return image;
 }
 
-void InteractiveSegmentation::highCurvatureConcaveBoundary(
+void InteractiveSegmentation::highCurvatureEdgeBoundary(
     pcl::PointCloud<PointT>::Ptr concave_edge_points,
     pcl::PointCloud<PointT>::Ptr convex_edge_points,
     const pcl::PointCloud<PointT>::Ptr cloud,
@@ -1193,20 +1203,18 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
     }
 
     // get interest point ----------
+    /*
     pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
-    
     pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points);
     this->estimateAnchorPoints(anchor_points, convex_edge_points,
                                concave_edge_points, original_cloud, header);
-    
-    // ------------------------------
-
-    
-    
-    sensor_msgs::PointCloud2 ros_ap;
+                               sensor_msgs::PointCloud2 ros_ap;
     pcl::toROSMsg(*anchor_points, ros_ap);
     ros_ap.header = header;
     this->pub_prob_.publish(ros_ap);
+    */
+    // ------------------------------
+
 
     bool is_pub = true;
     if (is_pub) {

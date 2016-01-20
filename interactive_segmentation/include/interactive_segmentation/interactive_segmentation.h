@@ -192,7 +192,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     cv::Mat projectPointCloudToImagePlane(
        const pcl::PointCloud<PointT>::Ptr,
        const sensor_msgs::CameraInfo::ConstPtr &, cv::Mat &, cv::Mat &);
-    void highCurvatureConcaveBoundary(
+    void highCurvatureEdgeBoundary(
        pcl::PointCloud<PointT>::Ptr, pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<PointT>::Ptr, const pcl::PointCloud<PointT>::Ptr,
        const std_msgs::Header);
