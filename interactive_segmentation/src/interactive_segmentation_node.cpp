@@ -294,8 +294,7 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
              new pcl::PointCloud<pcl::Normal>);
           this->estimatePointCloudNormals<int>(cloud, normals, k, true);
 
-          
-                   
+          // -------------------------*EDIT*------------------
           Eigen::Vector4f attention_normal = this->cloudMeanNormal(
              supervoxel_clusters.at(closest_surfel_index)->normals_);
           Eigen::Vector4f attention_centroid = centroid_pt.getVector4fMap();
