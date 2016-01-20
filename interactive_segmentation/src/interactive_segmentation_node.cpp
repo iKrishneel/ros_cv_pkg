@@ -106,6 +106,8 @@ void InteractiveSegmentation::callback(
     pcl::PointCloud<PointT>::Ptr original_cloud(
        new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*orig_cloud_msg, *original_cloud);
+
+    this->camera_info_ = info_msg;
     
     std::vector<int> nan_indices;
     pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, nan_indices);
@@ -118,11 +120,14 @@ void InteractiveSegmentation::callback(
        new pcl::PointCloud<PointT>);
     pcl::PointCloud<PointT>::Ptr convex_edge_points(
        new pcl::PointCloud<PointT>);
-    this->highCurvatureConcaveBoundary(
-        concave_edge_points, convex_edge_points, cloud, cloud_msg->header);
+    this->highCurvatureConcaveBoundary(concave_edge_points, convex_edge_points,
+                                       cloud, original_cloud, cloud_msg->header);
 
-    this->skeletonization2D(convex_edge_points, original_cloud,
-                            info_msg, cv::Scalar(0, 0, 255));
+    /*
+    pcl::PointIndices::Ptr edge_cv_indices(new pcl::PointIndices);
+    this->skeletonization2D(convex_edge_points, edge_cv_indices,
+                            original_cloud, info_msg, cv::Scalar(255, 0, 255));
+    */
     
     sensor_msgs::PointCloud2 ros_cloud;
     // pcl::toROSMsg(*cloud, ros_cloud);
@@ -1014,7 +1019,7 @@ void InteractiveSegmentation::selectedPointToRegionDistanceWeight(
 cv::Mat InteractiveSegmentation::projectPointCloudToImagePlane(
     const pcl::PointCloud<PointT>::Ptr cloud,
     const sensor_msgs::CameraInfo::ConstPtr &camera_info,
-    cv::Mat &mask, cv::Mat &depth_map) {
+    cv::Mat &mask, cv::Mat &indices_lut) {
     if (cloud->empty()) {
        ROS_ERROR("INPUT CLOUD EMPTY");
        return cv::Mat();
@@ -1058,8 +1063,10 @@ cv::Mat InteractiveSegmentation::projectPointCloudToImagePlane(
        camera_info->height, camera_info->width, CV_8UC3, color);
     mask = cv::Mat::zeros(
        camera_info->height, camera_info->width, CV_32F);
-    depth_map = cv::Mat::zeros(
+    cv::Mat depth_map = cv::Mat::zeros(
        camera_info->height, camera_info->width, CV_8UC1);
+    indices_lut = cv::Mat::zeros(
+        camera_info->height, camera_info->width, CV_8UC1);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(this->num_threads_)
 #endif
@@ -1074,6 +1081,7 @@ cv::Mat InteractiveSegmentation::projectPointCloudToImagePlane(
           
           mask.at<float>(y, x) = 255.0f;
           depth_map.at<uchar>(y, x) = (cloud->points[i].z / 10.0f) * 255.0f;
+          indices_lut.at<uchar>(y, x) = i;
        }
     }
     return image;
@@ -1082,7 +1090,8 @@ cv::Mat InteractiveSegmentation::projectPointCloudToImagePlane(
 void InteractiveSegmentation::highCurvatureConcaveBoundary(
     pcl::PointCloud<PointT>::Ptr concave_edge_points,
     pcl::PointCloud<PointT>::Ptr convex_edge_points,
-    const pcl::PointCloud<PointT>::Ptr cloud, const std_msgs::Header header) {
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<PointT>::Ptr original_cloud, const std_msgs::Header header) {
     if (cloud->empty()) {
        ROS_ERROR("ERROR: INPUT CLOUD EMPTY FOR HIGH CURV. EST.");
        return;
@@ -1183,33 +1192,13 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
 
     // get interest point ----------
     pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
-    /*
+    
     pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points);
-    this->estimateAnchorPoints(
-       anchor_points, convex_edge_points, concave_edge_points, header);
-    */
+    this->estimateAnchorPoints(anchor_points, convex_edge_points,
+                               concave_edge_points,original_cloud, header);
+    
     // ------------------------------
 
-    /*
-    pcl::ModelCoefficients::Ptr coefficients(new pcl::ModelCoefficients);
-    pcl::PointIndices::Ptr inliers(new pcl::PointIndices);
-    pcl::SACSegmentation<PointT> seg;
-    seg.setOptimizeCoefficients(true);
-    seg.setModelType(pcl::SACMODEL_LINE);
-    seg.setMethodType(pcl::SAC_RANSAC);
-    seg.setDistanceThreshold(0.01f);
-    seg.setInputCloud(concave_edge_points);
-    seg.segment(*inliers, *coefficients);
-    
-    if (!inliers->indices.empty()) {
-      pcl::PointCloud<PointT>::Ptr f_edge(new pcl::PointCloud<PointT>);
-      for (int i = 0; i < inliers->indices.size(); i++) {
-        f_edge->push_back(concave_edge_points->points[inliers->indices[i]]);
-      }
-      concave_edge_points->clear();
-      *concave_edge_points = *f_edge;
-    }
-    */
     
     
     sensor_msgs::PointCloud2 ros_ap;
@@ -1235,8 +1224,9 @@ void InteractiveSegmentation::highCurvatureConcaveBoundary(
 
 bool InteractiveSegmentation::estimateAnchorPoints(
     pcl::PointCloud<PointT>::Ptr anchor_points,
-    const pcl::PointCloud<PointT>::Ptr convex_points,
-    const pcl::PointCloud<PointT>::Ptr concave_points,
+    pcl::PointCloud<PointT>::Ptr convex_points,
+    pcl::PointCloud<PointT>::Ptr concave_points,
+    const pcl::PointCloud<PointT>::Ptr original_cloud,
     const std_msgs::Header header) {
     if (anchor_points->empty()) {
        ROS_ERROR("NO BOUNDARY REGION TO SELECT POINTS");
@@ -1248,6 +1238,10 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     std::vector<pcl::PointIndices> cluster_concv;
     std::vector<Eigen::Vector4f> convex_edge_centroids;
     std::vector<Eigen::Vector4f> concave_edge_centroids;
+
+    std::cout << "ORIGINAL INFO: " << convex_points->size() << "\t"
+                  << concave_points->size() << "\n";
+    
 #ifdef _OPENMP
 #pragma omp parallel sections
 #endif
@@ -1257,21 +1251,21 @@ bool InteractiveSegmentation::estimateAnchorPoints(
 #endif
       {
         pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
-        convex_edge_centroids = this->doEuclideanClustering(
-            cluster_convx, convex_points, prob_indices);
+        this->doEuclideanClustering(cluster_convx, convex_points, prob_indices);
+        convex_edge_centroids = this->thinBoundaryAndComputeCentroid(
+            convex_points, original_cloud, cluster_convx, cv::Scalar(0, 255, 0));
       }
 #ifdef _OPENMP
 #pragma omp section
 #endif
       {
         pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
-        concave_edge_centroids = this->doEuclideanClustering(
-            cluster_concv, concave_points, prob_indices);
+        this->doEuclideanClustering(cluster_concv, concave_points, prob_indices);
+        concave_edge_centroids = this->thinBoundaryAndComputeCentroid(
+            concave_points, original_cloud, cluster_concv, cv::Scalar(0, 0, 255));
       }
     }
-
-    std::cout << "CENTROID INFO: " << convex_edge_centroids.size() << "\t"
-              << concave_edge_centroids.size() << "\n";
+    
     
     // select point in direction of normal few dist away
     if (cluster_convx.empty()) {
@@ -1451,9 +1445,9 @@ InteractiveSegmentation::doEuclideanClustering(
        euclidean_clustering.setIndices(prob_indices);
     }
     euclidean_clustering.extract(cluster_indices);
-    pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
-    eifilter->setInputCloud(cloud);
     if (is_centroid) {
+      pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
+      eifilter->setInputCloud(cloud);
       for (int i = 0; i < cluster_indices.size(); i++) {
         pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
         *region_indices = cluster_indices[i];
@@ -1488,8 +1482,40 @@ void InteractiveSegmentation::edgeBoundaryOutlierFiltering(
     pcl::copyPointCloud<PointT, PointT>(*concave_edge_points, *cloud);
 }
 
+std::vector<Eigen::Vector4f>
+InteractiveSegmentation::thinBoundaryAndComputeCentroid(
+    pcl::PointCloud<PointT>::Ptr edge_cloud,
+    const pcl::PointCloud<PointT>::Ptr original_cloud,
+    std::vector<pcl::PointIndices> &cluster_indices, const cv::Scalar color) {
+    std::vector<Eigen::Vector4f> cluster_centroids;
+    pcl::PointCloud<PointT>::Ptr copy_ec(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*edge_cloud, *copy_ec);
+    pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
+    eifilter->setInputCloud(copy_ec);
+    std::vector<pcl::PointIndices> tmp_ci;
+    edge_cloud->clear();
+    for (int i = 0; i < cluster_indices.size(); i++) {
+      pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
+      *region_indices = cluster_indices[i];
+      eifilter->setIndices(region_indices);
+      pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
+      eifilter->filter(*tmp_cloud);
+      pcl::PointIndices::Ptr indices(new pcl::PointIndices);
+      this->skeletonization2D(tmp_cloud, indices, original_cloud,
+                              this->camera_info_, color);
+      tmp_ci.push_back(*indices);
+      *edge_cloud += *tmp_cloud;
+      Eigen::Vector4f center;
+      pcl::compute3DCentroid<PointT, float>(*tmp_cloud, center);
+      cluster_centroids.push_back(center);
+    }
+    cluster_indices.clear();
+    cluster_indices.insert(cluster_indices.end(), tmp_ci.begin(), tmp_ci.end());
+    return cluster_centroids;
+}
+
 bool InteractiveSegmentation::skeletonization2D(
-    pcl::PointCloud<PointT>::Ptr cloud,
+    pcl::PointCloud<PointT>::Ptr cloud, pcl::PointIndices::Ptr indices,
     const pcl::PointCloud<PointT>::Ptr original_cloud,
     const sensor_msgs::CameraInfo::ConstPtr &camera_info, const cv::Scalar color) {
     if (cloud->empty() && original_cloud->height > 1) {
@@ -1497,9 +1523,9 @@ bool InteractiveSegmentation::skeletonization2D(
        return false;
     }
     cv::Mat mask_img;
-    cv::Mat depth_img;
+    cv::Mat depth_image;
     mask_img = this->projectPointCloudToImagePlane(
-       cloud, camera_info, mask_img, depth_img);
+       cloud, camera_info, mask_img, depth_image);
     cv::cvtColor(mask_img, mask_img, CV_BGR2GRAY);
     cv::threshold(mask_img, mask_img, 0, 255,
                   CV_THRESH_BINARY | CV_THRESH_OTSU);
@@ -1513,12 +1539,10 @@ bool InteractiveSegmentation::skeletonization2D(
     boost::shared_ptr<jsk_perception::Skeletonization> skeleton(
        new jsk_perception::Skeletonization());
     skeleton->skeletonization(mask_img);
-
-    // HERE filter the skeleton region of the original point cloud
+    // pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
+    // pcl::copyPointCloud<PointT, PointT>(*cloud, *tmp_cloud);
     cloud->clear();
-#ifdef _OPENMP
-#pragma omp parallel for collapse(2) num_threads(this->num_threads_)
-#endif
+    indices->indices.clear();
     for (int j = 0; j < mask_img.rows; j++) {
       for (int i = 0; i < mask_img.cols; i++) {
         if (mask_img.at<float>(j, i) == 1.0f) {
@@ -1528,15 +1552,15 @@ bool InteractiveSegmentation::skeletonization2D(
           pt.g = color.val[1];
           pt.b = color.val[0];
           cloud->push_back(pt);
+          indices->indices.push_back(index);
         }
       }
     }
-    
-    cv_bridge::CvImagePtr pub_msg(new cv_bridge::CvImage);
-    pub_msg->header = camera_info->header;
-    pub_msg->encoding = sensor_msgs::image_encodings::MONO8;
-    pub_msg->image = mask_img.clone();
-    this->pub_image_.publish(pub_msg);
+    // cv_bridge::CvImagePtr pub_msg(new cv_bridge::CvImage);
+    // pub_msg->header = camera_info->header;
+    // pub_msg->encoding = sensor_msgs::image_encodings::MONO8;
+    // pub_msg->image = mask_img.clone();
+    // this->pub_image_.publish(pub_msg);
     return true;
 }
 

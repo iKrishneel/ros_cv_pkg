@@ -131,6 +131,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     int min_cluster_size_;
     int num_threads_;
   
+    sensor_msgs::CameraInfo::ConstPtr camera_info_;
+  
  protected:
     void onInit();
     void subscribe();
@@ -192,23 +194,28 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const sensor_msgs::CameraInfo::ConstPtr &, cv::Mat &, cv::Mat &);
     void highCurvatureConcaveBoundary(
        pcl::PointCloud<PointT>::Ptr, pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<PointT>::Ptr, const std_msgs::Header);
+       const pcl::PointCloud<PointT>::Ptr, const pcl::PointCloud<PointT>::Ptr,
+       const std_msgs::Header);
     bool estimateAnchorPoints(
        pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<PointT>::Ptr,
+       pcl::PointCloud<PointT>::Ptr, pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<PointT>::Ptr, const std_msgs::Header);
     std::vector<Eigen::Vector4f> doEuclideanClustering(
        std::vector<pcl::PointIndices> &cluster_indices,
        const pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointIndices::Ptr, bool = true, const float = 0.02f,
+       const pcl::PointIndices::Ptr, bool = false, const float = 0.02f,
        const int = 30, const int = 20000);
     void edgeBoundaryOutlierFiltering(
         const pcl::PointCloud<PointT>::Ptr,
         const float = 0.01f, const int = 50);
     bool skeletonization2D(
-       pcl::PointCloud<PointT>::Ptr,
+        pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr,
        const pcl::PointCloud<PointT>::Ptr,
        const sensor_msgs::CameraInfo::ConstPtr &, const cv::Scalar);
+    std::vector<Eigen::Vector4f> thinBoundaryAndComputeCentroid(
+        pcl::PointCloud<PointT>::Ptr,
+        const pcl::PointCloud<PointT>::Ptr,
+        std::vector<pcl::PointIndices> &, const cv::Scalar);
 };
 
 
