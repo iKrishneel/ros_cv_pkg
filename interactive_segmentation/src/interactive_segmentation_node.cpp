@@ -1238,10 +1238,6 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     std::vector<pcl::PointIndices> cluster_concv;
     std::vector<Eigen::Vector4f> convex_edge_centroids;
     std::vector<Eigen::Vector4f> concave_edge_centroids;
-
-    std::cout << "ORIGINAL INFO: " << convex_points->size() << "\t"
-                  << concave_points->size() << "\n";
-    
 #ifdef _OPENMP
 #pragma omp parallel sections
 #endif
@@ -1264,8 +1260,13 @@ bool InteractiveSegmentation::estimateAnchorPoints(
         concave_edge_centroids = this->thinBoundaryAndComputeCentroid(
             concave_points, original_cloud, cluster_concv, cv::Scalar(0, 0, 255));
       }
-    }
-    
+    }    
+
+    std::cout << "......................................................"  << "\n";
+    std::cout << "\tDEBUG: " << concave_edge_centroids.size() << "\t"
+              << convex_edge_centroids.size() << "\n";
+    std::cout << "\n\tDEBUG: " << cluster_concv.size() << "\t"
+              << cluster_convx.size() << "\n";
     
     // select point in direction of normal few dist away
     if (cluster_convx.empty()) {
@@ -1302,10 +1303,12 @@ bool InteractiveSegmentation::estimateAnchorPoints(
       eifilter->filter(*tmp_cloud);
       for (int j = 0; j < tmp_cloud->size(); j++) {
         Eigen::Vector4f cv_pt = tmp_cloud->points[j].getVector4fMap();
-        if (cv_pt(1) < center(1)) {
+        // std::cout << cv_pt << "\n\n" << center << "\n";
+        // if (cv_pt(1) < center(1))
+        {
           double d = pcl::distances::l2(cv_pt, center);
           // std::cout << "\t\t distance: " << d   << "\n" << cv_pt <<
-          // "\n\n" << center << "\n";
+          //     "\n\n" << center << "\n";
           if (d < nearest_cv_dist && d < object_lenght_thresh) {
             nearest_cv_dist = d;
             cc_nearest_cluster_idx = i;
@@ -1315,10 +1318,14 @@ bool InteractiveSegmentation::estimateAnchorPoints(
         }
       }
     }
-
-    // std::cout << "DEBUG: " << cc_nearest_pt_idx << "\t" << center_index
-    //           << "\t" << nearest_cv_dist  << "\n";
-    // return 1;
+    
+    if (cc_nearest_pt_idx == -1) {
+      return false;
+    }
+    
+    std::cout << "DEBUG: " << cc_nearest_pt_idx << "\t" << center_index
+              << "\t" << nearest_cv_dist  << "\n";
+    return 0;
     
     float ap_search_radius = static_cast<float>(nearest_cv_dist)/2.0f;
     // float ap_search_angle = static_cast<float>(
@@ -1342,7 +1349,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
 
     std::cout << "\033[33m NEIGBOUR INFO: \033[0m" << point_idx_search.size()
               << "\t" << ap_search_radius << "\n";
-    
+    // return 1;
     
     int ap_index_1 = -1;
     double far_point_dist = 0;
@@ -1386,8 +1393,8 @@ bool InteractiveSegmentation::estimateAnchorPoints(
               << ap_index_2 << "\tDIST: " << nearest_cv_dist << "\n";
 
     pcl::PointCloud<PointT>::Ptr ap_pt(new pcl::PointCloud<PointT>);
-    // ap_pt->push_back(anchor_points->points[ap_index_1]);
-    // ap_pt->push_back(anchor_points->points[ap_index_2]);
+    ap_pt->push_back(anchor_points->points[ap_index_1]);
+    ap_pt->push_back(anchor_points->points[ap_index_2]);
     ap_pt->push_back(cc_center_pt);
     
     sensor_msgs::PointCloud2 ros_cloud;
@@ -1494,6 +1501,7 @@ InteractiveSegmentation::thinBoundaryAndComputeCentroid(
     eifilter->setInputCloud(copy_ec);
     std::vector<pcl::PointIndices> tmp_ci;
     edge_cloud->clear();
+    cluster_centroids.clear();
     for (int i = 0; i < cluster_indices.size(); i++) {
       pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
       *region_indices = cluster_indices[i];
@@ -1539,8 +1547,6 @@ bool InteractiveSegmentation::skeletonization2D(
     boost::shared_ptr<jsk_perception::Skeletonization> skeleton(
        new jsk_perception::Skeletonization());
     skeleton->skeletonization(mask_img);
-    // pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
-    // pcl::copyPointCloud<PointT, PointT>(*cloud, *tmp_cloud);
     cloud->clear();
     indices->indices.clear();
     for (int j = 0; j < mask_img.rows; j++) {
@@ -1548,11 +1554,13 @@ bool InteractiveSegmentation::skeletonization2D(
         if (mask_img.at<float>(j, i) == 1.0f) {
           int index = i + (j * mask_img.cols);
           PointT pt = original_cloud->points[index];
-          pt.r = color.val[2];
-          pt.g = color.val[1];
-          pt.b = color.val[0];
-          cloud->push_back(pt);
-          indices->indices.push_back(index);
+          if (!isnan(pt.x) && !isnan(pt.y) && !isnan(pt.z)) {
+            pt.r = color.val[2];
+            pt.g = color.val[1];
+            pt.b = color.val[0];
+            cloud->push_back(pt);
+            indices->indices.push_back(index);
+          }
         }
       }
     }

@@ -38,10 +38,10 @@
     </node>
   </group>
 
-  <node pkg="image_view2" type="image_view2"
-	name="image_view2" output="screen">
-    <remap from="image" to="$(arg image)"/>
-  </node>
+  <!-- <node pkg="image_view2" type="image_view2" -->
+  <!-- 	name="image_view2" output="screen"> -->
+  <!--   <remap from="image" to="$(arg image)"/> -->
+  <!-- </node> -->
 
   <group if="$(arg RVIZ)" >
       <include file="$(find interactive_segmentation)/launch/rviz.launch"/>
