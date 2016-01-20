@@ -134,11 +134,6 @@ void InteractiveSegmentation::callback(
     pcl::toROSMsg(*anchor_points, ros_ap);
     ros_ap.header = cloud_msg->header;
     this->pub_prob_.publish(ros_ap);
-    /*
-    pcl::PointIndices::Ptr edge_cv_indices(new pcl::PointIndices);
-    this->skeletonization2D(convex_edge_points, edge_cv_indices,
-                            original_cloud, info_msg, cv::Scalar(255, 0, 255));
-    */
     
     sensor_msgs::PointCloud2 ros_cloud;
     // pcl::toROSMsg(*cloud, ros_cloud);
