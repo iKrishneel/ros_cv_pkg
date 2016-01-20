@@ -97,15 +97,15 @@ void InteractiveSegmentation::callback(
     const sensor_msgs::Image::ConstPtr &image_msg,
     const sensor_msgs::CameraInfo::ConstPtr &info_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
-    const sensor_msgs::PointCloud2::ConstPtr &normal_msg) {
+    const sensor_msgs::PointCloud2::ConstPtr &orig_cloud_msg) {
     boost::mutex::scoped_lock lock(this->mutex_);
     cv::Mat image = cv_bridge::toCvShare(
        image_msg, image_msg->encoding)->image;
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-    // pcl::PointCloud<pcl::Normal>::Ptr in_normals(
-    //    new pcl::PointCloud<pcl::Normal>);
-    // pcl::fromROSMsg(*normal_msg, *in_normals);
+    pcl::PointCloud<PointT>::Ptr original_cloud(
+       new pcl::PointCloud<PointT>);
+    pcl::fromROSMsg(*orig_cloud_msg, *original_cloud);
     
     std::vector<int> nan_indices;
     pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, nan_indices);
@@ -121,7 +121,7 @@ void InteractiveSegmentation::callback(
     this->highCurvatureConcaveBoundary(
         concave_edge_points, convex_edge_points, cloud, cloud_msg->header);
 
-    this->skeletonization2D(concave_edge_points, info_msg);
+    this->skeletonization2D(concave_edge_points, original_cloud, info_msg);
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
@@ -1488,8 +1488,9 @@ void InteractiveSegmentation::edgeBoundaryOutlierFiltering(
 
 bool InteractiveSegmentation::skeletonization2D(
     pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<PointT>::Ptr original_cloud,
     const sensor_msgs::CameraInfo::ConstPtr &camera_info) {
-    if (cloud->empty()) {
+    if (cloud->empty() && original_cloud->height > 1) {
        ROS_WARN("EMPTY CLOUD SKIPPING SKELETONIZATION");
        return false;
     }
@@ -1515,6 +1516,7 @@ bool InteractiveSegmentation::skeletonization2D(
        new jsk_perception::Skeletonization());
     skeleton->skeletonization(mask_img);
 
+    // HERE filter the skeleton region of the original point cloud
     
     cv::imshow("skeleton", mask_img);
     cv::waitKey(3);
