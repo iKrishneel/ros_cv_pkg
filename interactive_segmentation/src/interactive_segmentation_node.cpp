@@ -1260,7 +1260,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
          pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
          this->doEuclideanClustering(cluster_concv,
                                      concave_points, prob_indices);
-        concave_edge_centroids = this->thinBoundaryAndComputeCentroid(
+         concave_edge_centroids = this->thinBoundaryAndComputeCentroid(
            concave_points, original_cloud, cluster_concv,
            cv::Scalar(0, 0, 255));
       }
@@ -1271,7 +1271,6 @@ bool InteractiveSegmentation::estimateAnchorPoints(
               << convex_edge_centroids.size() << "\n";
     std::cout << "CLUSTER SIZE: " << cluster_concv.size() << "\t"
               << cluster_convx.size() << "\n";
-
     
     // select point in direction of normal few dist away
     if (cluster_convx.empty()) {
@@ -1310,8 +1309,6 @@ bool InteractiveSegmentation::estimateAnchorPoints(
           Eigen::Vector4f cv_pt = tmp_cloud->points[j].getVector4fMap();
           if (cv_pt(1) < center(1)) {
              double d = pcl::distances::l2(cv_pt, center);
-             // std::cout << "\t\t distance: " << d   << "\n" << cv_pt <<
-             //     "\n\n" << center << "\n";
              if (d < nearest_cv_dist && d < object_lenght_thresh) {
                 nearest_cv_dist = d;
                 cc_nearest_cluster_idx = i;
@@ -1327,12 +1324,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        return false;
     }
     
-    std::cout << "DEBUG: " << cc_nearest_pt_idx << "\t" << center_index
-              << "\t" << nearest_cv_dist  << "\n";
-    
     float ap_search_radius = static_cast<float>(nearest_cv_dist)/2.0f;
-    // float ap_search_angle = static_cast<float>(
-    //    pcl::getAngle3D(center, cc_nearest_cv_pt));
     
     // find 2 points on object cloud points ap_search_radius away
     pcl::KdTreeFLANN<PointT> kdtree;
@@ -1349,18 +1341,12 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     int search_out = kdtree.radiusSearch(cc_center_pt,
                                          ap_search_radius, point_idx_search,
                                          point_squared_distance);
-
-    std::cout << "\033[33m NEIGBOUR INFO: \033[0m" << point_idx_search.size()
-              << "\t" << ap_search_radius << "\n";
-    // return 1;
-    
     int ap_index_1 = -1;
     double far_point_dist = 0;
     for (int i = 0; i < point_idx_search.size(); i++) {
        Eigen::Vector4f pt = anchor_points->points[
            point_idx_search[i]].getVector4fMap();
        double d = pcl::distances::l2(cc_nearest_cv_pt, pt);
-       // double ang = pcl::getAngle3D(cc_nearest_cv_pt, pt);
        // TODO(HERE): filter the points cross in the plane
        if (d > far_point_dist && pt(1) > cc_nearest_cv_pt(1)) {
           far_point_dist = d;
@@ -1392,43 +1378,10 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        // use both
     }
 
-    std::cout << "\n\033[34m ANCHOR POINTS: \033[0m" << ap_index_1 << ", "
-              << ap_index_2 << "\tDIST: " << nearest_cv_dist << "\n";
-
-    pcl::PointCloud<PointT>::Ptr ap_pt(new pcl::PointCloud<PointT>);
-    ap_pt->push_back(anchor_points->points[ap_index_1]);
-    ap_pt->push_back(anchor_points->points[ap_index_2]);
-    ap_pt->push_back(cc_center_pt);
-    
-    sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*ap_pt, ros_cloud);
-    // pcl::toROSMsg(*anchor_points, ros_cloud);
-    ros_cloud.header = header;
-    this->pub_pt_map_.publish(ros_cloud);
-    // ----------------------------------------------------------
-    /*
-    pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
-       new pcl::PointCloud<pcl::PointXYZRGBNormal>);
-    pcl::PointXYZRGBNormal pt;
-     pt.x = anchor_points->points[0].x;
-     pt.y = anchor_points->points[0].y;
-     pt.z = anchor_points->points[0].z;
-     pt.r = 255;
-     pt.g = 0;
-     pt.b = 255;
-     pt.normal_x = normal_vec(0);
-     pt.normal_y = normal_vec(1);
-     pt.normal_z = normal_vec(2);
-     centroid_normal->push_back(pt);
-     centroid_normal->push_back(pt);
-     centroid_normal->push_back(pt);
-     
-    sensor_msgs::PointCloud2 rviz_normal;
-    pcl::toROSMsg(*centroid_normal, rviz_normal);
-    rviz_normal.header = header;
-    this->pub_normal_.publish(rviz_normal);
-    */
-    // ----------------------------------------------------------
+    anchor_points->clear();
+    anchor_points->push_back(anchor_points->points[ap_index_1]);
+    anchor_points->push_back(anchor_points->points[ap_index_2]);
+    anchor_points->push_back(cc_center_pt);
 }
 
 std::vector<Eigen::Vector4f>
@@ -1506,6 +1459,7 @@ InteractiveSegmentation::thinBoundaryAndComputeCentroid(
     std::vector<pcl::PointIndices> tmp_ci;
     edge_cloud->clear();
     cluster_centroids.clear();
+    const int min_size_thresh = 30;
     for (int i = 0; i < cluster_indices.size(); i++) {
        pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
        *region_indices = cluster_indices[i];
@@ -1515,11 +1469,13 @@ InteractiveSegmentation::thinBoundaryAndComputeCentroid(
        pcl::PointIndices::Ptr indices(new pcl::PointIndices);
        this->skeletonization2D(tmp_cloud, indices, original_cloud,
                                this->camera_info_, color);
-       tmp_ci.push_back(*indices);
-       *edge_cloud = *edge_cloud + *tmp_cloud;
-       Eigen::Vector4f center;
-       pcl::compute3DCentroid<PointT, float>(*tmp_cloud, center);
-       cluster_centroids.push_back(center);
+       if (tmp_cloud->size() > min_size_thresh) {
+          tmp_ci.push_back(*indices);
+          *edge_cloud = *edge_cloud + *tmp_cloud;
+          Eigen::Vector4f center;
+          pcl::compute3DCentroid<PointT, float>(*tmp_cloud, center);
+          cluster_centroids.push_back(center);
+       }
     }
     cluster_indices.clear();
     cluster_indices.insert(cluster_indices.end(), tmp_ci.begin(), tmp_ci.end());
