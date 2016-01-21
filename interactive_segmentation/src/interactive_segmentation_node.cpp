@@ -115,7 +115,6 @@ void InteractiveSegmentation::callback(
     ROS_INFO("\033[32m DEBUG: PROCESSING CALLBACK \033[0m");
     
     // ----------------------------------------
-
     pcl::PointCloud<PointT>::Ptr concave_edge_points(
        new pcl::PointCloud<PointT>);
     pcl::PointCloud<PointT>::Ptr convex_edge_points(
@@ -123,24 +122,16 @@ void InteractiveSegmentation::callback(
     this->highCurvatureEdgeBoundary(concave_edge_points, convex_edge_points,
                                        cloud, original_cloud,
                                        cloud_msg->header);
-    
     pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points);
     this->estimateAnchorPoints(anchor_points, convex_edge_points,
                                concave_edge_points, original_cloud,
                                cloud_msg->header);
 
-    sensor_msgs::PointCloud2 ros_ap;
-    pcl::toROSMsg(*anchor_points, ros_ap);
-    ros_ap.header = cloud_msg->header;
-    this->pub_prob_.publish(ros_ap);
-    
-    sensor_msgs::PointCloud2 ros_cloud;
-    // pcl::toROSMsg(*cloud, ros_cloud);
-    pcl::toROSMsg(*convex_edge_points, ros_cloud);
-    ros_cloud.header = cloud_msg->header;
-    this->pub_cloud_.publish(ros_cloud);
-    
+    this->publishAsROSMsg(anchor_points, this->pub_prob_, cloud_msg->header);
+    this->publishAsROSMsg(concave_edge_points, this->pub_concave_, cloud_msg->header);
+    this->publishAsROSMsg(convex_edge_points, this->pub_convex_, cloud_msg->header);
+          
     return;
     // ----------------------------------------
     
@@ -243,12 +234,7 @@ void InteractiveSegmentation::callback(
                 cloud->points[k] = noc_pt;
              }
           }
-          
-          sensor_msgs::PointCloud2 ros_cloud;
-          pcl::toROSMsg(*cloud, ros_cloud);
-          ros_cloud.header = cloud_msg->header;
-          this->pub_cloud_.publish(ros_cloud);
-          
+          this->publishAsROSMsg(cloud, this->pub_cloud_, cloud_msg->header);
        } else {
           ROS_INFO("\033[32m SKIPPPED %d \033[0m", supervoxel_index[i]);
        }
@@ -1210,7 +1196,7 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
     // ------------------------------
 
 
-    bool is_pub = true;
+    bool is_pub = false;
     if (is_pub) {
       sensor_msgs::PointCloud2 ros_cccloud;
       pcl::toROSMsg(*concave_edge_points, ros_cccloud);
@@ -1533,6 +1519,18 @@ bool InteractiveSegmentation::skeletonization2D(
     // pub_msg->image = mask_img.clone();
     // this->pub_image_.publish(pub_msg);
     return true;
+}
+
+void InteractiveSegmentation::publishAsROSMsg(
+    const pcl::PointCloud<PointT>::Ptr cloud, const ros::Publisher publisher,
+    const std_msgs::Header header) {
+    if (cloud->empty()) {
+      return;
+    }
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*cloud, ros_cloud);
+    ros_cloud.header = header;
+    publisher.publish(ros_cloud);
 }
 
 int main(int argc, char *argv[]) {

@@ -216,6 +216,9 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
         pcl::PointCloud<PointT>::Ptr,
         const pcl::PointCloud<PointT>::Ptr,
         std::vector<pcl::PointIndices> &, const cv::Scalar);
+    void publishAsROSMsg(
+        const pcl::PointCloud<PointT>::Ptr, const ros::Publisher,
+        const std_msgs::Header);
 };
 
 
