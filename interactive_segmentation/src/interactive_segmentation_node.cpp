@@ -138,8 +138,13 @@ void InteractiveSegmentation::callback(
     this->publishAsROSMsg(convex_edge_points, this->pub_convex_, cloud_msg->header);
           
     return;
-    // ----------------------------------------
+    // ---------------------PROCESSING-------------------
     
+
+
+
+
+    // ----------------------END-PROCESSING------------------
     bool is_surfel_level = true;
     // pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
     std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > supervoxel_clusters;
@@ -153,12 +158,6 @@ void InteractiveSegmentation::callback(
        this->pub_voxels_.publish(ros_voxels);
        this->pub_indices_.publish(ros_indices);
     }
-  
-
-    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr centroid_cloud(
-       new pcl::PointCloud<pcl::PointXYZRGBA>);
-    pcl::PointCloud<pcl::Normal>::Ptr surfel_normals(
-       new pcl::PointCloud<pcl::Normal>);
 
 
     // align supervoxel centroid to current point cloud
@@ -242,26 +241,61 @@ void InteractiveSegmentation::callback(
        } else {
           ROS_INFO("\033[32m SKIPPPED %d \033[0m", supervoxel_index[i]);
        }
-       // centroid_cloud->push_back(supervoxel_clusters.at(
-       //                              it->first)->centroid_);
-       // *surfel_normals += *(supervoxel_clusters.at(it->first)->normals_);
     }
     
     std::cout << "\n\033[34m 1) ALL VALID REGION LABELED \033[0m" << std::endl;
-    ros::Duration(10).sleep();
-    /*
-    sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*cloud, ros_cloud);
-    ros_cloud.header = cloud_msg->header;
-    this->pub_cloud_.publish(ros_cloud);
-    */
 }
 
 void InteractiveSegmentation::selectedVoxelObjectHypothesis(
+    
     pcl::PointIndices::Ptr prob_object_indices,
     const std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > supervoxel_clusters,
     const uint32_t closest_surfel_index, pcl::PointCloud<PointT>::Ptr cloud,
     const sensor_msgs::CameraInfo::ConstPtr &info_msg) {
+
+  /*
+    const pcl::PointCloud<PointT>::Ptr in_cloud;
+    const pcl::PointCloud<pcl::Normal>::Ptr normals;
+    const pcl::PointIndices::Ptr indices;
+    const std_msgs::Header header;
+
+    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*in_cloud, *cloud);
+    
+    for (int i = 0; i < indices->indices.size(); i++) {
+      int index = indices->indices[i];
+      Eigen::Vector4f attention_normal = normals->points[index].getNormalVector4fMap();
+      Eigen::Vector4f attention_centroid = cloud->points[index].getVector4fMap();
+
+      std::cout << "\033[34m 2) COMPUTING WEIGHTS \033[0m" << std::endl;
+
+      cv::Mat weight_map;
+      this->surfelSamplePointWeightMap(cloud, normals, centroid_pt,
+                                       attention_normal, weight_map);
+
+      pcl::PointCloud<PointT>::Ptr weight_cloud(
+          new pcl::PointCloud<PointT>);
+      for (int x = 0; x < weight_map.rows; x++) {
+        cloud->points[x].r = weight_map.at<float>(x, 0) * 255.0f;
+        cloud->points[x].g = weight_map.at<float>(x, 0) * 255.0f;
+        cloud->points[x].b = weight_map.at<float>(x, 0) * 255.0f;
+      }
+      *weight_cloud = *cloud;
+      
+      std::cout << "\033[34m 3) OBJECT MASK EXTRACTION \033[0m"
+                << std::endl;
+
+      pcl::PointCloud<PointT>::Ptr prob_object_cloud(
+          new pcl::PointCloud<PointT>);
+      this->attentionSurfelRegionPointCloudMask(cloud, attention_centroid,
+                                                info_msg->header,
+                                                prob_object_cloud,
+                                                prob_object_indices);
+    }
+
+  */
+  
+  
     pcl::PointCloud<PointT>::Ptr object_points(new pcl::PointCloud<PointT>);
     *object_points = *cloud;
     bool is_point_level = true;
@@ -292,7 +326,7 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
           // select few points close to centroid as true object
 
           std::cout << "\033[34m 2) COMPUTING WEIGHTS \033[0m" << std::endl;
-          int index_pos = 0;
+
           cv::Mat weight_map;
           this->surfelSamplePointWeightMap(cloud, normals, centroid_pt,
                                            attention_normal,
@@ -364,35 +398,8 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
                                                     info_msg->header,
                                                     prob_object_cloud,
                                                     prob_object_indices);
-
-       
-          // TMP
-          /*
-            pcl::PointCloud<PointT>::Ptr cov_cloud(new pcl::PointCloud<PointT>);
-            this->computePointCloudCovarianceMatrix(prob_object_cloud, cov_cloud);
-            cloud->clear();
-            *cloud = *cov_cloud;
-            */
-
-
-          Eigen::Vector3f attent_pt = Eigen::Vector3f(
-             this->screen_pt_.x, this->screen_pt_.y, 0);
-          this->selectedPointToRegionDistanceWeight(
-             prob_object_cloud, attent_pt, 0.01f, info_msg);
-
-          pcl::PointCloud<PointT>::Ptr high_curvature_filterd(
-             new pcl::PointCloud<PointT>);
-          // TODO(HERE):  filter the normal and feed it in
-          /*
-          this->highCurvatureEdgeBoundary(high_curvature_filterd,
-                                             prob_object_cloud,
-                                             info_msg->header);
-          */
-          std::cout << cloud->size() << "\t" << normals->size() << std::endl;
+          
        }
-       // cv_bridge::CvImage pub_img(
-       //    image_msg->header, sensor_msgs::image_encodings::BGR8, image);
-       // this->pub_image_.publish(pub_img.toImageMsg());
     }
 }
 
@@ -1343,10 +1350,18 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        // use both
     }
 
+    // TODO: COMPLETE THE NORMAL FOR CENTER POINT
+    PointT ap_pt1 = anchor_points->points[ap_index_1];
+    PointT ap_pt2 = anchor_points->points[ap_index_2];
     anchor_points->clear();
-    anchor_points->push_back(anchor_points->points[ap_index_1]);
-    anchor_points->push_back(anchor_points->points[ap_index_2]);
+    anchor_points->push_back(ap_pt1);
+    anchor_points->push_back(ap_pt2);
     anchor_points->push_back(cc_center_pt);
+
+    anchor_indices->indices.clear();
+    anchor_indices->indices.push_back(ap_index_1);
+    anchor_indices->indices.push_back(ap_index_2);
+    
 }
 
 std::vector<Eigen::Vector4f>
