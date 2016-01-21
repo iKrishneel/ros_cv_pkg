@@ -143,17 +143,16 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     virtual void screenPointCallback(
        const geometry_msgs::PointStamped::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
-    virtual void callback(const sensor_msgs::Image::ConstPtr &,
-                          const sensor_msgs::CameraInfo::ConstPtr &,
-                          const sensor_msgs::PointCloud2::ConstPtr &,
-                          const sensor_msgs::PointCloud2::ConstPtr &);
+    virtual void callback(
+       const sensor_msgs::Image::ConstPtr &,
+       const sensor_msgs::CameraInfo::ConstPtr &,
+       const sensor_msgs::PointCloud2::ConstPtr &,
+       const sensor_msgs::PointCloud2::ConstPtr &);
     void selectedVoxelObjectHypothesis(
-       pcl::PointIndices::Ptr,
-       const std::map<uint32_t, pcl::Supervoxel<
-       PointT>::Ptr > supervoxel_clusters, const uint32_t,
-       pcl::PointCloud<PointT>::Ptr, const sensor_msgs::CameraInfo::ConstPtr &);
-   
-    void surfelLevelObjectHypothesis(
+       const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<pcl::Normal>::Ptr,
+       const pcl::PointIndices::Ptr, const std_msgs::Header);
+       void surfelLevelObjectHypothesis(
        pcl::PointCloud<PointT>::Ptr,
        pcl::PointCloud<pcl::Normal>::Ptr,
        std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &);
@@ -164,28 +163,26 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const pcl::PointCloud<PointT>::Ptr, const Eigen::Vector4f,
        const std_msgs::Header, pcl::PointCloud<PointT>::Ptr,
        pcl::PointIndices::Ptr);
-    void surfelSamplePointWeightMap(const pcl::PointCloud<PointT>::Ptr,
-                                    const pcl::PointCloud<pcl::Normal>::Ptr,
-                                    const pcl::PointXYZRGBA &,
-                                    const Eigen::Vector4f, cv::Mat &);
-    void computePointCloudCovarianceMatrix(const pcl::PointCloud<PointT>::Ptr,
-                                           pcl::PointCloud<PointT>::Ptr);
-    float whiteNoiseKernel(const float,
-                           const float = 0.0f,
-                           const float = 0.0f);
-    void generateFeatureSaliencyMap(const cv::Mat &,
-                                    cv::Mat &);
-    virtual Eigen::Vector4f
-    cloudMeanNormal(const pcl::PointCloud<pcl::Normal>::Ptr,
-                    bool = false);
-    int localVoxelConvexityCriteria(Eigen::Vector4f, Eigen::Vector4f,
-                                     Eigen::Vector4f, const float = 0.0f);
+    void surfelSamplePointWeightMap(
+       const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<pcl::Normal>::Ptr, const PointT &,
+       const Eigen::Vector4f, cv::Mat &);
+    void computePointCloudCovarianceMatrix(
+       const pcl::PointCloud<PointT>::Ptr, pcl::PointCloud<PointT>::Ptr);
+    float whiteNoiseKernel(
+       const float, const float = 0.0f, const float = 0.0f);
+    void generateFeatureSaliencyMap(
+       const cv::Mat &, cv::Mat &);
+    virtual Eigen::Vector4f cloudMeanNormal(
+       const pcl::PointCloud<pcl::Normal>::Ptr, bool = false);
+    int localVoxelConvexityCriteria(
+       Eigen::Vector4f, Eigen::Vector4f, Eigen::Vector4f, const float = 0.0f);
     template<class T>
-    void estimatePointCloudNormals(const pcl::PointCloud<PointT>::Ptr,
-                                   pcl::PointCloud<pcl::Normal>::Ptr,
-                                   T = 0.05f, bool = false) const;
-    void pointIntensitySimilarity(pcl::PointCloud<PointT>::Ptr,
-                                  const int);
+    void estimatePointCloudNormals(
+       const pcl::PointCloud<PointT>::Ptr, pcl::PointCloud<pcl::Normal>::Ptr,
+       T = 0.05f, bool = false) const;
+    void pointIntensitySimilarity(
+       pcl::PointCloud<PointT>::Ptr, const int);
     void selectedPointToRegionDistanceWeight(
        const pcl::PointCloud<PointT>::Ptr, const Eigen::Vector3f,
        const float, const sensor_msgs::CameraInfo::ConstPtr);

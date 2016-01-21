@@ -133,144 +133,41 @@ void InteractiveSegmentation::callback(
                                concave_edge_points, anchor_indices,
                                original_cloud, cloud_msg->header);
 
-    this->publishAsROSMsg(anchor_points, this->pub_prob_, cloud_msg->header);
-    this->publishAsROSMsg(concave_edge_points, this->pub_concave_, cloud_msg->header);
-    this->publishAsROSMsg(convex_edge_points, this->pub_convex_, cloud_msg->header);
-          
-    return;
-    // ---------------------PROCESSING-------------------
+    // this->publishAsROSMsg(anchor_points, pub_prob_, cloud_msg->header);
+    this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
+    this->publishAsROSMsg(convex_edge_points, pub_convex_, cloud_msg->header);
     
-
+    // ---------------------PROCESSING-------------------
+    ROS_INFO("\033[32m LABELING ON THE POINT \033[0m");
+    
+    this->selectedVoxelObjectHypothesis(
+       cloud, normals, anchor_indices, cloud_msg->header);
 
 
 
     // ----------------------END-PROCESSING------------------
-    bool is_surfel_level = true;
-    // pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
-    std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > supervoxel_clusters;
-    if (is_surfel_level) {
-       this->surfelLevelObjectHypothesis(
-          cloud, normals, supervoxel_clusters);
-       sensor_msgs::PointCloud2 ros_voxels;
-       jsk_recognition_msgs::ClusterPointIndices ros_indices;
-       this->publishSupervoxel(supervoxel_clusters,
-                               ros_voxels, ros_indices, cloud_msg->header);
-       this->pub_voxels_.publish(ros_voxels);
-       this->pub_indices_.publish(ros_indices);
-    }
 
-
-    // align supervoxel centroid to current point cloud
-    const int sv_size = static_cast<int>(supervoxel_clusters.size());
-    std::vector<int> aligned_indices(sv_size);
-    int *a_indices = &aligned_indices[0];
-    std::vector<uint32_t> supervoxel_index(sv_size);
-    uint32_t *sv_index = &supervoxel_index[0];
-    bool flag_bit[sv_size];
-    int icount = 0;
-    for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr >::iterator it =
-            supervoxel_clusters.begin(); it != supervoxel_clusters.end();
-         it++) {
-       Eigen::Vector4f cur_centroid = supervoxel_clusters.at(
-          it->first)->centroid_.getVector4fMap();
-       double distance = DBL_MAX;
-       int ind = -1;
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(this->num_threads_) \
-    shared(distance, ind)
-#endif
-       for (int i = 0; i < cloud->size(); i++) {
-          Eigen::Vector4f cloud_pt = cloud->points[i].getVector4fMap();
-          double dist = pcl::distances::l2(cur_centroid, cloud_pt);
-          if (dist < distance) {
-#ifdef _OPENMP
-#pragma omp critical
-#endif
-             {
-                distance = dist;
-                ind = i;
-             }
-          }
-       }
-       a_indices[icount] = ind;
-       sv_index[icount] = it->first;
-       flag_bit[icount] = false;
-       icount++;
-    }
-    
-    pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointT, PointT>(*cloud, *in_cloud);
-    pcl::PointCloud<PointT>::Ptr non_object_cloud(new pcl::PointCloud<PointT>);
-
-    std::cout << "\033[33m # of SuperVoxels: \033[0m"  << sv_size << std::endl;
-
-    for (int i = 0; i < sv_size; i++) {
-       if (supervoxel_clusters.at(supervoxel_index[i])->voxels_->size() >
-           this->min_cluster_size_ && !flag_bit[i]) {
-          pcl::PointIndices::Ptr prob_object_indices(new pcl::PointIndices);
-          this->selectedVoxelObjectHypothesis(prob_object_indices,
-                                              supervoxel_clusters,
-                                              supervoxel_index[i],
-                                              cloud, info_msg);
-          non_object_cloud->clear();
-          pcl::copyPointCloud<PointT, PointT>(*in_cloud,
-                                              *non_object_cloud);
-          for (int j = 0; j < prob_object_indices->indices.size(); j++) {
-             int idx = prob_object_indices->indices[j];
-             PointT pt = in_cloud->points[idx];
-             pt.x = std::numeric_limits<float>::quiet_NaN();
-             pt.y = std::numeric_limits<float>::quiet_NaN();
-             pt.z = std::numeric_limits<float>::quiet_NaN();
-             non_object_cloud->points[idx] = pt;
-             for (int k = 0; k < sv_size; k++) {
-                if (idx == a_indices[k]) {
-                   flag_bit[k] = true;
-                }
-             }
-          }
-          cloud->clear();
-          cloud->resize(non_object_cloud->size());
-          for (int k = 0; k < non_object_cloud->size(); k++) {
-             PointT noc_pt = non_object_cloud->points[k];
-             if (!isnan(noc_pt.x) || !isnan(noc_pt.y) || !isnan(noc_pt.z)) {
-                // cloud->push_back(noc_pt);
-                cloud->points[k] = noc_pt;
-             }
-          }
-          this->publishAsROSMsg(cloud, this->pub_cloud_, cloud_msg->header);
-       } else {
-          ROS_INFO("\033[32m SKIPPPED %d \033[0m", supervoxel_index[i]);
-       }
-    }
-    
-    std::cout << "\n\033[34m 1) ALL VALID REGION LABELED \033[0m" << std::endl;
+    ROS_INFO("\n\033[34m ALL VALID REGION LABELED \033[0m");
 }
 
 void InteractiveSegmentation::selectedVoxelObjectHypothesis(
-    
-    pcl::PointIndices::Ptr prob_object_indices,
-    const std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > supervoxel_clusters,
-    const uint32_t closest_surfel_index, pcl::PointCloud<PointT>::Ptr cloud,
-    const sensor_msgs::CameraInfo::ConstPtr &info_msg) {
-
-  /*
-    const pcl::PointCloud<PointT>::Ptr in_cloud;
-    const pcl::PointCloud<pcl::Normal>::Ptr normals;
-    const pcl::PointIndices::Ptr indices;
-    const std_msgs::Header header;
-
+    const pcl::PointCloud<PointT>::Ptr in_cloud,
+    const pcl::PointCloud<pcl::Normal>::Ptr normals,
+    const pcl::PointIndices::Ptr indices,
+    const std_msgs::Header header) {
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*in_cloud, *cloud);
-    
     for (int i = 0; i < indices->indices.size(); i++) {
       int index = indices->indices[i];
-      Eigen::Vector4f attention_normal = normals->points[index].getNormalVector4fMap();
-      Eigen::Vector4f attention_centroid = cloud->points[index].getVector4fMap();
+      Eigen::Vector4f attention_normal = normals->points[
+         index].getNormalVector4fMap();
+      Eigen::Vector4f attention_centroid = cloud->points[
+         index].getVector4fMap();
 
       std::cout << "\033[34m 2) COMPUTING WEIGHTS \033[0m" << std::endl;
 
       cv::Mat weight_map;
-      this->surfelSamplePointWeightMap(cloud, normals, centroid_pt,
+      this->surfelSamplePointWeightMap(cloud, normals, cloud->points[index],
                                        attention_normal, weight_map);
 
       pcl::PointCloud<PointT>::Ptr weight_cloud(
@@ -286,128 +183,23 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
                 << std::endl;
 
       pcl::PointCloud<PointT>::Ptr prob_object_cloud(
-          new pcl::PointCloud<PointT>);
+         new pcl::PointCloud<PointT>);
+      pcl::PointIndices::Ptr prob_object_indices(new pcl::PointIndices);
       this->attentionSurfelRegionPointCloudMask(cloud, attention_centroid,
-                                                info_msg->header,
-                                                prob_object_cloud,
+                                                header, prob_object_cloud,
                                                 prob_object_indices);
+
+      publishAsROSMsg(cloud, pub_cloud_, header);
+      ros::Duration(5).sleep();
     }
-
-  */
-  
-  
-    pcl::PointCloud<PointT>::Ptr object_points(new pcl::PointCloud<PointT>);
-    *object_points = *cloud;
-    bool is_point_level = true;
-    if (is_point_level && !supervoxel_clusters.empty()) {
-       pcl::PointIndices sample_point_indices;
-       // index of the sampled surfel points
-       int sample_index = 0;
-       sample_point_indices.indices.push_back(sample_index);
-       if (is_init_) {
-          pcl::PointXYZRGBA centroid_pt = supervoxel_clusters.at(
-             closest_surfel_index)->centroid_;
-          if (isnan(centroid_pt.x) || isnan(centroid_pt.y) ||
-              isnan(centroid_pt.z)) {
-             return;
-          }
-          
-          // just use the origin cloud and norm
-          int k = 100;
-          pcl::PointCloud<pcl::Normal>::Ptr normals(
-             new pcl::PointCloud<pcl::Normal>);
-          this->estimatePointCloudNormals<int>(cloud, normals, k, true);
-
-          // -------------------------*EDIT*------------------
-          Eigen::Vector4f attention_normal = this->cloudMeanNormal(
-             supervoxel_clusters.at(closest_surfel_index)->normals_);
-          Eigen::Vector4f attention_centroid = centroid_pt.getVector4fMap();
-         
-          // select few points close to centroid as true object
-
-          std::cout << "\033[34m 2) COMPUTING WEIGHTS \033[0m" << std::endl;
-
-          cv::Mat weight_map;
-          this->surfelSamplePointWeightMap(cloud, normals, centroid_pt,
-                                           attention_normal,
-                                           weight_map);
-
-          /*
-          for (int i = 0; i < point_idx_search.size(); i++) {
-             int idx = point_idx_search[i];
-             pcl::PointXYZRGBA neigh_pt = centroid_cloud->points[idx];
-             PointT obj_pt;
-             obj_pt.x = neigh_pt.x;
-             obj_pt.y = neigh_pt.y;
-             obj_pt.z = neigh_pt.z;
-             obj_pt.r = neigh_pt.r;
-             obj_pt.g = neigh_pt.g;
-             obj_pt.b = neigh_pt.b;
-             object_points->push_back(obj_pt);
-
-          
-             // cv::Mat sample_weight_map;
-             // Eigen::Vector4f idx_attn_normal = surfel_normals->points[
-             //     idx].getNormalVector4fMap();
-             // this->surfelSamplePointWeightMap(cloud, normals, neigh_pt,
-             //                                  sample_weight_map);
-             // cv::Mat tmp;
-             // cv::add(weight_map, sample_weight_map, tmp);
-             // weight_map = tmp.clone();
-           
-          }
-          cv::normalize(weight_map, weight_map, 0, 1,
-                        cv::NORM_MINMAX, -1, cv::Mat());
-          */
-         
-          // normalize weights **REMOVE THIS CLOUD**
-          pcl::PointCloud<PointT>::Ptr weight_cloud(
-             new pcl::PointCloud<PointT>);
-          for (int x = 0; x < weight_map.rows; x++) {
-             cloud->points[x].r = weight_map.at<float>(x, 0) * 255.0f;
-             cloud->points[x].g = weight_map.at<float>(x, 0) * 255.0f;
-             cloud->points[x].b = weight_map.at<float>(x, 0) * 255.0f;
-          }
-          *weight_cloud = *cloud;
-         
-          std::cout << cloud->size() << "\t" << normals->size() << "\t"
-                    << weight_cloud->size() << "\n";
-          
-          std::cout << "\033[34m 3) OBJECT MASK EXTRACTION \033[0m"
-                    << std::endl;
-        
-          // weights for graph cut
-          /*
-          cv::Mat conv_weights = cv::Mat(image.size(), CV_32F);
-          for (int i = 0; i < image.rows; i++) {
-             for (int j = 0; j < image.cols; j++) {
-                int idx = j + (i * image.cols);
-                conv_weights.at<float>(i, j) =
-                   weight_cloud->points[idx].r/255.0f;
-                if (isnan(conv_weights.at<float>(i, j))) {
-                   conv_weights.at<float>(i, j) = 0.0f;
-                }
-             }
-          }
-          */
-        
-             // get indices of the probable object mask
-          pcl::PointCloud<PointT>::Ptr prob_object_cloud(
-             new pcl::PointCloud<PointT>);
-          this->attentionSurfelRegionPointCloudMask(cloud, attention_centroid,
-                                                    info_msg->header,
-                                                    prob_object_cloud,
-                                                    prob_object_indices);
-          
-       }
-    }
+    
+    // TODO(HERE): combine the weight maps
 }
 
 
 void InteractiveSegmentation::surfelSamplePointWeightMap(
      const pcl::PointCloud<PointT>::Ptr cloud,
-     const pcl::PointCloud<pcl::Normal>::Ptr normals,
-     const pcl::PointXYZRGBA &centroid_pt,
+     const pcl::PointCloud<pcl::Normal>::Ptr normals, const PointT &centroid_pt,
      const Eigen::Vector4f attention_normal, cv::Mat &weights
      /*pcl::PointCloud<PointT>::Ptr weights*/) {
      if (cloud->empty() || normals->empty()) {
