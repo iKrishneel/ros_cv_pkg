@@ -194,11 +194,11 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const sensor_msgs::CameraInfo::ConstPtr &, cv::Mat &, cv::Mat &);
     void highCurvatureEdgeBoundary(
        pcl::PointCloud<PointT>::Ptr, pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<PointT>::Ptr, const pcl::PointCloud<PointT>::Ptr,
-       const std_msgs::Header);
+       const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<pcl::Normal>::Ptr, const std_msgs::Header);
     bool estimateAnchorPoints(
-       pcl::PointCloud<PointT>::Ptr,
        pcl::PointCloud<PointT>::Ptr, pcl::PointCloud<PointT>::Ptr,
+       pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr,
        const pcl::PointCloud<PointT>::Ptr, const std_msgs::Header);
     std::vector<Eigen::Vector4f> doEuclideanClustering(
        std::vector<pcl::PointIndices> &cluster_indices,

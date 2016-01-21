@@ -115,18 +115,23 @@ void InteractiveSegmentation::callback(
     ROS_INFO("\033[32m DEBUG: PROCESSING CALLBACK \033[0m");
     
     // ----------------------------------------
+    int k = 50;  // thresholds
+    pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
+    this->estimatePointCloudNormals<int>(cloud, normals, k, true);
+    
     pcl::PointCloud<PointT>::Ptr concave_edge_points(
        new pcl::PointCloud<PointT>);
     pcl::PointCloud<PointT>::Ptr convex_edge_points(
        new pcl::PointCloud<PointT>);
     this->highCurvatureEdgeBoundary(concave_edge_points, convex_edge_points,
-                                       cloud, original_cloud,
-                                       cloud_msg->header);
+                                    cloud, normals, cloud_msg->header);
+    
     pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points);
+    pcl::PointIndices::Ptr anchor_indices(new pcl::PointIndices);
     this->estimateAnchorPoints(anchor_points, convex_edge_points,
-                               concave_edge_points, original_cloud,
-                               cloud_msg->header);
+                               concave_edge_points, anchor_indices,
+                               original_cloud, cloud_msg->header);
 
     this->publishAsROSMsg(anchor_points, this->pub_prob_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, this->pub_concave_, cloud_msg->header);
@@ -136,7 +141,7 @@ void InteractiveSegmentation::callback(
     // ----------------------------------------
     
     bool is_surfel_level = true;
-    pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
+    // pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
     std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > supervoxel_clusters;
     if (is_surfel_level) {
        this->surfelLevelObjectHypothesis(
@@ -197,7 +202,6 @@ void InteractiveSegmentation::callback(
     pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*cloud, *in_cloud);
     pcl::PointCloud<PointT>::Ptr non_object_cloud(new pcl::PointCloud<PointT>);
-
 
     std::cout << "\033[33m # of SuperVoxels: \033[0m"  << sv_size << std::endl;
 
@@ -1082,7 +1086,7 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
     pcl::PointCloud<PointT>::Ptr concave_edge_points,
     pcl::PointCloud<PointT>::Ptr convex_edge_points,
     const pcl::PointCloud<PointT>::Ptr cloud,
-    const pcl::PointCloud<PointT>::Ptr original_cloud,
+    const pcl::PointCloud<pcl::Normal>::Ptr normals,
     const std_msgs::Header header) {
     if (cloud->empty()) {
        ROS_ERROR("ERROR: INPUT CLOUD EMPTY FOR HIGH CURV. EST.");
@@ -1097,10 +1101,10 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
     pcl::PointCloud<PointT>::Ptr curv_cloud(new pcl::PointCloud<PointT>);
     *curv_cloud = *cloud;
     
-    int k = 50;  // thresholds
-    pcl::PointCloud<pcl::Normal>::Ptr normals(
-       new pcl::PointCloud<pcl::Normal>);
-    this->estimatePointCloudNormals<int>(curv_cloud, normals, k, true);
+    // int k = 50;  // thresholds
+    // pcl::PointCloud<pcl::Normal>::Ptr normals(
+    //    new pcl::PointCloud<pcl::Normal>);
+    // this->estimatePointCloudNormals<int>(curv_cloud, normals, k, true);
     
     pcl::KdTreeFLANN<PointT> kdtree;
     kdtree.setInputCloud(curv_cloud);
@@ -1181,34 +1185,6 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
         this->edgeBoundaryOutlierFiltering(convex_edge_points, 0.01f, 100);
       }
     }
-
-    // get interest point ----------
-    /*
-    pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points);
-    this->estimateAnchorPoints(anchor_points, convex_edge_points,
-                               concave_edge_points, original_cloud, header);
-                               sensor_msgs::PointCloud2 ros_ap;
-    pcl::toROSMsg(*anchor_points, ros_ap);
-    ros_ap.header = header;
-    this->pub_prob_.publish(ros_ap);
-    */
-    // ------------------------------
-
-
-    bool is_pub = false;
-    if (is_pub) {
-      sensor_msgs::PointCloud2 ros_cccloud;
-      pcl::toROSMsg(*concave_edge_points, ros_cccloud);
-      ros_cccloud.header = header;
-      this->pub_concave_.publish(ros_cccloud);
-
-      sensor_msgs::PointCloud2 ros_cvcloud;
-      pcl::toROSMsg(*convex_edge_points, ros_cvcloud);
-      ros_cvcloud.header = header;
-      this->pub_convex_.publish(ros_cvcloud);
-    }
-
     ROS_INFO("\033[31m COMPLETED \033[0m");
 }
 
@@ -1216,6 +1192,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     pcl::PointCloud<PointT>::Ptr anchor_points,
     pcl::PointCloud<PointT>::Ptr convex_points,
     pcl::PointCloud<PointT>::Ptr concave_points,
+    pcl::PointIndices::Ptr anchor_indices,
     const pcl::PointCloud<PointT>::Ptr original_cloud,
     const std_msgs::Header header) {
     if (anchor_points->empty()) {
