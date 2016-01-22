@@ -127,6 +127,7 @@ void InteractiveSegmentation::callback(
                                     cloud, normals, cloud_msg->header);
     
     pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
+    /*
     pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points);
     pcl::PointIndices::Ptr anchor_indices(new pcl::PointIndices);
     bool is_found_points = this->estimateAnchorPoints(
@@ -141,11 +142,12 @@ void InteractiveSegmentation::callback(
     } else {
        return;
     }
-
+    */
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
     this->publishAsROSMsg(convex_edge_points, pub_convex_, cloud_msg->header);
 
+    /*
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
        new pcl::PointCloud<pcl::PointXYZRGBNormal>);
     for (int i = 0; i < anchor_indices->indices.size(); i++) {
@@ -167,6 +169,7 @@ void InteractiveSegmentation::callback(
     pcl::toROSMsg(*centroid_normal, ros_normal);
     ros_normal.header = cloud_msg->header;
     pub_normal_.publish(ros_normal);
+    */
     
     ROS_INFO("\n\033[34m ALL VALID REGION LABELED \033[0m");
 }
@@ -279,9 +282,9 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
      // cv::Mat orientation_weights;
      cv::Mat orientation_weights = cv::Mat::zeros(normals->size(), 1, CV_32F);
 
-// #ifdef _OPENMP
-// #pragma omp parallel for num_threads(this->num_threads_)
-// #endif
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(this->num_threads_)
+#endif
      for (int i = 0; i < normals->size(); i++) {
        Eigen::Vector4f current_pt = cloud->points[i].getVector4fMap();
        Eigen::Vector4f d = (attention_centroid - current_pt) /
@@ -300,13 +303,9 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
        }
        // connectivity_weights.push_back(connection);
        connectivity_weights.at<float>(i, 0) = connection;
-       /*     
+       
        Eigen::Vector3f view_point_vec = (cloud->points[i].getVector3fMap() -
                                          centroid_pt.getVector3fMap());
-       */
-       
-       Eigen::Vector3f view_point_vec = (/*cloud->points[i].getVector3fMap() - */
-          centroid_pt.getVector3fMap());
        Eigen::Vector3f surface_normal_vec = normals->points[
           i].getNormalVector3fMap();
        /*
@@ -320,9 +319,9 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
            surface_normal_vec.cross(view_point_vec).norm());
        float scalar_prod = static_cast<float>(
            surface_normal_vec.dot(view_point_vec));
-       float angle = atan2(cross_norm, scalar_prod) + CV_PI;
+       float angle = atan2(cross_norm, scalar_prod);
        
-       float view_pt_weight = (2.0f * CV_PI - angle)/(2.0 * CV_PI);
+       float view_pt_weight = (1.0f * CV_PI - angle)/(1.0 * CV_PI);
        // view_pt_weight = 1.0f / (1.0f + (view_pt_weight * view_pt_weight));
        // view_pt_weight = std::exp(-1.0f * view_pt_weight);
 
