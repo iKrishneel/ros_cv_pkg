@@ -127,7 +127,6 @@ void InteractiveSegmentation::callback(
                                     cloud, normals, cloud_msg->header);
     
     pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
-    /*
     pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points);
     pcl::PointIndices::Ptr anchor_indices(new pcl::PointIndices);
     bool is_found_points = this->estimateAnchorPoints(
@@ -142,12 +141,11 @@ void InteractiveSegmentation::callback(
     } else {
        return;
     }
-    */
+
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
     this->publishAsROSMsg(convex_edge_points, pub_convex_, cloud_msg->header);
-
-    /*
+    
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
        new pcl::PointCloud<pcl::PointXYZRGBNormal>);
     for (int i = 0; i < anchor_indices->indices.size(); i++) {
@@ -169,7 +167,7 @@ void InteractiveSegmentation::callback(
     pcl::toROSMsg(*centroid_normal, ros_normal);
     ros_normal.header = cloud_msg->header;
     pub_normal_.publish(ros_normal);
-    */
+    
     
     ROS_INFO("\n\033[34m ALL VALID REGION LABELED \033[0m");
 }
@@ -356,7 +354,6 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
      cv::GaussianBlur(orientation_weights, orientation_weights,
                       cv::Size(filter_lenght, filter_lenght), 0.0,
      0.0);
-     */
 
      // morphological
      int erosion_size = 5;
@@ -368,7 +365,7 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
      cv::dilate(orientation_weights, orientation_weights, element);
      cv::erode(connectivity_weights, connectivity_weights, element);
      cv::erode(orientation_weights, orientation_weights, element);
-
+     */
         
      // convolution of distribution
      // pcl::copyPointCloud<PointT, PointT>(*cloud, *weights);
@@ -1117,13 +1114,14 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        // TODO:
     }
     
-    float height = -FLT_MAX;
+    float height = FLT_MAX;
     int center_index = -1;
     Eigen::Vector4f center;
     for (int i = 0; i < concave_edge_centroids.size(); i++) {
-      if (concave_edge_centroids[i](1) > height) {
+      if (concave_edge_centroids[i](1) < height) {
         center_index = i;
         center = concave_edge_centroids[i];
+        height = concave_edge_centroids[i](1);
       }
     }
     center(3) = 1.0f;
@@ -1173,13 +1171,6 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     kdtree.setInputCloud(anchor_points);
     std::vector<int> point_idx_search;
     std::vector<float> point_squared_distance;
-    // PointT cc_center_pt;
-    // cc_center_pt.x = cc_nearest_cv_pt(0);
-    // cc_center_pt.y = cc_nearest_cv_pt(1);
-    // cc_center_pt.z = cc_nearest_cv_pt(2);
-    // cc_center_pt.r = 255;
-    // cc_center_pt.g = 0;
-    // cc_center_pt.b = 0;
     int search_out = kdtree.radiusSearch(cc_center_pt,
                                          ap_search_radius, point_idx_search,
                                          point_squared_distance);
