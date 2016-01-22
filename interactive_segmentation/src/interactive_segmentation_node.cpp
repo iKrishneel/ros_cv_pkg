@@ -132,7 +132,7 @@ void InteractiveSegmentation::callback(
     bool is_found_points = this->estimateAnchorPoints(
        anchor_points, convex_edge_points, concave_edge_points,
        anchor_indices, original_cloud, cloud_msg->header);
-
+    
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
     this->publishAsROSMsg(convex_edge_points, pub_convex_, cloud_msg->header);
@@ -193,13 +193,15 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
        std::cout << "\033[34m OBJECT MASK EXTRACTION \033[0m"
                  << std::endl;
 
+       /*
        pcl::PointCloud<PointT>::Ptr prob_object_cloud(
           new pcl::PointCloud<PointT>);
        pcl::PointIndices::Ptr prob_object_indices(new pcl::PointIndices);
        this->attentionSurfelRegionPointCloudMask(cloud, attention_centroid,
                                                  header, prob_object_cloud,
                                                  prob_object_indices);
-
+       */
+                                                 
        // anchor_points_weights[i] = pcl::PointCloud<PointT>::Ptr(
        //    new pcl::PointCloud<PointT>);
        // pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points_weights[i]);
@@ -312,7 +314,7 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
        // orientation_weights.push_back(view_pt_weight);
        orientation_weights.at<float>(i, 0) = view_pt_weight;
      }
-     
+     /*
      cv::normalize(connectivity_weights, connectivity_weights, 0, 1,
                    cv::NORM_MINMAX, -1, cv::Mat());
      cv::normalize(orientation_weights, orientation_weights, 0, 1,
@@ -1106,6 +1108,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     Eigen::Vector4f cc_nearest_cv_pt;
     int cc_nearest_cluster_idx = -1;
     int cc_nearest_pt_idx = -1;
+    PointT cc_center_pt;
     pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
     eifilter->setInputCloud(original_cloud);
     for (int i = 0; i < cluster_convx.size(); i++) {
@@ -1123,6 +1126,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
                 cc_nearest_cluster_idx = i;
                 cc_nearest_pt_idx = j;
                 cc_nearest_cv_pt = cv_pt;
+                cc_center_pt = tmp_cloud->points[j];
              }
           }
        }
@@ -1140,13 +1144,13 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     kdtree.setInputCloud(anchor_points);
     std::vector<int> point_idx_search;
     std::vector<float> point_squared_distance;
-    PointT cc_center_pt;
-    cc_center_pt.x = cc_nearest_cv_pt(0);
-    cc_center_pt.y = cc_nearest_cv_pt(1);
-    cc_center_pt.z = cc_nearest_cv_pt(2);
-    cc_center_pt.r = 255;
-    cc_center_pt.g = 0;
-    cc_center_pt.b = 0;
+    // PointT cc_center_pt;
+    // cc_center_pt.x = cc_nearest_cv_pt(0);
+    // cc_center_pt.y = cc_nearest_cv_pt(1);
+    // cc_center_pt.z = cc_nearest_cv_pt(2);
+    // cc_center_pt.r = 255;
+    // cc_center_pt.g = 0;
+    // cc_center_pt.b = 0;
     int search_out = kdtree.radiusSearch(cc_center_pt,
                                          ap_search_radius, point_idx_search,
                                          point_squared_distance);
