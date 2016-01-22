@@ -115,7 +115,7 @@ void InteractiveSegmentation::callback(
     ROS_INFO("\033[32m DEBUG: PROCESSING CALLBACK \033[0m");
     
     // ----------------------------------------
-    int k = 100;  // thresholds
+    int k = 50;  // thresholds
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
     this->estimatePointCloudNormals<int>(cloud, normals, k, true);
     
@@ -132,21 +132,42 @@ void InteractiveSegmentation::callback(
     bool is_found_points = this->estimateAnchorPoints(
        anchor_points, convex_edge_points, concave_edge_points,
        anchor_indices, original_cloud, cloud_msg->header);
-    
-    this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
-    this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
-    this->publishAsROSMsg(convex_edge_points, pub_convex_, cloud_msg->header);
-    
-    // ---------------------PROCESSING-------------------
+
     ROS_INFO("\033[32m LABELING ON THE POINT \033[0m");
 
     if (is_found_points) {
        this->selectedVoxelObjectHypothesis(
           cloud, normals, anchor_indices, cloud_msg->header);
+    } else {
+       return;
     }
-    
-    // ----------------------END-PROCESSING------------------
 
+    this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
+    this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
+    this->publishAsROSMsg(convex_edge_points, pub_convex_, cloud_msg->header);
+
+    pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
+       new pcl::PointCloud<pcl::PointXYZRGBNormal>);
+    for (int i = 0; i < anchor_indices->indices.size(); i++) {
+       int idx = anchor_indices->indices[i];
+       pcl::Normal norm = normals->points[idx];
+       pcl::PointXYZRGBNormal pt;
+       pt.x = cloud->points[idx].x;
+       pt.y = cloud->points[idx].y;
+       pt.z = cloud->points[idx].z;
+       pt.r = 255;
+       pt.g = 0;
+       pt.b = 255;
+       pt.normal_x = norm.normal_x;
+       pt.normal_y = norm.normal_y;
+       pt.normal_z = norm.normal_z;
+       centroid_normal->push_back(pt);
+    }
+    sensor_msgs::PointCloud2 ros_normal;
+    pcl::toROSMsg(*centroid_normal, ros_normal);
+    ros_normal.header = cloud_msg->header;
+    pub_normal_.publish(ros_normal);
+    
     ROS_INFO("\n\033[34m ALL VALID REGION LABELED \033[0m");
 }
 
@@ -204,7 +225,8 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
                                                  
        // anchor_points_weights[i] = pcl::PointCloud<PointT>::Ptr(
        //    new pcl::PointCloud<PointT>);
-       // pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points_weights[i]);
+       // pcl::copyPointCloud<PointT, PointT>(*cloud,
+       //    *anchor_points_weights[i]);
 
        anchor_points_weights[i] = weight_map;
        anchor_points_max[i] = max_weight;
@@ -257,9 +279,9 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
      // cv::Mat orientation_weights;
      cv::Mat orientation_weights = cv::Mat::zeros(normals->size(), 1, CV_32F);
 
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(this->num_threads_)
-#endif
+// #ifdef _OPENMP
+// #pragma omp parallel for num_threads(this->num_threads_)
+// #endif
      for (int i = 0; i < normals->size(); i++) {
        Eigen::Vector4f current_pt = cloud->points[i].getVector4fMap();
        Eigen::Vector4f d = (attention_centroid - current_pt) /
@@ -283,8 +305,8 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
                                          centroid_pt.getVector3fMap());
        */
        
-       Eigen::Vector3f view_point_vec = (cloud->points[i].getVector3fMap() -
-                                         centroid_pt.getVector3fMap());
+       Eigen::Vector3f view_point_vec = (/*cloud->points[i].getVector3fMap() - */
+          centroid_pt.getVector3fMap());
        Eigen::Vector3f surface_normal_vec = normals->points[
           i].getNormalVector3fMap();
        /*
@@ -298,11 +320,18 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
            surface_normal_vec.cross(view_point_vec).norm());
        float scalar_prod = static_cast<float>(
            surface_normal_vec.dot(view_point_vec));
-       float angle = atan2(cross_norm, scalar_prod);
+       float angle = atan2(cross_norm, scalar_prod) + CV_PI;
        
-       float view_pt_weight = (CV_PI - angle)/(1.0 * CV_PI);
+       float view_pt_weight = (2.0f * CV_PI - angle)/(2.0 * CV_PI);
        // view_pt_weight = 1.0f / (1.0f + (view_pt_weight * view_pt_weight));
        // view_pt_weight = std::exp(-1.0f * view_pt_weight);
+
+
+       // angle = acos(attention_normal.dot(current_normal) /
+       //              (attention_normal.norm() * current_normal.norm()));
+       // view_pt_weight = (angle)/(CV_PI);
+       // view_pt_weight = exp(-1.5f * view_pt_weight);
+       
        if (isnan(angle)) {
           view_pt_weight = 0.0f;
        }
@@ -319,7 +348,7 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
                    cv::NORM_MINMAX, -1, cv::Mat());
      cv::normalize(orientation_weights, orientation_weights, 0, 1,
                    cv::NORM_MINMAX, -1, cv::Mat());
-                   
+     */         
      // smoothing HERE
      /*
      const int filter_lenght = 5;
@@ -329,7 +358,7 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
                       cv::Size(filter_lenght, filter_lenght), 0.0,
      0.0);
      */
-     /*
+
      // morphological
      int erosion_size = 5;
      cv::Mat element = cv::getStructuringElement(
@@ -340,7 +369,7 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
      cv::dilate(orientation_weights, orientation_weights, element);
      cv::erode(connectivity_weights, connectivity_weights, element);
      cv::erode(orientation_weights, orientation_weights, element);
-     */
+
         
      // convolution of distribution
      // pcl::copyPointCloud<PointT, PointT>(*cloud, *weights);
@@ -352,7 +381,8 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
        float pix_val = connectivity_weights.at<float>(i, 0);
        connectivity_weights.at<float>(i, 0) = pix_val *
            this->whiteNoiseKernel(pix_val);
-       // pix_val *= this->whiteNoiseKernel(pix_val);
+       
+       
        pix_val *= orientation_weights.at<float>(i, 0);
 
        // pix_val = orientation_weights.at<float>(i, 0);
