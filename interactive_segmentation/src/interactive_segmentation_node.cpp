@@ -115,7 +115,7 @@ void InteractiveSegmentation::callback(
     ROS_INFO("\033[32m DEBUG: PROCESSING CALLBACK \033[0m");
     
     // ----------------------------------------
-    int k = 50;  // thresholds
+    int k = 100;  // thresholds
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
     this->estimatePointCloudNormals<int>(cloud, normals, k, true);
     
@@ -221,18 +221,18 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
        float psr = (anchor_points_max[i] - mean.val[0])/stddev.val[0];
        cv::Mat weight_map = anchor_points_weights[i];
        for (int j = 0; j < weight_map.rows; j++) {
-          conv_weight_map.at<float>(j, 0) += (weight_map.at<float>(j, 0) * 1.0);
+          conv_weight_map.at<float>(j, 0) += (weight_map.at<float>(j, 0) * psr);
        }
        anchor_points_weights[i] = weight_map;
        // conv_weight_map *= weight_map;
     }
-    // cv::normalize(conv_weight_map, conv_weight_map, 0, 1,
-    //               cv::NORM_MINMAX, -1, cv::Mat());
+    cv::normalize(conv_weight_map, conv_weight_map, 0, 1,
+                  cv::NORM_MINMAX, -1, cv::Mat());
     
     pcl::PointCloud<PointT>::Ptr weight_cloud(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*in_cloud, *weight_cloud);
     for (int j = 0; j < conv_weight_map.rows; j++) {
-       float w = (conv_weight_map.at<float>(j, 0) / 3.0f) *  255.0f;
+       float w = (conv_weight_map.at<float>(j, 0) / 1.0f) *  255.0f;
        weight_cloud->points[j].r = w;
        weight_cloud->points[j].g = w;
        weight_cloud->points[j].b = w;
