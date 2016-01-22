@@ -156,53 +156,89 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
     const pcl::PointIndices::Ptr indices,
     const std_msgs::Header header) {
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointT, PointT>(*in_cloud, *cloud);
     const int mem_size = indices->indices.size();
-    std::vector<pcl::PointCloud<PointT>::Ptr> anchor_points_weights(mem_size);
+    // std::vector<pcl::PointCloud<PointT>::Ptr> anchor_points_weights(mem_size);
 
-    
+    std::vector<cv::Mat> anchor_points_weights(mem_size);
+    std::vector<float> anchor_points_max(mem_size);
     
     for (int i = 0; i < indices->indices.size(); i++) {
-      int index = indices->indices[i];
-      Eigen::Vector4f attention_normal = normals->points[
-         index].getNormalVector4fMap();
-      Eigen::Vector4f attention_centroid = cloud->points[
-         index].getVector4fMap();
+       cloud->clear();
+       pcl::copyPointCloud<PointT, PointT>(*in_cloud, *cloud);
+       int index = indices->indices[i];
+       Eigen::Vector4f attention_normal = normals->points[
+          index].getNormalVector4fMap();
+       Eigen::Vector4f attention_centroid = cloud->points[
+          index].getVector4fMap();
 
-      std::cout << "\033[34m COMPUTING WEIGHTS \033[0m" << std::endl;
+       std::cout << "\033[34m COMPUTING WEIGHTS \033[0m" << std::endl;
 
-      cv::Mat weight_map;
-      this->surfelSamplePointWeightMap(cloud, normals, cloud->points[index],
-                                       attention_normal, weight_map);
+       cv::Mat weight_map;
+       this->surfelSamplePointWeightMap(cloud, normals, cloud->points[index],
+                                        attention_normal, weight_map);
 
-      pcl::PointCloud<PointT>::Ptr weight_cloud(
+       pcl::PointCloud<PointT>::Ptr weight_cloud(
           new pcl::PointCloud<PointT>);
-      for (int x = 0; x < weight_map.rows; x++) {
-        cloud->points[x].r = weight_map.at<float>(x, 0) * 255.0f;
-        cloud->points[x].g = weight_map.at<float>(x, 0) * 255.0f;
-        cloud->points[x].b = weight_map.at<float>(x, 0) * 255.0f;
-      }
-      *weight_cloud = *cloud;
-      
-      std::cout << "\033[34m OBJECT MASK EXTRACTION \033[0m"
-                << std::endl;
+       float max_weight = 0.0f;
+       for (int x = 0; x < weight_map.rows; x++) {
+          if (weight_map.at<float>(x, 0) > max_weight) {
+             max_weight = weight_map.at<float>(x, 0);
+          }
+          cloud->points[x].r = weight_map.at<float>(x, 0) * 255.0f;
+          cloud->points[x].g = weight_map.at<float>(x, 0) * 255.0f;
+          cloud->points[x].b = weight_map.at<float>(x, 0) * 255.0f;
+       }
+       *weight_cloud = *cloud;
+       
+       std::cout << "\033[34m OBJECT MASK EXTRACTION \033[0m"
+                 << std::endl;
 
-      pcl::PointCloud<PointT>::Ptr prob_object_cloud(
-         new pcl::PointCloud<PointT>);
-      pcl::PointIndices::Ptr prob_object_indices(new pcl::PointIndices);
-      this->attentionSurfelRegionPointCloudMask(cloud, attention_centroid,
-                                                header, prob_object_cloud,
-                                                prob_object_indices);
+       pcl::PointCloud<PointT>::Ptr prob_object_cloud(
+          new pcl::PointCloud<PointT>);
+       pcl::PointIndices::Ptr prob_object_indices(new pcl::PointIndices);
+       this->attentionSurfelRegionPointCloudMask(cloud, attention_centroid,
+                                                 header, prob_object_cloud,
+                                                 prob_object_indices);
 
-      anchor_points_weights[i] = pcl::PointCloud<PointT>::Ptr(
-         new pcl::PointCloud<PointT>);
-      pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points_weights[i]);
-      
-      publishAsROSMsg(cloud, pub_cloud_, header);
-      ros::Duration(5).sleep();
+       // anchor_points_weights[i] = pcl::PointCloud<PointT>::Ptr(
+       //    new pcl::PointCloud<PointT>);
+       // pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points_weights[i]);
+
+       anchor_points_weights[i] = weight_map;
+       anchor_points_max[i] = max_weight;
+       
+       publishAsROSMsg(cloud, pub_cloud_, header);
+       // ros::Duration(5).sleep();
     }
     
     // TODO(HERE): combine the weight maps
+    cv::Mat conv_weight_map = cv::Mat::zeros(
+       static_cast<int>(in_cloud->size()), 1, CV_32F);
+    for (int i = 0; i < anchor_points_weights.size(); i++) {
+       cv::Scalar mean;
+       cv::Scalar stddev;
+       cv::meanStdDev(anchor_points_weights[i], mean, stddev);
+       float psr = (anchor_points_max[i] - mean.val[0])/stddev.val[0];
+       cv::Mat weight_map = anchor_points_weights[i];
+       for (int j = 0; j < weight_map.rows; j++) {
+          conv_weight_map.at<float>(j, 0) += (weight_map.at<float>(j, 0) * 1.0);
+       }
+       anchor_points_weights[i] = weight_map;
+       // conv_weight_map *= weight_map;
+    }
+    // cv::normalize(conv_weight_map, conv_weight_map, 0, 1,
+    //               cv::NORM_MINMAX, -1, cv::Mat());
+    
+    pcl::PointCloud<PointT>::Ptr weight_cloud(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*in_cloud, *weight_cloud);
+    for (int j = 0; j < conv_weight_map.rows; j++) {
+       float w = (conv_weight_map.at<float>(j, 0) / 3.0f) *  255.0f;
+       weight_cloud->points[j].r = w;
+       weight_cloud->points[j].g = w;
+       weight_cloud->points[j].b = w;
+    }
+    publishAsROSMsg(weight_cloud, pub_cloud_, header);
+    // ros::Duration(10).sleep();
 }
 
 
