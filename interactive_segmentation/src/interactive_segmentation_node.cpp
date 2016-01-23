@@ -179,8 +179,6 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
     const std_msgs::Header header) {
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     const int mem_size = indices->indices.size();
-    // std::vector<pcl::PointCloud<PointT>::Ptr> anchor_points_weights(mem_size);
-
     std::vector<cv::Mat> anchor_points_weights(mem_size);
     std::vector<float> anchor_points_max(mem_size);
     
@@ -286,7 +284,7 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
      for (int i = 0; i < normals->size(); i++) {
        Eigen::Vector4f current_pt = cloud->points[i].getVector4fMap();
        Eigen::Vector4f d = (attention_centroid - current_pt) /
-           (attention_centroid - current_pt).norm();
+          (attention_centroid - current_pt).norm();
        Eigen::Vector4f current_normal =
            normals->points[i].getNormalVector4fMap();
        // float connection = (attention_normal - current_normal).dot(d);
@@ -295,21 +293,21 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
        if (connection < 0.0f || isnan(connection)) {
           connection = 0.0f;
        } else {
-         // connection = acos(current_normal.dot(attention_normal))/
-         //     (1.0f * M_PI);
-          connection = std::pow((current_normal.dot(attention_normal)), 2);
+          connection = acos(current_normal.dot(attention_normal))/
+              (1.0f * M_PI);
+          // connection = std::pow((current_normal.dot(attention_normal)), 2);
        }
        // connectivity_weights.push_back(connection);
        connectivity_weights.at<float>(i, 0) = connection;
        
-       Eigen::Vector3f view_point_vec = (cloud->points[i].getVector3fMap() -
-                                         centroid_pt.getVector3fMap());
-       Eigen::Vector3f surface_normal_vec = normals->points[
-          i].getNormalVector3fMap();
-       /*
+       Eigen::Vector3f view_point_vec = (cloud->points[i].getVector3fMap()
+                                         - centroid_pt.getVector3fMap());
+       // Eigen::Vector3f surface_normal_vec = normals->points[
+       //    i].getNormalVector3fMap();
+
        Eigen::Vector3f surface_normal_vec = normals->points[
           i].getNormalVector3fMap() - attention_normal.head<3>();
-       */
+
 
 
        // TODO(HERE):  add Gaussian centered at selected
