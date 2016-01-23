@@ -133,6 +133,7 @@ void InteractiveSegmentation::callback(
        anchor_points, convex_edge_points, concave_edge_points,
        anchor_indices, original_cloud, cloud_msg->header);
 
+
     ROS_INFO("\033[32m LABELING ON THE POINT \033[0m");
     
     if (is_found_points) {
@@ -141,11 +142,11 @@ void InteractiveSegmentation::callback(
     } else {
        return;
     }
-    
+
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
     this->publishAsROSMsg(convex_edge_points, pub_convex_, cloud_msg->header);
-
+    
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
        new pcl::PointCloud<pcl::PointXYZRGBNormal>);
     for (int i = 0; i < anchor_indices->indices.size(); i++) {
@@ -1029,7 +1030,7 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
              // concave_edge_points->points[icount] = centroid_pt;
              concave_edge_points->push_back(centroid_pt);
           }
-          if (variance > 0.10f && variance < 1.0f && concave_sum > 0) {
+          if (variance > 0.20f /*&& variance < 1.0f*/ && concave_sum > 0) {
              centroid_pt.g = 255 * variance;
              centroid_pt.b = 0;
              centroid_pt.r = 0;
@@ -1055,8 +1056,8 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
         this->edgeBoundaryOutlierFiltering(convex_edge_points, 0.01f, 100);
       }
     }
-    // this->publishAsROSMsg(concave_edge_points, pub_concave_, header);
-    // this->publishAsROSMsg(convex_edge_points, pub_convex_, header);
+    this->publishAsROSMsg(concave_edge_points, pub_concave_, header);
+    this->publishAsROSMsg(convex_edge_points, pub_convex_, header);
     ROS_INFO("\033[31m COMPLETED \033[0m");
 }
 
@@ -1124,11 +1125,6 @@ bool InteractiveSegmentation::estimateAnchorPoints(
         height = concave_edge_centroids[i](1);
       }
     }
-    center(3) = 1.0f;
-    
-    // for selected convex mid-point
-    // TODO(.): search thru each clusters in convex_edge so it can be
-    // easy to extract the cluster
     
     double object_lenght_thresh = 0.50;
     double nearest_cv_dist = DBL_MAX;
@@ -1136,6 +1132,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     int cc_nearest_cluster_idx = -1;
     int cc_nearest_pt_idx = -1;
     PointT cc_center_pt;
+    double intra_convx_dist = 0.0;
     pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
     eifilter->setInputCloud(original_cloud);
     for (int i = 0; i < cluster_convx.size(); i++) {
@@ -1156,6 +1153,12 @@ bool InteractiveSegmentation::estimateAnchorPoints(
                 cc_center_pt = tmp_cloud->points[j];
              }
           }
+          // convx intra distance
+          double d = pcl::distances::l2(convex_edge_centroids[i],
+                                        tmp_cloud->points[j].getVector4fMap());
+          if (d > intra_convx_dist) {
+             intra_convx_dist = d;
+          }
        }
     }
     
@@ -1164,7 +1167,9 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        return false;
     }
     
-    float ap_search_radius = static_cast<float>(nearest_cv_dist)/2.0f;
+    // float ap_search_radius = static_cast<float>(nearest_cv_dist)/2.0f;
+    float ap_search_radius = static_cast<float>(
+       std::min(nearest_cv_dist, intra_convx_dist))/2.0f;
     
     // find 2 points on object cloud points ap_search_radius away
     pcl::KdTreeFLANN<PointT> kdtree;
@@ -1316,7 +1321,7 @@ InteractiveSegmentation::thinBoundaryAndComputeCentroid(
     std::vector<pcl::PointIndices> tmp_ci;
     edge_cloud->clear();
     cluster_centroids.clear();
-    const int min_size_thresh = 30;
+    const int min_size_thresh = 20;
     for (int i = 0; i < cluster_indices.size(); i++) {
        pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
        *region_indices = cluster_indices[i];
@@ -1331,6 +1336,7 @@ InteractiveSegmentation::thinBoundaryAndComputeCentroid(
           *edge_cloud = *edge_cloud + *tmp_cloud;
           Eigen::Vector4f center;
           pcl::compute3DCentroid<PointT, float>(*tmp_cloud, center);
+          center(3) = 1.0f;
           cluster_centroids.push_back(center);
        }
     }
