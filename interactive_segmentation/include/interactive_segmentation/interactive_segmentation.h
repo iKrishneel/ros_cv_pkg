@@ -17,13 +17,8 @@
 #include <cv_bridge/cv_bridge.h>
 
 #include <opencv2/core/core.hpp>
-#include <opencv2/features2d/features2d.hpp>
-#include <opencv2/nonfree/features2d.hpp>
 #include <opencv2/highgui/highgui.hpp>
-#include <opencv2/nonfree/nonfree.hpp>
 #include <opencv2/opencv.hpp>
-#include <opencv2/video/video.hpp>
-#include <opencv2/video/background_segm.hpp>
 
 #include <boost/thread/mutex.hpp>
 #include <boost/graph/grid_graph.hpp>
@@ -36,11 +31,6 @@
 #include <pcl/io/pcd_io.h>
 #include <pcl/correspondence.h>
 #include <pcl/features/normal_3d_omp.h>
-#include <pcl/features/shot_omp.h>
-#include <pcl/features/board.h>
-#include <pcl/keypoints/uniform_sampling.h>
-#include <pcl/recognition/cg/hough_3d.h>
-#include <pcl/recognition/cg/geometric_consistency.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/kdtree/impl/kdtree_flann.hpp>
 #include <pcl/common/transforms.h>
@@ -51,17 +41,13 @@
 #include <pcl/filters/filter.h>
 #include <pcl/common/centroid.h>
 #include <pcl/features/fpfh_omp.h>
-#include <pcl/surface/mls.h>
 #include <pcl/point_types_conversion.h>
 #include <pcl/registration/distances.h>
 #include <pcl/features/don.h>
 #include <pcl/segmentation/segment_differences.h>
-#include <pcl/segmentation/min_cut_segmentation.h>
 #include <pcl/filters/radius_outlier_removal.h>
-#include <pcl/filters/statistical_outlier_removal.h>
-#include <pcl/sample_consensus/method_types.h>
-#include <pcl/sample_consensus/model_types.h>
 #include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/keypoints/harris_6d.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>

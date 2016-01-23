@@ -113,8 +113,14 @@ void InteractiveSegmentation::callback(
     pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, nan_indices);
         
     ROS_INFO("\033[32m DEBUG: PROCESSING CALLBACK \033[0m");
+
+
+    //------------
+
+    return;
+    //------------
+
     
-    // ----------------------------------------
     int k = 50;  // thresholds
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
     this->estimatePointCloudNormals<int>(cloud, normals, k, true);
