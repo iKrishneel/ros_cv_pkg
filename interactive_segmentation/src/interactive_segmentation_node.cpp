@@ -1109,10 +1109,32 @@ bool InteractiveSegmentation::estimateAnchorPoints(
               << convex_edge_centroids.size() << "\n";
     std::cout << "CLUSTER SIZE: " << cluster_concv.size() << "\t"
               << cluster_convx.size() << "\n";
-    
-    // select point in direction of normal few dist away
-    if (cluster_convx.empty()) {
-       // TODO:
+
+    if (cluster_concv.empty() ||
+        (cluster_concv.empty() && cluster_convx.empty())) {
+       ROS_ERROR("RETURNING CLOUD CENTROID");
+       // return cloud centroid
+       Eigen::Vector4f centroid;
+       pcl::compute3DCentroid<PointT, float>(*anchor_points, centroid);
+       double dist = DBL_MAX;
+       int indx = -1;
+       for (int i = 0; i < anchor_points->size(); i++) {
+          double d = pcl::distances::l2(
+             centroid, anchor_points->points[i].getVector4fMap());
+          if (d < dist) {
+             dist = d;
+             indx = i;
+          }
+       }
+       if (indx == -1) {
+          return false;
+       } else {
+          PointT pt = anchor_points->points[indx];
+          anchor_points->clear();
+          anchor_points->push_back(pt);
+          anchor_indices->indices.push_back(indx);
+          return true;
+       }
     }
     
     float height = FLT_MAX;
@@ -1125,6 +1147,62 @@ bool InteractiveSegmentation::estimateAnchorPoints(
         height = concave_edge_centroids[i](1);
       }
     }
+
+    // select point in direction of normal few dist away
+    pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
+    eifilter->setInputCloud(original_cloud);
+    pcl::KdTreeFLANN<PointT> kdtree;
+    kdtree.setInputCloud(anchor_points);
+    std::vector<int> point_idx_search;
+    std::vector<float> point_squared_distance;
+    if (cluster_convx.empty()) {
+       pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
+       *region_indices = cluster_concv[center_index];
+       eifilter->setIndices(region_indices);
+       pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
+       eifilter->filter(*tmp_cloud);
+       double dist = 0.0;
+       center_index = -1;
+       for (int i = 0; i < tmp_cloud->size(); i++) {
+          double d = pcl::distances::l2(tmp_cloud->points[i].getVector4fMap(),
+                                        center);
+          if (d > dist) {
+             dist = d;
+             center_index = i;
+          }
+       }
+       PointT center_pt;
+       center_pt.x = center(0);
+       center_pt.y = center(1);
+       center_pt.z = center(2);
+       center_pt.r = 255;
+       float search_rad = static_cast<float>(dist) / 2.0f;
+       int search_out = kdtree.radiusSearch(center_pt,
+                                            search_rad, point_idx_search,
+                                            point_squared_distance);
+       if (!search_out) {
+          ROS_ERROR("CONVEX EMPTY AND SEARCH FAILED");
+          return false;
+       }
+       double far_point_dist = 0.0;
+       int fp_indx = -1;
+       float higher_y = center(1);
+       for (int i = 0; i < point_idx_search.size(); i++) {
+          Eigen::Vector4f pt = anchor_points->points[
+             point_idx_search[i]].getVector4fMap();
+          double d = pcl::distances::l2(center, pt);
+          if (d > far_point_dist && pt(1) > higher_y) {
+             far_point_dist = d;
+             fp_indx = point_idx_search[i];
+             higher_y = pt(1);
+          }
+       }
+       PointT pt = anchor_points->points[fp_indx];
+       anchor_points->clear();
+       anchor_points->push_back(pt);
+       anchor_indices->indices.push_back(fp_indx);
+       return true;
+    }
     
     double object_lenght_thresh = 0.50;
     double nearest_cv_dist = DBL_MAX;
@@ -1133,8 +1211,6 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     int cc_nearest_pt_idx = -1;
     PointT cc_center_pt;
     double intra_convx_dist = 0.0;
-    pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
-    eifilter->setInputCloud(original_cloud);
     for (int i = 0; i < cluster_convx.size(); i++) {
        pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
        *region_indices = cluster_convx[i];
@@ -1172,10 +1248,8 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        std::min(nearest_cv_dist, intra_convx_dist))/2.0f;
     
     // find 2 points on object cloud points ap_search_radius away
-    pcl::KdTreeFLANN<PointT> kdtree;
-    kdtree.setInputCloud(anchor_points);
-    std::vector<int> point_idx_search;
-    std::vector<float> point_squared_distance;
+    point_idx_search.clear();
+    point_squared_distance.clear();
     int search_out = kdtree.radiusSearch(cc_center_pt,
                                          ap_search_radius, point_idx_search,
                                          point_squared_distance);
