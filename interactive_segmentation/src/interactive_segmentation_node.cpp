@@ -134,18 +134,18 @@ void InteractiveSegmentation::callback(
        anchor_indices, original_cloud, cloud_msg->header);
 
     ROS_INFO("\033[32m LABELING ON THE POINT \033[0m");
-
+    
     if (is_found_points) {
        this->selectedVoxelObjectHypothesis(
           cloud, normals, anchor_indices, cloud_msg->header);
     } else {
        return;
     }
-
+    
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
     this->publishAsROSMsg(convex_edge_points, pub_convex_, cloud_msg->header);
-    
+
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
        new pcl::PointCloud<pcl::PointXYZRGBNormal>);
     for (int i = 0; i < anchor_indices->indices.size(); i++) {
@@ -1055,6 +1055,8 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
         this->edgeBoundaryOutlierFiltering(convex_edge_points, 0.01f, 100);
       }
     }
+    // this->publishAsROSMsg(concave_edge_points, pub_concave_, header);
+    // this->publishAsROSMsg(convex_edge_points, pub_convex_, header);
     ROS_INFO("\033[31m COMPLETED \033[0m");
 }
 
