@@ -214,42 +214,6 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
        std::cout << "\033[34m OBJECT MASK EXTRACTION \033[0m"
                  << std::endl;
 
-
-       /**
-        * Curvature Matching // can go in above for
-        */
-       pcl::PointCloud<PointT>::Ptr filtered_cloud(new pcl::PointCloud<PointT>);
-       pcl::PointCloud<pcl::Normal>::Ptr filtered_normals(
-          new pcl::PointCloud<pcl::Normal>);
-       pcl::copyPointCloud<pcl::Normal, pcl::Normal>(
-          *normals, *filtered_normals);
-       // normalizedCurvatureNormalHistogram(cloud, filtered_normals);
-       for (int k = 0; k < cloud->size(); k++) {
-          PointT pt = cloud->points[k];
-          if (pt.r != 0 && pt.g != 0 && pt.b != 0) {
-             filtered_cloud->push_back(pt);
-             filtered_normals->push_back(filtered_normals->points[k]);
-
-             double d = pcl::distances::l2(
-                attention_normal,
-                filtered_normals->points[k].getNormalVector4fMap());
-
-             // d = 1.0f / (1.0 + d);
-             float angle = std::acos(
-                (filtered_normals->points[k].getNormalVector4fMap().dot(
-                   attention_normal))/ (
-                      filtered_normals->points[
-                         k].getNormalVector4fMap().norm() * attention_normal.norm()));
-             // std::cout << angle/M_PI<< std::endl;
-             
-             d = std::exp(-1.0f * (angle/M_PI));
-             
-             cloud->points[k].r = d * 255;
-             cloud->points[k].g = d * 255;
-             cloud->points[k].b = d * 255;
-          }
-       }
-       
        /*
        pcl::PointCloud<PointT>::Ptr prob_object_cloud(
           new pcl::PointCloud<PointT>);
@@ -268,7 +232,7 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
        anchor_points_max[i] = max_weight;
        
        publishAsROSMsg(cloud, pub_cloud_, header);
-       ros::Duration(5).sleep();
+       // ros::Duration(5).sleep();
     }
     
     // TODO(HERE): combine the weight maps
