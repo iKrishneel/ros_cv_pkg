@@ -113,17 +113,14 @@ void InteractiveSegmentation::callback(
     pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, nan_indices);
         
     ROS_INFO("\033[32m DEBUG: PROCESSING CALLBACK \033[0m");
-
-
-    //------------
-
-    return;
-    //------------
-
     
     int k = 50;  // thresholds
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
     this->estimatePointCloudNormals<int>(cloud, normals, k, true);
+
+    // normalizedCurvatureNormalHistogram(cloud, normals);
+    // return;
+
     
     pcl::PointCloud<PointT>::Ptr concave_edge_points(
        new pcl::PointCloud<PointT>);
@@ -139,14 +136,11 @@ void InteractiveSegmentation::callback(
        anchor_points, convex_edge_points, concave_edge_points,
        anchor_indices, original_cloud, cloud_msg->header);
 
-
     ROS_INFO("\033[32m LABELING ON THE POINT \033[0m");
     
     if (is_found_points) {
        this->selectedVoxelObjectHypothesis(
           cloud, normals, anchor_indices, cloud_msg->header);
-    } else {
-       return;
     }
 
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
@@ -220,6 +214,42 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
        std::cout << "\033[34m OBJECT MASK EXTRACTION \033[0m"
                  << std::endl;
 
+
+       /**
+        * Curvature Matching // can go in above for
+        */
+       pcl::PointCloud<PointT>::Ptr filtered_cloud(new pcl::PointCloud<PointT>);
+       pcl::PointCloud<pcl::Normal>::Ptr filtered_normals(
+          new pcl::PointCloud<pcl::Normal>);
+       pcl::copyPointCloud<pcl::Normal, pcl::Normal>(
+          *normals, *filtered_normals);
+       // normalizedCurvatureNormalHistogram(cloud, filtered_normals);
+       for (int k = 0; k < cloud->size(); k++) {
+          PointT pt = cloud->points[k];
+          if (pt.r != 0 && pt.g != 0 && pt.b != 0) {
+             filtered_cloud->push_back(pt);
+             filtered_normals->push_back(filtered_normals->points[k]);
+
+             double d = pcl::distances::l2(
+                attention_normal,
+                filtered_normals->points[k].getNormalVector4fMap());
+
+             // d = 1.0f / (1.0 + d);
+             float angle = std::acos(
+                (filtered_normals->points[k].getNormalVector4fMap().dot(
+                   attention_normal))/ (
+                      filtered_normals->points[
+                         k].getNormalVector4fMap().norm() * attention_normal.norm()));
+             // std::cout << angle/M_PI<< std::endl;
+             
+             d = std::exp(-1.0f * (angle/M_PI));
+             
+             cloud->points[k].r = d * 255;
+             cloud->points[k].g = d * 255;
+             cloud->points[k].b = d * 255;
+          }
+       }
+       
        /*
        pcl::PointCloud<PointT>::Ptr prob_object_cloud(
           new pcl::PointCloud<PointT>);
@@ -238,7 +268,7 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
        anchor_points_max[i] = max_weight;
        
        publishAsROSMsg(cloud, pub_cloud_, header);
-       // ros::Duration(5).sleep();
+       ros::Duration(5).sleep();
     }
     
     // TODO(HERE): combine the weight maps
@@ -251,7 +281,7 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
        float psr = (anchor_points_max[i] - mean.val[0])/stddev.val[0];
        cv::Mat weight_map = anchor_points_weights[i];
        for (int j = 0; j < weight_map.rows; j++) {
-          conv_weight_map.at<float>(j, 0) += (weight_map.at<float>(j, 0) * psr);
+          conv_weight_map.at<float>(j, 0) += (weight_map.at<float>(j, 0));
        }
        anchor_points_weights[i] = weight_map;
        // conv_weight_map *= weight_map;
@@ -636,6 +666,7 @@ void InteractiveSegmentation::computePointCloudCovarianceMatrix(
     
     // pcl::PointCloud<PointT>::Ptr new_cloud(new
     // pcl::PointCloud<PointT>);
+    new_cloud->clear();
     for (int i = 0; i < cloud->size(); i++) {
       float dist_diff_sum = std::pow(
          sum_of_eigens_ptr[index] - sum_of_eigens_ptr[i], 2);
@@ -1155,7 +1186,6 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     }
     
     // TODO(HERE): select closest and best candidate
-    
     // select point in direction of normal few dist away
     pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
     eifilter->setInputCloud(original_cloud);
@@ -1302,6 +1332,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
           center_index = i;
        }
     }
+    
     if (ap_index_2 == -1) {
        PointT ap_pt1 = anchor_points->points[ap_index_1];
        PointT ap_ct = anchor_points->points[center_index];
@@ -1314,6 +1345,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        anchor_indices->indices.push_back(ap_index_1);
        anchor_indices->indices.push_back(center_index);
     } else {
+       std::cout << "\n 3 ANCHOR POINTS ESTIMATED" << std::endl;
        PointT ap_pt1 = anchor_points->points[ap_index_1];
        PointT ap_pt2 = anchor_points->points[ap_index_2];
        PointT ap_ct = anchor_points->points[center_index];
@@ -1480,6 +1512,46 @@ bool InteractiveSegmentation::skeletonization2D(
     // this->pub_image_.publish(pub_msg);
     return true;
 }
+
+void InteractiveSegmentation::normalizedCurvatureNormalHistogram(
+    pcl::PointCloud<PointT>::Ptr cloud,
+    pcl::PointCloud<pcl::Normal>::Ptr normals) {
+    if (normals->size() != cloud->size()) {
+       return;
+    }
+    float min_val[3] = {FLT_MAX, FLT_MAX, FLT_MAX};
+    float max_val[3] = {FLT_MIN, FLT_MIN, FLT_MIN};
+    for (int i = 0; i < normals->size(); i++) {
+       float x = normals->points[i].normal_x;
+       float y = normals->points[i].normal_y;
+       float z = normals->points[i].normal_z;
+       max_val[0] = std::max(x, max_val[0]);
+       min_val[0] = std::min(x, min_val[0]);
+       max_val[1] = std::max(y, max_val[1]);
+       min_val[1] = std::min(y, min_val[1]);
+       max_val[2] = std::max(z, max_val[2]);
+       min_val[2] = std::min(z, min_val[2]);
+    }
+    const int bin_size = 9;
+    
+    for (int i = 0; i < normals->size(); i++) {
+       float x = (normals->points[i].normal_x - min_val[0]) /
+          (max_val[0] - min_val[0]);
+       float y = (normals->points[i].normal_y - min_val[1]) /
+          (max_val[1] - min_val[1]);
+       float z = (normals->points[i].normal_z - min_val[2]) /
+          (max_val[2] - min_val[2]);
+
+       
+       
+       // std::cout << "NORMALIZED: " << x << ", " << y << ", " << z
+       // << std::endl;
+       // normals->points[i].normal_x = x;
+       // normals->points[i].normal_y = y;
+       // normals->points[i].normal_z = z;
+    }
+}
+
 
 void InteractiveSegmentation::publishAsROSMsg(
     const pcl::PointCloud<PointT>::Ptr cloud, const ros::Publisher publisher,

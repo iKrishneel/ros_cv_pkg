@@ -47,7 +47,6 @@
 #include <pcl/segmentation/segment_differences.h>
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/segmentation/sac_segmentation.h>
-#include <pcl/keypoints/harris_6d.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
@@ -202,6 +201,9 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     void publishAsROSMsg(
         const pcl::PointCloud<PointT>::Ptr, const ros::Publisher,
         const std_msgs::Header);
+    void normalizedCurvatureNormalHistogram(
+       pcl::PointCloud<PointT>::Ptr,
+       pcl::PointCloud<pcl::Normal>::Ptr);
 };
 
 
