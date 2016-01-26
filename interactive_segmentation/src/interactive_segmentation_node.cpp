@@ -263,6 +263,11 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
     }
     publishAsROSMsg(weight_cloud, pub_cloud_, header);
     // ros::Duration(10).sleep();
+    pcl::PointCloud<PointT>::Ptr non_object_ap(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*in_cloud, *non_object_ap);
+    this->filterAndComputeNonObjectRegionAnchorPoint(non_object_ap,
+                                                     conv_weight_map);
+    
 }
 
 
@@ -393,6 +398,34 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
      }
 }
 
+void InteractiveSegmentation::filterAndComputeNonObjectRegionAnchorPoint(
+    pcl::PointCloud<PointT>::Ptr anchor_points,
+    const cv::Mat &weight_map, const float threshold) {
+    if (weight_map.empty() || anchor_points->empty() ||
+        (weight_map.rows != anchor_points->size())) {
+       ROS_ERROR("EMPTY CLOUD TO COMPUTE NON-OBJECT AP");
+       return;
+    }
+    pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
+    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+    for (int i = 0; i < weight_map.rows; i++) {
+       float weight = weight_map.at<float>(i, 0);
+       if (weight == threshold) {
+          cloud->push_back(anchor_points->points[i]);
+          prob_indices->indices.push_back(i);
+       }
+    }
+    /*
+    std::vector<pcl::PointIndices> cluster_indices;
+    std::vector<Eigen::Vector4f> cluster_centroids;
+    cluster_centroids = this->doEuclideanClustering(
+       cluster_indices, anchor_points, prob_indices, true, 0.01f, 100);
+    std::cout << "SIZE: " << cluster_centroids.size() << std::endl;
+    */
+    this->edgeBoundaryOutlierFiltering(cloud);
+    this->publishAsROSMsg(cloud, pub_prob_, camera_info_->header);
+    
+}
 
 bool InteractiveSegmentation::attentionSurfelRegionPointCloudMask(
     const pcl::PointCloud<PointT>::Ptr weight_cloud,
@@ -1505,14 +1538,6 @@ void InteractiveSegmentation::normalizedCurvatureNormalHistogram(
           (max_val[1] - min_val[1]);
        float z = (normals->points[i].normal_z - min_val[2]) /
           (max_val[2] - min_val[2]);
-
-       
-       
-       // std::cout << "NORMALIZED: " << x << ", " << y << ", " << z
-       // << std::endl;
-       // normals->points[i].normal_x = x;
-       // normals->points[i].normal_y = y;
-       // normals->points[i].normal_z = z;
     }
 }
 

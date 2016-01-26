@@ -13,7 +13,6 @@
     <arg name="cloud" value="$(arg input_point)"/>
   </include>
 
-
   <include file="$(find interactive_segmentation)/launch/organized_multi_plane_segmentation.launch">
     <arg name="INPUT" value="$(arg filter_point)"/>
   </include>
@@ -21,7 +20,6 @@
   <node pkg="interactive_segmentation" name="interactive_segmentation"
 	type="interactive_segmentation_node" output="screen" clear_params="true">
     <remap from="input_image" to="$(arg image)" />
-    <!-- <remap from="input_cloud" to="$(arg filter_point)" /> -->
     <remap from="input_cloud" to="/plane_extraction/output_nonplane_cloud" />
     <!-- <remap from="input_normal" to="/plane_extraction/output_nonplane_cloud" /> -->
     <remap from="input_normal" to="$(arg input_point)" />

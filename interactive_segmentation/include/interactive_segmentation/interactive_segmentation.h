@@ -201,6 +201,11 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     void publishAsROSMsg(
         const pcl::PointCloud<PointT>::Ptr, const ros::Publisher,
         const std_msgs::Header);
+    void filterAndComputeNonObjectRegionAnchorPoint(
+       pcl::PointCloud<PointT>::Ptr, const cv::Mat &,
+       const float = 0.0f);
+   
+   
     void normalizedCurvatureNormalHistogram(
        pcl::PointCloud<PointT>::Ptr,
        pcl::PointCloud<pcl::Normal>::Ptr);
