@@ -129,10 +129,9 @@ void InteractiveSegmentation::callback(
     pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points);
     pcl::PointIndices::Ptr anchor_indices(new pcl::PointIndices);
-    Eigen::Vector4f cc_centroid;
     bool is_found_points = this->estimateAnchorPoints(
        anchor_points, convex_edge_points, concave_edge_points,
-       anchor_indices, cc_centroid, original_cloud, cloud_msg->header);
+       anchor_indices, original_cloud, cloud_msg->header);
 
     ROS_INFO("\033[32m LABELING ON THE POINT \033[0m");
     
@@ -140,7 +139,10 @@ void InteractiveSegmentation::callback(
        cv::Mat weight_map;
        this->selectedVoxelObjectHypothesis(
            weight_map, cloud, normals, anchor_indices, cloud_msg->header);
-       
+       pcl::PointCloud<PointT>::Ptr non_object_ap(new pcl::PointCloud<PointT>);
+       pcl::copyPointCloud<PointT, PointT>(*cloud, *non_object_ap);
+       this->filterAndComputeNonObjectRegionAnchorPoint(
+           non_object_ap, normals, anchor_indices->indices[0], weight_map);
     }
 
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
@@ -264,11 +266,6 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
     }
     publishAsROSMsg(weight_cloud, pub_cloud_, header);
     // ros::Duration(10).sleep();
-    pcl::PointCloud<PointT>::Ptr non_object_ap(new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointT, PointT>(*in_cloud, *non_object_ap);
-    this->filterAndComputeNonObjectRegionAnchorPoint(non_object_ap,
-                                                     conv_weight_map);
-    
 }
 
 
@@ -401,30 +398,64 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
 
 void InteractiveSegmentation::filterAndComputeNonObjectRegionAnchorPoint(
     pcl::PointCloud<PointT>::Ptr anchor_points,
-    const cv::Mat &weight_map, const float threshold) {
+    const pcl::PointCloud<pcl::Normal>::Ptr normals,
+    const int cc_index, const cv::Mat &weight_map, const float threshold) {
     if (weight_map.empty() || anchor_points->empty() ||
         (weight_map.rows != anchor_points->size())) {
        ROS_ERROR("EMPTY CLOUD TO COMPUTE NON-OBJECT AP");
        return;
     }
+    Eigen::Vector4f cc_centroid = anchor_points->points[cc_index].getVector4fMap();
+    // TODO(HERE): RESTRICT TO ONLY TWO CONCAVE BOUNDARIES
     pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
-    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+    pcl::PointCloud<PointT>::Ptr non_object_cloud(new pcl::PointCloud<PointT>);
+    pcl::PointCloud<PointT>::Ptr object_cloud(new pcl::PointCloud<PointT>);
     for (int i = 0; i < weight_map.rows; i++) {
        float weight = weight_map.at<float>(i, 0);
-       if (weight == threshold) {
-          cloud->push_back(anchor_points->points[i]);
+       if (weight == threshold && anchor_points->points[i].y > cc_centroid(1)) {
+          non_object_cloud->push_back(anchor_points->points[i]);
           prob_indices->indices.push_back(i);
+       } else {
+         object_cloud->push_back(anchor_points->points[i]);
        }
     }
-    /*
     std::vector<pcl::PointIndices> cluster_indices;
     std::vector<Eigen::Vector4f> cluster_centroids;
     cluster_centroids = this->doEuclideanClustering(
        cluster_indices, anchor_points, prob_indices, true, 0.01f, 100);
+
+    double distance = DBL_MAX;
+    int index = -1;
+    for (int i = 0; i < cluster_centroids.size(); i++) {
+       double d = pcl::distances::l2(cc_centroid, cluster_centroids[i]);
+       if (d < distance) {
+          distance = d;
+          index = i;
+       }
+    }
+    distance = DBL_MAX;
+    int idx = -1;
+    for (int i = 0; i < cluster_indices[index].indices.size(); i++) {
+      int j = cluster_indices[index].indices[i];
+      double d = pcl::distances::l2(cluster_centroids[index],
+                                    anchor_points->points[j].getVector4fMap());
+      if (d < distance) {
+        distance = d;
+        idx = j;
+      }
+    }
+    Eigen::Vector4f non_obj_ap_pt = anchor_points->points[idx].getVector4fMap();
+    Eigen::Vector4f cc_normal = normals->points[cc_index].getNormalVector4fMap();
+
+    if (this->localVoxelConvexityCriteria(
+            non_obj_ap_pt, cc_centroid, cc_normal) == -1) {
+      
+    }
+    
+    
     std::cout << "SIZE: " << cluster_centroids.size() << std::endl;
-    */
-    this->edgeBoundaryOutlierFiltering(cloud);
-    this->publishAsROSMsg(cloud, pub_prob_, camera_info_->header);
+    
+    this->publishAsROSMsg(object_cloud, pub_prob_, camera_info_->header);
     
 }
 
@@ -1100,7 +1131,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     pcl::PointCloud<PointT>::Ptr anchor_points,
     pcl::PointCloud<PointT>::Ptr convex_points,
     pcl::PointCloud<PointT>::Ptr concave_points,
-    pcl::PointIndices::Ptr anchor_indices, Eigen::Vector4f &cc_centroid,
+    pcl::PointIndices::Ptr anchor_indices,
     const pcl::PointCloud<PointT>::Ptr original_cloud,
     const std_msgs::Header header) {
     if (anchor_points->empty()) {
@@ -1182,7 +1213,6 @@ bool InteractiveSegmentation::estimateAnchorPoints(
         height = concave_edge_centroids[i](1);
       }
     }
-    cc_centroid = center;
     
     // TODO(HERE): select closest and best candidate
     // select point in direction of normal few dist away
@@ -1335,7 +1365,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     if (ap_index_2 == -1) {
        PointT ap_pt1 = anchor_points->points[ap_index_1];
        PointT ap_ct = anchor_points->points[center_index];
-    
+       
        anchor_points->clear();
        anchor_points->push_back(ap_pt1);
        anchor_points->push_back(ap_ct);
@@ -1348,7 +1378,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        PointT ap_pt1 = anchor_points->points[ap_index_1];
        PointT ap_pt2 = anchor_points->points[ap_index_2];
        PointT ap_ct = anchor_points->points[center_index];
-    
+       
        anchor_points->clear();
        anchor_points->push_back(ap_pt1);
        anchor_points->push_back(ap_pt2);

@@ -178,7 +178,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const pcl::PointCloud<pcl::Normal>::Ptr, const std_msgs::Header);
     bool estimateAnchorPoints(
        pcl::PointCloud<PointT>::Ptr, pcl::PointCloud<PointT>::Ptr,
-       pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr, Eigen::Vector4f &,
+       pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr,
        const pcl::PointCloud<PointT>::Ptr, const std_msgs::Header);
     std::vector<Eigen::Vector4f> doEuclideanClustering(
        std::vector<pcl::PointIndices> &cluster_indices,
@@ -200,8 +200,9 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
         const pcl::PointCloud<PointT>::Ptr, const ros::Publisher,
         const std_msgs::Header);
     void filterAndComputeNonObjectRegionAnchorPoint(
-       pcl::PointCloud<PointT>::Ptr, const cv::Mat &,
-       const float = 0.0f);
+        pcl::PointCloud<PointT>::Ptr,
+        const pcl::PointCloud<pcl::Normal>::Ptr,
+        const int, const cv::Mat &, const float = 0.0f);
    
    
     void normalizedCurvatureNormalHistogram(
