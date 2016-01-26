@@ -134,7 +134,8 @@ void InteractiveSegmentation::callback(
        anchor_indices, original_cloud, cloud_msg->header);
 
     ROS_INFO("\033[32m LABELING ON THE POINT \033[0m");
-    
+
+    /*
     if (is_found_points) {
        cv::Mat weight_map;
        this->selectedVoxelObjectHypothesis(
@@ -144,6 +145,7 @@ void InteractiveSegmentation::callback(
        this->filterAndComputeNonObjectRegionAnchorPoint(
            non_object_ap, normals, anchor_indices->indices[0], weight_map);
     }
+    */
 
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
@@ -399,20 +401,22 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
 void InteractiveSegmentation::filterAndComputeNonObjectRegionAnchorPoint(
     pcl::PointCloud<PointT>::Ptr anchor_points,
     const pcl::PointCloud<pcl::Normal>::Ptr normals,
-    const int cc_index, const cv::Mat &weight_map, const float threshold) {
+    const int c_index, const cv::Mat &weight_map, const float threshold) {
     if (weight_map.empty() || anchor_points->empty() ||
         (weight_map.rows != anchor_points->size())) {
        ROS_ERROR("EMPTY CLOUD TO COMPUTE NON-OBJECT AP");
        return;
     }
-    Eigen::Vector4f cc_centroid = anchor_points->points[cc_index].getVector4fMap();
+    Eigen::Vector4f c_centroid = anchor_points->points[
+       c_index].getVector4fMap();
+    
     // TODO(HERE): RESTRICT TO ONLY TWO CONCAVE BOUNDARIES
     pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
     pcl::PointCloud<PointT>::Ptr non_object_cloud(new pcl::PointCloud<PointT>);
     pcl::PointCloud<PointT>::Ptr object_cloud(new pcl::PointCloud<PointT>);
     for (int i = 0; i < weight_map.rows; i++) {
        float weight = weight_map.at<float>(i, 0);
-       if (weight == threshold && anchor_points->points[i].y > cc_centroid(1)) {
+       if (weight == threshold && anchor_points->points[i].y > c_centroid(1)) {
           non_object_cloud->push_back(anchor_points->points[i]);
           prob_indices->indices.push_back(i);
        } else {
@@ -427,7 +431,7 @@ void InteractiveSegmentation::filterAndComputeNonObjectRegionAnchorPoint(
     double distance = DBL_MAX;
     int index = -1;
     for (int i = 0; i < cluster_centroids.size(); i++) {
-       double d = pcl::distances::l2(cc_centroid, cluster_centroids[i]);
+       double d = pcl::distances::l2(c_centroid, cluster_centroids[i]);
        if (d < distance) {
           distance = d;
           index = i;
@@ -445,10 +449,10 @@ void InteractiveSegmentation::filterAndComputeNonObjectRegionAnchorPoint(
       }
     }
     Eigen::Vector4f non_obj_ap_pt = anchor_points->points[idx].getVector4fMap();
-    Eigen::Vector4f cc_normal = normals->points[cc_index].getNormalVector4fMap();
+    Eigen::Vector4f cc_normal = normals->points[c_index].getNormalVector4fMap();
 
     if (this->localVoxelConvexityCriteria(
-            non_obj_ap_pt, cc_centroid, cc_normal) == -1) {
+            non_obj_ap_pt, c_centroid, cc_normal) == -1) {
       
     }
     
@@ -1270,7 +1274,20 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        anchor_indices->indices.push_back(fp_indx);
        return true;
     }
+
+    pcl::PointCloud<PointT>::Ptr temp_anchor_pt(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*anchor_points, *temp_anchor_pt);
+    pcl::PointIndices::Ptr temp_anchor_indices(new pcl::PointIndices);
+    int nearest_bt_cluster_idx = -1;
+    this->boundaryAnchorPoints(temp_anchor_pt, temp_anchor_indices,
+                               nearest_bt_cluster_idx, original_cloud,
+                               convex_edge_centroids, cluster_convx, center);
+
+    anchor_points->clear();
+    *anchor_points = *temp_anchor_pt;
+
     
+    /*
     double object_lenght_thresh = 0.50;
     double nearest_cv_dist = DBL_MAX;
     Eigen::Vector4f cc_nearest_cv_pt;
@@ -1278,6 +1295,10 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     int cc_nearest_pt_idx = -1;
     PointT cc_center_pt;
     double intra_convx_dist = 0.0;
+
+    double cc_nearest_dist_cv_bt = 0.0;
+    int cc_nearest_bt_cluster_idx = -1;
+    
     for (int i = 0; i < cluster_convx.size(); i++) {
        pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
        *region_indices = cluster_convx[i];
@@ -1302,6 +1323,16 @@ bool InteractiveSegmentation::estimateAnchorPoints(
           if (d > intra_convx_dist) {
              intra_convx_dist = d;
           }
+
+          //-----------------------------
+          if (cv_pt(1) > center(1)) {
+             double d = pcl::distances::l2(cv_pt, center);
+             if (d < cc_nearest_dist_cv_bt && d < object_lenght_thresh) {
+                cc_nearest_dist_cv_bt = d;
+                cc_nearest_bt_cluster_idx = i;
+             }
+          }
+          //----------------------------
        }
     }
     
@@ -1353,6 +1384,159 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     // find center closest normal
     double min_dist = DBL_MAX;
     center_index = -1;
+    for (int i = 0; i < anchor_points->size(); i++) {
+       Eigen::Vector4f pt = anchor_points->points[i].getVector4fMap();
+       double d = pcl::distances::l2(pt, cc_center_pt.getVector4fMap());
+       if (d < min_dist) {
+          min_dist = d;
+          center_index = i;
+       }
+    }
+    
+    if (ap_index_2 == -1) {
+       PointT ap_pt1 = anchor_points->points[ap_index_1];
+       PointT ap_ct = anchor_points->points[center_index];
+       
+       anchor_points->clear();
+       anchor_points->push_back(ap_pt1);
+       anchor_points->push_back(ap_ct);
+
+       anchor_indices->indices.clear();
+       anchor_indices->indices.push_back(ap_index_1);
+       anchor_indices->indices.push_back(center_index);
+    } else {
+       std::cout << "\n 3 ANCHOR POINTS ESTIMATED" << std::endl;
+       PointT ap_pt1 = anchor_points->points[ap_index_1];
+       PointT ap_pt2 = anchor_points->points[ap_index_2];
+       PointT ap_ct = anchor_points->points[center_index];
+       
+       anchor_points->clear();
+       anchor_points->push_back(ap_pt1);
+       anchor_points->push_back(ap_pt2);
+       anchor_points->push_back(ap_ct);
+
+       anchor_indices->indices.clear();
+       anchor_indices->indices.push_back(ap_index_1);
+       anchor_indices->indices.push_back(ap_index_2);
+       anchor_indices->indices.push_back(center_index);
+    }
+    return true;
+    */
+}
+
+
+bool InteractiveSegmentation::boundaryAnchorPoints(
+    pcl::PointCloud<PointT>::Ptr anchor_points,
+    pcl::PointIndices::Ptr anchor_indices, int &nearest_bt_cluster_idx,
+    const pcl::PointCloud<PointT>::Ptr original_cloud,
+    const std::vector<Eigen::Vector4f> convex_edge_centroids,
+    const std::vector<pcl::PointIndices> cluster_convx,
+    const Eigen::Vector4f center) {
+    if (anchor_points->empty()) {
+       return false;
+    }
+    pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
+    eifilter->setInputCloud(original_cloud);
+    pcl::KdTreeFLANN<PointT> kdtree;
+    kdtree.setInputCloud(anchor_points);
+    std::vector<int> point_idx_search;
+    std::vector<float> point_squared_distance;
+    
+    double object_lenght_thresh = 0.50;
+    double nearest_cv_dist = DBL_MAX;
+    Eigen::Vector4f cc_nearest_cv_pt;
+    int cc_nearest_cluster_idx = -1;
+    int cc_nearest_pt_idx = -1;
+    PointT cc_center_pt;
+    double intra_convx_dist = 0.0;
+
+    double cc_nearest_dist_cv_bt = 0.0;
+    nearest_bt_cluster_idx = -1;
+    
+    for (int i = 0; i < cluster_convx.size(); i++) {
+       pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
+       *region_indices = cluster_convx[i];
+       eifilter->setIndices(region_indices);
+       pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
+       eifilter->filter(*tmp_cloud);
+       for (int j = 0; j < tmp_cloud->size(); j++) {
+          Eigen::Vector4f cv_pt = tmp_cloud->points[j].getVector4fMap();
+          if (cv_pt(1) < center(1)) {
+             double d = pcl::distances::l2(cv_pt, center);
+             if (d < nearest_cv_dist && d < object_lenght_thresh) {
+                nearest_cv_dist = d;
+                cc_nearest_cluster_idx = i;
+                cc_nearest_pt_idx = j;
+                cc_nearest_cv_pt = cv_pt;
+                cc_center_pt = tmp_cloud->points[j];
+             }
+          }
+          // convx intra distance
+          double d = pcl::distances::l2(convex_edge_centroids[i],
+                                        tmp_cloud->points[j].getVector4fMap());
+          if (d > intra_convx_dist) {
+             intra_convx_dist = d;
+          }
+
+          //-----------------------------
+          if (cv_pt(1) > center(1)) {
+             double d = pcl::distances::l2(cv_pt, center);
+             if (d < cc_nearest_dist_cv_bt && d < object_lenght_thresh) {
+                cc_nearest_dist_cv_bt = d;
+                nearest_bt_cluster_idx = i;
+             }
+          }
+          //----------------------------
+       }
+    }
+    
+    if (cc_nearest_pt_idx == -1) {
+       ROS_WARN("NO NEAREST INDEX FOUND");
+       return false;
+    }
+    
+    // float ap_search_radius = static_cast<float>(nearest_cv_dist)/2.0f;
+    float ap_search_radius = static_cast<float>(
+       std::min(nearest_cv_dist, intra_convx_dist))/2.0f;
+    
+    // find 2 points on object cloud points ap_search_radius away
+    point_idx_search.clear();
+    point_squared_distance.clear();
+    int search_out = kdtree.radiusSearch(cc_center_pt,
+                                         ap_search_radius, point_idx_search,
+                                         point_squared_distance);
+    int ap_index_1 = -1;
+    double far_point_dist = 0;
+    for (int i = 0; i < point_idx_search.size(); i++) {
+       Eigen::Vector4f pt = anchor_points->points[
+           point_idx_search[i]].getVector4fMap();
+       double d = pcl::distances::l2(cc_nearest_cv_pt, pt);
+       // TODO(HERE): filter the points cross in the plane
+       if (d > far_point_dist && pt(1) > cc_nearest_cv_pt(1)) {
+          far_point_dist = d;
+          ap_index_1 = point_idx_search[i];
+          cc_nearest_cv_pt(1) = pt(1);
+       }
+    }
+    if (ap_index_1 == -1) {
+      ROS_ERROR("ERROR: COMPUTING THE ANCHOR POINTS");
+      return false;
+    }
+    
+    far_point_dist = 0;
+    int ap_index_2 = -1;
+    for (int i = 0; i < point_idx_search.size(); i++) {
+       double d = pcl::distances::l2(anchor_points->points[
+           point_idx_search[i]].getVector4fMap(), anchor_points->points[
+               ap_index_1].getVector4fMap());
+       if (d > far_point_dist) {
+          far_point_dist = d;
+          ap_index_2 = point_idx_search[i];
+       }
+    }
+    // find center closest normal
+    double min_dist = DBL_MAX;
+    int center_index = -1;
     for (int i = 0; i < anchor_points->size(); i++) {
        Eigen::Vector4f pt = anchor_points->points[i].getVector4fMap();
        double d = pcl::distances::l2(pt, cc_center_pt.getVector4fMap());

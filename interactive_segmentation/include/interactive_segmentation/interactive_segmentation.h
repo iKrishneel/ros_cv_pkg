@@ -203,6 +203,13 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
         pcl::PointCloud<PointT>::Ptr,
         const pcl::PointCloud<pcl::Normal>::Ptr,
         const int, const cv::Mat &, const float = 0.0f);
+    bool boundaryAnchorPoints(
+        pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr,
+        int &, const pcl::PointCloud<PointT>::Ptr,
+        const std::vector<Eigen::Vector4f>,
+        const std::vector<pcl::PointIndices>,
+        const Eigen::Vector4f);
+   
    
    
     void normalizedCurvatureNormalHistogram(
