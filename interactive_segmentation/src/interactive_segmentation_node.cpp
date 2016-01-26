@@ -113,15 +113,12 @@ void InteractiveSegmentation::callback(
     pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, nan_indices);
         
     ROS_INFO("\033[32m DEBUG: PROCESSING CALLBACK \033[0m");
-    
+    ROS_INFO("\033[34m ESTIMATIONG CLOUD NORMALS \033[0m");
     int k = 50;  // thresholds
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
     this->estimatePointCloudNormals<int>(cloud, normals, k, true);
+    ROS_INFO("\033[34m CLOUD NORMALS ESTIMATED\033[0m");
 
-    // normalizedCurvatureNormalHistogram(cloud, normals);
-    // return;
-
-    
     pcl::PointCloud<PointT>::Ptr concave_edge_points(
        new pcl::PointCloud<PointT>);
     pcl::PointCloud<PointT>::Ptr convex_edge_points(
@@ -132,15 +129,18 @@ void InteractiveSegmentation::callback(
     pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points);
     pcl::PointIndices::Ptr anchor_indices(new pcl::PointIndices);
+    Eigen::Vector4f cc_centroid;
     bool is_found_points = this->estimateAnchorPoints(
        anchor_points, convex_edge_points, concave_edge_points,
-       anchor_indices, original_cloud, cloud_msg->header);
+       anchor_indices, cc_centroid, original_cloud, cloud_msg->header);
 
     ROS_INFO("\033[32m LABELING ON THE POINT \033[0m");
     
     if (is_found_points) {
+       cv::Mat weight_map;
        this->selectedVoxelObjectHypothesis(
-          cloud, normals, anchor_indices, cloud_msg->header);
+           weight_map, cloud, normals, anchor_indices, cloud_msg->header);
+       
     }
 
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
@@ -174,6 +174,7 @@ void InteractiveSegmentation::callback(
 }
 
 void InteractiveSegmentation::selectedVoxelObjectHypothesis(
+    cv::Mat &conv_weight_map,
     const pcl::PointCloud<PointT>::Ptr in_cloud,
     const pcl::PointCloud<pcl::Normal>::Ptr normals,
     const pcl::PointIndices::Ptr indices,
@@ -236,7 +237,7 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
     }
     
     // TODO(HERE): combine the weight maps
-    cv::Mat conv_weight_map = cv::Mat::zeros(
+    conv_weight_map = cv::Mat::zeros(
        static_cast<int>(in_cloud->size()), 1, CV_32F);
     for (int i = 0; i < anchor_points_weights.size(); i++) {
        cv::Scalar mean;
@@ -1099,7 +1100,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     pcl::PointCloud<PointT>::Ptr anchor_points,
     pcl::PointCloud<PointT>::Ptr convex_points,
     pcl::PointCloud<PointT>::Ptr concave_points,
-    pcl::PointIndices::Ptr anchor_indices,
+    pcl::PointIndices::Ptr anchor_indices, Eigen::Vector4f &cc_centroid,
     const pcl::PointCloud<PointT>::Ptr original_cloud,
     const std_msgs::Header header) {
     if (anchor_points->empty()) {
@@ -1175,12 +1176,13 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     int center_index = -1;
     Eigen::Vector4f center;
     for (int i = 0; i < concave_edge_centroids.size(); i++) {
-      if (concave_edge_centroids[i](1) < height) {
+      if (concave_edge_centroids[i](1) < height) {  // CHANGE HERE
         center_index = i;
         center = concave_edge_centroids[i];
         height = concave_edge_centroids[i](1);
       }
     }
+    cc_centroid = center;
     
     // TODO(HERE): select closest and best candidate
     // select point in direction of normal few dist away

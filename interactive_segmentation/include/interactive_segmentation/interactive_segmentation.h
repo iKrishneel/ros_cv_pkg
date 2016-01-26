@@ -36,15 +36,13 @@
 #include <pcl/common/transforms.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/octree/octree.h>
-#include <pcl/surface/concave_hull.h>
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/filters/filter.h>
 #include <pcl/common/centroid.h>
 #include <pcl/features/fpfh_omp.h>
+#include <pcl/surface/mls.h>
 #include <pcl/point_types_conversion.h>
 #include <pcl/registration/distances.h>
-#include <pcl/features/don.h>
-#include <pcl/segmentation/segment_differences.h>
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/segmentation/sac_segmentation.h>
 
@@ -134,7 +132,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const sensor_msgs::PointCloud2::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
     void selectedVoxelObjectHypothesis(
-       const pcl::PointCloud<PointT>::Ptr,
+        cv::Mat &, const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr,
        const pcl::PointIndices::Ptr, const std_msgs::Header);
        void surfelLevelObjectHypothesis(
@@ -180,7 +178,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const pcl::PointCloud<pcl::Normal>::Ptr, const std_msgs::Header);
     bool estimateAnchorPoints(
        pcl::PointCloud<PointT>::Ptr, pcl::PointCloud<PointT>::Ptr,
-       pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr,
+       pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr, Eigen::Vector4f &,
        const pcl::PointCloud<PointT>::Ptr, const std_msgs::Header);
     std::vector<Eigen::Vector4f> doEuclideanClustering(
        std::vector<pcl::PointIndices> &cluster_indices,
