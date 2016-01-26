@@ -36,15 +36,13 @@
 #include <pcl/common/transforms.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/octree/octree.h>
-#include <pcl/surface/concave_hull.h>
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/filters/filter.h>
 #include <pcl/common/centroid.h>
 #include <pcl/features/fpfh_omp.h>
+#include <pcl/surface/mls.h>
 #include <pcl/point_types_conversion.h>
 #include <pcl/registration/distances.h>
-#include <pcl/features/don.h>
-#include <pcl/segmentation/segment_differences.h>
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/segmentation/sac_segmentation.h>
 
