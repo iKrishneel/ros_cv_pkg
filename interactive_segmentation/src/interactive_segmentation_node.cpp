@@ -9,6 +9,8 @@ InteractiveSegmentation::InteractiveSegmentation():
     num_threads_(8) {
     pnh_.getParam("num_threads", this->num_threads_);
 
+    // std::cout << "STARTING WITH: " << num_threads_  << "\n";
+    
     // this->srv_client_ = this->pnh_.serviceClient<
     //   interactive_segmentation::OutlierFiltering>("outlier_filtering_srv");
     
@@ -133,12 +135,9 @@ void InteractiveSegmentation::callback(
     bool is_found_points = this->estimateAnchorPoints(
        anchor_points, convex_edge_points, concave_edge_points,
        anchor_indices, nearest_index_2, original_cloud, cloud_msg->header);
-
-    std::cout << "NEAREST INDEX 2: " << nearest_index_2 << std::endl;
     
     ROS_INFO("\033[32m LABELING ON THE POINT \033[0m");
-
-    /*
+    
     if (is_found_points) {
        cv::Mat weight_map;
        this->selectedVoxelObjectHypothesis(
@@ -148,7 +147,6 @@ void InteractiveSegmentation::callback(
        this->filterAndComputeNonObjectRegionAnchorPoint(
            non_object_ap, normals, anchor_indices->indices[0], weight_map);
     }
-    */
 
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
@@ -415,6 +413,7 @@ void InteractiveSegmentation::filterAndComputeNonObjectRegionAnchorPoint(
     
     // TODO(HERE): RESTRICT TO ONLY TWO CONCAVE BOUNDARIES
     pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
+    pcl::PointIndices::Ptr object_indices(new pcl::PointIndices);
     pcl::PointCloud<PointT>::Ptr non_object_cloud(new pcl::PointCloud<PointT>);
     pcl::PointCloud<PointT>::Ptr object_cloud(new pcl::PointCloud<PointT>);
     for (int i = 0; i < weight_map.rows; i++) {
@@ -424,6 +423,7 @@ void InteractiveSegmentation::filterAndComputeNonObjectRegionAnchorPoint(
           prob_indices->indices.push_back(i);
        } else {
          object_cloud->push_back(anchor_points->points[i]);
+         object_indices->indices.push_back(i);
        }
     }
     std::vector<pcl::PointIndices> cluster_indices;
@@ -454,15 +454,29 @@ void InteractiveSegmentation::filterAndComputeNonObjectRegionAnchorPoint(
     Eigen::Vector4f non_obj_ap_pt = anchor_points->points[idx].getVector4fMap();
     Eigen::Vector4f cc_normal = normals->points[c_index].getNormalVector4fMap();
 
-    if (this->localVoxelConvexityCriteria(
-            non_obj_ap_pt, c_centroid, cc_normal) == -1) {
-      
+    // cv::Mat weights;
+    // this->surfelSamplePointWeightMap(anchor_points, normals, anchor_points->points[idx],
+    //                                  normals->points[idx].getNormalVector4fMap(), weights);
+
+    for (int i = 0; i < anchor_points->size(); i++) {
+      // anchor_points->points[i].r = weights.at<float>(i, 0) * 255.0f;
+      // anchor_points->points[i].b = weights.at<float>(i, 0) * 255.0f;
+      // anchor_points->points[i].g = weights.at<float>(i, 0) * 255.0f;
+      int ind = i;
+      int val = this->localVoxelConvexityCriteria(
+          non_obj_ap_pt, anchor_points->points[ind].getVector4fMap(),
+          normals->points[ind].getNormalVector4fMap());
+      if (val == -1) {
+        val = 0;
+      } 
+      float pix_val = static_cast<float>(val) * weight_map.at<float>(i, 0) * 255.0f;
+
+      anchor_points->points[ind].r = pix_val;
+      anchor_points->points[ind].b = pix_val;
+      anchor_points->points[ind].g = pix_val;
     }
-    
-    
-    std::cout << "SIZE: " << cluster_centroids.size() << std::endl;
-    
-    this->publishAsROSMsg(object_cloud, pub_prob_, camera_info_->header);
+
+    this->publishAsROSMsg(anchor_points, pub_prob_, camera_info_->header);
     
 }
 
@@ -1052,7 +1066,7 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
     
     pcl::KdTreeFLANN<PointT> kdtree;
     kdtree.setInputCloud(curv_cloud);
-    int search = 50;  // thresholds
+    int search = 100;  // thresholds
 
     int icount = 0;
     const float concave_thresh = 0.30f;  // thresholds
@@ -1277,7 +1291,8 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        anchor_indices->indices.push_back(fp_indx);
        return true;
     }
-    
+
+    /*
     pcl::PointCloud<PointT>::Ptr temp_anchor_pt(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*anchor_points, *temp_anchor_pt);
     pcl::PointIndices::Ptr temp_anchor_indices(new pcl::PointIndices);
@@ -1300,8 +1315,8 @@ bool InteractiveSegmentation::estimateAnchorPoints(
           }
        }
        nearest_bt_cluster_idx = indx;
-       temp_anchor_indices->indices.push_back(indx);
-       temp_anchor_pt->push_back(anchor_points->points[indx]);
+       // temp_anchor_indices->indices.push_back(indx);
+       // temp_anchor_pt->push_back(anchor_points->points[indx]);
        
     }
 
@@ -1309,7 +1324,8 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     *anchor_points = *temp_anchor_pt;
     anchor_indices->indices.clear();
     *anchor_indices = *temp_anchor_indices;
-    /*
+    */
+
     double object_lenght_thresh = 0.50;
     double nearest_cv_dist = DBL_MAX;
     Eigen::Vector4f cc_nearest_cv_pt;
@@ -1443,24 +1459,25 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        anchor_indices->indices.push_back(center_index);
     }
     return true;
-    */
 }
 
-
+/**
+ * CURRENTLY NOT IN USE
+ */
 bool InteractiveSegmentation::boundaryAnchorPoints(
     pcl::PointCloud<PointT>::Ptr anchor_points,
     pcl::PointIndices::Ptr anchor_indices, int &nearest_bt_cluster_idx,
     const pcl::PointCloud<PointT>::Ptr original_cloud,
     const std::vector<Eigen::Vector4f> convex_edge_centroids,
     const std::vector<pcl::PointIndices> cluster_convx,
-    const Eigen::Vector4f center, const pcl::KdTreeFLANN<PointT> kdtree) {
+    const Eigen::Vector4f center, const pcl::KdTreeFLANN<PointT> kdtree1) {
     if (anchor_points->empty()) {
        return false;
     }
     pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
     eifilter->setInputCloud(original_cloud);
-    // pcl::KdTreeFLANN<PointT> kdtree;
-    // kdtree.setInputCloud(anchor_points);
+    pcl::KdTreeFLANN<PointT> kdtree;
+    kdtree.setInputCloud(anchor_points);
     std::vector<int> point_idx_search;
     std::vector<float> point_squared_distance;
     
@@ -1567,7 +1584,6 @@ bool InteractiveSegmentation::boundaryAnchorPoints(
           center_index = i;
        }
     }
-    
     if (ap_index_2 == -1) {
        PointT ap_pt1 = anchor_points->points[ap_index_1];
        PointT ap_ct = anchor_points->points[center_index];
