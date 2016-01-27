@@ -129,10 +129,13 @@ void InteractiveSegmentation::callback(
     pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points);
     pcl::PointIndices::Ptr anchor_indices(new pcl::PointIndices);
+    int nearest_index_2 = -1;
     bool is_found_points = this->estimateAnchorPoints(
        anchor_points, convex_edge_points, concave_edge_points,
-       anchor_indices, original_cloud, cloud_msg->header);
+       anchor_indices, nearest_index_2, original_cloud, cloud_msg->header);
 
+    std::cout << "NEAREST INDEX 2: " << nearest_index_2 << std::endl;
+    
     ROS_INFO("\033[32m LABELING ON THE POINT \033[0m");
 
     /*
@@ -1135,7 +1138,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     pcl::PointCloud<PointT>::Ptr anchor_points,
     pcl::PointCloud<PointT>::Ptr convex_points,
     pcl::PointCloud<PointT>::Ptr concave_points,
-    pcl::PointIndices::Ptr anchor_indices,
+    pcl::PointIndices::Ptr anchor_indices, int &nearest_bt_cluster_idx,
     const pcl::PointCloud<PointT>::Ptr original_cloud,
     const std_msgs::Header header) {
     if (anchor_points->empty()) {
@@ -1274,19 +1277,38 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        anchor_indices->indices.push_back(fp_indx);
        return true;
     }
-
+    
     pcl::PointCloud<PointT>::Ptr temp_anchor_pt(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*anchor_points, *temp_anchor_pt);
     pcl::PointIndices::Ptr temp_anchor_indices(new pcl::PointIndices);
-    int nearest_bt_cluster_idx = -1;
+    nearest_bt_cluster_idx = -1;
     this->boundaryAnchorPoints(temp_anchor_pt, temp_anchor_indices,
                                nearest_bt_cluster_idx, original_cloud,
-                               convex_edge_centroids, cluster_convx, center);
+                               convex_edge_centroids, cluster_convx, center,
+                               kdtree);
+
+    if (nearest_bt_cluster_idx != -1) {
+       double dist = DBL_MAX;
+       int indx = -1;
+       for (int i = 0; i < anchor_points->size(); i++) {
+          double d = pcl::distances::l2(
+             convex_edge_centroids[nearest_bt_cluster_idx],
+             anchor_points->points[i].getVector4fMap());
+          if (d < dist) {
+             dist = d;
+             indx = i;
+          }
+       }
+       nearest_bt_cluster_idx = indx;
+       temp_anchor_indices->indices.push_back(indx);
+       temp_anchor_pt->push_back(anchor_points->points[indx]);
+       
+    }
 
     anchor_points->clear();
     *anchor_points = *temp_anchor_pt;
-
-    
+    anchor_indices->indices.clear();
+    *anchor_indices = *temp_anchor_indices;
     /*
     double object_lenght_thresh = 0.50;
     double nearest_cv_dist = DBL_MAX;
@@ -1321,7 +1343,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
           double d = pcl::distances::l2(convex_edge_centroids[i],
                                         tmp_cloud->points[j].getVector4fMap());
           if (d > intra_convx_dist) {
-             intra_convx_dist = d;
+          intra_convx_dist = d;
           }
 
           //-----------------------------
@@ -1431,14 +1453,14 @@ bool InteractiveSegmentation::boundaryAnchorPoints(
     const pcl::PointCloud<PointT>::Ptr original_cloud,
     const std::vector<Eigen::Vector4f> convex_edge_centroids,
     const std::vector<pcl::PointIndices> cluster_convx,
-    const Eigen::Vector4f center) {
+    const Eigen::Vector4f center, const pcl::KdTreeFLANN<PointT> kdtree) {
     if (anchor_points->empty()) {
        return false;
     }
     pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
     eifilter->setInputCloud(original_cloud);
-    pcl::KdTreeFLANN<PointT> kdtree;
-    kdtree.setInputCloud(anchor_points);
+    // pcl::KdTreeFLANN<PointT> kdtree;
+    // kdtree.setInputCloud(anchor_points);
     std::vector<int> point_idx_search;
     std::vector<float> point_squared_distance;
     
@@ -1450,7 +1472,7 @@ bool InteractiveSegmentation::boundaryAnchorPoints(
     PointT cc_center_pt;
     double intra_convx_dist = 0.0;
 
-    double cc_nearest_dist_cv_bt = 0.0;
+    double cc_nearest_dist_cv_bt = DBL_MAX;
     nearest_bt_cluster_idx = -1;
     
     for (int i = 0; i < cluster_convx.size(); i++) {

@@ -178,7 +178,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const pcl::PointCloud<pcl::Normal>::Ptr, const std_msgs::Header);
     bool estimateAnchorPoints(
        pcl::PointCloud<PointT>::Ptr, pcl::PointCloud<PointT>::Ptr,
-       pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr,
+       pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr, int &,
        const pcl::PointCloud<PointT>::Ptr, const std_msgs::Header);
     std::vector<Eigen::Vector4f> doEuclideanClustering(
        std::vector<pcl::PointIndices> &cluster_indices,
@@ -208,7 +208,7 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
         int &, const pcl::PointCloud<PointT>::Ptr,
         const std::vector<Eigen::Vector4f>,
         const std::vector<pcl::PointIndices>,
-        const Eigen::Vector4f);
+        const Eigen::Vector4f, const pcl::KdTreeFLANN<PointT>);
    
    
    
