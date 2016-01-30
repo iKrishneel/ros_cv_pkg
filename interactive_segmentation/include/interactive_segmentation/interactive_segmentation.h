@@ -59,15 +59,12 @@
 #include <geometry_msgs/PoseArray.h>
 #include <geometry_msgs/PointStamped.h>
 
-#include <interactive_segmentation/supervoxel_segmentation.h>
-#include <interactive_segmentation/saliency_map_generator.h>
 #include <interactive_segmentation/OutlierFiltering.h>
-
 #include <jsk_perception/skeletonization.h>
 
 #include <omp.h>
 
-class InteractiveSegmentation: public SupervoxelSegmentation {
+class InteractiveSegmentation {
 
     typedef pcl::PointXYZRGB PointT;
     typedef  pcl::FPFHSignature33 FPFHS;
@@ -75,7 +72,6 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
  private:
     boost::mutex mutex_;
     ros::NodeHandle pnh_;
-    typedef pcl::SupervoxelClustering<PointT>::VoxelAdjacencyList AdjacencyList;
     typedef message_filters::sync_policies::ApproximateTime<
        sensor_msgs::Image,
        sensor_msgs::CameraInfo,
@@ -141,13 +137,6 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
         cv::Mat &, const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr,
        const pcl::PointIndices::Ptr, const std_msgs::Header);
-       void surfelLevelObjectHypothesis(
-       pcl::PointCloud<PointT>::Ptr,
-       pcl::PointCloud<pcl::Normal>::Ptr,
-       std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &);
-    void updateSupervoxelClusters(
-       std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> &,
-       const uint32_t, const uint32_t);
     bool attentionSurfelRegionPointCloudMask(
        const pcl::PointCloud<PointT>::Ptr, const Eigen::Vector4f,
        const std_msgs::Header, pcl::PointCloud<PointT>::Ptr,
@@ -160,8 +149,6 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
        const pcl::PointCloud<PointT>::Ptr, pcl::PointCloud<PointT>::Ptr);
     float whiteNoiseKernel(
        const float, const float = 0.0f, const float = 0.0f);
-    void generateFeatureSaliencyMap(
-       const cv::Mat &, cv::Mat &);
     virtual Eigen::Vector4f cloudMeanNormal(
        const pcl::PointCloud<pcl::Normal>::Ptr, bool = false);
     int localVoxelConvexityCriteria(

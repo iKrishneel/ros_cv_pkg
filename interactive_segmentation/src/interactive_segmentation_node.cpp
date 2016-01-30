@@ -11,9 +11,6 @@ InteractiveSegmentation::InteractiveSegmentation():
 
     // std::cout << "STARTING WITH: " << num_threads_  << "\n";
     
-    // this->srv_client_ = this->pnh_.serviceClient<
-    //   interactive_segmentation::OutlierFiltering>("outlier_filtering_srv");
-    
     this->subscribe();
     this->onInit();
 }
@@ -162,8 +159,7 @@ void InteractiveSegmentation::callback(
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
     this->publishAsROSMsg(convex_edge_points, pub_convex_, cloud_msg->header);
-
-    /*
+    
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
        new pcl::PointCloud<pcl::PointXYZRGBNormal>);
     for (int i = 0; i < anchor_indices->indices.size(); i++) {
@@ -185,7 +181,6 @@ void InteractiveSegmentation::callback(
     pcl::toROSMsg(*centroid_normal, ros_normal);
     ros_normal.header = cloud_msg->header;
     pub_normal_.publish(ros_normal);
-    */
     
     ROS_INFO("\n\033[34m ALL VALID REGION LABELED \033[0m");
 }
@@ -554,99 +549,6 @@ bool InteractiveSegmentation::attentionSurfelRegionPointCloudMask(
     this->pub_prob_.publish(ros_cloud);
 }
 
-void InteractiveSegmentation::generateFeatureSaliencyMap(
-    const cv::Mat &img, cv::Mat &saliency_img) {
-    cv::Mat image = img.clone();
-    cv::cvtColor(img, image, CV_BGR2GRAY);
-    SaliencyMapGenerator saliency_map(8);
-    saliency_map.computeSaliencyImpl(image, saliency_img);
-    cv::cvtColor(saliency_img, saliency_img, CV_GRAY2BGR);
-}
-
-void InteractiveSegmentation::surfelLevelObjectHypothesis(
-    pcl::PointCloud<PointT>::Ptr cloud,
-    pcl::PointCloud<pcl::Normal>::Ptr normals,
-    std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &convex_supervoxels) {
-    if (cloud->empty()) {
-       ROS_ERROR("ERROR: EMPTY CLOUD");
-       return;
-    }
-    std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > supervoxel_clusters;
-    AdjacencyList adjacency_list;
-    this->supervoxelSegmentation(cloud,
-                                 supervoxel_clusters,
-                                 adjacency_list);
-    std::map<uint32_t, int> voxel_labels;
-    convex_supervoxels.clear();
-    // cloud->clear();
-    for (std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr>::iterator it =
-            supervoxel_clusters.begin(); it != supervoxel_clusters.end();
-         it++) {
-       voxel_labels[it->first] = -1;
-       pcl::Supervoxel<PointT>::Ptr supervoxel =
-          supervoxel_clusters.at(it->first);
-       // *normals = *normals + *(supervoxel->normals_);
-       // *cloud = *cloud + *(supervoxel->voxels_);
-    }
-    int label = -1;
-    AdjacencyList::vertex_iterator i, end;
-    for (boost::tie(i, end) = boost::vertices(adjacency_list); i != end; i++) {
-       AdjacencyList::adjacency_iterator ai, a_end;
-       boost::tie(ai, a_end) = boost::adjacent_vertices(*i, adjacency_list);
-       uint32_t vindex = static_cast<int>(adjacency_list[*i]);
-       
-       Eigen::Vector4f v_normal = this->cloudMeanNormal(
-          supervoxel_clusters.at(vindex)->normals_);
-       // Eigen::Vector4f v_normal = supervoxel_clusters.at(
-       //     vindex)->normal_.getNormalVector4fMap();
-       std::map<uint32_t, int>::iterator it = voxel_labels.find(vindex);
-       if (it->second == -1) {
-          voxel_labels[vindex] = ++label;
-       }
-       std::vector<uint32_t> neigb_ind;
-       for (; ai != a_end; ai++) {
-          bool found = false;
-          AdjacencyList::edge_descriptor e_descriptor;
-          boost::tie(e_descriptor, found) = boost::edge(
-             *i, *ai, adjacency_list);
-          if (found) {
-             float weight = adjacency_list[e_descriptor];
-             uint32_t n_vindex = adjacency_list[*ai];
-             float conv_criteria = (
-                supervoxel_clusters.at(vindex)->centroid_.getVector4fMap() -
-                supervoxel_clusters.at(n_vindex)->centroid_.getVector4fMap()).
-                dot(v_normal);
-             neigb_ind.push_back(n_vindex);
-             if (conv_criteria <= this->convex_threshold_ ||
-                 isnan(conv_criteria)) {
-                boost::remove_edge(e_descriptor, adjacency_list);
-             } else {
-                this->updateSupervoxelClusters(supervoxel_clusters,
-                                               vindex, n_vindex);
-                AdjacencyList::adjacency_iterator ni, n_end;
-                boost::tie(ni, n_end) = boost::adjacent_vertices(
-                   *ai, adjacency_list);
-                for (; ni != n_end; ni++) {
-                   bool is_found = false;
-                   AdjacencyList::edge_descriptor n_edge;
-                   boost::tie(n_edge, is_found) = boost::edge(
-                      *ai, *ni, adjacency_list);
-                   if (is_found && (*ni != *i)) {
-                      boost::add_edge(*i, *ni, FLT_MIN, adjacency_list);
-                   }
-                   boost::remove_edge(n_edge, adjacency_list);
-                }
-                boost::clear_vertex(*ai, adjacency_list);
-                voxel_labels[n_vindex] = label;
-             }
-          }
-       }
-       convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
-    }
-    supervoxel_clusters.clear();
-}
-
-
 void InteractiveSegmentation::computePointCloudCovarianceMatrix(
     const pcl::PointCloud<PointT>::Ptr cloud,
     pcl::PointCloud<PointT>::Ptr new_cloud) {
@@ -694,16 +596,10 @@ void InteractiveSegmentation::computePointCloudCovarianceMatrix(
           Eigen::Vector3f eigen_vals;  // 2 > 1 > 0
           Eigen::Matrix3f eigen_vects;
           pcl::eigen33(covariance_matrix, eigen_vects, eigen_vals);
-
-
-          // std::cout << eigen_vects(0, 2) << std::endl;
-          // std::cout << eigen_vects << "\n\n";
           Eigen::Vector4f vec = Eigen::Vector4f(eigen_vects(0, 2),
                                                 eigen_vects(1, 2),
                                                 eigen_vects(2, 2), 1.0f);
           principle_axis.push_back(vec);
-          
-          
           // eigen entropy
           float sum_entropy = 0.0f;
           float sum_eigen = 0.0f;
@@ -713,13 +609,7 @@ void InteractiveSegmentation::computePointCloudCovarianceMatrix(
           }
           eigen_entropy_ptr[i] = sum_entropy * -1.0f;
           sum_of_eigens_ptr[i] = sum_eigen;
-          // sum_of_eigens_ptr[i] = (eigen_vals(0) - eigen_vals(2)) /
-          // eigen_vals(1);
-          
-          
           curvature_ptr[i] = (eigen_vals(0) / sum_eigen);
-
-          // ****** TEMP
           double dist = pcl::distances::l2(
              centroid_pt.getVector4fMap(), center);
           if (dist < distance) {
@@ -729,8 +619,6 @@ void InteractiveSegmentation::computePointCloudCovarianceMatrix(
     }
 
     
-    // pcl::PointCloud<PointT>::Ptr new_cloud(new
-    // pcl::PointCloud<PointT>);
     new_cloud->clear();
     for (int i = 0; i < cloud->size(); i++) {
       float dist_diff_sum = std::pow(
@@ -772,44 +660,6 @@ void InteractiveSegmentation::computePointCloudCovarianceMatrix(
     }
 }
 
-
-
-
-void InteractiveSegmentation::updateSupervoxelClusters(
-    std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> &supervoxel_clusters,
-    const uint32_t vindex, const uint32_t n_vindex) {
-    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
-    *cloud = *(supervoxel_clusters.at(vindex)->voxels_) +
-       *(supervoxel_clusters.at(n_vindex)->voxels_);
-    pcl::PointCloud<pcl::Normal>::Ptr normals(
-       new pcl::PointCloud<pcl::Normal>);
-    *normals = *(supervoxel_clusters.at(vindex)->normals_) +
-       *(supervoxel_clusters.at(n_vindex)->normals_);
-    // Eigen::Vector4f centre;
-    // pcl::compute3DCentroid<PointT, float>(*cloud, centre);
-    // pcl::PointXYZRGBA centroid;
-    // centroid.x = centre(0);
-    // centroid.y = centre(1);
-    // centroid.z = centre(2);
-    pcl::PointXYZRGBA centroid;
-    pcl::PointXYZRGBA vcent = supervoxel_clusters.at(vindex)->centroid_;
-    pcl::PointXYZRGBA n_vcent = supervoxel_clusters.at(n_vindex)->centroid_;
-    centroid.x = (vcent.x - n_vcent.x)/2 + n_vcent.x;
-    centroid.y = (vcent.y - n_vcent.y)/2 + n_vcent.y;
-    centroid.z = (vcent.z - n_vcent.z)/2 + n_vcent.z;
-    centroid.r = (vcent.r - n_vcent.r)/2 + n_vcent.r;
-    centroid.g = (vcent.g - n_vcent.g)/2 + n_vcent.g;
-    centroid.b = (vcent.b - n_vcent.b)/2 + n_vcent.b;
-    centroid.a = (vcent.a - n_vcent.a)/2 + n_vcent.a;
-    *(supervoxel_clusters.at(vindex)->voxels_) = *cloud;
-    *(supervoxel_clusters.at(vindex)->normals_) = *normals;
-    supervoxel_clusters.at(vindex)->centroid_ = centroid;
-    *(supervoxel_clusters.at(n_vindex)->voxels_) = *cloud;
-    *(supervoxel_clusters.at(n_vindex)->normals_) = *normals;
-    supervoxel_clusters.at(n_vindex)->centroid_ = centroid;
-}
-
-
 void InteractiveSegmentation::pointIntensitySimilarity(
     pcl::PointCloud<PointT>::Ptr cloud,
     const int index) {
@@ -831,7 +681,6 @@ void InteractiveSegmentation::pointIntensitySimilarity(
           std::pow((hsv.h/h_norm - attention_hsv.h/h_norm), 2) +
           std::pow((hsv.s/s_norm - attention_hsv.s/s_norm), 2));
        float pix_val = exp(-1.0f * dist_color);
-       // pix_val *= this->whiteNoiseKernel(pix_val);
        
        cloud->points[i].r = pix_val * 255.0f;
        cloud->points[i].g = pix_val * 255.0f;
@@ -1253,7 +1102,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     if (center_index == -1) {
        ROS_ERROR("ERROR: NO CONCAVE CENTER FOUND");
        return false;
-    }        
+    }
     
     // TODO(HERE): select closest and best candidate
     // select point in direction of normal few dist away
@@ -1312,9 +1161,9 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        return true;
     }
 
-    Eigen::Vector3f polygon_normal;
-    this->fixPlaneModelToEdgeBoundaryPoints(anchor_points,
-                                            polygon_normal, center);
+    // Eigen::Vector3f polygon_normal;
+    // this->fixPlaneModelToEdgeBoundaryPoints(anchor_points,
+    //                                         polygon_normal, center);
 
     double object_lenght_thresh = 0.50;
     double nearest_cv_dist = DBL_MAX;
