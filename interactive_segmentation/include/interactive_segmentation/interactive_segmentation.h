@@ -48,7 +48,8 @@
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
-#include <point_cloud_scene_decomposer/signal.h>
+#include <jsk_recognition_utils/geo/polygon.h>
+#include <jsk_recognition_msgs/PolygonArray.h>
 
 #include <std_msgs/Header.h>
 #include <std_msgs/Bool.h>
@@ -95,7 +96,9 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     message_filters::Subscriber<geometry_msgs::PointStamped> sub_screen_pt_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_orig_cloud_;
     boost::shared_ptr<message_filters::Synchronizer<UsrSyncPolicy> >usr_sync_;
-  
+
+    ros::Subscriber sub_polyarray_;
+   
     ros::Publisher pub_cloud_;
     ros::Publisher pub_convex_;
     ros::Publisher pub_concave_;
@@ -115,7 +118,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     int num_threads_;
   
     sensor_msgs::CameraInfo::ConstPtr camera_info_;
-  
+    jsk_recognition_msgs::PolygonArray polygon_array_;
+   
  protected:
     void onInit();
     void subscribe();
@@ -126,6 +130,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
     virtual void screenPointCallback(
        const geometry_msgs::PointStamped::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
+    virtual void polygonArrayCallback(
+       const jsk_recognition_msgs::PolygonArray::ConstPtr &);
     virtual void callback(
        const sensor_msgs::Image::ConstPtr &,
        const sensor_msgs::CameraInfo::ConstPtr &,

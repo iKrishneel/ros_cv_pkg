@@ -57,6 +57,10 @@ void InteractiveSegmentation::subscribe() {
        usr_sync_->connectInput(sub_screen_pt_, sub_orig_cloud_);
        usr_sync_->registerCallback(boost::bind(
            &InteractiveSegmentation::screenPointCallback, this, _1, _2));
+
+       this->sub_polyarray_ = pnh_.subscribe(
+          "/multi_plane_estimate/output_refined_polygon", 1,
+          &InteractiveSegmentation::polygonArrayCallback, this);
        
        this->sub_image_.subscribe(this->pnh_, "input_image", 1);
        this->sub_info_.subscribe(this->pnh_, "input_info", 1);
@@ -93,6 +97,11 @@ void InteractiveSegmentation::screenPointCallback(
         !isnan(user_marked_pt_.z)) {
       this->is_init_ = true;
     }
+}
+
+void InteractiveSegmentation::polygonArrayCallback(
+    const jsk_recognition_msgs::PolygonArray::ConstPtr &poly_msg) {
+    this->polygon_array_ = *poly_msg;
 }
 
 void InteractiveSegmentation::callback(
@@ -153,7 +162,8 @@ void InteractiveSegmentation::callback(
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
     this->publishAsROSMsg(convex_edge_points, pub_convex_, cloud_msg->header);
-    
+
+    /*
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
        new pcl::PointCloud<pcl::PointXYZRGBNormal>);
     for (int i = 0; i < anchor_indices->indices.size(); i++) {
@@ -175,7 +185,7 @@ void InteractiveSegmentation::callback(
     pcl::toROSMsg(*centroid_normal, ros_normal);
     ros_normal.header = cloud_msg->header;
     pub_normal_.publish(ros_normal);
-    
+    */
     
     ROS_INFO("\n\033[34m ALL VALID REGION LABELED \033[0m");
 }
@@ -1806,20 +1816,89 @@ void InteractiveSegmentation::fixPlaneModelToEdgeBoundaryPoints(
     Eigen::Vector4f point_b = center - point_a;
     Eigen::Vector4f point_c = Eigen::Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
     point_c -= point_a;
-    
+
+    // -----
+    geometry_msgs::PolygonStamped polygon = polygon_array_.polygons[0];
+    jsk_recognition_utils::Polygon geo_polygon
+       = jsk_recognition_utils::Polygon::fromROSMsg(polygon.polygon);
+    jsk_recognition_utils::Vertices vertices = geo_polygon.getVertices();
+    Eigen::Vector3f centroid(0, 0, 0);
+    if (vertices.size() == 0) {
+       ROS_ERROR("the size of vertices is 0");
+    } else {
+       for (size_t j = 0; j < vertices.size(); j++) {
+          centroid = vertices[j] + centroid;
+       }
+       centroid = centroid / vertices.size();
+    }
+    Eigen::Vector3f pos(centroid[0], centroid[1], centroid[2]);
+    Eigen::Vector3f normal = geo_polygon.getNormal();
+
+    float coef = normal.dot(center.head<3>());
+    float x = coef / normal(0);
+    float y = coef / normal(1);
+    float z = coef / normal(2);
+
+    Eigen::Vector3f point_x = Eigen::Vector3f(x, 0.0f, 0.0f);
+    Eigen::Vector3f point_y = Eigen::Vector3f(0.0f, y, 0.0f) - point_x;
+    Eigen::Vector3f point_z = Eigen::Vector3f(0.0f, 0.0f, z) - point_x;
+
     cloud->clear();
     for (float y = -1.0f; y < 1.0f; y += 0.01f) {
        for (float x = -1.0f; x < 1.0f; x += 0.01f) {
           PointT pt;
-          pt.x = point_a(0) + point_b(0) * x + point_c(0) * y;
-          pt.y = point_a(1) + point_b(1) * x + point_c(1) * y;
-          pt.z = point_a(2) + point_b(2) * x + point_c(2) * y;
+          pt.x = point_x(0) + point_y(0) * x + point_z(0) * y;
+          pt.y = point_x(1) + point_y(1) * x + point_z(1) * y;
+          pt.z = point_x(2) + point_y(2) * x + point_z(2) * y;
           pt.g = 255;
           cloud->push_back(pt);
        }
     }
     
-    this->publishAsROSMsg(cloud, pub_prob_, camera_info_->header);
+    std::cout << "\n COEFF: " << coef << "\t" << x << ", "
+              << y  << ", " << z << std::endl;
+
+    // filter
+    pcl::PointCloud<PointT>::Ptr object_cloud(new pcl::PointCloud<PointT>);
+    for (int i = 0; i < in_cloud->size(); i++) {
+       Eigen::Vector3f pt = in_cloud->points[i].getVector3fMap();
+       Eigen::Vector4f plane_coef = Eigen::Vector4f(normal(0), normal(1),
+                                                    normal(2), coef);
+       
+       // float val = pt.dot(plane_coef);
+       float val = normal.dot(pt - center.head<3>());
+       if (val >= 0.0f) {
+          object_cloud->push_back(in_cloud->points[i]);
+       }
+       // std::cout << val << std::endl;
+          
+    }
+    this->publishAsROSMsg(object_cloud, pub_prob_, camera_info_->header);
+    
+    
+    pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
+       new pcl::PointCloud<pcl::PointXYZRGBNormal>);
+    pcl::PointXYZRGBNormal pt;
+    pt.x = pos(0);
+    pt.y = pos(1);
+    pt.z = pos(2);
+    pt.r = 255;
+    pt.g = 0;
+    pt.b = 255;
+    pt.normal_x = normal(0);
+    pt.normal_y = normal(1);
+    pt.normal_z = normal(2);
+    centroid_normal->push_back(pt);
+    centroid_normal->push_back(pt);
+    centroid_normal->push_back(pt);
+    sensor_msgs::PointCloud2 ros_normal;
+    pcl::toROSMsg(*centroid_normal, ros_normal);
+    ros_normal.header = camera_info_->header;
+    pub_normal_.publish(ros_normal);
+    
+    // -----
+    
+
 }
 
 /**
