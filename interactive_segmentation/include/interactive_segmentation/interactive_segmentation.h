@@ -209,7 +209,8 @@ class InteractiveSegmentation: public SupervoxelSegmentation {
         const std::vector<Eigen::Vector4f>,
         const std::vector<pcl::PointIndices>,
         const Eigen::Vector4f, const pcl::KdTreeFLANN<PointT>);
-   
+    void fixPlaneModelToEdgeBoundaryPoints(
+       const pcl::PointCloud<PointT>::Ptr, const pcl::PointIndices::Ptr);
    
    
     void normalizedCurvatureNormalHistogram(

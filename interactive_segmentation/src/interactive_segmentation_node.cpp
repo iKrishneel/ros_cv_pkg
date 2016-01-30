@@ -127,7 +127,6 @@ void InteractiveSegmentation::callback(
        new pcl::PointCloud<PointT>);
     this->highCurvatureEdgeBoundary(concave_edge_points, convex_edge_points,
                                     cloud, normals, cloud_msg->header);
-    
     pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points);
     pcl::PointIndices::Ptr anchor_indices(new pcl::PointIndices);
@@ -137,7 +136,8 @@ void InteractiveSegmentation::callback(
        anchor_indices, nearest_index_2, original_cloud, cloud_msg->header);
     
     ROS_INFO("\033[32m LABELING ON THE POINT \033[0m");
-    
+
+    /*
     if (is_found_points) {
        cv::Mat weight_map;
        this->selectedVoxelObjectHypothesis(
@@ -148,6 +148,8 @@ void InteractiveSegmentation::callback(
            non_object_ap, normals, anchor_indices->indices[0], weight_map);
     }
 
+    */
+    
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
     this->publishAsROSMsg(convex_edge_points, pub_convex_, cloud_msg->header);
@@ -188,15 +190,15 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
     const int mem_size = indices->indices.size();
     std::vector<cv::Mat> anchor_points_weights(mem_size);
     std::vector<float> anchor_points_max(mem_size);
-    
+
+    Eigen::Vector4f attention_centroid;
+    Eigen::Vector4f attention_normal;
     for (int i = 0; i < indices->indices.size(); i++) {
        cloud->clear();
        pcl::copyPointCloud<PointT, PointT>(*in_cloud, *cloud);
        int index = indices->indices[i];
-       Eigen::Vector4f attention_normal = normals->points[
-          index].getNormalVector4fMap();
-       Eigen::Vector4f attention_centroid = cloud->points[
-          index].getVector4fMap();
+       attention_normal = normals->points[index].getNormalVector4fMap();
+       attention_centroid = cloud->points[index].getVector4fMap();
 
        std::cout << "\033[34m COMPUTING WEIGHTS \033[0m" << std::endl;
 
@@ -455,8 +457,10 @@ void InteractiveSegmentation::filterAndComputeNonObjectRegionAnchorPoint(
     Eigen::Vector4f cc_normal = normals->points[c_index].getNormalVector4fMap();
 
     // cv::Mat weights;
-    // this->surfelSamplePointWeightMap(anchor_points, normals, anchor_points->points[idx],
-    //                                  normals->points[idx].getNormalVector4fMap(), weights);
+    // this->surfelSamplePointWeightMap(anchor_points, normals,
+    // anchor_points->points[idx],
+    // normals->points[idx].getNormalVector4fMap(), weights);
+    
 
     for (int i = 0; i < anchor_points->size(); i++) {
       // anchor_points->points[i].r = weights.at<float>(i, 0) * 255.0f;
@@ -468,15 +472,16 @@ void InteractiveSegmentation::filterAndComputeNonObjectRegionAnchorPoint(
           normals->points[ind].getNormalVector4fMap());
       if (val == -1) {
         val = 0;
-      } 
-      float pix_val = static_cast<float>(val) * weight_map.at<float>(i, 0) * 255.0f;
+      }
+      float pix_val = static_cast<float>(val) *
+         weight_map.at<float>(i, 0) * 255.0f;
 
       anchor_points->points[ind].r = pix_val;
       anchor_points->points[ind].b = pix_val;
       anchor_points->points[ind].g = pix_val;
     }
-
-    this->publishAsROSMsg(anchor_points, pub_prob_, camera_info_->header);
+    // this->publishAsROSMsg(anchor_points, pub_prob_, camera_info_->header);
+    this->publishAsROSMsg(non_object_cloud, pub_prob_, camera_info_->header);
     
 }
 
@@ -1069,7 +1074,7 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
     int search = 100;  // thresholds
 
     int icount = 0;
-    const float concave_thresh = 0.30f;  // thresholds
+    const float concave_thresh = 0.20f;  // thresholds
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(this->num_threads_) shared(kdtree)
 #endif
@@ -1079,10 +1084,10 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
            !isnan(centroid_pt.z)) {
           std::vector<int> point_idx_search;
           std::vector<float> point_squared_distance;
-          // int search_out = kdtree.nearestKSearch(
-          //    centroid_pt, search, point_idx_search, point_squared_distance);
-          int search_out = kdtree.radiusSearch(
-             centroid_pt, 0.01f, point_idx_search, point_squared_distance);
+          int search_out = kdtree.nearestKSearch(
+             centroid_pt, search, point_idx_search, point_squared_distance);
+          // int search_out = kdtree.radiusSearch(
+          //    centroid_pt, 0.01f, point_idx_search, point_squared_distance);
           Eigen::Vector4f seed_vector = normals->points[
              i].getNormalVector4fMap();
           float max_diff = 0.0f;
@@ -1140,7 +1145,7 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
 #pragma omp section
 #endif
       {
-        this->edgeBoundaryOutlierFiltering(convex_edge_points, 0.01f, 100);
+        this->edgeBoundaryOutlierFiltering(convex_edge_points, 0.01f);
       }
     }
     this->publishAsROSMsg(concave_edge_points, pub_concave_, header);
@@ -1234,6 +1239,16 @@ bool InteractiveSegmentation::estimateAnchorPoints(
         height = concave_edge_centroids[i](1);
       }
     }
+
+    if (center_index == -1) {
+       ROS_ERROR("ERROR: NO CONCAVE CENTER FOUND");
+       return false;
+    }
+
+    pcl::PointIndices::Ptr select_indices(new pcl::PointIndices);
+    *select_indices = cluster_concv[center_index];
+    this->fixPlaneModelToEdgeBoundaryPoints(original_cloud, select_indices);
+        
     
     // TODO(HERE): select closest and best candidate
     // select point in direction of normal few dist away
@@ -1764,6 +1779,52 @@ bool InteractiveSegmentation::skeletonization2D(
     return true;
 }
 
+void InteractiveSegmentation::fixPlaneModelToEdgeBoundaryPoints(
+    const pcl::PointCloud<PointT>::Ptr in_cloud,
+    const pcl::PointIndices::Ptr indices) {
+    if (in_cloud->empty()) {
+       return;
+    }
+    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+    for (int i = 0; i < indices->indices.size(); i++) {
+       int idx = indices->indices[i];
+       cloud->push_back(in_cloud->points[idx]);
+    }
+    Eigen::Vector4f center;
+    pcl::compute3DCentroid<PointT, float>(*cloud, center);
+
+    double max_dist = 0.0;
+    Eigen::Vector4f point_a;
+    for (int i = 0; i < cloud->size(); i++) {
+       double d = pcl::distances::l2(
+          center, cloud->points[i].getVector4fMap());
+       if (d > max_dist) {
+          max_dist = d;
+          point_a = cloud->points[i].getVector4fMap();
+       }
+    }
+    Eigen::Vector4f point_b = center - point_a;
+    Eigen::Vector4f point_c = Eigen::Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
+    point_c -= point_a;
+    
+    cloud->clear();
+    for (float y = -1.0f; y < 1.0f; y += 0.01f) {
+       for (float x = -1.0f; x < 1.0f; x += 0.01f) {
+          PointT pt;
+          pt.x = point_a(0) + point_b(0) * x + point_c(0) * y;
+          pt.y = point_a(1) + point_b(1) * x + point_c(1) * y;
+          pt.z = point_a(2) + point_b(2) * x + point_c(2) * y;
+          pt.g = 255;
+          cloud->push_back(pt);
+       }
+    }
+    
+    this->publishAsROSMsg(cloud, pub_prob_, camera_info_->header);
+}
+
+/**
+ * NOT USED
+ */
 void InteractiveSegmentation::normalizedCurvatureNormalHistogram(
     pcl::PointCloud<PointT>::Ptr cloud,
     pcl::PointCloud<pcl::Normal>::Ptr normals) {
