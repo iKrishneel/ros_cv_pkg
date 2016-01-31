@@ -50,6 +50,7 @@
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
 #include <jsk_recognition_utils/geo/polygon.h>
 #include <jsk_recognition_msgs/PolygonArray.h>
+#include <jsk_recognition_utils/pcl_conversion_util.h>
 
 #include <std_msgs/Header.h>
 #include <std_msgs/Bool.h>
@@ -139,8 +140,7 @@ class InteractiveSegmentation {
        const pcl::PointIndices::Ptr, const std_msgs::Header);
     bool attentionSurfelRegionPointCloudMask(
        const pcl::PointCloud<PointT>::Ptr, const Eigen::Vector4f,
-       const std_msgs::Header, pcl::PointCloud<PointT>::Ptr,
-       pcl::PointIndices::Ptr);
+       pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr);
     void surfelSamplePointWeightMap(
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr, const PointT &,

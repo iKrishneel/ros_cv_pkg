@@ -166,6 +166,19 @@ void InteractiveSegmentation::callback(
           weight_cloud, cloud, normals, anchor_indices, cloud_msg->header);
        pcl::PointCloud<PointT>::Ptr non_object_ap(new pcl::PointCloud<PointT>);
        pcl::copyPointCloud<PointT, PointT>(*cloud, *non_object_ap);
+
+       pcl::PointIndices::Ptr object_indices(new pcl::PointIndices);
+       this->attentionSurfelRegionPointCloudMask(
+          weight_cloud, anchor_points->points[0].getVector4fMap(),
+          cloud, object_indices);
+       std::vector<pcl::PointIndices> all_indices;
+       all_indices.push_back(*object_indices);
+       
+       jsk_recognition_msgs::ClusterPointIndices ros_indices;
+       ros_indices.cluster_indices = pcl_conversions::convertToROSPointIndices(
+          all_indices, cloud_msg->header);
+       ros_indices.header = cloud_msg->header;
+       pub_indices_.publish(ros_indices);
        
        // this->filterAndComputeNonObjectRegionAnchorPoint(
        //     non_object_ap, normals, anchor_indices->indices[0], weight_map);
@@ -225,63 +238,20 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
        cv::Mat weight_map;
        this->surfelSamplePointWeightMap(cloud, normals, cloud->points[index],
                                         attention_normal, weight_map);
-
-       pcl::PointCloud<PointT>::Ptr weight_cloud(
-          new pcl::PointCloud<PointT>);
-       float max_weight = 0.0f;
-       /*
-       for (int x = 0; x < weight_map.rows; x++) {
-          if (weight_map.at<float>(x, 0) > max_weight) {
-             max_weight = weight_map.at<float>(x, 0);
-          }
-          cloud->points[x].r = weight_map.at<float>(x, 0) * 255.0f;
-          cloud->points[x].g = weight_map.at<float>(x, 0) * 255.0f;
-          cloud->points[x].b = weight_map.at<float>(x, 0) * 255.0f;
-       }
-       *weight_cloud = *cloud;
-       
-       std::cout << "\033[34m OBJECT MASK EXTRACTION \033[0m"
-                 << std::endl;
-
-       /*
-       pcl::PointCloud<PointT>::Ptr prob_object_cloud(
-          new pcl::PointCloud<PointT>);
-       pcl::PointIndices::Ptr prob_object_indices(new pcl::PointIndices);
-       this->attentionSurfelRegionPointCloudMask(cloud, attention_centroid,
-                                                 header, prob_object_cloud,
-                                                 prob_object_indices);
-       */
-                                                 
-       // anchor_points_weights[i] = pcl::PointCloud<PointT>::Ptr(
-       //    new pcl::PointCloud<PointT>);
-       // pcl::copyPointCloud<PointT, PointT>(*cloud,
-       //    *anchor_points_weights[i]);
-
        anchor_points_weights[i] = weight_map;
-       // anchor_points_max[i] = max_weight;
-       
        publishAsROSMsg(cloud, pub_cloud_, header);
-       // ros::Duration(5).sleep();
     }
-    
-    // TODO(HERE): combine the weight maps
     cv::Mat conv_weight_map = cv::Mat::zeros(
        static_cast<int>(in_cloud->size()), 1, CV_32F);
     for (int i = 0; i < anchor_points_weights.size(); i++) {
-       cv::Scalar mean;
-       cv::Scalar stddev;
-       cv::meanStdDev(anchor_points_weights[i], mean, stddev);
-       // float psr = (anchor_points_max[i] - mean.val[0])/stddev.val[0];
        cv::Mat weight_map = anchor_points_weights[i];
        for (int j = 0; j < weight_map.rows; j++) {
           conv_weight_map.at<float>(j, 0) += (weight_map.at<float>(j, 0));
        }
        anchor_points_weights[i] = weight_map;
-       // conv_weight_map *= weight_map;
     }
     cv::normalize(conv_weight_map, conv_weight_map, 0, 1,
                   cv::NORM_MINMAX, -1, cv::Mat());
-    // pcl::PointCloud<PointT>::Ptr weight_cloud(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*in_cloud, *weight_cloud);
     for (int j = 0; j < conv_weight_map.rows; j++) {
        float w = (conv_weight_map.at<float>(j, 0) / 1.0f) *  255.0f;
@@ -506,7 +476,7 @@ void InteractiveSegmentation::filterAndComputeNonObjectRegionAnchorPoint(
 
 bool InteractiveSegmentation::attentionSurfelRegionPointCloudMask(
     const pcl::PointCloud<PointT>::Ptr weight_cloud,
-    const Eigen::Vector4f centroid, const std_msgs::Header header,
+    const Eigen::Vector4f centroid,
     pcl::PointCloud<PointT>::Ptr prob_object_cloud,
     pcl::PointIndices::Ptr prob_object_indices) {
     if (weight_cloud->empty()) {
@@ -559,7 +529,7 @@ bool InteractiveSegmentation::attentionSurfelRegionPointCloudMask(
     }
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*prob_object_cloud, ros_cloud);
-    ros_cloud.header = header;
+    ros_cloud.header = camera_info_->header;
     this->pub_prob_.publish(ros_cloud);
 }
 
