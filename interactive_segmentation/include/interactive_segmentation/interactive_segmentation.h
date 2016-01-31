@@ -171,8 +171,8 @@ class InteractiveSegmentation {
        const pcl::PointCloud<pcl::Normal>::Ptr, const std_msgs::Header);
     bool estimateAnchorPoints(
        pcl::PointCloud<PointT>::Ptr, pcl::PointCloud<PointT>::Ptr,
-       pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr, int &,
-       const pcl::PointCloud<PointT>::Ptr, const std_msgs::Header);
+       pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr,
+       pcl::PointIndices::Ptr, const pcl::PointCloud<PointT>::Ptr);
     std::vector<Eigen::Vector4f> doEuclideanClustering(
        std::vector<pcl::PointIndices> &cluster_indices,
        const pcl::PointCloud<PointT>::Ptr,
@@ -197,8 +197,8 @@ class InteractiveSegmentation {
         const pcl::PointCloud<pcl::Normal>::Ptr,
         const int, const cv::Mat &, const float = 0.0f);
     void fixPlaneModelToEdgeBoundaryPoints(
-       pcl::PointCloud<PointT>::Ptr, Eigen::Vector3f &,
-       const Eigen::Vector4f);
+       pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr,
+       Eigen::Vector3f &, const Eigen::Vector4f);
     bool markedPointInSegmentedRegion(
        const pcl::PointCloud<PointT>::Ptr, const PointT);
    

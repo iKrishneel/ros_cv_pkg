@@ -136,25 +136,39 @@ void InteractiveSegmentation::callback(
     pcl::PointCloud<PointT>::Ptr anchor_points(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points);
     pcl::PointIndices::Ptr anchor_indices(new pcl::PointIndices);
+    pcl::PointIndices::Ptr filtered_indices(new pcl::PointIndices);
     int nearest_index_2 = -1;
     bool is_found_points = this->estimateAnchorPoints(
        anchor_points, convex_edge_points, concave_edge_points,
-       anchor_indices, nearest_index_2, original_cloud, cloud_msg->header);
+       anchor_indices, filtered_indices, original_cloud);
     
     ROS_INFO("\033[32m LABELING ON THE POINT \033[0m");
-
-    /*
+    
     if (is_found_points) {
+       if (!filtered_indices->indices.empty()) {
+          pcl::PointCloud<PointT>::Ptr filtered_cloud(
+             new pcl::PointCloud<PointT>);
+          pcl::PointCloud<pcl::Normal>::Ptr filtered_normal(
+          new pcl::PointCloud<pcl::Normal>);
+          for (int i = 0; i < filtered_indices->indices.size(); i++) {
+             int idx = filtered_indices->indices[i];
+             filtered_cloud->push_back(cloud->points[idx]);
+             filtered_normal->push_back(normals->points[idx]);
+          }
+          cloud->clear();
+          normals->clear();
+          pcl::copyPointCloud<PointT, PointT>(*filtered_cloud, *cloud);
+          pcl::copyPointCloud<pcl::Normal, pcl::Normal>(
+             *filtered_normal, *normals);
+       }
        cv::Mat weight_map;
        this->selectedVoxelObjectHypothesis(
            weight_map, cloud, normals, anchor_indices, cloud_msg->header);
        pcl::PointCloud<PointT>::Ptr non_object_ap(new pcl::PointCloud<PointT>);
        pcl::copyPointCloud<PointT, PointT>(*cloud, *non_object_ap);
-       this->filterAndComputeNonObjectRegionAnchorPoint(
-           non_object_ap, normals, anchor_indices->indices[0], weight_map);
+       // this->filterAndComputeNonObjectRegionAnchorPoint(
+       //     non_object_ap, normals, anchor_indices->indices[0], weight_map);
     }
-
-    */
     
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
@@ -1016,9 +1030,9 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     pcl::PointCloud<PointT>::Ptr anchor_points,
     pcl::PointCloud<PointT>::Ptr convex_points,
     pcl::PointCloud<PointT>::Ptr concave_points,
-    pcl::PointIndices::Ptr anchor_indices, int &nearest_bt_cluster_idx,
-    const pcl::PointCloud<PointT>::Ptr original_cloud,
-    const std_msgs::Header header) {
+    pcl::PointIndices::Ptr anchor_indices,
+    pcl::PointIndices::Ptr filter_indices,
+    const pcl::PointCloud<PointT>::Ptr original_cloud) {
     if (anchor_points->empty()) {
        ROS_ERROR("NO BOUNDARY REGION TO SELECT POINTS");
        return false;
@@ -1161,9 +1175,9 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        return true;
     }
 
+
     Eigen::Vector3f polygon_normal;
-    center(1) -= 0.01f;
-    this->fixPlaneModelToEdgeBoundaryPoints(anchor_points,
+    this->fixPlaneModelToEdgeBoundaryPoints(anchor_points, filter_indices,
                                             polygon_normal, center);
 
     double object_lenght_thresh = 0.50;
@@ -1250,7 +1264,6 @@ bool InteractiveSegmentation::estimateAnchorPoints(
           cc_nearest_cv_pt(1) = pt(1);
        }
     }
-    // TODO: UNKNOWN--> complete
     if (ap_index_1 == -1) {
       ROS_ERROR("ERROR: COMPUTING THE ANCHOR POINTS");
       return false;
@@ -1460,13 +1473,15 @@ bool InteractiveSegmentation::skeletonization2D(
 }
 
 void InteractiveSegmentation::fixPlaneModelToEdgeBoundaryPoints(
-    pcl::PointCloud<PointT>::Ptr in_cloud,
-    Eigen::Vector3f &normal, const Eigen::Vector4f center) {
+    pcl::PointCloud<PointT>::Ptr in_cloud, pcl::PointIndices::Ptr indices,
+    Eigen::Vector3f &normal, const Eigen::Vector4f m_centroid) {
     if (in_cloud->empty()) {
        return;
     }
     std::cout << "FITTING PLANE" << std::endl;
     
+    Eigen::Vector4f center = m_centroid;
+    center(1) -= 0.01f;
     geometry_msgs::PolygonStamped polygon = polygon_array_.polygons[0];
     jsk_recognition_utils::Polygon geo_polygon
        = jsk_recognition_utils::Polygon::fromROSMsg(polygon.polygon);
@@ -1490,6 +1505,7 @@ void InteractiveSegmentation::fixPlaneModelToEdgeBoundaryPoints(
        Eigen::Vector3f pt = in_cloud->points[i].getVector3fMap();
        if (normal.dot(pt - center.head<3>()) >= 0.0f) {
           object_cloud->push_back(in_cloud->points[i]);
+          indices->indices.push_back(i);
        }
     }
     in_cloud->clear();
