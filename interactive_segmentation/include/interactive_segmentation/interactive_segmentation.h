@@ -134,7 +134,7 @@ class InteractiveSegmentation {
        const sensor_msgs::PointCloud2::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
     void selectedVoxelObjectHypothesis(
-        cv::Mat &, const pcl::PointCloud<PointT>::Ptr,
+       pcl::PointCloud<PointT>::Ptr, const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr,
        const pcl::PointIndices::Ptr, const std_msgs::Header);
     bool attentionSurfelRegionPointCloudMask(

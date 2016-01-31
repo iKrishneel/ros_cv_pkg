@@ -161,11 +161,12 @@ void InteractiveSegmentation::callback(
           pcl::copyPointCloud<pcl::Normal, pcl::Normal>(
              *filtered_normal, *normals);
        }
-       cv::Mat weight_map;
+       pcl::PointCloud<PointT>::Ptr weight_cloud(new pcl::PointCloud<PointT>);
        this->selectedVoxelObjectHypothesis(
-           weight_map, cloud, normals, anchor_indices, cloud_msg->header);
+          weight_cloud, cloud, normals, anchor_indices, cloud_msg->header);
        pcl::PointCloud<PointT>::Ptr non_object_ap(new pcl::PointCloud<PointT>);
        pcl::copyPointCloud<PointT, PointT>(*cloud, *non_object_ap);
+       
        // this->filterAndComputeNonObjectRegionAnchorPoint(
        //     non_object_ap, normals, anchor_indices->indices[0], weight_map);
     }
@@ -200,7 +201,7 @@ void InteractiveSegmentation::callback(
 }
 
 void InteractiveSegmentation::selectedVoxelObjectHypothesis(
-    cv::Mat &conv_weight_map,
+    pcl::PointCloud<PointT>::Ptr weight_cloud,
     const pcl::PointCloud<PointT>::Ptr in_cloud,
     const pcl::PointCloud<pcl::Normal>::Ptr normals,
     const pcl::PointIndices::Ptr indices,
@@ -228,6 +229,7 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
        pcl::PointCloud<PointT>::Ptr weight_cloud(
           new pcl::PointCloud<PointT>);
        float max_weight = 0.0f;
+       /*
        for (int x = 0; x < weight_map.rows; x++) {
           if (weight_map.at<float>(x, 0) > max_weight) {
              max_weight = weight_map.at<float>(x, 0);
@@ -256,20 +258,20 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
        //    *anchor_points_weights[i]);
 
        anchor_points_weights[i] = weight_map;
-       anchor_points_max[i] = max_weight;
+       // anchor_points_max[i] = max_weight;
        
        publishAsROSMsg(cloud, pub_cloud_, header);
        // ros::Duration(5).sleep();
     }
     
     // TODO(HERE): combine the weight maps
-    conv_weight_map = cv::Mat::zeros(
+    cv::Mat conv_weight_map = cv::Mat::zeros(
        static_cast<int>(in_cloud->size()), 1, CV_32F);
     for (int i = 0; i < anchor_points_weights.size(); i++) {
        cv::Scalar mean;
        cv::Scalar stddev;
        cv::meanStdDev(anchor_points_weights[i], mean, stddev);
-       float psr = (anchor_points_max[i] - mean.val[0])/stddev.val[0];
+       // float psr = (anchor_points_max[i] - mean.val[0])/stddev.val[0];
        cv::Mat weight_map = anchor_points_weights[i];
        for (int j = 0; j < weight_map.rows; j++) {
           conv_weight_map.at<float>(j, 0) += (weight_map.at<float>(j, 0));
@@ -279,8 +281,7 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
     }
     cv::normalize(conv_weight_map, conv_weight_map, 0, 1,
                   cv::NORM_MINMAX, -1, cv::Mat());
-    
-    pcl::PointCloud<PointT>::Ptr weight_cloud(new pcl::PointCloud<PointT>);
+    // pcl::PointCloud<PointT>::Ptr weight_cloud(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*in_cloud, *weight_cloud);
     for (int j = 0; j < conv_weight_map.rows; j++) {
        float w = (conv_weight_map.at<float>(j, 0) / 1.0f) *  255.0f;
@@ -289,7 +290,6 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
        weight_cloud->points[j].b = w;
     }
     publishAsROSMsg(weight_cloud, pub_cloud_, header);
-    // ros::Duration(10).sleep();
 }
 
 
