@@ -143,7 +143,7 @@ void InteractiveSegmentation::callback(
        anchor_indices, filtered_indices, original_cloud);
     
     ROS_INFO("\033[32m LABELING ON THE POINT \033[0m");
-    
+
     if (is_found_points) {
        if (!filtered_indices->indices.empty()) {
           pcl::PointCloud<PointT>::Ptr filtered_cloud(
@@ -183,6 +183,7 @@ void InteractiveSegmentation::callback(
        // this->filterAndComputeNonObjectRegionAnchorPoint(
        //     non_object_ap, normals, anchor_indices->indices[0], weight_map);
     }
+
     
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
@@ -390,6 +391,9 @@ void InteractiveSegmentation::surfelSamplePointWeightMap(
      }
 }
 
+/**
+ * NOT IN USE
+ */
 void InteractiveSegmentation::filterAndComputeNonObjectRegionAnchorPoint(
     pcl::PointCloud<PointT>::Ptr anchor_points,
     const pcl::PointCloud<pcl::Normal>::Ptr normals,
@@ -485,7 +489,7 @@ bool InteractiveSegmentation::attentionSurfelRegionPointCloudMask(
     // removed zero points
     pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
-    const float threshold = 0.0f * 255.0f;
+    const float threshold = 0.2f * 255.0f;
     for (int i = 0; i < weight_cloud->size(); i++) {
        PointT pt = weight_cloud->points[i];
        if (pt.r > threshold && pt.b > threshold && pt.g > threshold &&
