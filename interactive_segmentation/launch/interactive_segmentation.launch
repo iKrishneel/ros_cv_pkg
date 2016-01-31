@@ -5,7 +5,7 @@
   <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />
   
   <arg name="image" default="/camera/rgb/image_rect_color" />
-  <arg name="SUPERVOXEL" default="false" />
+  <arg name="bounding_box" default="true" />
   <arg name="num_threads" default="8" />
   <arg name="RVIZ" default="false" />
   
@@ -31,34 +31,24 @@
     <param name="num_threads" value="$(arg num_threads)" />
     <remap from="num_threads" to="/interactive_segmentation/num_threads" />
   </node>
-
-  <!-- temp commented -->
-  <group if="$(arg SUPERVOXEL)" >
-    <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer" name="supervoxel_segmentation_decomposer">
-      <remap from="~input" to="/interactive_segmentation/output/supervoxels" />
+  
+  <group if="$(arg bounding_box)" >
+    <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer"
+	  name="interactive_segmentation_decomposer" output="screen">
+      <remap from="~input" to="/interactive_segmentation/output/cloud" />
       <remap from="~target" to="/interactive_segmentation/output/indices" />
+      <remap from="~align_planes" to="/multi_plane_estimate/output_refined_polygon" />
+      <remap from="~align_planes_coefficients" to="/multi_plane_estimate/output_refined_coefficients" />
+      <param name="/interactive_segmentation_decomposer/align_boxes" value="true" />
+      <param name="/interactive_segmentation_decomposer/use_pca" value="true" />
+      <param name="/interactive_segmentation_decomposer/publish_clouds" value="false" />
+      <param name="/interactive_segmentation_decomposer/publish_tf" value="true" />
     </node>
   </group>
 
-  <!-- <node pkg="image_view2" type="image_view2" -->
-  <!-- 	name="image_view2" output="screen"> -->
-  <!--   <remap from="image" to="$(arg image)"/> -->
-  <!-- </node> -->
-
+  
   <group if="$(arg RVIZ)" >
       <include file="$(find interactive_segmentation)/launch/rviz.launch"/>
   </group>
   
-  <!-- temp commented -->
-  <!-- <include file="$(find point_cloud_image_creator)/launch/point_cloud_image_creator.launch" > -->
-  <!--   <arg name="input" value="/interactive_segmentation/output/selected_probability" /> -->
-  <!--   <arg name="mask" value="false" /> -->
-  <!--   <arg name="image" value="$(arg image)" /> -->
-  <!-- </include> -->
-
-  <!-- erode dilate node -->
-  <!-- <node pkg="jsk_perception" name="erode_mask_image" type="erode_mask_image" -->
-  <!-- 	output="screen" > -->
-  <!--   <remap from="~input" to="/cloud_image/output/foreground_mask" /> -->
-  <!-- </node> -->
 </launch>
