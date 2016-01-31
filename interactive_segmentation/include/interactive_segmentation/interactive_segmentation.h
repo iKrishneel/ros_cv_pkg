@@ -199,7 +199,8 @@ class InteractiveSegmentation {
     void fixPlaneModelToEdgeBoundaryPoints(
        pcl::PointCloud<PointT>::Ptr, Eigen::Vector3f &,
        const Eigen::Vector4f);
-   
+    bool markedPointInSegmentedRegion(
+       const pcl::PointCloud<PointT>::Ptr, const PointT);
    
     void normalizedCurvatureNormalHistogram(
        pcl::PointCloud<PointT>::Ptr,

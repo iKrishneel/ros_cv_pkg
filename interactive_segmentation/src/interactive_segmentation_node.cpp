@@ -1161,9 +1161,10 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        return true;
     }
 
-    // Eigen::Vector3f polygon_normal;
-    // this->fixPlaneModelToEdgeBoundaryPoints(anchor_points,
-    //                                         polygon_normal, center);
+    Eigen::Vector3f polygon_normal;
+    center(1) -= 0.01f;
+    this->fixPlaneModelToEdgeBoundaryPoints(anchor_points,
+                                            polygon_normal, center);
 
     double object_lenght_thresh = 0.50;
     double nearest_cv_dist = DBL_MAX;
@@ -1176,41 +1177,48 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     double cc_nearest_dist_cv_bt = 0.0;
     int cc_nearest_bt_cluster_idx = -1;
 
-    // TODO(FIX BUG): CORRECT THE SELECTION OF POINTS
+    // hack to correct ap selection
+    Eigen::Vector3f adj_center = center.head<3>();
+    adj_center(1) -= 0.01f;
     for (int i = 0; i < cluster_convx.size(); i++) {
-       pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
-       *region_indices = cluster_convx[i];
-       eifilter->setIndices(region_indices);
-       pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
-       eifilter->filter(*tmp_cloud);
-       for (int j = 0; j < tmp_cloud->size(); j++) {
-          Eigen::Vector4f cv_pt = tmp_cloud->points[j].getVector4fMap();
-          if (cv_pt(1) < center(1)) {
-             double d = pcl::distances::l2(cv_pt, center);
-             if (d < nearest_cv_dist && d < object_lenght_thresh) {
-                nearest_cv_dist = d;
-                cc_nearest_cluster_idx = i;
-                cc_nearest_pt_idx = j;
-                cc_nearest_cv_pt = cv_pt;
-                cc_center_pt = tmp_cloud->points[j];
+       float pt_pos = polygon_normal.dot(convex_edge_centroids[i].head<3>() -
+                                         adj_center);
+       if (pt_pos > 0.0f) {
+          pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
+          *region_indices = cluster_convx[i];
+          eifilter->setIndices(region_indices);
+          pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
+          eifilter->filter(*tmp_cloud);
+          for (int j = 0; j < tmp_cloud->size(); j++) {
+             Eigen::Vector4f cv_pt = tmp_cloud->points[j].getVector4fMap();
+             if (cv_pt(1) < center(1)) {
+                double d = pcl::distances::l2(cv_pt, center);
+                if (d < nearest_cv_dist && d < object_lenght_thresh) {
+                   nearest_cv_dist = d;
+                   cc_nearest_cluster_idx = i;
+                   cc_nearest_pt_idx = j;
+                   cc_nearest_cv_pt = cv_pt;
+                   cc_center_pt = tmp_cloud->points[j];
+                }
              }
-          }
-          // convx intra distance
-          double d = pcl::distances::l2(convex_edge_centroids[i],
-                                        tmp_cloud->points[j].getVector4fMap());
-          if (d > intra_convx_dist) {
-             intra_convx_dist = d;
-          }
+             // convx intra distance
+             double d = pcl::distances::l2(
+                convex_edge_centroids[i],
+                tmp_cloud->points[j].getVector4fMap());
+             if (d > intra_convx_dist) {
+                intra_convx_dist = d;
+             }
 
-          //-----------------------------
-          if (cv_pt(1) > center(1)) {
-             double d = pcl::distances::l2(cv_pt, center);
-             if (d < cc_nearest_dist_cv_bt && d < object_lenght_thresh) {
-                cc_nearest_dist_cv_bt = d;
-                cc_nearest_bt_cluster_idx = i;
+             //-----------------------------
+             if (cv_pt(1) > center(1)) {
+                double d = pcl::distances::l2(cv_pt, center);
+                if (d < cc_nearest_dist_cv_bt && d < object_lenght_thresh) {
+                   cc_nearest_dist_cv_bt = d;
+                   cc_nearest_bt_cluster_idx = i;
+                }
              }
+             //----------------------------
           }
-          //----------------------------
        }
     }
     
@@ -1530,6 +1538,24 @@ void InteractiveSegmentation::fixPlaneModelToEdgeBoundaryPoints(
        ros_normal.header = camera_info_->header;
        pub_normal_.publish(ros_normal);
     }
+}
+
+bool InteractiveSegmentation::markedPointInSegmentedRegion(
+    const pcl::PointCloud<PointT>::Ptr cloud, const PointT mark_pt) {
+    if (cloud->empty()) {
+       ROS_ERROR("ERROR: EMPTY CLOUD FOR MARKED POINT TEST");
+       return false;
+    }
+    Eigen::Vector4f mark = mark_pt.getVector4fMap();
+    bool is_inside = false;
+    for (int i = 0; i < cloud->size(); i++) {
+       double d = pcl::distances::l2(cloud->points[i].getVector4fMap(), mark);
+       if (d < 0.01) {
+          is_inside = true;
+          break;
+       }
+    }
+    return is_inside;
 }
 
 /**
