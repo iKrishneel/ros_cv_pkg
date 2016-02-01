@@ -119,6 +119,9 @@ include_directories(
 add_executable(interactive_segmentation_node
   src/interactive_segmentation_node.cpp)
 
+add_executable(object_region_estimation_node
+  src/object_region_estimation_node.cpp)
+
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
 # add_dependencies(interactive_segmentation_node interactive_segmentation_generate_messages_cpp)
@@ -127,7 +130,11 @@ add_dependencies(interactive_segmentation_node ${PROJECT_NAME}_gencfg)
 ## Specify libraries to link a library or executable target against
  target_link_libraries(interactive_segmentation_node
    ${catkin_LIBRARIES}
- )
+   )
+
+ target_link_libraries(object_region_estimation_node
+   ${catkin_LIBRARIES}
+   )
 
 #############
 ## Install ##

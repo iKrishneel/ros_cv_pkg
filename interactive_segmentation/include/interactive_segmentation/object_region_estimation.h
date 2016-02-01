@@ -21,25 +21,29 @@
 #include <pcl/common/transforms.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/octree/octree.h>
-#include <pcl/segmentation/extract_clusters.h>
 #include <pcl/filters/filter.h>
 #include <pcl/common/centroid.h>
 #include <pcl/features/fpfh_omp.h>
-#include <pcl/surface/mls.h>
 #include <pcl/point_types_conversion.h>
 #include <pcl/registration/distances.h>
-#include <pcl/filters/radius_outlier_removal.h>
-#include <pcl/segmentation/sac_segmentation.h>
+#include <pcl/keypoints/harris_3d.h>
+#include <pcl/features/shot.h>
+#include <pcl/features/shot_omp.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
 #include <jsk_recognition_utils/geo/polygon.h>
 #include <jsk_recognition_msgs/PolygonArray.h>
 
+#include <omp.h>
+
 class ObjectRegionEstimation {
 
     typedef pcl::PointXYZRGB PointT;
-
+    typedef pcl::PointXYZI PointI;
+    typedef pcl::Normal Normal;
+    typedef pcl::SHOT352 SHOT352;
+   
  private:
     boost::mutex mutex_;
     ros::NodeHandle pnh_;
@@ -47,10 +51,16 @@ class ObjectRegionEstimation {
        sensor_msgs::PointCloud2,
        sensor_msgs::PointCloud2> SyncPolicy;
 
+   
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_indices_;
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
+    ros::Publisher pub_cloud_;
+
+    int num_threads_;
+   
  protected:
     void onInit();
     void subscribe();
@@ -61,7 +71,14 @@ class ObjectRegionEstimation {
     virtual void callback(
        const sensor_msgs::PointCloud2::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
-   
+    void keypoints3D(
+       pcl::PointCloud<PointI>::Ptr, const pcl::PointCloud<PointT>::Ptr);
+    void features3D(
+       pcl::PointCloud<SHOT352>::Ptr, const pcl::PointCloud<PointT>::Ptr,
+       const pcl::PointCloud<Normal>::Ptr, const pcl::PointCloud<PointI>::Ptr);
+    void removeStaticKeypoints(
+       pcl::PointCloud<PointI>::Ptr, pcl::PointCloud<PointI>::Ptr,
+       const float = 0.01f);
 };
 
 
