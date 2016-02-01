@@ -60,7 +60,7 @@
 #include <geometry_msgs/PoseArray.h>
 #include <geometry_msgs/PointStamped.h>
 
-#include <interactive_segmentation/OutlierFiltering.h>
+// #include <interactive_segmentation/OutlierFiltering.h>
 #include <jsk_perception/skeletonization.h>
 
 #include <omp.h>

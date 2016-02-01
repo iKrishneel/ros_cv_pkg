@@ -3,14 +3,21 @@
 
 #include <interactive_segmentation/object_region_estimation.h>
 
-ObjectRegionEstimation::ObjectRegionEstimation() {
+ObjectRegionEstimation::ObjectRegionEstimation() :
+    num_threads_(8) {
     this->onInit();
 }
 
 void ObjectRegionEstimation::onInit() {
+
+    this->srv_client_ = this->pnh_.serviceClient<
+      interactive_segmentation::Feature3DClustering>("feature3d_clustering_srv");
+  
     this->subscribe();
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/object_region_estimation/output/cloud", 1);
+    this->pub_indices_ = this->pnh_.advertise<jsk_recognition_msgs::ClusterPointIndices>(
+        "/object_region_estimation/output/indices", 1);
 }
 
 void ObjectRegionEstimation::subscribe() {
@@ -52,17 +59,25 @@ void ObjectRegionEstimation::callback(
           normals->push_back(tmp_normals->points[i]);
        }
     }
-    pcl::PointCloud<PointI>::Ptr keypoints(new pcl::PointCloud<PointI>);
-    this->keypoints3D(keypoints, cloud);
+    // pcl::PointCloud<PointI>::Ptr keypoints(new pcl::PointCloud<PointI>);
+    // this->keypoints3D(keypoints, cloud);
 
-    pcl::PointCloud<SHOT352>::Ptr descriptors(new pcl::PointCloud<SHOT352>);
-    this->features3D(descriptors, cloud, normals, keypoints);
+    // pcl::PointCloud<SHOT352>::Ptr descriptors(new pcl::PointCloud<SHOT352>);
+    // this->features3D(descriptors, cloud, normals, keypoints);
 
-    std::cout << "DESCRIPTOR SIZE: " << descriptors->size()  << ", "
-              << keypoints->size() << std::endl;
+    std::cout << "CLUSTERING: " << normals->size()  << "\n";
+
+    std::vector<pcl::PointIndices> all_indices;
+    this->clusterFeatures(all_indices, cloud, normals, 5, 0.5);
+    
+    jsk_recognition_msgs::ClusterPointIndices ros_indices;
+    ros_indices.cluster_indices = pcl_conversions::convertToROSPointIndices(
+        all_indices, cloud_msg->header);
+    ros_indices.header = cloud_msg->header;
+    pub_indices_.publish(ros_indices);
     
     sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*keypoints, ros_cloud);
+    pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
 }
@@ -94,6 +109,48 @@ void ObjectRegionEstimation::features3D(
     shot.setInputNormals(normals);
     shot.setRadiusSearch(0.02f);
     shot.compute(*descriptors);
+}
+
+void ObjectRegionEstimation::clusterFeatures(
+    std::vector<pcl::PointIndices> &all_indices,
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<Normal>::Ptr descriptors,
+    const int min_size, const float max_distance) {
+    if (descriptors->empty()) {
+      ROS_ERROR("ERROR: EMPTY FEATURES.. SKIPPING CLUSTER SRV");
+      return;
+    }
+    interactive_segmentation::Feature3DClustering srv;
+    for (int i = 0; i < descriptors->size(); i++) {
+      jsk_recognition_msgs::Histogram hist;
+      hist.histogram.push_back(cloud->points[i].x);
+      hist.histogram.push_back(cloud->points[i].y);
+      hist.histogram.push_back(cloud->points[i].z);
+      hist.histogram.push_back(descriptors->points[i].normal_x);
+      hist.histogram.push_back(descriptors->points[i].normal_y);
+      hist.histogram.push_back(descriptors->points[i].normal_z);
+      srv.request.features.push_back(hist);
+    }
+    srv.request.min_samples = min_size;
+    srv.request.max_distance = max_distance;
+    if (this->srv_client_.call(srv)) {
+      int max_label = srv.response.argmax_label;
+      if (max_label == -1) {
+        return;
+      }
+      all_indices.clear();
+      all_indices.resize(max_label + 1);
+
+      std::cout << "SIZE: " << all_indices.size()  << "\n";
+      
+      for (int i = 0; i < srv.response.labels.size(); i++) {
+        int index = srv.response.labels[i];
+        if (index > -1) {
+          all_indices[index].indices.push_back(i);
+        }
+      }
+      
+    }
 }
 
 void ObjectRegionEstimation::removeStaticKeypoints(

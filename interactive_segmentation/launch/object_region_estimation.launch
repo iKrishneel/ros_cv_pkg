@@ -18,4 +18,17 @@
     <remap from="input_cloud" to="/plane_extraction/output_nonplane_cloud" />
     <remap from="input_normals" to="$(arg input_normal)" />
   </node>
+
+  <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer"
+	name="object_region_estimation_decomposer" output="screen">
+    <remap from="~input" to="/object_region_estimation/output/cloud" />
+    <remap from="~target" to="/object_region_estimation/output/indices" />
+    <remap from="~align_planes" to="/multi_plane_estimate/output_refined_polygon" />
+    <remap from="~align_planes_coefficients" to="/multi_plane_estimate/output_refined_coefficients" />
+    <param name="/interactive_segmentation_decomposer/align_boxes" value="true" />
+    <param name="/interactive_segmentation_decomposer/use_pca" value="true" />
+    <param name="/interactive_segmentation_decomposer/publish_clouds" value="false" />
+    <param name="/interactive_segmentation_decomposer/publish_tf" value="true" />
+  </node>
+  
 </launch>

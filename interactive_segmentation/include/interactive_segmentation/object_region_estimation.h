@@ -34,6 +34,9 @@
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
 #include <jsk_recognition_utils/geo/polygon.h>
 #include <jsk_recognition_msgs/PolygonArray.h>
+#include <jsk_recognition_msgs/Histogram.h>
+
+#include <interactive_segmentation/Feature3DClustering.h>
 
 #include <omp.h>
 
@@ -43,7 +46,9 @@ class ObjectRegionEstimation {
     typedef pcl::PointXYZI PointI;
     typedef pcl::Normal Normal;
     typedef pcl::SHOT352 SHOT352;
-   
+
+#define FEATURE_DIM 352
+  
  private:
     boost::mutex mutex_;
     ros::NodeHandle pnh_;
@@ -58,7 +63,9 @@ class ObjectRegionEstimation {
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
     ros::Publisher pub_cloud_;
-
+    ros::Publisher pub_indices_;
+    ros::ServiceClient srv_client_;
+  
     int num_threads_;
    
  protected:
@@ -79,6 +86,9 @@ class ObjectRegionEstimation {
     void removeStaticKeypoints(
        pcl::PointCloud<PointI>::Ptr, pcl::PointCloud<PointI>::Ptr,
        const float = 0.01f);
+    void clusterFeatures(
+        std::vector<pcl::PointIndices> &, const pcl::PointCloud<PointT>::Ptr,
+        const pcl::PointCloud<Normal>::Ptr, const int, const float);
 };
 
 

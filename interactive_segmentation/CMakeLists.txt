@@ -65,8 +65,7 @@ generate_dynamic_reconfigure_options(
 ## Generate services in the 'srv' folder
 add_service_files(
   FILES
-  OutlierFiltering.srv
-  #   Service2.srv
+  Feature3DClustering.srv
   )
 
 ## Generate actions in the 'action' folder
@@ -81,6 +80,7 @@ generate_messages(
   DEPENDENCIES
   std_msgs  # Or other packages containing msgs
   sensor_msgs
+  jsk_recognition_msgs
 )
 
 ###################################
