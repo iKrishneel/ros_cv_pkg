@@ -14,28 +14,65 @@
     (make-irtviewer))
 (send *irtviewer* :objects *pr2*)
 
+(setq *manip-pose* #f(131.783 54.9158 -1.3071 0.272882 -88.7191 -357.653 -5.85497 360.042 -45.3354 1.53671 2.39065 -95.778 -1.10987 -5.93392 359.975 1.67125 48.912))
+
+(setq *init-pose* (float-vector 12.0 45.0 60.0 0.0 -120.0 0.0 -45.0 0.0 -45.0 60.0 0.0 -120.0 0.0 -45.0 0.0 0.0 35.0))
+
 (ros::ros-info "RUNNING")
 
+(defun manip-pose(&optional(time 5000))
+  (send *pr2* :angle-vector *manip-pose*)
+  (if (boundp '*ri*)
+      (send *ri* :angle-vector (send *pr2* :angle-vector) time)
+    (send *ri* :wait-interpolation)
+    )
+  )
 
+(defun send-target-pose-to-robot(pose-vector &optional (arm :larm) &optional (time 5000))
+  (when (boundp '*ri*)
+    (send *ri* :angle-vector (send *pr2* :angle-vector) time)
+    (send *ri* :wait-interpolation)
+    )
+  )
+
+(defun check-arm-reachability(pose-vector &optional (arm :larm))
+  (send *pr2* arm :inverse-kinematics pose-vector :debug-view :t)
+  )
 
 (defun boundingbox-array-callback(msg)
-  (setq target-box (car (send msg :boxes)))
-  (setq dimension (send target-box :dimensions))
-  (setq pose (send target-box :pose))
+  (when (car (send msg :boxes))
+    (setq target-box (car (send msg :boxes)))
+    (setq dimension (send target-box :dimensions))
+    (setq pose (send target-box :pose))
 
-  
-  
-  (setq x (send (send target-box :dimensions) :x))
-  (print x)
-  (ros::ros-warn "subscribing")
+    (setq position (send pose :position))
+    
+    (setq target-position (make-coords))
+    (send target-position :replace-pos (float-vector (send position :x) (send position :y) (send position :z)))
+
+    (unix:usleep (* 1000 5000))
+
+    (ros::ros-warn "time-out")
+    
+    (check-arm-reachability target-position :larm)
+    (send-target-pose-to-robot target-position :larm 15000)
+     
+    
+    (setq x (send (send target-box :dimensions) :x))
+
+    (print target-position)
+    (ros::ros-warn "subscribing")
+    )
   )
 
 
 (defun main()
+  (manip-pose)
+  (ros::subscribe "/cluster_decomposer_final/boxes"
+		  jsk_recognition_msgs::BoundingBoxArray #'boundingbox-array-callback)
   (do-until-key
-   (ros::spin-once))
+  (ros::spin-once))
   )
 
-(main)
+;; (main)
 
-(ros::subscribe "/cluster_decomposer_final/boxes" jsk_recognition_msgs::BoundingBoxArray #'boundingbox-array-callback)
