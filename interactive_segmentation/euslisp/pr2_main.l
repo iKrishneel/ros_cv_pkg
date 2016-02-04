@@ -18,6 +18,8 @@
 
 (setq *init-pose* (float-vector 12.0 45.0 60.0 0.0 -120.0 0.0 -45.0 0.0 -45.0 60.0 0.0 -120.0 0.0 -45.0 0.0 0.0 35.0))
 
+(load "generate-tabletop-scene.l")
+
 (ros::ros-info "RUNNING")
 
 (defun manip-pose(&optional(time 5000))

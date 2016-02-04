@@ -2,9 +2,8 @@
 
 (load "pr2_main.l")
 
-
-(setq *goal-pos* (make-coords :rpy (float-vector 0 (deg2rad 90) 0))))
-(send *goal-pos* :replace-pos #f(600 0 700))
+(setq *goal-pos* (make-coords :rpy (float-vector 0 (deg2rad 90) (deg2rad 90))))
+(send *goal-pos* :replace-pos #f(600 300 700))
 
 (defun generate-scene-model()
   (setq table (make-cube 500 1000 700))
@@ -12,6 +11,7 @@
   (send table :set-color #f(0.87 0.72 0.53))
   (objects table)
   )
+
 
 (defun collision-check(box &optional (arm :larm))
   (let (res)
@@ -24,9 +24,13 @@
           (ros::ros-fatal (format nil "check arm collision failed:~A~%" res))
           (return-from collision-check nil))
 	;; )
-	) t)
+	)
+    t)
   (ros::ros-warn "-- no collision detected")
   )
+
+
+
 
 
 (defun send-target-pose-to-robot(pose-vector &optional (arm :larm) &optional (time 5000))
@@ -36,6 +40,7 @@
     (send *ri* :wait-interpolation)
     )
   )
+
 
 (defun check-arm-reachability(pose-vector &optional (arm :larm))
   (when (send *pr2* arm :inverse-kinematics pose-vector :rotation-axis :x :debug-view :t)
@@ -51,4 +56,5 @@
 
 (defun move-to-manip-position(pose-vector &optional (arm :larm))
   (ros::ros-info "moving arm to manipulation position")
+  
   )
