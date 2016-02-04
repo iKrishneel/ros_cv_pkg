@@ -78,3 +78,17 @@
 
 ;; (main)
 
+
+;; test using au-kun code
+
+(defun push-test ()
+  (load "move-objects.l")
+  (init-scene)
+  (while (ros::ok)
+    (ros::spin-once)
+    (ros::ros-warn "Robot received an order, need to work now!")
+    (unix:usleep (* 1000 5000))
+    (update-scene)
+    (push-one-time)
+    (ros::sleep))
+  )
