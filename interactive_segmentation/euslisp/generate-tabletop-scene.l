@@ -142,11 +142,22 @@
      (print trans)
      (setq *latest-box-list*
            (mapcar #'(lambda (box)
-                       (let* ((dim (ros::tf-point->pos (send box :dimensions)))
+		      
+		       ;; convert m -> mm ros::tf-point->pos
+                       (let* ((dim (ros::tf-point->pos (send box :dimensions)))  
                               (cube (make-cube (elt dim 0) (elt dim 1) (elt dim 2)))
                               (cds (ros::tf-pose->coords (send box :pose))))
-                         (send cds :transform trans :world)
+
+			 (print "DEBUG")
+			 (print cds)
+			 
+                         (send cds :transform trans :world)			 
                          (send cube :move-to cds)
+
+			 
+			 (print cds)
+			 (print "END Debug")
+			 
                          (send cube :set-color (float-vector (random 1.0) (random 1.0) (random 1.0)))
                          cube))
                    boxes))))
