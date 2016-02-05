@@ -24,7 +24,8 @@
 ;;#f(117.164 54.9158 -1.3071 0.272882 -88.7191 -357.647 -5.78018 360.042 -45.3354 1.53671 2.39065 -95.778 -1.10987 -5.93392 359.975 1.70125 46.872) lower pose
 ;;#f(296.291 54.9158 -1.3071 0.272882 -88.7191 -357.647 -5.7403 360.042 -45.3354 1.53671 2.39065 -95.778 -1.10987 -5.91148 359.972 7.46125 44.208) higher pose
 
-(send *ri* :angle-vector *manip-pose*)
+(send *ri* :angle-vector *manip-pose* 4000)
+;; (send *ri* :wait-interpolation)
 (send *ri* :start-grasp)
 (setq *tfl* (instance ros::transform-listener :init))
 

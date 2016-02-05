@@ -22,7 +22,7 @@
 
 (ros::ros-info "RUNNING")
 
-(defun manip-pose(&optional(time 5000))
+(defun manip-pose(&optional(time 12000))
   (send *pr2* :angle-vector *manip-pose*)
   (if (boundp '*ri*)
       (send *ri* :angle-vector (send *pr2* :angle-vector) time)
@@ -90,5 +90,6 @@
     ;; (unix:usleep (* 1000 5000))
     (update-scene)
     (push-one-time)
+    (ros::ros-warn "Robot completed execution!")
     ;; (ros::sleep))
   )
