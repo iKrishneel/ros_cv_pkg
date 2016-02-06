@@ -183,7 +183,6 @@ void InteractiveSegmentation::callback(
        // this->filterAndComputeNonObjectRegionAnchorPoint(
        //     non_object_ap, normals, anchor_indices->indices[0], weight_map);
     }
-
     
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
@@ -986,13 +985,13 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
 #pragma omp section
 #endif
       {
-        this->edgeBoundaryOutlierFiltering(concave_edge_points);
+         this->edgeBoundaryOutlierFiltering(concave_edge_points, 0.0075f);
       }
 #ifdef _OPENMP
 #pragma omp section
 #endif
       {
-        this->edgeBoundaryOutlierFiltering(convex_edge_points, 0.01f);
+        this->edgeBoundaryOutlierFiltering(convex_edge_points, 0.0075f);
       }
     }
     this->publishAsROSMsg(concave_edge_points, pub_concave_, header);
