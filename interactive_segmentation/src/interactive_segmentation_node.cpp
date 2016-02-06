@@ -122,6 +122,7 @@ void InteractiveSegmentation::callback(
         
     ROS_INFO("\033[32m DEBUG: PROCESSING CALLBACK \033[0m");
     ROS_INFO("\033[34m ESTIMATIONG CLOUD NORMALS \033[0m");
+
     int k = 50;  // thresholds
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
     this->estimatePointCloudNormals<int>(cloud, normals, k, true);
@@ -145,32 +146,47 @@ void InteractiveSegmentation::callback(
     ROS_INFO("\033[32m LABELING ON THE POINT \033[0m");
 
     if (is_found_points) {
-       if (!filtered_indices->indices.empty()) {
-          pcl::PointCloud<PointT>::Ptr filtered_cloud(
-             new pcl::PointCloud<PointT>);
-          pcl::PointCloud<pcl::Normal>::Ptr filtered_normal(
-          new pcl::PointCloud<pcl::Normal>);
-          for (int i = 0; i < filtered_indices->indices.size(); i++) {
-             int idx = filtered_indices->indices[i];
-             filtered_cloud->push_back(cloud->points[idx]);
-             filtered_normal->push_back(normals->points[idx]);
-          }
-          cloud->clear();
-          normals->clear();
-          pcl::copyPointCloud<PointT, PointT>(*filtered_cloud, *cloud);
-          pcl::copyPointCloud<pcl::Normal, pcl::Normal>(
-             *filtered_normal, *normals);
-       }
+       // update the point cloud for probability check
+       // if (!filtered_indices->indices.empty()) {
+       //    pcl::PointCloud<PointT>::Ptr filtered_cloud(
+       //       new pcl::PointCloud<PointT>);
+       //    pcl::PointCloud<pcl::Normal>::Ptr filtered_normal(
+       //    new pcl::PointCloud<pcl::Normal>);
+       //    for (int i = 0; i < filtered_indices->indices.size(); i++) {
+       //       int idx = filtered_indices->indices[i];
+       //       filtered_cloud->push_back(cloud->points[idx]);
+       //       filtered_normal->push_back(normals->points[idx]);
+       //    }
+       //    cloud->clear();
+       //    normals->clear();
+       //    pcl::copyPointCloud<PointT, PointT>(*filtered_cloud, *cloud);
+       //    pcl::copyPointCloud<pcl::Normal, pcl::Normal>(
+       //       *filtered_normal, *normals);
+       // }
+       
        pcl::PointCloud<PointT>::Ptr weight_cloud(new pcl::PointCloud<PointT>);
        this->selectedVoxelObjectHypothesis(
           weight_cloud, cloud, normals, anchor_indices, cloud_msg->header);
-       pcl::PointCloud<PointT>::Ptr non_object_ap(new pcl::PointCloud<PointT>);
-       pcl::copyPointCloud<PointT, PointT>(*cloud, *non_object_ap);
 
+       // ----------------
+       // fix for index irregularity after plane segm. fix 4 imprv compt.
+       if (!filtered_indices->indices.empty()) {
+          pcl::PointCloud<PointT>::Ptr filtered_cloud(
+             new pcl::PointCloud<PointT>);
+          for (int i = 0; i < filtered_indices->indices.size(); i++) {
+             int idx = filtered_indices->indices[i];
+             filtered_cloud->push_back(weight_cloud->points[idx]);
+          }
+          weight_cloud->clear();
+          pcl::copyPointCloud<PointT, PointT>(*filtered_cloud, *weight_cloud);
+       }
+       // ----------------
+       
        pcl::PointIndices::Ptr object_indices(new pcl::PointIndices);
+       pcl::PointCloud<PointT>::Ptr final_object(new pcl::PointCloud<PointT>);
        this->attentionSurfelRegionPointCloudMask(
           weight_cloud, anchor_points->points[0].getVector4fMap(),
-          cloud, object_indices);
+          final_object, object_indices);
        std::vector<pcl::PointIndices> all_indices;
        all_indices.push_back(*object_indices);
        
@@ -180,9 +196,12 @@ void InteractiveSegmentation::callback(
        ros_indices.header = cloud_msg->header;
        pub_indices_.publish(ros_indices);
        
-       // this->filterAndComputeNonObjectRegionAnchorPoint(
-       //     non_object_ap, normals, anchor_indices->indices[0], weight_map);
+       publishAsROSMsg(final_object, pub_cloud_, cloud_msg->header);
     }
+
+    std::cout <<"\n\nSIZE: " << cloud->size() << "  "
+              << normals->size()  << "\n";
+    
     
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
@@ -239,7 +258,7 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
        this->surfelSamplePointWeightMap(cloud, normals, cloud->points[index],
                                         attention_normal, weight_map);
        anchor_points_weights[i] = weight_map;
-       publishAsROSMsg(cloud, pub_cloud_, header);
+       // publishAsROSMsg(cloud, pub_cloud_, header);
     }
     cv::Mat conv_weight_map = cv::Mat::zeros(
        static_cast<int>(in_cloud->size()), 1, CV_32F);
@@ -259,7 +278,7 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
        weight_cloud->points[j].g = w;
        weight_cloud->points[j].b = w;
     }
-    publishAsROSMsg(weight_cloud, pub_cloud_, header);
+    // publishAsROSMsg(weight_cloud, pub_cloud_, header);
 }
 
 
@@ -1150,7 +1169,9 @@ bool InteractiveSegmentation::estimateAnchorPoints(
 
 
     Eigen::Vector3f polygon_normal;
-    this->fixPlaneModelToEdgeBoundaryPoints(anchor_points, filter_indices,
+    pcl::PointCloud<PointT>::Ptr tmp_ap(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*anchor_points, *tmp_ap);
+    this->fixPlaneModelToEdgeBoundaryPoints(tmp_ap, filter_indices,
                                             polygon_normal, center);
 
     double object_lenght_thresh = 0.50;
@@ -1161,7 +1182,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     PointT cc_center_pt;
     double intra_convx_dist = 0.0;
 
-    double cc_nearest_dist_cv_bt = 0.0;
+    double cc_nearest_dist_cv_bt = DBL_MAX;
     int cc_nearest_bt_cluster_idx = -1;
 
     // hack to correct ap selection
@@ -1170,7 +1191,8 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     for (int i = 0; i < cluster_convx.size(); i++) {
        float pt_pos = polygon_normal.dot(convex_edge_centroids[i].head<3>() -
                                          adj_center);
-       if (pt_pos > 0.0f) {
+       /*if (pt_pos > 0.0f) */
+       {
           pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
           *region_indices = cluster_convx[i];
           eifilter->setIndices(region_indices);
@@ -1217,6 +1239,9 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     // float ap_search_radius = static_cast<float>(nearest_cv_dist)/2.0f;
     float ap_search_radius = static_cast<float>(
        std::min(nearest_cv_dist, intra_convx_dist))/2.0f;
+
+
+    std::cout << "DISTANCE: " << ap_search_radius << "\n";
     
     // find 2 points on object cloud points ap_search_radius away
     point_idx_search.clear();
