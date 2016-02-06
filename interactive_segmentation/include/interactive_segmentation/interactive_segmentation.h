@@ -50,6 +50,7 @@
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
 #include <jsk_recognition_utils/geo/polygon.h>
 #include <jsk_recognition_msgs/PolygonArray.h>
+#include <jsk_recognition_utils/pcl_conversion_util.h>
 
 #include <std_msgs/Header.h>
 #include <std_msgs/Bool.h>
@@ -59,7 +60,7 @@
 #include <geometry_msgs/PoseArray.h>
 #include <geometry_msgs/PointStamped.h>
 
-#include <interactive_segmentation/OutlierFiltering.h>
+// #include <interactive_segmentation/OutlierFiltering.h>
 #include <jsk_perception/skeletonization.h>
 
 #include <omp.h>
@@ -134,13 +135,12 @@ class InteractiveSegmentation {
        const sensor_msgs::PointCloud2::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
     void selectedVoxelObjectHypothesis(
-        cv::Mat &, const pcl::PointCloud<PointT>::Ptr,
+       pcl::PointCloud<PointT>::Ptr, const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr,
        const pcl::PointIndices::Ptr, const std_msgs::Header);
     bool attentionSurfelRegionPointCloudMask(
        const pcl::PointCloud<PointT>::Ptr, const Eigen::Vector4f,
-       const std_msgs::Header, pcl::PointCloud<PointT>::Ptr,
-       pcl::PointIndices::Ptr);
+       pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr);
     void surfelSamplePointWeightMap(
        const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr, const PointT &,
@@ -171,8 +171,8 @@ class InteractiveSegmentation {
        const pcl::PointCloud<pcl::Normal>::Ptr, const std_msgs::Header);
     bool estimateAnchorPoints(
        pcl::PointCloud<PointT>::Ptr, pcl::PointCloud<PointT>::Ptr,
-       pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr, int &,
-       const pcl::PointCloud<PointT>::Ptr, const std_msgs::Header);
+       pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr,
+       pcl::PointIndices::Ptr, const pcl::PointCloud<PointT>::Ptr);
     std::vector<Eigen::Vector4f> doEuclideanClustering(
        std::vector<pcl::PointIndices> &cluster_indices,
        const pcl::PointCloud<PointT>::Ptr,
@@ -197,9 +197,10 @@ class InteractiveSegmentation {
         const pcl::PointCloud<pcl::Normal>::Ptr,
         const int, const cv::Mat &, const float = 0.0f);
     void fixPlaneModelToEdgeBoundaryPoints(
-       pcl::PointCloud<PointT>::Ptr, Eigen::Vector3f &,
-       const Eigen::Vector4f);
-   
+       pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr,
+       Eigen::Vector3f &, const Eigen::Vector4f);
+    bool markedPointInSegmentedRegion(
+       const pcl::PointCloud<PointT>::Ptr, const PointT);
    
     void normalizedCurvatureNormalHistogram(
        pcl::PointCloud<PointT>::Ptr,
