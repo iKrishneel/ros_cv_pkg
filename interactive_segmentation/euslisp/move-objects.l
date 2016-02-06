@@ -56,7 +56,6 @@
   (let ((insert-offset 30)
         target-cds-list
         filter-target-cds-list)
-
     
     (ros::ros-warn (format nil "checking box:~A~%" target-box))
     ;;filter out if box not on table
@@ -71,8 +70,12 @@
                                             ((eq *push-style* :use-fingertip)
                                              (send cds :rotate (deg2rad 90) :x)
 					     (send cds :rotate (deg2rad 0) :y)
-					     )))
-                                      (calc-push-coords-list target-box)))
+					     )
+					    )
+				      )
+				  (calc-push-coords-list target-box)
+				  )
+	  )
     
     ;;filter target-cds-list
     (dolist (cds target-cds-list)
@@ -137,7 +140,11 @@
                                   (progn
                                     (print "on path collision checked")
                                     (setf (elt cds-rotate? 0) cds)
-                                    (push cds-rotate? filter-target-cds-list)))))
+                                    (push cds-rotate? filter-target-cds-list)
+				    )
+				)
+			      )
+			  )
                         (send *irtviewer* :objects (delete tmp-box (send *irtviewer* :objects) :count 1))
 			)
 		      )
