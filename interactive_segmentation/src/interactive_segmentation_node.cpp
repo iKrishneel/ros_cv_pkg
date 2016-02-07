@@ -146,29 +146,10 @@ void InteractiveSegmentation::callback(
     ROS_INFO("\033[32m LABELING ON THE POINT \033[0m");
 
     if (is_found_points) {
-       // update the point cloud for probability check
-       // if (!filtered_indices->indices.empty()) {
-       //    pcl::PointCloud<PointT>::Ptr filtered_cloud(
-       //       new pcl::PointCloud<PointT>);
-       //    pcl::PointCloud<pcl::Normal>::Ptr filtered_normal(
-       //    new pcl::PointCloud<pcl::Normal>);
-       //    for (int i = 0; i < filtered_indices->indices.size(); i++) {
-       //       int idx = filtered_indices->indices[i];
-       //       filtered_cloud->push_back(cloud->points[idx]);
-       //       filtered_normal->push_back(normals->points[idx]);
-       //    }
-       //    cloud->clear();
-       //    normals->clear();
-       //    pcl::copyPointCloud<PointT, PointT>(*filtered_cloud, *cloud);
-       //    pcl::copyPointCloud<pcl::Normal, pcl::Normal>(
-       //       *filtered_normal, *normals);
-       // }
-       
        pcl::PointCloud<PointT>::Ptr weight_cloud(new pcl::PointCloud<PointT>);
        this->selectedVoxelObjectHypothesis(
           weight_cloud, cloud, normals, anchor_indices, cloud_msg->header);
 
-       // ----------------
        // fix for index irregularity after plane segm. fix 4 imprv compt.
        if (!filtered_indices->indices.empty()) {
           pcl::PointCloud<PointT>::Ptr filtered_cloud(
@@ -180,8 +161,6 @@ void InteractiveSegmentation::callback(
           weight_cloud->clear();
           pcl::copyPointCloud<PointT, PointT>(*filtered_cloud, *weight_cloud);
        }
-       // ----------------
-       
        pcl::PointIndices::Ptr object_indices(new pcl::PointIndices);
        pcl::PointCloud<PointT>::Ptr final_object(new pcl::PointCloud<PointT>);
        this->attentionSurfelRegionPointCloudMask(
@@ -198,10 +177,6 @@ void InteractiveSegmentation::callback(
        
        publishAsROSMsg(final_object, pub_cloud_, cloud_msg->header);
     }
-
-    std::cout <<"\n\nSIZE: " << cloud->size() << "  "
-              << normals->size()  << "\n";
-    
     
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
@@ -1067,6 +1042,9 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     std::cout << "CLUSTER SIZE: " << cluster_concv.size() << "\t"
               << cluster_convx.size() << "\n";
 
+
+    // TODO(here): if only convex then chouse the top most
+    
     if (cluster_concv.empty() ||
         (cluster_concv.empty() && cluster_convx.empty())) {
        ROS_ERROR("RETURNING CLOUD CENTROID");
