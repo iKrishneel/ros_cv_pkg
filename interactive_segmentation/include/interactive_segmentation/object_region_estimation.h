@@ -35,6 +35,7 @@
 #include <jsk_recognition_utils/geo/polygon.h>
 #include <jsk_recognition_msgs/PolygonArray.h>
 #include <jsk_recognition_msgs/Histogram.h>
+#include <std_msgs/Header.h>
 
 #include <interactive_segmentation/Feature3DClustering.h>
 
@@ -67,6 +68,9 @@ class ObjectRegionEstimation {
     ros::ServiceClient srv_client_;
   
     int num_threads_;
+    int counter_;
+    std_msgs::Header header_;
+    pcl::PointCloud<PointT>::Ptr prev_cloud_;
    
  protected:
     void onInit();
@@ -89,6 +93,8 @@ class ObjectRegionEstimation {
     void clusterFeatures(
         std::vector<pcl::PointIndices> &, const pcl::PointCloud<PointT>::Ptr,
         const pcl::PointCloud<Normal>::Ptr, const int, const float);
+    void stableVariation(
+       const pcl::PointCloud<PointT>::Ptr, const float = 0.10f);
 };
 
 

@@ -5,19 +5,24 @@
 
 ObjectRegionEstimation::ObjectRegionEstimation() :
     num_threads_(8) {
+    counter_ = 0;
+    this->prev_cloud_ = pcl::PointCloud<PointT>::Ptr(
+       new pcl::PointCloud<PointT>);
     this->onInit();
 }
 
 void ObjectRegionEstimation::onInit() {
 
     this->srv_client_ = this->pnh_.serviceClient<
-      interactive_segmentation::Feature3DClustering>("feature3d_clustering_srv");
+       interactive_segmentation::Feature3DClustering>(
+          "feature3d_clustering_srv");
   
     this->subscribe();
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/object_region_estimation/output/cloud", 1);
-    this->pub_indices_ = this->pnh_.advertise<jsk_recognition_msgs::ClusterPointIndices>(
-        "/object_region_estimation/output/indices", 1);
+    this->pub_indices_ = this->pnh_.advertise<
+       jsk_recognition_msgs::ClusterPointIndices>(
+          "/object_region_estimation/output/indices", 1);
 }
 
 void ObjectRegionEstimation::subscribe() {
@@ -48,6 +53,8 @@ void ObjectRegionEstimation::callback(
        ROS_ERROR("INCORRECT INPUT SIZE");
        return;
     }
+    this->header_ = cloud_msg->header;
+    
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::PointCloud<Normal>::Ptr normals(new pcl::PointCloud<Normal>);
     for (int i = 0; i < tmp_cloud->size(); i++) {
@@ -64,11 +71,11 @@ void ObjectRegionEstimation::callback(
 
     // pcl::PointCloud<SHOT352>::Ptr descriptors(new pcl::PointCloud<SHOT352>);
     // this->features3D(descriptors, cloud, normals, keypoints);
-
-    std::cout << "CLUSTERING: " << normals->size()  << "\n";
-
+    /*
     std::vector<pcl::PointIndices> all_indices;
     this->clusterFeatures(all_indices, cloud, normals, 5, 0.5);
+
+    std::cout << "Cluster Size: " << all_indices.size() << "\n";
     
     jsk_recognition_msgs::ClusterPointIndices ros_indices;
     ros_indices.cluster_indices = pcl_conversions::convertToROSPointIndices(
@@ -79,7 +86,21 @@ void ObjectRegionEstimation::callback(
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
-    this->pub_cloud_.publish(ros_cloud);
+    // this->pub_cloud_.publish(ros_cloud);
+    */
+
+    this->stableVariation(tmp_cloud);
+
+    if (counter_++ == 0) {
+       *prev_cloud_ = *tmp_cloud;
+    }
+    
+    // this->prev_cloud_->clear();
+    // pcl::copyPointCloud<PointT, PointT>(*tmp_cloud, *prev_cloud_);
+    
+    
+    std::cout << "GO TO SLEEP: " << prev_cloud_->size()  << "\n";
+    // ros::Duration(5).sleep();
 }
 
 void ObjectRegionEstimation::keypoints3D(
@@ -134,22 +155,21 @@ void ObjectRegionEstimation::clusterFeatures(
     srv.request.min_samples = min_size;
     srv.request.max_distance = max_distance;
     if (this->srv_client_.call(srv)) {
-      int max_label = srv.response.argmax_label;
-      if (max_label == -1) {
-        return;
-      }
-      all_indices.clear();
-      all_indices.resize(max_label + 1);
-
-      std::cout << "SIZE: " << all_indices.size()  << "\n";
-      
-      for (int i = 0; i < srv.response.labels.size(); i++) {
-        int index = srv.response.labels[i];
-        if (index > -1) {
-          all_indices[index].indices.push_back(i);
-        }
-      }
-      
+       int max_label = srv.response.argmax_label;
+       if (max_label == -1) {
+          return;
+       }
+       all_indices.clear();
+       all_indices.resize(max_label + 1);      
+       for (int i = 0; i < srv.response.labels.size(); i++) {
+          int index = srv.response.labels[i];
+          if (index > -1) {
+             all_indices[index].indices.push_back(i);
+          }
+       }
+    } else {
+       ROS_ERROR("SRV CLIENT CALL FAILED");
+       return;
     }
 }
 
@@ -175,6 +195,28 @@ void ObjectRegionEstimation::removeStaticKeypoints(
        }
     }
     
+}
+
+void ObjectRegionEstimation::stableVariation(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const float resolution) {
+    pcl::octree::OctreePointCloudChangeDetector<PointT> octree(0.10f);
+    octree.setInputCloud(this->prev_cloud_);
+    octree.addPointsFromInputCloud();
+    octree.switchBuffers();
+    octree.setInputCloud(cloud);
+    octree.addPointsFromInputCloud();
+    pcl::PointIndices::Ptr indices(new pcl::PointIndices);
+    octree.getPointIndicesFromNewVoxels(indices->indices);
+    pcl::PointCloud<PointT>::Ptr change(new pcl::PointCloud<PointT>);
+    for (int i = 0; i < indices->indices.size(); i++) {
+       int ind = indices->indices[i];
+       change->push_back(cloud->points[ind]);
+    }
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*change, ros_cloud);
+    ros_cloud.header = header_;
+    this->pub_cloud_.publish(ros_cloud);
 }
 
 int main(int argc, char *argv[]) {
