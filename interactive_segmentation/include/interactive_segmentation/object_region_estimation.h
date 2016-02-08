@@ -10,6 +10,9 @@
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
+
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -29,6 +32,7 @@
 #include <pcl/keypoints/harris_3d.h>
 #include <pcl/features/shot.h>
 #include <pcl/features/shot_omp.h>
+#include <pcl/segmentation/extract_clusters.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
@@ -53,25 +57,36 @@ class ObjectRegionEstimation {
  private:
     boost::mutex mutex_;
     ros::NodeHandle pnh_;
+  
     typedef message_filters::sync_policies::ApproximateTime<
        sensor_msgs::PointCloud2,
        sensor_msgs::PointCloud2> SyncPolicy;
-
-   
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_indices_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
+    typedef message_filters::sync_policies::ApproximateTime<
+       sensor_msgs::Image,
+       sensor_msgs::PointCloud2> SyncPolicyPrev;
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_prev_;
+    message_filters::Subscriber<sensor_msgs::Image> sub_image_prev_;
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_prev_;
+    boost::shared_ptr<message_filters::Synchronizer<SyncPolicyPrev> >sync_prev_;
+  
     ros::Publisher pub_cloud_;
     ros::Publisher pub_indices_;
     ros::ServiceClient srv_client_;
   
     int num_threads_;
-    int counter_;
+    bool is_prev_ok;
+    float min_cluster_size_;
     std_msgs::Header header_;
     pcl::PointCloud<PointT>::Ptr prev_cloud_;
-   
+
+    cv::Mat prev_image_;
+  
+  
  protected:
     void onInit();
     void subscribe();
@@ -82,8 +97,18 @@ class ObjectRegionEstimation {
     virtual void callback(
        const sensor_msgs::PointCloud2::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
+    virtual void callbackPrev(
+        const sensor_msgs::Image::ConstPtr &,
+        const sensor_msgs::PointCloud2::ConstPtr &);
+    virtual void sceneFlow(
+        pcl::PointCloud<PointT>::Ptr, const cv::Mat, const cv::Mat,
+        const pcl::PointCloud<PointT>::Ptr);
+    void noiseClusterFilter(
+        pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr indices,
+        const pcl::PointCloud<PointT>::Ptr);
+  
     void keypoints3D(
-       pcl::PointCloud<PointI>::Ptr, const pcl::PointCloud<PointT>::Ptr);
+        pcl::PointCloud<PointI>::Ptr, const pcl::PointCloud<PointT>::Ptr);
     void features3D(
        pcl::PointCloud<SHOT352>::Ptr, const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<Normal>::Ptr, const pcl::PointCloud<PointI>::Ptr);
@@ -93,8 +118,6 @@ class ObjectRegionEstimation {
     void clusterFeatures(
         std::vector<pcl::PointIndices> &, const pcl::PointCloud<PointT>::Ptr,
         const pcl::PointCloud<Normal>::Ptr, const int, const float);
-    void stableVariation(
-       const pcl::PointCloud<PointT>::Ptr, const float = 0.10f);
 };
 
 

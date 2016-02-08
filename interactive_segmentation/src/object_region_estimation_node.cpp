@@ -4,8 +4,7 @@
 #include <interactive_segmentation/object_region_estimation.h>
 
 ObjectRegionEstimation::ObjectRegionEstimation() :
-    num_threads_(8) {
-    counter_ = 0;
+    num_threads_(8), is_prev_ok (false), min_cluster_size_(100) {
     this->prev_cloud_ = pcl::PointCloud<PointT>::Ptr(
        new pcl::PointCloud<PointT>);
     this->onInit();
@@ -26,12 +25,23 @@ void ObjectRegionEstimation::onInit() {
 }
 
 void ObjectRegionEstimation::subscribe() {
+
+    // info before robot pushes the object
+    this->sub_cloud_prev_.subscribe(this->pnh_, "prev_cloud", 1);
+    this->sub_image_prev_.subscribe(this->pnh_, "prev_image", 1);
+    this->sync_prev_ = boost::make_shared<message_filters::Synchronizer<
+      SyncPolicyPrev> >(100);
+    this->sync_prev_->connectInput(sub_image_prev_, sub_cloud_prev_);
+    this->sync_prev_->registerCallback(boost::bind(
+        &ObjectRegionEstimation::callbackPrev, this, _1, _2));
+
+    
     this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
     this->sub_normal_.subscribe(this->pnh_, "input_normals", 1);
     this->sync_ = boost::make_shared<message_filters::Synchronizer<
        SyncPolicy> >(100);
-    sync_->connectInput(sub_cloud_, sub_normal_);
-    sync_->registerCallback(boost::bind(
+    this->sync_->connectInput(sub_cloud_, sub_normal_);
+    this->sync_->registerCallback(boost::bind(
                                &ObjectRegionEstimation::callback,
                                this, _1, _2));
 }
@@ -42,6 +52,59 @@ void ObjectRegionEstimation::unsubscribe() {
     this->sub_normal_.unsubscribe();
 }
 
+/**
+ * table removed image and object region point cloud
+ */
+void ObjectRegionEstimation::callbackPrev(
+    const sensor_msgs::Image::ConstPtr &image_msg,
+    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
+    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+    pcl::fromROSMsg(*cloud_msg, *cloud);
+    cv_bridge::CvImagePtr cv_ptr;
+    try {
+      cv_ptr = cv_bridge::toCvCopy(image_msg, sensor_msgs::image_encodings::BGR8);
+    } catch (cv_bridge::Exception &e) {
+      ROS_ERROR("cv_bridge exception: %s", e.what());
+      return;
+    }
+    /*
+    if (cloud->empty() || cv_ptr->image.empty()) {
+      is_prev_ok = false;
+    } else {
+      pcl::copyPointCloud<PointT, PointT>(*cloud, *prev_cloud_);
+      this->prev_image_ = cv_ptr->image.clone();
+      is_prev_ok = true;
+    }
+    */
+
+    std::cout << "NOW RUNNING....."  << "\n";
+    
+    // delete this 
+    header_ = cloud_msg->header;
+    if (cv_ptr->image.empty()) {
+      std::cout << "EMPTY"  << "\n";
+      return;
+      
+    }
+    if (!is_prev_ok) {
+      is_prev_ok = true;
+      prev_image_ = cv_ptr->image.clone();
+      return;
+    }
+    pcl::PointCloud<PointT>::Ptr filtered(new pcl::PointCloud<PointT>);
+    sceneFlow(filtered, prev_image_, cv_ptr->image, cloud);
+    
+    // prev_image_ = cv_ptr->image.clone();
+
+    // std::cout << "SLEEPING"  << "\n";
+    // ros::Duration(10).sleep();
+    
+}
+
+// also sub to the origial image
+/**
+ * current table remove and origal cloud
+ */
 void ObjectRegionEstimation::callback(
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
     const sensor_msgs::PointCloud2::ConstPtr &normal_msg) {
@@ -66,6 +129,13 @@ void ObjectRegionEstimation::callback(
           normals->push_back(tmp_normals->points[i]);
        }
     }
+
+    
+    // 1) scene flow
+    // 2) filter and select
+    // 3) 
+    
+    
     // pcl::PointCloud<PointI>::Ptr keypoints(new pcl::PointCloud<PointI>);
     // this->keypoints3D(keypoints, cloud);
 
@@ -86,7 +156,90 @@ void ObjectRegionEstimation::callback(
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
+    // this->pub_cloud_.publish(ros_cloud);
+}
+
+void ObjectRegionEstimation::sceneFlow(
+    pcl::PointCloud<PointT>::Ptr filtered, const cv::Mat prev_image,
+    const cv::Mat next_image, const pcl::PointCloud<PointT>::Ptr cloud) {
+    cv::Mat prev_img;
+    cv::cvtColor(prev_image, prev_img, CV_BGR2GRAY);
+    cv::Mat next_img;
+    cv::cvtColor(next_image, next_img, CV_BGR2GRAY);
+    cv::Mat flow = cv::Mat(0, 0, CV_8UC1);
+    cv::calcOpticalFlowFarneback(prev_img, next_img, flow, 0.5, 3, 5,
+                                 3, 5, 1.2, 0);
+    std::vector<cv::Mat> split_flow;
+    cv::split(flow, split_flow);
+    cv::Mat angle = cv::Mat::zeros(flow.size(), CV_32F);
+    cv::Mat magnitude = cv::Mat::zeros(flow.size(), CV_32F);
+    cv::cartToPolar(split_flow[0], split_flow[1], magnitude, angle, false);
+    cv::Mat result;
+    magnitude.convertTo(result, CV_8U);
+
+    // pcl::PointCloud<PointT>::Ptr filtered(new pcl::PointCloud<PointT>);
+
+    int threshold = 10;
+    pnh_.getParam("thresh", threshold);
+
+    std::cout << "THRESHOLD: " << threshold  << "\n";
+    
+    for (int i = 0; i < result.rows; i++) {
+      for (int j = 0; j < result.cols; j++) {
+        if (static_cast<int>(result.at<uchar>(i, j)) > threshold) {
+          int index = j + i * result.cols;
+          PointT pt = cloud->points[index];
+          if (!isnan(pt.x) && (!isnan(pt.y) && (!isnan(pt.x)))) {
+            filtered->push_back(cloud->points[index]);
+          }
+        }
+      }
+    }
+
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*filtered, ros_cloud);
+    ros_cloud.header = header_;
     this->pub_cloud_.publish(ros_cloud);
+    
+    cv::imshow("image", result);
+    cv::waitKey(3);
+}
+
+void ObjectRegionEstimation::noiseClusterFilter(
+    pcl::PointCloud<PointT>::Ptr object_cloud,
+    pcl::PointIndices::Ptr indices,
+    const pcl::PointCloud<PointT>::Ptr cloud) {
+    if (cloud->empty()) {
+      return;
+    }
+    pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
+    tree->setInputCloud(cloud);
+    std::vector<pcl::PointIndices> cluster_indices;
+    cluster_indices.clear();
+    pcl::EuclideanClusterExtraction<PointT> euclidean_clustering;
+    euclidean_clustering.setClusterTolerance(0.01f);
+    euclidean_clustering.setMinClusterSize(this->min_cluster_size_);
+    euclidean_clustering.setMaxClusterSize(25000);
+    euclidean_clustering.setSearchMethod(tree);
+    euclidean_clustering.setInputCloud(cloud);
+    euclidean_clustering.extract(cluster_indices);
+
+    // for now just select the largest cluster size
+    int index = -1;
+    int size = 0;
+    for (int i = 0; i < cluster_indices.size(); i++) {
+      if (cluster_indices[i].indices.size() > size) {
+        size = cluster_indices[i].indices.size();
+        index = i;
+      }
+    }
+    pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
+    eifilter->setInputCloud(cloud);
+    *indices = cluster_indices[index];
+    eifilter->setIndices(indices);
+    eifilter->filter(*object_cloud);
+    
+    std::cout << "MAX SIZE: " << size   << "\n";
 }
 
 void ObjectRegionEstimation::keypoints3D(
@@ -181,28 +334,6 @@ void ObjectRegionEstimation::removeStaticKeypoints(
        }
     }
     
-}
-
-void ObjectRegionEstimation::stableVariation(
-    const pcl::PointCloud<PointT>::Ptr cloud,
-    const float resolution) {
-    pcl::octree::OctreePointCloudChangeDetector<PointT> octree(0.10f);
-    octree.setInputCloud(this->prev_cloud_);
-    octree.addPointsFromInputCloud();
-    octree.switchBuffers();
-    octree.setInputCloud(cloud);
-    octree.addPointsFromInputCloud();
-    pcl::PointIndices::Ptr indices(new pcl::PointIndices);
-    octree.getPointIndicesFromNewVoxels(indices->indices);
-    pcl::PointCloud<PointT>::Ptr change(new pcl::PointCloud<PointT>);
-    for (int i = 0; i < indices->indices.size(); i++) {
-       int ind = indices->indices[i];
-       change->push_back(cloud->points[ind]);
-    }
-    sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*change, ros_cloud);
-    ros_cloud.header = header_;
-    this->pub_cloud_.publish(ros_cloud);
 }
 
 int main(int argc, char *argv[]) {

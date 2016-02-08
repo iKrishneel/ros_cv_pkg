@@ -1,0 +1,7 @@
+<launch>
+  <node pkg="interactive_segmentation" name="object_region_estimation"
+	type="object_region_estimation_node" output="screen" clear_params="true">
+    <remap from="prev_cloud" to="/camera/depth_registered/points" />
+    <remap from="prev_image" to="/camera/rgb/image_rect_color" />
+  </node>  
+</launch>
