@@ -71,7 +71,7 @@ void ObjectRegionEstimation::callback(
 
     // pcl::PointCloud<SHOT352>::Ptr descriptors(new pcl::PointCloud<SHOT352>);
     // this->features3D(descriptors, cloud, normals, keypoints);
-    /*
+
     std::vector<pcl::PointIndices> all_indices;
     this->clusterFeatures(all_indices, cloud, normals, 5, 0.5);
 
@@ -86,21 +86,7 @@ void ObjectRegionEstimation::callback(
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
-    // this->pub_cloud_.publish(ros_cloud);
-    */
-
-    this->stableVariation(tmp_cloud);
-
-    if (counter_++ == 0) {
-       *prev_cloud_ = *tmp_cloud;
-    }
-    
-    // this->prev_cloud_->clear();
-    // pcl::copyPointCloud<PointT, PointT>(*tmp_cloud, *prev_cloud_);
-    
-    
-    std::cout << "GO TO SLEEP: " << prev_cloud_->size()  << "\n";
-    // ros::Duration(5).sleep();
+    this->pub_cloud_.publish(ros_cloud);
 }
 
 void ObjectRegionEstimation::keypoints3D(
