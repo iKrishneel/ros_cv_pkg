@@ -17,12 +17,8 @@ ObjectRegionEstimation::ObjectRegionEstimation() :
     if (img1.empty() || img2.empty()) {
        std::cout << "EMPTY"  << "\n";
     }
-
-    float angle = 0;
-    float magnitude = 0;
-    magnitudeAngleThresholds(angle, magnitude, img1, img2);
-    this->sceneFlow(cloud, img1, img2, cloud);
     
+    this->sceneFlow(cloud, img1, img2, cloud, plane_norm_, plane_norm_);    
 }
 
 void ObjectRegionEstimation::onInit() {
@@ -44,27 +40,30 @@ void ObjectRegionEstimation::subscribe() {
     // info before robot pushes the object
     this->sub_cloud_prev_.subscribe(this->pnh_, "prev_cloud", 1);
     this->sub_image_prev_.subscribe(this->pnh_, "prev_image", 1);
+    this->sub_plane_prev_.subscribe(this->pnh_, "prev_plane", 1);
     this->sync_prev_ = boost::make_shared<message_filters::Synchronizer<
       SyncPolicyPrev> >(100);
-    this->sync_prev_->connectInput(sub_image_prev_, sub_cloud_prev_);
+    this->sync_prev_->connectInput(sub_image_prev_, sub_cloud_prev_, sub_plane_prev_);
     this->sync_prev_->registerCallback(boost::bind(
-        &ObjectRegionEstimation::callbackPrev, this, _1, _2));
+        &ObjectRegionEstimation::callbackPrev, this, _1, _2, _3));
 
     
     this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
-    this->sub_normal_.subscribe(this->pnh_, "input_normals", 1);
+    this->sub_image_.subscribe(this->pnh_, "input_image", 1);
+    this->sub_original_.subscribe(this->pnh_, "input_orig", 1);
     this->sync_ = boost::make_shared<message_filters::Synchronizer<
        SyncPolicy> >(100);
-    this->sync_->connectInput(sub_cloud_, sub_normal_);
+    this->sync_->connectInput(sub_image_, sub_cloud_, sub_original_);
     this->sync_->registerCallback(boost::bind(
-                               &ObjectRegionEstimation::callback,
-                               this, _1, _2));
+        &ObjectRegionEstimation::callback, this, _1, _2, _3));
 }
 
 void ObjectRegionEstimation::unsubscribe() {
     this->sub_cloud_.unsubscribe();
-    this->sub_indices_.unsubscribe();
-    this->sub_normal_.unsubscribe();
+    this->sub_image_.unsubscribe();
+    this->sub_original_.unsubscribe();
+    this->sub_cloud_prev_.unsubscribe();
+    this->sub_image_prev_.unsubscribe();
 }
 
 /**
@@ -72,7 +71,8 @@ void ObjectRegionEstimation::unsubscribe() {
  */
 void ObjectRegionEstimation::callbackPrev(
     const sensor_msgs::Image::ConstPtr &image_msg,
-    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
+    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
+    const sensor_msgs::PointCloud2::ConstPtr &plane_msg) {
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     cv_bridge::CvImagePtr cv_ptr;
@@ -107,60 +107,49 @@ void ObjectRegionEstimation::callbackPrev(
       return;
     }
     pcl::PointCloud<PointT>::Ptr filtered(new pcl::PointCloud<PointT>);
-    sceneFlow(filtered, prev_image_, cv_ptr->image, cloud);
-    
-    // prev_image_ = cv_ptr->image.clone();
-
-    // std::cout << "SLEEPING"  << "\n";
-    // ros::Duration(10).sleep();
+    // sceneFlow(filtered, prev_image_, cv_ptr->image, cloud);
 }
 
 // also sub to the origial image
 /**
- * current table remove and origal cloud
+ * current table remove and origal cloud and vector pos
  */
 void ObjectRegionEstimation::callback(
+    const sensor_msgs::Image::ConstPtr &image_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
-    const sensor_msgs::PointCloud2::ConstPtr &normal_msg) {
-    pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
-    pcl::fromROSMsg(*cloud_msg, *tmp_cloud);
-    pcl::PointCloud<Normal>::Ptr tmp_normals(new pcl::PointCloud<Normal>);
-    pcl::fromROSMsg(*normal_msg, *tmp_normals);
-    if (tmp_cloud->size() != tmp_normals->size()) {
-       ROS_ERROR("INCORRECT INPUT SIZE");
-       return;
-    }
-    this->header_ = cloud_msg->header;
-    
+    const sensor_msgs::PointCloud2::ConstPtr &orig_msg) {
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
-    pcl::PointCloud<Normal>::Ptr normals(new pcl::PointCloud<Normal>);
-    for (int i = 0; i < tmp_cloud->size(); i++) {
-       PointT pt = tmp_cloud->points[i];
-       Normal nt = tmp_normals->points[i];
-       if (!isnan(pt.x) && !isnan(pt.y) && !isnan(pt.z) &&
-           !isnan(nt.normal_x) && !isnan(nt.normal_y) && !isnan(nt.normal_z)) {
-          cloud->push_back(pt);
-          normals->push_back(tmp_normals->points[i]);
-       }
+    pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
+    pcl::fromROSMsg(*cloud_msg, *cloud);
+    pcl::fromROSMsg(*orig_msg, *in_cloud);
+    this->header_ = cloud_msg->header;
+    if (cloud->empty()) {
+      ROS_ERROR("ERROR: EMPTY DATA.. SKIP MERGING");
+      return;
     }
+    cv_bridge::CvImagePtr cv_ptr;
+    try {
+      cv_ptr = cv_bridge::toCvCopy(
+         image_msg, sensor_msgs::image_encodings::BGR8);
+    } catch (cv_bridge::Exception &e) {
+      ROS_ERROR("cv_bridge exception: %s", e.what());
+      return;
+    }
+    if (!is_prev_ok) {
+      ROS_ERROR("ERROR: PREV INFO NOT FOUND");
+      return;
+    }
+    cv::Mat next_img = cv_ptr->image.clone();
+    pcl::PointCloud<PointT>::Ptr motion_region_cloud(
+        new pcl::PointCloud<PointT>);
+    this->sceneFlow(motion_region_cloud, this->prev_image_, next_img,
+                    in_cloud, this->plane_norm_, this->plane_point_);
+
 
     
-    // 1) scene flow
-    // 2) filter and select
-    // 3) 
-    
-    
-    // pcl::PointCloud<PointI>::Ptr keypoints(new pcl::PointCloud<PointI>);
-    // this->keypoints3D(keypoints, cloud);
-
-    // pcl::PointCloud<SHOT352>::Ptr descriptors(new pcl::PointCloud<SHOT352>);
-    // this->features3D(descriptors, cloud, normals, keypoints);
-
     std::vector<pcl::PointIndices> all_indices;
-    this->clusterFeatures(all_indices, cloud, normals, 5, 0.5);
+    // this->clusterFeatures(all_indices, cloud, normals, 5, 0.5);
 
-    std::cout << "Cluster Size: " << all_indices.size() << "\n";
-    
     jsk_recognition_msgs::ClusterPointIndices ros_indices;
     ros_indices.cluster_indices = pcl_conversions::convertToROSPointIndices(
         all_indices, cloud_msg->header);
@@ -170,12 +159,13 @@ void ObjectRegionEstimation::callback(
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
-    // this->pub_cloud_.publish(ros_cloud);
+    this->pub_cloud_.publish(ros_cloud);
 }
 
 void ObjectRegionEstimation::sceneFlow(
     pcl::PointCloud<PointT>::Ptr filtered, const cv::Mat prev_image,
-    const cv::Mat next_image, const pcl::PointCloud<PointT>::Ptr cloud) {
+    const cv::Mat next_image, const pcl::PointCloud<PointT>::Ptr cloud,
+    const Eigen::Vector3f plane_norm, const Eigen::Vector3f plane_pt) {
     cv::Mat prev_img;
     cv::cvtColor(prev_image, prev_img, CV_BGR2GRAY);
     cv::Mat next_img;
@@ -202,9 +192,15 @@ void ObjectRegionEstimation::sceneFlow(
              val /= 360.0f;
              orientation.at<cv::Vec3b>(j, i) [0]=  val * 255.0f;
              image.at<uchar>(j, i) += next_img.at<uchar>(j, i);
-             
-             // filtered->push_back(cloud->points[i + (j * angle.cols)]);
-             
+
+             /*
+             PointT pt = cloud->points[i + (j * angle.cols)];
+             if (!isnan(pt.x) && !isnan(pt.y) && !isnan(pt.z)) {
+               if (plane_norm.dot(pt.getVector3fMap() - plane_pt) >= 0.0f) {
+                 filtered->push_back(pt);
+               }
+               }
+             */
           } else {
              orientation.at<cv::Vec3b>(j, i) [1]=  val * 255.0f;
           }
@@ -300,19 +296,70 @@ void ObjectRegionEstimation::keypoints3D(
 }
 
 void ObjectRegionEstimation::features3D(
-    pcl::PointCloud<SHOT352>::Ptr descriptors,
+    pcl::PointCloud<SHOT1344>::Ptr descriptors,
     const pcl::PointCloud<PointT>::Ptr cloud,
     const pcl::PointCloud<Normal>::Ptr normals,
     const pcl::PointCloud<PointI>::Ptr keypoints) {
     pcl::PointCloud<PointT>::Ptr keypoints_xyz(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointI, PointT>(*keypoints, *keypoints_xyz);
-    pcl::SHOTEstimationOMP<PointT, Normal, SHOT352> shot;
+    // pcl::SHOTEstimationOMP<PointT, Normal, SHOT352> shot;
+    pcl::SHOTColorEstimationOMP<PointT, Normal, SHOT1344> shot;
     shot.setSearchSurface(cloud);
     shot.setInputCloud(keypoints_xyz);
     shot.setInputNormals(normals);
     shot.setRadiusSearch(0.02f);
     shot.compute(*descriptors);
 }
+
+void ObjectRegionEstimation::getHypothesis(
+    const pcl::PointCloud<PointT>::Ptr prev_cloud,
+    const pcl::PointCloud<PointT>::Ptr next_cloud) {
+    if (prev_cloud->empty() || next_cloud->empty()) {
+      ROS_ERROR("ERROR: EMPTY CANNOT CREATE OBJECT HYPOTHESIS");
+      return;
+    }
+    pcl::PointCloud<Normal>::Ptr prev_normals(new pcl::PointCloud<Normal>);
+    pcl::PointCloud<Normal>::Ptr next_normals(new pcl::PointCloud<Normal>);
+    pcl::PointCloud<SHOT1344>::Ptr prev_descriptors(new pcl::PointCloud<SHOT1344>);
+    pcl::PointCloud<SHOT1344>::Ptr next_descriptors(new pcl::PointCloud<SHOT1344>);
+#ifdef _OPENMP
+#pragma omp parallel sections
+#endif
+    {
+#ifdef _OPENMP
+#pragma omp section
+#endif
+      {
+        pcl::PointCloud<PointI>::Ptr prev_keypoints(new pcl::PointCloud<PointI>);
+        this->keypoints3D(prev_keypoints, prev_cloud);
+        this->features3D(prev_descriptors, prev_cloud, prev_normals, prev_keypoints);
+      }
+#ifdef _OPENMP
+#pragma omp section
+#endif
+      {
+        pcl::PointCloud<PointI>::Ptr next_keypoints(new pcl::PointCloud<PointI>);
+        this->keypoints3D(next_keypoints, next_cloud);
+        this->features3D(next_descriptors, next_cloud, next_normals, next_keypoints);
+      }
+    }
+    // finding correspondances
+    pcl::CorrespondencesPtr correspondences (new pcl::Correspondences);
+    pcl::KdTreeFLANN<SHOT1344>::Ptr matcher(new pcl::KdTreeFLANN<SHOT1344>);
+    matcher->setInputCloud(prev_descriptors);
+    std::vector<int> indices;
+    std::vector<float> distances;
+    const float thresh = 0.25f;
+    for (int i = 0; i < next_descriptors->size(); i++) {
+      SHOT1344 des = next_descriptors->points[i];
+      int found = matcher->nearestKSearch(next_descriptors->at(i), 1, indices, distances);
+      if (found == 1 && distances[0] < thresh) {
+        pcl::Correspondence corresp(indices[0], i, distances[0]);
+        correspondences->push_back(corresp);
+      }
+    }
+}
+
 
 void ObjectRegionEstimation::clusterFeatures(
     std::vector<pcl::PointIndices> &all_indices,
@@ -378,79 +425,6 @@ void ObjectRegionEstimation::removeStaticKeypoints(
     }
     
 }
-
-void ObjectRegionEstimation::magnitudeAngleThresholds(
-    float &angle_thres, float &magn_thresh,
-    const cv::Mat prev_image, const cv::Mat next_image) {
-    double quality_level = 0.01;
-    double min_distance = 10;
-    int block_size = 3;
-    int max_corners = 500;
-    cv::Mat prev_img = prev_image.clone();
-    cv::Mat next_img = next_image.clone();
-    if (prev_image.type() != 0) {
-      cv::cvtColor(prev_image, prev_img, CV_BGR2GRAY);
-    }
-    if (next_image.type() != 0) {
-      cv::cvtColor(next_image, next_img, CV_BGR2GRAY);
-    }
-    cv::GoodFeaturesToTrackDetector gftt(max_corners, quality_level, min_distance);
-    std::vector<cv::KeyPoint> prev_keypoints;
-    gftt.detect(prev_img, prev_keypoints);
-    std::vector<cv::KeyPoint> next_keypoints;
-    gftt.detect(next_img, next_keypoints);
-
-    cv::SurfDescriptorExtractor extractor;
-    cv::Mat prev_descriptor;
-    extractor.compute(prev_img, prev_keypoints, prev_descriptor);
-    cv::Mat next_descriptor;
-    extractor.compute(next_img, next_keypoints, next_descriptor);
-
-    cv::FlannBasedMatcher matcher;
-    std::vector<cv::DMatch> matches;
-    matcher.match(prev_descriptor, next_descriptor, matches);
-    
-    double max_dist = 0;
-    double min_dist = 100;
-    for(int i = 0; i < prev_descriptor.rows; i++) {
-      double dist = matches[i].distance;
-      if (dist < min_dist) {
-        min_dist = dist;
-      }
-      if (dist > max_dist) {
-        max_dist = dist;
-      }
-    }
-    std::vector<cv::DMatch> good_matches;
-    for (int i = 0; i < prev_descriptor.rows; i++) {
-      if (matches[i].distance < 3*min_dist ) {
-        good_matches.push_back(matches[i]);
-      }
-    }
-    std::vector<float> x_coords;
-    std::vector<float> y_coords;
-    float angle_avg = 0.0f;
-    float magn_avg = 0.0f;
-    for (int i = 0; i < good_matches.size(); i++) {
-      cv::Point2f pt = next_keypoints[good_matches[i].trainIdx].pt -
-          prev_keypoints[good_matches[i].queryIdx].pt;
-      magn_avg += (std::sqrt(pt.x * pt.x + pt.y * pt.y));
-      angle_avg += (std::atan2(pt.y, pt.x) * 180.0 / M_PI);
-    }
-    magn_avg /= static_cast<float>(good_matches.size());
-    angle_avg /= static_cast<float>(good_matches.size());
-    
-    std::cout << "AVG: " << magn_avg << "\t" << angle_avg  << "\n";
-    
-    
-    cv::Mat img_matches;
-    cv::drawMatches(prev_img, prev_keypoints, next_img, next_keypoints,
-                    good_matches, img_matches, cv::Scalar::all(-1), cv::Scalar::all(-1),
-                    std::vector<char>(), cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
-
-    cv::imshow("match", img_matches);
-}
-
 
 int main(int argc, char *argv[]) {
     ros::init(argc, argv, "object_region_estimation");
