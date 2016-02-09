@@ -4,10 +4,22 @@
 #include <interactive_segmentation/object_region_estimation.h>
 
 ObjectRegionEstimation::ObjectRegionEstimation() :
-    num_threads_(8), is_prev_ok (false), min_cluster_size_(100) {
+    num_threads_(8), is_prev_ok(false), min_cluster_size_(100) {
     this->prev_cloud_ = pcl::PointCloud<PointT>::Ptr(
        new pcl::PointCloud<PointT>);
-    this->onInit();
+    // this->onInit();
+
+    cv::Mat img1 = cv::imread("/home/krishneel/Desktop/frame0000.jpg");
+    cv::Mat img2 = cv::imread("/home/krishneel/Desktop/frame0001.jpg");
+    
+    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+
+    if (img1.empty() || img2.empty()) {
+       std::cout << "EMPTY"  << "\n";
+    }
+    
+    this->sceneFlow(cloud, img1, img2, cloud);
+    
 }
 
 void ObjectRegionEstimation::onInit() {
@@ -62,7 +74,8 @@ void ObjectRegionEstimation::callbackPrev(
     pcl::fromROSMsg(*cloud_msg, *cloud);
     cv_bridge::CvImagePtr cv_ptr;
     try {
-      cv_ptr = cv_bridge::toCvCopy(image_msg, sensor_msgs::image_encodings::BGR8);
+      cv_ptr = cv_bridge::toCvCopy(
+         image_msg, sensor_msgs::image_encodings::BGR8);
     } catch (cv_bridge::Exception &e) {
       ROS_ERROR("cv_bridge exception: %s", e.what());
       return;
@@ -79,7 +92,7 @@ void ObjectRegionEstimation::callbackPrev(
 
     std::cout << "NOW RUNNING....."  << "\n";
     
-    // delete this 
+    // delete this
     header_ = cloud_msg->header;
     if (cv_ptr->image.empty()) {
       std::cout << "EMPTY"  << "\n";
@@ -173,12 +186,32 @@ void ObjectRegionEstimation::sceneFlow(
     cv::split(flow, split_flow);
     cv::Mat angle = cv::Mat::zeros(flow.size(), CV_32F);
     cv::Mat magnitude = cv::Mat::zeros(flow.size(), CV_32F);
-    cv::cartToPolar(split_flow[0], split_flow[1], magnitude, angle, false);
+    cv::cartToPolar(split_flow[0], split_flow[1], magnitude, angle, true);
     cv::Mat result;
     magnitude.convertTo(result, CV_8U);
 
-    // pcl::PointCloud<PointT>::Ptr filtered(new pcl::PointCloud<PointT>);
+    cv::Mat orientation = cv::Mat::zeros(angle.size(), CV_8UC3);
+    cv::Mat image = cv::Mat::zeros(next_img.size(), next_img.type());
+    
+    for (int j = 0; j < angle.rows; j++) {
+       for (int i = 0; i < angle.cols; i++) {
+          float val = angle.at<float>(j, i);
+          if (val < 90.0 && magnitude.at<float>(j, i) > 5.0f) {
+             val /= 360.0f;
+             orientation.at<cv::Vec3b>(j, i) [0]=  val * 255.0f;
+             image.at<uchar>(j, i) += next_img.at<uchar>(j, i);
 
+             
+          } else {
+             orientation.at<cv::Vec3b>(j, i) [1]=  val * 255.0f;
+          }
+       }
+    }
+    cv::imshow("orientation", orientation);
+    cv::imshow("view", image);
+    
+    // pcl::PointCloud<PointT>::Ptr filtered(new pcl::PointCloud<PointT>);
+    /*
     int threshold = 10;
     pnh_.getParam("thresh", threshold);
 
@@ -200,9 +233,9 @@ void ObjectRegionEstimation::sceneFlow(
     pcl::toROSMsg(*filtered, ros_cloud);
     ros_cloud.header = header_;
     this->pub_cloud_.publish(ros_cloud);
-    
+    */
     cv::imshow("image", result);
-    cv::waitKey(3);
+    cv::waitKey(0);
 }
 
 void ObjectRegionEstimation::noiseClusterFilter(
