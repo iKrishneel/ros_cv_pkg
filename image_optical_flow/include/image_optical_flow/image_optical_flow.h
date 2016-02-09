@@ -61,6 +61,17 @@ class ImageOpticalFlow {
       std::vector<cv::Point2f> &prevPts,
       std::vector<uchar> &status);
 
+    void computeOpticalFlow(
+       cv::Mat &prev_frame, cv::Mat &cur_frame,
+       std::vector<cv::Point2f> &prev_pts,
+       std::vector<cv::Point2f> &next_pts);
+   
+    void drawFlowField(
+       cv::Mat &frame, cv::Mat &prev_frame,
+       std::vector<cv::Point2f> &next_pts,
+       std::vector<cv::Point2f> &prev_pts);
+   
+   
     void forwardBackwardMatchingAndFeatureCorrespondance(
        const cv::Mat, const cv::Mat, FeatureInfo &);
    
