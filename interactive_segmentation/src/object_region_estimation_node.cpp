@@ -17,7 +17,10 @@ ObjectRegionEstimation::ObjectRegionEstimation() :
     if (img1.empty() || img2.empty()) {
        std::cout << "EMPTY"  << "\n";
     }
-    
+
+    float angle = 0;
+    float magnitude = 0;
+    magnitudeAngleThresholds(angle, magnitude, img1, img2);
     this->sceneFlow(cloud, img1, img2, cloud);
     
 }
@@ -97,7 +100,6 @@ void ObjectRegionEstimation::callbackPrev(
     if (cv_ptr->image.empty()) {
       std::cout << "EMPTY"  << "\n";
       return;
-      
     }
     if (!is_prev_ok) {
       is_prev_ok = true;
@@ -111,7 +113,6 @@ void ObjectRegionEstimation::callbackPrev(
 
     // std::cout << "SLEEPING"  << "\n";
     // ros::Duration(10).sleep();
-    
 }
 
 // also sub to the origial image
@@ -180,8 +181,8 @@ void ObjectRegionEstimation::sceneFlow(
     cv::Mat next_img;
     cv::cvtColor(next_image, next_img, CV_BGR2GRAY);
     cv::Mat flow = cv::Mat(0, 0, CV_8UC1);
-    cv::calcOpticalFlowFarneback(prev_img, next_img, flow, 0.5, 3, 5,
-                                 3, 5, 1.2, 0);
+    cv::calcOpticalFlowFarneback(prev_img, next_img, flow, 0.2, 5, 7,
+                                 10, 5, 1.2, 0);
     std::vector<cv::Mat> split_flow;
     cv::split(flow, split_flow);
     cv::Mat angle = cv::Mat::zeros(flow.size(), CV_32F);
@@ -192,15 +193,17 @@ void ObjectRegionEstimation::sceneFlow(
 
     cv::Mat orientation = cv::Mat::zeros(angle.size(), CV_8UC3);
     cv::Mat image = cv::Mat::zeros(next_img.size(), next_img.type());
-    
+
+    // for the threshold use end-effector
     for (int j = 0; j < angle.rows; j++) {
        for (int i = 0; i < angle.cols; i++) {
           float val = angle.at<float>(j, i);
-          if (val < 90.0 && magnitude.at<float>(j, i) > 5.0f) {
+          if ((val > 90.0 && val < 360.0) && magnitude.at<float>(j, i) > 5.0f) {
              val /= 360.0f;
              orientation.at<cv::Vec3b>(j, i) [0]=  val * 255.0f;
              image.at<uchar>(j, i) += next_img.at<uchar>(j, i);
-
+             
+             // filtered->push_back(cloud->points[i + (j * angle.cols)]);
              
           } else {
              orientation.at<cv::Vec3b>(j, i) [1]=  val * 255.0f;
@@ -209,33 +212,40 @@ void ObjectRegionEstimation::sceneFlow(
     }
     cv::imshow("orientation", orientation);
     cv::imshow("view", image);
+
+
+    cv::Mat cflowmap;
+    cv::cvtColor(next_img, cflowmap, CV_GRAY2BGR);
+    drawOptFlowMap(flow, cflowmap, 5, 50, cv::Scalar(0, 255, 0));
+    cv::imshow("map_flow", cflowmap);
     
-    // pcl::PointCloud<PointT>::Ptr filtered(new pcl::PointCloud<PointT>);
+
     /*
     int threshold = 10;
     pnh_.getParam("thresh", threshold);
-
-    std::cout << "THRESHOLD: " << threshold  << "\n";
-    
-    for (int i = 0; i < result.rows; i++) {
-      for (int j = 0; j < result.cols; j++) {
-        if (static_cast<int>(result.at<uchar>(i, j)) > threshold) {
-          int index = j + i * result.cols;
-          PointT pt = cloud->points[index];
-          if (!isnan(pt.x) && (!isnan(pt.y) && (!isnan(pt.x)))) {
-            filtered->push_back(cloud->points[index]);
-          }
-        }
-      }
-    }
 
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*filtered, ros_cloud);
     ros_cloud.header = header_;
     this->pub_cloud_.publish(ros_cloud);
     */
-    cv::imshow("image", result);
+    // cv::imshow("image", result);
     cv::waitKey(0);
+}
+
+
+void ObjectRegionEstimation::drawOptFlowMap(
+    const cv::Mat& flow, cv::Mat& cflowmap, int step,
+    double scale, const cv::Scalar& color) {
+    for(int y = 0; y < cflowmap.rows; y += step) {
+      for(int x = 0; x < cflowmap.cols; x += step) {
+        const cv::Point2f& fxy = flow.at<cv::Point2f>(y, x);
+        cv::line(cflowmap, cv::Point(x,y),
+                 cv::Point(cvRound(x+fxy.x), cvRound(y+fxy.y)), color);
+        cv::circle(cflowmap, cv::Point(cvRound(x+fxy.x),
+                                       cvRound(y+fxy.y)), 1, color, -1);
+      }
+    }
 }
 
 void ObjectRegionEstimation::noiseClusterFilter(
@@ -368,6 +378,79 @@ void ObjectRegionEstimation::removeStaticKeypoints(
     }
     
 }
+
+void ObjectRegionEstimation::magnitudeAngleThresholds(
+    float &angle_thres, float &magn_thresh,
+    const cv::Mat prev_image, const cv::Mat next_image) {
+    double quality_level = 0.01;
+    double min_distance = 10;
+    int block_size = 3;
+    int max_corners = 500;
+    cv::Mat prev_img = prev_image.clone();
+    cv::Mat next_img = next_image.clone();
+    if (prev_image.type() != 0) {
+      cv::cvtColor(prev_image, prev_img, CV_BGR2GRAY);
+    }
+    if (next_image.type() != 0) {
+      cv::cvtColor(next_image, next_img, CV_BGR2GRAY);
+    }
+    cv::GoodFeaturesToTrackDetector gftt(max_corners, quality_level, min_distance);
+    std::vector<cv::KeyPoint> prev_keypoints;
+    gftt.detect(prev_img, prev_keypoints);
+    std::vector<cv::KeyPoint> next_keypoints;
+    gftt.detect(next_img, next_keypoints);
+
+    cv::SurfDescriptorExtractor extractor;
+    cv::Mat prev_descriptor;
+    extractor.compute(prev_img, prev_keypoints, prev_descriptor);
+    cv::Mat next_descriptor;
+    extractor.compute(next_img, next_keypoints, next_descriptor);
+
+    cv::FlannBasedMatcher matcher;
+    std::vector<cv::DMatch> matches;
+    matcher.match(prev_descriptor, next_descriptor, matches);
+    
+    double max_dist = 0;
+    double min_dist = 100;
+    for(int i = 0; i < prev_descriptor.rows; i++) {
+      double dist = matches[i].distance;
+      if (dist < min_dist) {
+        min_dist = dist;
+      }
+      if (dist > max_dist) {
+        max_dist = dist;
+      }
+    }
+    std::vector<cv::DMatch> good_matches;
+    for (int i = 0; i < prev_descriptor.rows; i++) {
+      if (matches[i].distance < 3*min_dist ) {
+        good_matches.push_back(matches[i]);
+      }
+    }
+    std::vector<float> x_coords;
+    std::vector<float> y_coords;
+    float angle_avg = 0.0f;
+    float magn_avg = 0.0f;
+    for (int i = 0; i < good_matches.size(); i++) {
+      cv::Point2f pt = next_keypoints[good_matches[i].trainIdx].pt -
+          prev_keypoints[good_matches[i].queryIdx].pt;
+      magn_avg += (std::sqrt(pt.x * pt.x + pt.y * pt.y));
+      angle_avg += (std::atan2(pt.y, pt.x) * 180.0 / M_PI);
+    }
+    magn_avg /= static_cast<float>(good_matches.size());
+    angle_avg /= static_cast<float>(good_matches.size());
+    
+    std::cout << "AVG: " << magn_avg << "\t" << angle_avg  << "\n";
+    
+    
+    cv::Mat img_matches;
+    cv::drawMatches(prev_img, prev_keypoints, next_img, next_keypoints,
+                    good_matches, img_matches, cv::Scalar::all(-1), cv::Scalar::all(-1),
+                    std::vector<char>(), cv::DrawMatchesFlags::NOT_DRAW_SINGLE_POINTS);
+
+    cv::imshow("match", img_matches);
+}
+
 
 int main(int argc, char *argv[]) {
     ros::init(argc, argv, "object_region_estimation");

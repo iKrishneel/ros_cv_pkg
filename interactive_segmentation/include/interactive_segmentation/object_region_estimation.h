@@ -12,6 +12,8 @@
 
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
+#include <opencv2/features2d/features2d.hpp>
+#include <opencv2/nonfree/nonfree.hpp>
 
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
@@ -118,6 +120,11 @@ class ObjectRegionEstimation {
     void clusterFeatures(
         std::vector<pcl::PointIndices> &, const pcl::PointCloud<PointT>::Ptr,
         const pcl::PointCloud<Normal>::Ptr, const int, const float);
+
+    void drawOptFlowMap(
+        const cv::Mat&, cv::Mat&, int, double, const cv::Scalar&);
+    void magnitudeAngleThresholds(
+        float &, float &, const cv::Mat, const cv::Mat);
 };
 
 
