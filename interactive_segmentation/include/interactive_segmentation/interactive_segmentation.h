@@ -101,11 +101,12 @@ class InteractiveSegmentation {
     ros::Publisher pub_concave_;
     ros::Publisher pub_normal_;
     ros::Publisher pub_prob_;
-    ros::Publisher pub_voxels_;
+    ros::Publisher pub_apoints_;
     ros::Publisher pub_indices_;
     ros::Publisher pub_image_;
     ros::Publisher pub_pt_map_;
-
+    ros::Publisher pub_plane_;
+   
     ros::ServiceClient srv_client_;
     PointT user_marked_pt_;
     cv::Point2i screen_pt_;
@@ -173,7 +174,8 @@ class InteractiveSegmentation {
     bool estimateAnchorPoints(
        pcl::PointCloud<PointT>::Ptr, pcl::PointCloud<PointT>::Ptr,
        pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr,
-       pcl::PointIndices::Ptr, const pcl::PointCloud<PointT>::Ptr);
+       pcl::PointIndices::Ptr, Eigen::Vector4f &,
+       const pcl::PointCloud<PointT>::Ptr);
     std::vector<Eigen::Vector4f> doEuclideanClustering(
        std::vector<pcl::PointIndices> &cluster_indices,
        const pcl::PointCloud<PointT>::Ptr,
@@ -200,6 +202,7 @@ class InteractiveSegmentation {
     void fixPlaneModelToEdgeBoundaryPoints(
        pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr,
        Eigen::Vector3f &, const Eigen::Vector4f);
+    void supportPlaneNormal(const Eigen::Vector4f, const std_msgs::Header);
     bool markedPointInSegmentedRegion(
        const pcl::PointCloud<PointT>::Ptr, const PointT);
    

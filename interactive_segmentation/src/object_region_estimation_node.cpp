@@ -9,8 +9,8 @@ ObjectRegionEstimation::ObjectRegionEstimation() :
     
     this->prev_cloud_ = pcl::PointCloud<PointT>::Ptr(
        new pcl::PointCloud<PointT>);
-    // this->onInit();
-
+    this->onInit();
+    /*
     cv::Mat img1 = cv::imread("/home/krishneel/Desktop/frame0000.jpg");
     cv::Mat img2 = cv::imread("/home/krishneel/Desktop/frame0001.jpg");
     
@@ -21,7 +21,7 @@ ObjectRegionEstimation::ObjectRegionEstimation() :
     }
     
     this->sceneFlow(cloud, img1, img2, cloud, plane_norm_, plane_norm_);
-    
+    */
 }
 
 void ObjectRegionEstimation::onInit() {
@@ -89,7 +89,6 @@ void ObjectRegionEstimation::callbackPrev(
       ROS_ERROR("cv_bridge exception: %s", e.what());
       return;
     }
-    /*
     if (cloud->empty() || cv_ptr->image.empty()) {
       is_prev_ok = false;
     } else {
@@ -97,23 +96,8 @@ void ObjectRegionEstimation::callbackPrev(
       this->prev_image_ = cv_ptr->image.clone();
       is_prev_ok = true;
     }
-    */
 
-    std::cout << "NOW RUNNING....."  << "\n";
-    
-    // delete this
-    header_ = cloud_msg->header;
-    if (cv_ptr->image.empty()) {
-      std::cout << "EMPTY"  << "\n";
-      return;
-    }
-    if (!is_prev_ok) {
-      is_prev_ok = true;
-      prev_image_ = cv_ptr->image.clone();
-      return;
-    }
-    pcl::PointCloud<PointT>::Ptr filtered(new pcl::PointCloud<PointT>);
-    // sceneFlow(filtered, prev_image_, cv_ptr->image, cloud);
+    ROS_INFO("SEGMENTED REGION SET...");
 }
 
 // also sub to the origial image

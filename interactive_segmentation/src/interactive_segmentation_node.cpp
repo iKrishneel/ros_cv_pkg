@@ -26,7 +26,7 @@ void InteractiveSegmentation::onInit() {
        jsk_recognition_msgs::ClusterPointIndices>(
           "/interactive_segmentation/output/indices", 1);
     
-    this->pub_voxels_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+    this->pub_apoints_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
           "/interactive_segmentation/output/anchor_points", 1);
 
     this->pub_normal_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
@@ -41,8 +41,8 @@ void InteractiveSegmentation::onInit() {
     this->pub_convex_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
         "/interactive_segmentation/output/convex_edge", 1);
     
-    this->pub_image_ = this->pnh_.advertise<sensor_msgs::Image>(
-       "/interactive_segmentation/output/image", 1);
+    this->pub_plane_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+       "/interactive_segmentation/output/plane_info", 1);
 }
 
 void InteractiveSegmentation::subscribe() {
@@ -142,10 +142,10 @@ void InteractiveSegmentation::callback(
     pcl::copyPointCloud<PointT, PointT>(*cloud, *anchor_points);
     pcl::PointIndices::Ptr anchor_indices(new pcl::PointIndices);
     pcl::PointIndices::Ptr filtered_indices(new pcl::PointIndices);
-    int nearest_index_2 = -1;
+    Eigen::Vector4f plane_point = Eigen::Vector4f(0, 0, 0, 0);
     bool is_found_points = this->estimateAnchorPoints(
        anchor_points, convex_edge_points, concave_edge_points,
-       anchor_indices, filtered_indices, original_cloud);
+       anchor_indices, filtered_indices, plane_point, original_cloud);
     
     ROS_INFO("\033[32m LABELING ON THE POINT \033[0m");
 
@@ -157,7 +157,9 @@ void InteractiveSegmentation::callback(
        // fix for index irregularity after plane segm. fix 4 imprv
        // compt.
        pcl::PointCloud<PointT>::Ptr obj_cloud(new pcl::PointCloud<PointT>);
+       pcl::copyPointCloud<PointT, PointT>(*cloud, *obj_cloud);
        if (!filtered_indices->indices.empty()) {
+          obj_cloud->empty();
           pcl::PointCloud<PointT>::Ptr filtered_cloud(
              new pcl::PointCloud<PointT>);
           for (int i = 0; i < filtered_indices->indices.size(); i++) {
@@ -165,10 +167,8 @@ void InteractiveSegmentation::callback(
              filtered_cloud->push_back(weight_cloud->points[idx]);
              obj_cloud->push_back(cloud->points[idx]);  // mask orignal region
           }
-          cloud->clear();
           weight_cloud->clear();
           pcl::copyPointCloud<PointT, PointT>(*filtered_cloud, *weight_cloud);
-          // pcl::copyPointCloud<PointT, PointT>(*obj_cloud, *cloud);
        }
        pcl::PointIndices::Ptr object_indices(new pcl::PointIndices);
        pcl::PointCloud<PointT>::Ptr final_object(new pcl::PointCloud<PointT>);
@@ -177,6 +177,7 @@ void InteractiveSegmentation::callback(
           final_object, object_indices);
 
        // extract the color cloud object---------
+       // TODO(FIX): not has BUG
        cloud->clear();
        for (int i = 0; i < object_indices->indices.size(); i++) {
           int idx = object_indices->indices[i];
@@ -200,12 +201,15 @@ void InteractiveSegmentation::callback(
        pub_indices_.publish(ros_indices);
        
        publishAsROSMsg(final_object, pub_cloud_, cloud_msg->header);
-       publishAsROSMsg(cloud, pub_pt_map_, cloud_msg->header);
+       // publishAsROSMsg(cloud, pub_cloud_, cloud_msg->header);
     }
-
-    this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
+    
+    ROS_INFO("\033[34m PUBLISHING INFO\033[0m");
+    this->supportPlaneNormal(plane_point, cloud_msg->header);
+    this->publishAsROSMsg(anchor_points, pub_apoints_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
     this->publishAsROSMsg(convex_edge_points, pub_convex_, cloud_msg->header);
+
     
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
        new pcl::PointCloud<pcl::PointXYZRGBNormal>);
@@ -252,13 +256,15 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
        int index = indices->indices[i];
        attention_normal = normals->points[index].getNormalVector4fMap();
        attention_centroid = cloud->points[index].getVector4fMap();
-
-       std::cout << "\033[34m COMPUTING WEIGHTS \033[0m" << std::endl;
-
+       
+       ROS_INFO("\033[34m COMPUTING WEIGHTS \033[0m");
+       
        cv::Mat weight_map;
        this->surfelSamplePointWeightMap(cloud, normals, cloud->points[index],
                                         attention_normal, weight_map);
        anchor_points_weights[i] = weight_map;
+
+       ROS_INFO("\033[34m WEIGHTS COMPUTED\033[0m");
        // publishAsROSMsg(cloud, pub_cloud_, header);
     }
     cv::Mat conv_weight_map = cv::Mat::zeros(
@@ -279,6 +285,7 @@ void InteractiveSegmentation::selectedVoxelObjectHypothesis(
        weight_cloud->points[j].g = w;
        weight_cloud->points[j].b = w;
     }
+    ROS_INFO("\033[34m RETURING OBJECT HYPOTHESIS \033[0m");
     // publishAsROSMsg(weight_cloud, pub_cloud_, header);
 }
 
@@ -1026,7 +1033,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     pcl::PointCloud<PointT>::Ptr convex_points,
     pcl::PointCloud<PointT>::Ptr concave_points,
     pcl::PointIndices::Ptr anchor_indices,
-    pcl::PointIndices::Ptr filter_indices,
+    pcl::PointIndices::Ptr filter_indices, Eigen::Vector4f &center,
     const pcl::PointCloud<PointT>::Ptr original_cloud) {
     if (anchor_points->empty()) {
        ROS_ERROR("NO BOUNDARY REGION TO SELECT POINTS");
@@ -1102,7 +1109,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     
     float height = FLT_MAX;
     int center_index = -1;
-    Eigen::Vector4f center;
+    // Eigen::Vector4f center;
     for (int i = 0; i < concave_edge_centroids.size(); i++) {
       if (concave_edge_centroids[i](1) < height) {  // CHANGE HERE
         center_index = i;
@@ -1476,14 +1483,37 @@ bool InteractiveSegmentation::skeletonization2D(
     return true;
 }
 
+void InteractiveSegmentation::supportPlaneNormal(
+    const Eigen::Vector4f plane_point, const std_msgs::Header header) {
+    geometry_msgs::PolygonStamped polygon = polygon_array_.polygons[0];
+    jsk_recognition_utils::Polygon geo_polygon
+       = jsk_recognition_utils::Polygon::fromROSMsg(polygon.polygon);
+    jsk_recognition_utils::Vertices vertices = geo_polygon.getVertices();
+    Eigen::Vector3f normal = geo_polygon.getNormal();
+    pcl::PointNormal pt;
+    pt.x = plane_point(0);
+    pt.y = plane_point(1);
+    pt.z = plane_point(2);
+    pt.normal_x = normal(0);
+    pt.normal_y = normal(1);
+    pt.normal_z = normal(2);
+    pcl::PointCloud<pcl::PointNormal>::Ptr plane_info(
+       new pcl::PointCloud<pcl::PointNormal>);
+    plane_info->push_back(pt);
+    sensor_msgs::PointCloud2 ros_plane;
+    pcl::toROSMsg(*plane_info, ros_plane);
+    ros_plane.header = header;
+    this->pub_plane_.publish(ros_plane);
+}
+
 void InteractiveSegmentation::fixPlaneModelToEdgeBoundaryPoints(
     pcl::PointCloud<PointT>::Ptr in_cloud, pcl::PointIndices::Ptr indices,
     Eigen::Vector3f &normal, const Eigen::Vector4f m_centroid) {
     if (in_cloud->empty()) {
        return;
     }
-    std::cout << "FITTING PLANE" << std::endl;
-    
+    ROS_INFO("FITTING PLANE");
+        
     Eigen::Vector4f center = m_centroid;
     center(1) -= 0.01f;
     geometry_msgs::PolygonStamped polygon = polygon_array_.polygons[0];
@@ -1502,8 +1532,8 @@ void InteractiveSegmentation::fixPlaneModelToEdgeBoundaryPoints(
     Eigen::Vector3f pos(centroid[0], centroid[1], centroid[2]);
     normal = geo_polygon.getNormal();
 
-    std::cout << "NORMAL ESTIMATED" << std::endl;
-    
+    ROS_INFO("NORMAL ESTIMATED");
+        
     pcl::PointCloud<PointT>::Ptr object_cloud(new pcl::PointCloud<PointT>);
     for (int i = 0; i < in_cloud->size(); i++) {
        Eigen::Vector3f pt = in_cloud->points[i].getVector3fMap();
@@ -1515,8 +1545,8 @@ void InteractiveSegmentation::fixPlaneModelToEdgeBoundaryPoints(
     in_cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*object_cloud, *in_cloud);
     this->publishAsROSMsg(object_cloud, pub_prob_, camera_info_->header);
-    
-    std::cout << "DONE FITTING PLANE" << std::endl;
+
+    ROS_INFO("DONE FITTING PLANE");
 
     bool is_viz = false;
     if (is_viz) {
