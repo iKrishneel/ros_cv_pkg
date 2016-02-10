@@ -13,20 +13,20 @@ PointCloudImageCreator::PointCloudImageCreator() {
 
 void PointCloudImageCreator::onInit() {
 
-    this->pub_image_ = pnh_.advertise<sensor_msgs::Image>(
-      "/cloud_image/output/image", 1);
     if (is_mask_image_) {
+       this->pub_image_ = pnh_.advertise<sensor_msgs::Image>(
+          "/cloud_image/output/image", 1);
        this->pub_fmask_ = pnh_.advertise<sensor_msgs::Image>(
           "/cloud_image/output/foreground_mask", 1);
        this->pub_bmask_ = pnh_.advertise<sensor_msgs::Image>(
           "/cloud_image/output/background_mask", 1);
     } else {
        this->pub_image_ = pnh_.advertise<sensor_msgs::Image>(
-          "/cloud_image/output/image", 1);
+          "out_image", 1);
        this->pub_iimage_ = pnh_.advertise<sensor_msgs::Image>(
-          "/cloud_image/output/interpolated_image", 1);
+          "interpolated_image", 1);
        this->pub_cloud_ = pnh_.advertise<sensor_msgs::PointCloud2>(
-          "/cloud_image/output/cloud", 1);
+          "out_cloud", 1);
     }
 }
 
