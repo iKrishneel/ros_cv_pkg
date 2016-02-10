@@ -2,9 +2,10 @@
   <arg name="input_point" default="/camera/depth_registered/points" />
   <arg name="input_image" default="/camera/rgb/image_rect_color" />
   <arg name="input_pose" default="/pr2_pushing_node/assumed_pose" />
+  <arg name="camera_info" default="/kinect_head_c2/depth_registered/camera_info" />
+  <!-- <arg name="input_indices" default="/multi_plane_estimate/output_normal" /> -->
+  <!-- <arg name="filter_point" default="/pcl_filter_utils/output/cloud" /> -->
   
-  <arg name="input_indices" default="/multi_plane_estimate/output_normal" />
-  <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />
   <arg name="num_threads" default="8" />
 
   
@@ -19,7 +20,7 @@
 
   <include file="$(find point_cloud_image_creator)/launch/point_cloud_image_creator.launch">
     <arg name="input" value="/interactive_segmentation/output/cloud" />
-    <arg name="info" value="/kinect_head_c2/depth_registered/camera_info" />
+    <arg name="info" value="$(arg camera_info)" />
     <arg name="ns" value="previous" />
   </include>
 

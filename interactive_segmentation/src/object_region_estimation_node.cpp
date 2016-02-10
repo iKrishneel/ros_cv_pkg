@@ -83,32 +83,34 @@ void ObjectRegionEstimation::callbackPrev(
     pcl::fromROSMsg(*cloud_msg, *cloud);
     cv_bridge::CvImagePtr cv_ptr;
     try {
-      cv_ptr = cv_bridge::toCvCopy(
-         image_msg, sensor_msgs::image_encodings::BGR8);
+       cv_ptr = cv_bridge::toCvCopy(
+          image_msg, sensor_msgs::image_encodings::BGR8);
     } catch (cv_bridge::Exception &e) {
-      ROS_ERROR("cv_bridge exception: %s", e.what());
-      return;
+       ROS_ERROR("cv_bridge exception: %s", e.what());
+       return;
     }
     if (cloud->empty() || cv_ptr->image.empty()) {
-      is_prev_ok = false;
+       is_prev_ok = false;
     } else {
-      pcl::copyPointCloud<PointT, PointT>(*cloud, *prev_cloud_);
-      this->prev_image_ = cv_ptr->image.clone();
-      is_prev_ok = true;
+       pcl::PointCloud<pcl::PointNormal>::Ptr plane_info(
+          new pcl::PointCloud<pcl::PointNormal>);
+       pcl::fromROSMsg(*plane_msg, *plane_info);
+       this->plane_norm_ = Eigen::Vector3f(0.0f, 0.0f, 0.0f);
+       this->plane_point_ = Eigen::Vector3f(0.0f, 0.0f, 0.0f);
+       this->plane_norm_ = plane_info->points[0].getNormalVector3fMap();
+       this->plane_point_ = plane_info->points[0].getVector3fMap();
+       pcl::copyPointCloud<PointT, PointT>(*cloud, *prev_cloud_);
+       this->prev_image_ = cv_ptr->image.clone();
+       is_prev_ok = true;
     }
-
     ROS_INFO("SEGMENTED REGION SET...");
 }
 
-// also sub to the origial image
-/**
- * current table remove and origal cloud and vector pos
- */
 void ObjectRegionEstimation::callback(
-    const sensor_msgs::Image::ConstPtr &image_msg,
-    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
-    const sensor_msgs::PointCloud2::ConstPtr &orig_msg,
-    const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
+    const sensor_msgs::Image::ConstPtr &image_msg,   // table -
+    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,  // table -
+    const sensor_msgs::PointCloud2::ConstPtr &orig_msg,   // full scene
+    const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {  // end-eff pose
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
