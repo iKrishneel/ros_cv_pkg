@@ -110,6 +110,7 @@ class InteractiveSegmentation {
     PointT user_marked_pt_;
     cv::Point2i screen_pt_;
     bool is_init_;
+    bool is_stop_signal_;
   
     int min_cluster_size_;
     int num_threads_;

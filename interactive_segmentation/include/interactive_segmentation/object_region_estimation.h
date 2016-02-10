@@ -35,6 +35,8 @@
 #include <pcl/features/shot.h>
 #include <pcl/features/shot_omp.h>
 #include <pcl/segmentation/extract_clusters.h>
+#include <pcl/features/board.h>
+#include <pcl/recognition/cg/hough_3d.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
@@ -54,7 +56,8 @@ class ObjectRegionEstimation {
     typedef pcl::Normal Normal;
     typedef pcl::SHOT352 SHOT352;
     typedef pcl::SHOT1344 SHOT1344;
-  
+    typedef pcl::ReferenceFrame RFType;
+   
 #define FEATURE_DIM 352
   
  private:
@@ -101,21 +104,23 @@ class ObjectRegionEstimation {
  public:
     ObjectRegionEstimation();
     virtual void callback(
-        const sensor_msgs::Image::ConstPtr &,
+       const sensor_msgs::Image::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
     virtual void callbackPrev(
-        const sensor_msgs::Image::ConstPtr &,
-        const sensor_msgs::PointCloud2::ConstPtr &,
-        const sensor_msgs::PointCloud2::ConstPtr &);
+       const sensor_msgs::Image::ConstPtr &,
+       const sensor_msgs::PointCloud2::ConstPtr &,
+       const sensor_msgs::PointCloud2::ConstPtr &);
     virtual void sceneFlow(
-        pcl::PointCloud<PointT>::Ptr, const cv::Mat, const cv::Mat,
-        const pcl::PointCloud<PointT>::Ptr, const Eigen::Vector3f,
-        const Eigen::Vector3f);
-    void noiseClusterFilter(
-        pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr indices,
-        const pcl::PointCloud<PointT>::Ptr);
-  
+       pcl::PointCloud<PointT>::Ptr, const cv::Mat, const cv::Mat,
+       const pcl::PointCloud<PointT>::Ptr, const Eigen::Vector3f,
+       const Eigen::Vector3f);
+    template<class T>
+    void estimatePointCloudNormals(
+       const pcl::PointCloud<PointT>::Ptr, pcl::PointCloud<Normal>::Ptr,
+       T = 0.05f, bool = false) const;
+
+   
     void keypoints3D(
         pcl::PointCloud<PointI>::Ptr, const pcl::PointCloud<PointT>::Ptr);
     void features3D(
@@ -123,7 +128,11 @@ class ObjectRegionEstimation {
        const pcl::PointCloud<Normal>::Ptr, const pcl::PointCloud<PointI>::Ptr);
     void getHypothesis(
         const pcl::PointCloud<PointT>::Ptr, const pcl::PointCloud<PointT>::Ptr);
-  
+
+    void noiseClusterFilter(
+       pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr indices,
+       const pcl::PointCloud<PointT>::Ptr);
+   
     void removeStaticKeypoints(
        pcl::PointCloud<PointI>::Ptr, pcl::PointCloud<PointI>::Ptr,
        const float = 0.01f);

@@ -18,7 +18,8 @@ ObjectRegionEstimation::ObjectRegionEstimation() :
        std::cout << "EMPTY"  << "\n";
     }
     
-    this->sceneFlow(cloud, img1, img2, cloud, plane_norm_, plane_norm_);    
+    this->sceneFlow(cloud, img1, img2, cloud, plane_norm_, plane_norm_);
+    
 }
 
 void ObjectRegionEstimation::onInit() {
@@ -43,7 +44,8 @@ void ObjectRegionEstimation::subscribe() {
     this->sub_plane_prev_.subscribe(this->pnh_, "prev_plane", 1);
     this->sync_prev_ = boost::make_shared<message_filters::Synchronizer<
       SyncPolicyPrev> >(100);
-    this->sync_prev_->connectInput(sub_image_prev_, sub_cloud_prev_, sub_plane_prev_);
+    this->sync_prev_->connectInput(
+       sub_image_prev_, sub_cloud_prev_, sub_plane_prev_);
     this->sync_prev_->registerCallback(boost::bind(
         &ObjectRegionEstimation::callbackPrev, this, _1, _2, _3));
 
@@ -188,7 +190,7 @@ void ObjectRegionEstimation::sceneFlow(
     for (int j = 0; j < angle.rows; j++) {
        for (int i = 0; i < angle.cols; i++) {
           float val = angle.at<float>(j, i);
-          if ((val > 90.0 && val < 360.0) && magnitude.at<float>(j, i) > 5.0f) {
+          if ((val > 0.0 && val < 360.0) && magnitude.at<float>(j, i) > 5.0f) {
              val /= 360.0f;
              orientation.at<cv::Vec3b>(j, i) [0]=  val * 255.0f;
              image.at<uchar>(j, i) += next_img.at<uchar>(j, i);
@@ -318,10 +320,15 @@ void ObjectRegionEstimation::getHypothesis(
       ROS_ERROR("ERROR: EMPTY CANNOT CREATE OBJECT HYPOTHESIS");
       return;
     }
+    const int k = 50;
     pcl::PointCloud<Normal>::Ptr prev_normals(new pcl::PointCloud<Normal>);
     pcl::PointCloud<Normal>::Ptr next_normals(new pcl::PointCloud<Normal>);
-    pcl::PointCloud<SHOT1344>::Ptr prev_descriptors(new pcl::PointCloud<SHOT1344>);
-    pcl::PointCloud<SHOT1344>::Ptr next_descriptors(new pcl::PointCloud<SHOT1344>);
+    pcl::PointCloud<PointI>::Ptr prev_keypoints(new pcl::PointCloud<PointI>);
+    pcl::PointCloud<PointI>::Ptr next_keypoints(new pcl::PointCloud<PointI>);
+    pcl::PointCloud<SHOT1344>::Ptr prev_descriptors(
+       new pcl::PointCloud<SHOT1344>);
+    pcl::PointCloud<SHOT1344>::Ptr next_descriptors(
+       new pcl::PointCloud<SHOT1344>);
 #ifdef _OPENMP
 #pragma omp parallel sections
 #endif
@@ -329,19 +336,23 @@ void ObjectRegionEstimation::getHypothesis(
 #ifdef _OPENMP
 #pragma omp section
 #endif
-      {
-        pcl::PointCloud<PointI>::Ptr prev_keypoints(new pcl::PointCloud<PointI>);
-        this->keypoints3D(prev_keypoints, prev_cloud);
-        this->features3D(prev_descriptors, prev_cloud, prev_normals, prev_keypoints);
-      }
+       {
+          this->estimatePointCloudNormals<int>(
+             prev_cloud, prev_normals, k, true);
+          this->keypoints3D(prev_keypoints, prev_cloud);
+          this->features3D(prev_descriptors, prev_cloud,
+                           prev_normals, prev_keypoints);
+       }
 #ifdef _OPENMP
 #pragma omp section
 #endif
-      {
-        pcl::PointCloud<PointI>::Ptr next_keypoints(new pcl::PointCloud<PointI>);
-        this->keypoints3D(next_keypoints, next_cloud);
-        this->features3D(next_descriptors, next_cloud, next_normals, next_keypoints);
-      }
+       {
+          this->estimatePointCloudNormals<int>(
+             next_cloud, next_normals, k, true);
+          this->keypoints3D(next_keypoints, next_cloud);
+          this->features3D(next_descriptors, next_cloud,
+                           next_normals, next_keypoints);
+       }
     }
     // finding correspondances
     pcl::CorrespondencesPtr correspondences (new pcl::Correspondences);
@@ -351,15 +362,72 @@ void ObjectRegionEstimation::getHypothesis(
     std::vector<float> distances;
     const float thresh = 0.25f;
     for (int i = 0; i < next_descriptors->size(); i++) {
-      SHOT1344 des = next_descriptors->points[i];
-      int found = matcher->nearestKSearch(next_descriptors->at(i), 1, indices, distances);
-      if (found == 1 && distances[0] < thresh) {
-        pcl::Correspondence corresp(indices[0], i, distances[0]);
-        correspondences->push_back(corresp);
-      }
+       SHOT1344 des = next_descriptors->points[i];
+       int found = matcher->nearestKSearch(next_descriptors->at(i), 1,
+                                           indices, distances);
+       if (found == 1 && distances[0] < thresh) {
+          pcl::Correspondence corresp(indices[0], i, distances[0]);
+          correspondences->push_back(corresp);
+       }
     }
+    // corresponding using Hough like voting
+    pcl::PointCloud<RFType>::Ptr prev_rf (new pcl::PointCloud<RFType> ());
+    pcl::PointCloud<RFType>::Ptr next_rf (new pcl::PointCloud<RFType> ());
+    pcl::BOARDLocalReferenceFrameEstimation<PointT, Normal, RFType> rf_est;
+    rf_est.setFindHoles(true);
+    rf_est.setRadiusSearch(0.02f);
+    pcl::PointCloud<PointT>::Ptr prev_kpt_xyz(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointI, PointT>(*prev_keypoints, *prev_kpt_xyz);
+    rf_est.setInputCloud(prev_kpt_xyz);
+    rf_est.setInputNormals(prev_normals);
+    rf_est.setSearchSurface(prev_cloud);
+    rf_est.compute(*prev_rf);
+    pcl::PointCloud<PointT>::Ptr next_kpt_xyz(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointI, PointT>(*next_keypoints, *next_kpt_xyz);
+    rf_est.setInputCloud(next_kpt_xyz);
+    rf_est.setInputNormals(next_normals);
+    rf_est.setSearchSurface(next_cloud);
+    rf_est.compute(*next_rf);
+
+    pcl::Hough3DGrouping<PointT, PointT, RFType, RFType> clusterer;
+    clusterer.setHoughBinSize(0.01f);
+    clusterer.setHoughThreshold(5.0f);
+    clusterer.setUseInterpolation(true);
+    clusterer.setUseDistanceWeight(false);
+    
+    clusterer.setInputCloud(prev_kpt_xyz);
+    clusterer.setInputRf(prev_rf);
+    clusterer.setSceneCloud(next_kpt_xyz);
+    clusterer.setSceneRf(next_rf);
+    clusterer.setModelSceneCorrespondences(correspondences);
+
+    std::vector<pcl::Correspondences> clustered_corrs;
+    std::vector<Eigen::Matrix4f,
+                Eigen::aligned_allocator<Eigen::Matrix4f> > rototranslations;
+    clusterer.recognize(rototranslations, clustered_corrs);
 }
 
+template<class T>
+void ObjectRegionEstimation::estimatePointCloudNormals(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    pcl::PointCloud<Normal>::Ptr normals,
+    const T k, bool use_knn) const {
+    if (cloud->empty()) {
+       ROS_ERROR("ERROR: The Input cloud is Empty.....");
+       return;
+    }
+    pcl::NormalEstimationOMP<PointT, pcl::Normal> ne;
+    ne.setInputCloud(cloud);
+    ne.setNumberOfThreads(this->num_threads_);
+    pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT> ());
+    ne.setSearchMethod(tree);
+    if (use_knn) {
+        ne.setKSearch(k);
+    } else {
+        ne.setRadiusSearch(k);
+    }
+    ne.compute(*normals);
+}
 
 void ObjectRegionEstimation::clusterFeatures(
     std::vector<pcl::PointIndices> &all_indices,
@@ -389,7 +457,7 @@ void ObjectRegionEstimation::clusterFeatures(
           return;
        }
        all_indices.clear();
-       all_indices.resize(max_label + 1);      
+       all_indices.resize(max_label + 1);
        for (int i = 0; i < srv.response.labels.size(); i++) {
           int index = srv.response.labels[i];
           if (index > -1) {

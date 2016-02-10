@@ -6,7 +6,7 @@
 
 InteractiveSegmentation::InteractiveSegmentation():
     min_cluster_size_(100), is_init_(true),
-    num_threads_(8) {
+    is_stop_signal_(false), num_threads_(8) {
     pnh_.getParam("num_threads", this->num_threads_);
 
     // std::cout << "STARTING WITH: " << num_threads_  << "\n";
@@ -106,6 +106,10 @@ void InteractiveSegmentation::callback(
     const sensor_msgs::CameraInfo::ConstPtr &info_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
     const sensor_msgs::PointCloud2::ConstPtr &orig_cloud_msg) {
+    if (!is_init_) {
+       ROS_ERROR("ERROR: MARKED A TARGET REGION IN THE CLUSTER");
+       return;
+    }
     boost::mutex::scoped_lock lock(this->mutex_);
     cv::Mat image = cv_bridge::toCvShare(
        image_msg, image_msg->encoding)->image;
@@ -166,6 +170,14 @@ void InteractiveSegmentation::callback(
        this->attentionSurfelRegionPointCloudMask(
           weight_cloud, anchor_points->points[0].getVector4fMap(),
           final_object, object_indices);
+
+       // check if it is the marked object --------
+       if (this->markedPointInSegmentedRegion(
+              final_object, this->user_marked_pt_)) {
+          this->is_stop_signal_ = true;
+       }
+       // ----------------------------------------
+       
        std::vector<pcl::PointIndices> all_indices;
        all_indices.push_back(*object_indices);
        
