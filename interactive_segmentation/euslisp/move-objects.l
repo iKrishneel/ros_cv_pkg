@@ -59,8 +59,8 @@
     
     (ros::ros-warn (format nil "checking box:~A~%" target-box))
     ;;filter out if box not on table
-    (unless (member target-box *boxes-on-table*)
-      (return-from filter-pushing-cds))
+    ;; (unless (member target-box *boxes-on-table*)
+    ;;   (return-from filter-pushing-cds))
 
     (setq target-cds-list (mapcar #'(lambda (cds)
                                       (send cds :translate (float-vector (* -1 insert-offset) 0 0))
@@ -230,7 +230,6 @@
     (print final-cds-rotate?-list)
     (print target-box)
     (ros::ros-error "FINAL CANDIDATE PRINTED")
-
     
     (when final-cds-rotate?-list
       (print "robot-start-moving")
@@ -249,7 +248,7 @@
 			    :link-list (send *pr2* :link-list (send *pr2* arm :end-coords :parent))
 			    :use-torso 0
 			    :rotation-axis t
-			    :debug-view nil
+			    :debug-view t
 			    :warnp nil)
 		      )
           (unless (setq pre-av (send *pr2* :inverse-kinematics (send (send tgt-cds :copy-worldcoords)
@@ -259,7 +258,7 @@
 				     :link-list (send *pr2* :link-list (send *pr2* arm :end-coords :parent))
 				     :use-torso 0
 				     :rotation-axis t
-				     :debug-view nil
+				     :debug-view t
 				     :warnp nil))
 	    (return-from push-boxes)
 	    )
@@ -280,7 +279,7 @@
 	(push (send *pr2* :angle-vector) av-list)
         (print "point 1 ik-solved")
         
-	(send obj-cds :translate (if (eq *push-style* :use-palm) #f(0 0 100) #f(100 0 0)))
+	(send obj-cds :translate (if (eq *push-style* :use-palm) #f(0 0 100) #f(50 0 0)))
         (unless (send *pr2* :inverse-kinematics tgt-cds ;;after-push-cds
                       :move-target (send *pr2* arm :end-coords)
 		      :link-list (send *pr2* :link-list (send *pr2* arm :end-coords :parent))
@@ -293,28 +292,28 @@
         (print "point 2 ik-solved")
 
         
-        ;; ;;robot-start-moving
-        ;; (setq av-list (reverse av-list))
-        ;; (send *ri* :angle-vector (elt av-list 0) 4000)
-	;; (send *ri* :wait-interpolation)
-	;; (send *ri* :angle-vector (elt av-list 1) 5000)
-	;; (send *ri* :wait-interpolation)
-	;; (send *ri* :angle-vector (elt av-list 2) 5000)
-        ;; (send *ri* :wait-interpolation)
+        ;;robot-start-moving
+        (setq av-list (reverse av-list))
+        (send *ri* :angle-vector (elt av-list 0) 4000)
+	(send *ri* :wait-interpolation)
+	(send *ri* :angle-vector (elt av-list 1) 5000)
+	(send *ri* :wait-interpolation)
+	(send *ri* :angle-vector (elt av-list 2) 5000)
+        (send *ri* :wait-interpolation)
 
-	;; ;; move the arm back
-	;; (send obj-cds :translate (if (eq *push-style* :use-palm) #f(0 0 100) #f(-100 0 0)))
-	;; (unless (send *pr2* :inverse-kinematics tgt-cds ;;after-push-cds
-        ;;               :move-target (send *pr2* arm :end-coords)
-	;; 	      :link-list (send *pr2* :link-list (send *pr2* arm :end-coords :parent))
-	;; 	      :use-torso 0
-	;; 	      :rotation-axis t
-	;; 	      :debug-view nil
-	;; 	      :warnp nil)
-	;;   (return-from push-boxes)
-	;;   )
-	;; (send *ri* :angle-vector (send *pr2* :angle-vector) 5000)
-	;; (send *ri* :wait-interpolation)
+	;; move the arm back
+	(send obj-cds :translate (if (eq *push-style* :use-palm) #f(0 0 100) #f(-100 0 0)))
+	(unless (send *pr2* :inverse-kinematics tgt-cds ;;after-push-cds
+                      :move-target (send *pr2* arm :end-coords)
+		      :link-list (send *pr2* :link-list (send *pr2* arm :end-coords :parent))
+		      :use-torso 0
+		      :rotation-axis t
+		      :debug-view nil
+		      :warnp nil)
+	  (return-from push-boxes)
+	  )
+	(send *ri* :angle-vector (send *pr2* :angle-vector) 5000)
+	(send *ri* :wait-interpolation)
 
 	
         ;; ;;finish pushing one object

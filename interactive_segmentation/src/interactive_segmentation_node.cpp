@@ -154,16 +154,21 @@ void InteractiveSegmentation::callback(
        this->selectedVoxelObjectHypothesis(
           weight_cloud, cloud, normals, anchor_indices, cloud_msg->header);
 
-       // fix for index irregularity after plane segm. fix 4 imprv compt.
+       // fix for index irregularity after plane segm. fix 4 imprv
+       // compt.
+       pcl::PointCloud<PointT>::Ptr obj_cloud(new pcl::PointCloud<PointT>);
        if (!filtered_indices->indices.empty()) {
           pcl::PointCloud<PointT>::Ptr filtered_cloud(
              new pcl::PointCloud<PointT>);
           for (int i = 0; i < filtered_indices->indices.size(); i++) {
              int idx = filtered_indices->indices[i];
              filtered_cloud->push_back(weight_cloud->points[idx]);
+             obj_cloud->push_back(cloud->points[idx]);  // mask orignal region
           }
+          cloud->clear();
           weight_cloud->clear();
           pcl::copyPointCloud<PointT, PointT>(*filtered_cloud, *weight_cloud);
+          // pcl::copyPointCloud<PointT, PointT>(*obj_cloud, *cloud);
        }
        pcl::PointIndices::Ptr object_indices(new pcl::PointIndices);
        pcl::PointCloud<PointT>::Ptr final_object(new pcl::PointCloud<PointT>);
@@ -171,6 +176,13 @@ void InteractiveSegmentation::callback(
           weight_cloud, anchor_points->points[0].getVector4fMap(),
           final_object, object_indices);
 
+       // extract the color cloud object---------
+       cloud->clear();
+       for (int i = 0; i < object_indices->indices.size(); i++) {
+          int idx = object_indices->indices[i];
+          cloud->push_back(obj_cloud->points[idx]);
+       }
+       
        // check if it is the marked object --------
        if (this->markedPointInSegmentedRegion(
               final_object, this->user_marked_pt_)) {
@@ -188,8 +200,9 @@ void InteractiveSegmentation::callback(
        pub_indices_.publish(ros_indices);
        
        publishAsROSMsg(final_object, pub_cloud_, cloud_msg->header);
+       publishAsROSMsg(cloud, pub_pt_map_, cloud_msg->header);
     }
-    
+
     this->publishAsROSMsg(anchor_points, pub_voxels_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
     this->publishAsROSMsg(convex_edge_points, pub_convex_, cloud_msg->header);
@@ -200,9 +213,10 @@ void InteractiveSegmentation::callback(
        int idx = anchor_indices->indices[i];
        pcl::Normal norm = normals->points[idx];
        pcl::PointXYZRGBNormal pt;
-       pt.x = cloud->points[idx].x;
-       pt.y = cloud->points[idx].y;
-       pt.z = cloud->points[idx].z;
+       //! fix this as cloud is filtered avbove ----<<
+       // pt.x = cloud->points[idx].x;
+       // pt.y = cloud->points[idx].y;
+       // pt.z = cloud->points[idx].z; 
        pt.r = 255;
        pt.g = 0;
        pt.b = 255;
@@ -990,15 +1004,17 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
 #ifdef _OPENMP
 #pragma omp section
 #endif
-      {
-         this->edgeBoundaryOutlierFiltering(concave_edge_points, 0.0075f);
-      }
+       {
+          float cof = 0.015f;
+          this->edgeBoundaryOutlierFiltering(concave_edge_points, cof);
+       }
 #ifdef _OPENMP
 #pragma omp section
 #endif
-      {
-        this->edgeBoundaryOutlierFiltering(convex_edge_points, 0.0075f);
-      }
+       {
+          float cof = 0.015f;
+          this->edgeBoundaryOutlierFiltering(convex_edge_points, cof);
+       }
     }
     this->publishAsROSMsg(concave_edge_points, pub_concave_, header);
     this->publishAsROSMsg(convex_edge_points, pub_convex_, header);

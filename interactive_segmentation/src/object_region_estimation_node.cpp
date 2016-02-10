@@ -5,6 +5,8 @@
 
 ObjectRegionEstimation::ObjectRegionEstimation() :
     num_threads_(8), is_prev_ok(false), min_cluster_size_(100) {
+    this->go_signal_ = false;
+    
     this->prev_cloud_ = pcl::PointCloud<PointT>::Ptr(
        new pcl::PointCloud<PointT>);
     // this->onInit();
@@ -46,18 +48,19 @@ void ObjectRegionEstimation::subscribe() {
       SyncPolicyPrev> >(100);
     this->sync_prev_->connectInput(
        sub_image_prev_, sub_cloud_prev_, sub_plane_prev_);
-    this->sync_prev_->registerCallback(boost::bind(
-        &ObjectRegionEstimation::callbackPrev, this, _1, _2, _3));
+    this->sync_prev_->registerCallback(
+       boost::bind(&ObjectRegionEstimation::callbackPrev, this, _1, _2, _3));
 
     
     this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
     this->sub_image_.subscribe(this->pnh_, "input_image", 1);
     this->sub_original_.subscribe(this->pnh_, "input_orig", 1);
+    this->sub_pose_.subscribe(this->pnh_, "input_pose", 1);
     this->sync_ = boost::make_shared<message_filters::Synchronizer<
        SyncPolicy> >(100);
-    this->sync_->connectInput(sub_image_, sub_cloud_, sub_original_);
-    this->sync_->registerCallback(boost::bind(
-        &ObjectRegionEstimation::callback, this, _1, _2, _3));
+    this->sync_->connectInput(sub_image_, sub_cloud_, sub_original_, sub_pose_);
+    this->sync_->registerCallback(
+       boost::bind(&ObjectRegionEstimation::callback, this, _1, _2, _3, _4));
 }
 
 void ObjectRegionEstimation::unsubscribe() {
@@ -67,6 +70,7 @@ void ObjectRegionEstimation::unsubscribe() {
     this->sub_cloud_prev_.unsubscribe();
     this->sub_image_prev_.unsubscribe();
 }
+
 
 /**
  * table removed image and object region point cloud
@@ -119,7 +123,8 @@ void ObjectRegionEstimation::callbackPrev(
 void ObjectRegionEstimation::callback(
     const sensor_msgs::Image::ConstPtr &image_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
-    const sensor_msgs::PointCloud2::ConstPtr &orig_msg) {
+    const sensor_msgs::PointCloud2::ConstPtr &orig_msg,
+    const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);

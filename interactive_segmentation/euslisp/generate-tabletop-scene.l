@@ -4,7 +4,7 @@
 ;; (require "package://pr2eus/pr2-interface.l")
 
 (setq *polygon-array-topic* "/multi_plane_estimate/output_refined_polygon")
-(setq *boundingbox-array-topic* "/cluster_decomposer_final/boxes")
+(setq *boundingbox-array-topic* "/interactive_segmentation_decomposer/boxes")
 
 
 ;; (if (not (boundp '*pr2*))
@@ -29,6 +29,31 @@
 (send *ri* :start-grasp)
 (setq *tfl* (instance ros::transform-listener :init))
 
+;;report to recognition node
+(setq *pose-topic* "/pr2_pushing_node/assumed_pose")
+(ros::advertise "/robot_pushing_motion_node/pushed_box_index" std_msgs::Int64 1)
+(ros::advertise *pose-topic* geometry_msgs::PoseStamped 1)
+
+(defun report-to-recognition-node ()
+  (let ((idx (instance std_msgs::Int64 :init))
+        (final-pose (instance geometry_msgs::PoseStamped :init))
+        trans)
+    (if *pushed-box*
+        (progn
+          (send idx :data (position *pushed-box* (send *gba* :get-all-boxes)))
+          (send final-pose :header :stamp (ros::time-now))
+          (send final-pose :header :frame_id "/head_mount_kinect_rgb_optical_frame")
+          (setq trans (send *tfl* :lookup-transform  "/head_mount_kinect_rgb_optical_frame" "/base_footprint"(ros::time 0)))
+          (send final-pose :pose (ros::coords->tf-pose (send (send *pushed-box* :copy-worldcoords) :transform trans :world)))
+          (ros::publish "/robot_pushing_motion_node/pushed_box_index" idx)
+          (ros::publish *pose-topic* final-pose))
+      (progn
+        (send idx :data -1)
+        (send final-pose :header :stamp (ros::time-now))
+        (send final-pose :header :frame_id "/head_mount_kinect_rgb_optical_frame")
+        (ros::publish "/robot_pushing_motion_node/pushed_box_index" idx)
+        (ros::publish *pose-topic* final-pose)))))
+
 
 (defclass generate-polygon-array
   :slots 
@@ -51,7 +76,8 @@
                                                  pts-list
                                                  trans
                                                  trans-pt)
-                                             (setq trans (send *tfl* :lookup-transform "/base_footprint" "/head_mount_kinect_rgb_optical_frame" (ros::time 0)))
+                                             (setq trans (send *tfl* :lookup-transform
+							       "/base_footprint" "/head_mount_kinect_rgb_optical_frame" (ros::time 0)))
                                              (dolist (pt pts)
                                                (setq trans-pt (send trans :transform-vector
                                                                     (scale 1000 (float-vector (send pt :x) (send pt :y) (send pt :z)))))
@@ -59,7 +85,7 @@
                                              (reverse pts-list)))
                                        plg-list))
      ;; (dotimes (i (length *vertices-list-org*))
-     ;;   (let* ((c (send *tfl* :lookup-transform "/base_footprint" (format nil "/multi_plane_centroidoutput~0,2D" i) *cloud-stamp*)))
+    ;;   (let* ((c (send *tfl* :lookup-transform "/base_footprint" (format nil "/multi_plane_centroidoutput~0,2D" i) *cloud-stamp*)))
      ;;     (when c
      ;;       (send c :transform (send *pr2* :copy-worldcoords) :world)
      ;;       (push  (send c :copy-worldcoords) centroid-list))))

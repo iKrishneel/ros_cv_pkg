@@ -43,7 +43,9 @@
 #include <jsk_recognition_utils/geo/polygon.h>
 #include <jsk_recognition_msgs/PolygonArray.h>
 #include <jsk_recognition_msgs/Histogram.h>
+
 #include <std_msgs/Header.h>
+#include <geometry_msgs/PoseStamped.h>
 
 #include <interactive_segmentation/Feature3DClustering.h>
 
@@ -67,10 +69,12 @@ class ObjectRegionEstimation {
     typedef message_filters::sync_policies::ApproximateTime<
        sensor_msgs::Image,
        sensor_msgs::PointCloud2,
-       sensor_msgs::PointCloud2> SyncPolicy;
+       sensor_msgs::PointCloud2,
+       geometry_msgs::PoseStamped> SyncPolicy;
     message_filters::Subscriber<sensor_msgs::Image> sub_image_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_original_;
+    message_filters::Subscriber<geometry_msgs::PoseStamped> sub_pose_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
     typedef message_filters::sync_policies::ApproximateTime<
@@ -95,7 +99,9 @@ class ObjectRegionEstimation {
     cv::Mat prev_image_;
     Eigen::Vector3f plane_norm_;
     Eigen::Vector3f plane_point_;
-  
+
+    bool go_signal_;
+   
  protected:
     void onInit();
     void subscribe();
@@ -106,11 +112,13 @@ class ObjectRegionEstimation {
     virtual void callback(
        const sensor_msgs::Image::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &,
-       const sensor_msgs::PointCloud2::ConstPtr &);
+       const sensor_msgs::PointCloud2::ConstPtr &,
+       const geometry_msgs::PoseStamped::ConstPtr &);
     virtual void callbackPrev(
        const sensor_msgs::Image::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
+       
     virtual void sceneFlow(
        pcl::PointCloud<PointT>::Ptr, const cv::Mat, const cv::Mat,
        const pcl::PointCloud<PointT>::Ptr, const Eigen::Vector3f,

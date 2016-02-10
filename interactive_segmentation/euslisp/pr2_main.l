@@ -70,7 +70,7 @@
 
 (defun main()
   (manip-pose)
-  (ros::subscribe "/cluster_decomposer_final/boxes"
+  (ros::subscribe "/interactive_segmentation_decomposer/boxes"
 		  jsk_recognition_msgs::BoundingBoxArray #'boundingbox-array-callback)
   (do-until-key
   (ros::spin-once))
@@ -86,10 +86,13 @@
   (init-scene)
   ;; (while (ros::ok)
   ;; (ros::spin-once)
-    (ros::ros-warn "Robot received an order, need to work now!")
+  (ros::ros-warn "Robot received an order, need to work now!")
     ;; (unix:usleep (* 1000 5000))
-    (update-scene)
-    (push-one-time)
-    (ros::ros-warn "Robot completed execution!")
+  (update-scene)
+  (push-one-time)
+  (ros::ros-warn "Robot completed execution!")
     ;; (ros::sleep))
+  (report-to-recognition-node)
+  
   )
+
