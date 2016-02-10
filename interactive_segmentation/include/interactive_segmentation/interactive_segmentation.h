@@ -48,9 +48,8 @@
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
-#include <jsk_recognition_utils/geo/polygon.h>
 #include <jsk_recognition_msgs/PolygonArray.h>
-#include <jsk_recognition_utils/pcl_conversion_util.h>
+#include <jsk_recognition_msgs/Int32Stamped.h>
 
 #include <std_msgs/Header.h>
 #include <std_msgs/Bool.h>
@@ -60,6 +59,8 @@
 #include <geometry_msgs/PoseArray.h>
 #include <geometry_msgs/PointStamped.h>
 
+#include <jsk_recognition_utils/pcl_conversion_util.h>
+#include <jsk_recognition_utils/geo/polygon.h>
 #include <jsk_perception/skeletonization.h>
 
 #include <omp.h>

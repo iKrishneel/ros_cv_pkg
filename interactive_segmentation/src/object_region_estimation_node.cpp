@@ -110,27 +110,27 @@ void ObjectRegionEstimation::callback(
     const sensor_msgs::Image::ConstPtr &image_msg,   // table -
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,  // table -
     const sensor_msgs::PointCloud2::ConstPtr &orig_msg,   // full scene
-    const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {  // end-eff pose
+    const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {  // end-eff
+    if (!is_prev_ok) {
+       ROS_ERROR("ERROR: PREV INFO NOT FOUND");
+       return;
+    }
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     pcl::fromROSMsg(*orig_msg, *in_cloud);
     this->header_ = cloud_msg->header;
     if (cloud->empty()) {
-      ROS_ERROR("ERROR: EMPTY DATA.. SKIP MERGING");
-      return;
+       ROS_ERROR("ERROR: EMPTY DATA.. SKIP MERGING");
+       return;
     }
     cv_bridge::CvImagePtr cv_ptr;
     try {
-      cv_ptr = cv_bridge::toCvCopy(
-         image_msg, sensor_msgs::image_encodings::BGR8);
+       cv_ptr = cv_bridge::toCvCopy(
+          image_msg, sensor_msgs::image_encodings::BGR8);
     } catch (cv_bridge::Exception &e) {
-      ROS_ERROR("cv_bridge exception: %s", e.what());
-      return;
-    }
-    if (!is_prev_ok) {
-      ROS_ERROR("ERROR: PREV INFO NOT FOUND");
-      return;
+       ROS_ERROR("cv_bridge exception: %s", e.what());
+       return;
     }
     cv::Mat next_img = cv_ptr->image.clone();
     pcl::PointCloud<PointT>::Ptr motion_region_cloud(
