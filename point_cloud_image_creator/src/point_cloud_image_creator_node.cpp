@@ -106,8 +106,6 @@ void PointCloudImageCreator::cameraInfoCallback(
     const sensor_msgs::CameraInfo::ConstPtr &info_msg) {
     boost::mutex::scoped_lock lock(this->lock_);
     camera_info_ = info_msg;
-
-    ROS_INFO("CAMERA INFO SET");
     is_info_ = true;
 }
 
