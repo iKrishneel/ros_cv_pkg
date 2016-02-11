@@ -1009,15 +1009,19 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
 #pragma omp section
 #endif
        {
-          float cof = 0.015f;
-          this->edgeBoundaryOutlierFiltering(concave_edge_points, cof);
+          double ccof = 0.015f;
+          this->pnh_.getParam("outlier_concave", ccof);
+          this->edgeBoundaryOutlierFiltering(concave_edge_points,
+                                             static_cast<float>(ccof));
        }
 #ifdef _OPENMP
 #pragma omp section
 #endif
        {
-          float cof = 0.015f;
-          this->edgeBoundaryOutlierFiltering(convex_edge_points, cof);
+          double cvof = 0.015f;
+          this->pnh_.getParam("outlier_convex", cvof);
+          this->edgeBoundaryOutlierFiltering(convex_edge_points,
+                                             static_cast<float>(cvof));
        }
     }
     this->publishAsROSMsg(concave_edge_points, pub_concave_, header);
@@ -1106,7 +1110,6 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     
     float height = FLT_MAX;
     int center_index = -1;
-    // Eigen::Vector4f center;
     for (int i = 0; i < concave_edge_centroids.size(); i++) {
       if (concave_edge_centroids[i](1) < height) {  // CHANGE HERE
         center_index = i;
@@ -1119,6 +1122,32 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        ROS_ERROR("ERROR: NO CONCAVE CENTER FOUND");
        return false;
     }
+
+    /*
+    Eigen::Vector3f polygon_normal;
+    pcl::PointCloud<PointT>::Ptr tmp_ap(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*anchor_points, *tmp_ap);
+    this->fixPlaneModelToEdgeBoundaryPoints(tmp_ap, filter_indices,
+                                            polygon_normal, center);
+    
+    // No other edge above the concave edge
+    /*
+    if (concave_edge_centroids.size() == 1) {
+       bool is_edge_above = false;
+       for (int i = 0; i < convex_edge_centroids.size(); i++) {
+          if (convex_edge_centroids[i](1) < center(1)) {
+             is_edge_above = true;
+             break;
+          }
+       }
+       if (!is_edge_above) {
+          const float fix_distance = 0.02f;
+          
+       }
+    }
+    */
+    // -----------------------------
+
     
     // TODO(HERE): select closest and best candidate
     // select point in direction of normal few dist away
