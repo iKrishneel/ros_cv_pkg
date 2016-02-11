@@ -1080,6 +1080,31 @@ bool InteractiveSegmentation::estimateAnchorPoints(
 
 
     // TODO(here): if only convex then chouse the top most
+
+    if (cluster_convx.size() == 1 && cluster_concv.empty()) {
+       double dist = DBL_MAX;
+       int indx = -1;
+       PointT pt;
+       for (int i = 0; i < cluster_convx[0].indices.size(); i++) {
+          int idx = cluster_convx[0].indices[i];
+          pt = original_cloud->points[idx];
+          double d = pcl::distances::l2(convex_edge_centroids[0],
+                                        pt.getVector4fMap());
+          if (d < dist) {
+             dist = d;
+             indx = idx;
+          }
+       }
+       if (indx != -1) {
+          anchor_points->clear();
+          anchor_points->push_back(pt);
+          anchor_indices->indices.clear();
+          anchor_indices->indices.push_back(indx);
+          return true;
+       } else {
+          return false;
+       }
+    }
     
     if (cluster_concv.empty() ||
         (cluster_concv.empty() && cluster_convx.empty())) {
@@ -1122,32 +1147,6 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        ROS_ERROR("ERROR: NO CONCAVE CENTER FOUND");
        return false;
     }
-
-    /*
-    Eigen::Vector3f polygon_normal;
-    pcl::PointCloud<PointT>::Ptr tmp_ap(new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointT, PointT>(*anchor_points, *tmp_ap);
-    this->fixPlaneModelToEdgeBoundaryPoints(tmp_ap, filter_indices,
-                                            polygon_normal, center);
-    
-    // No other edge above the concave edge
-    /*
-    if (concave_edge_centroids.size() == 1) {
-       bool is_edge_above = false;
-       for (int i = 0; i < convex_edge_centroids.size(); i++) {
-          if (convex_edge_centroids[i](1) < center(1)) {
-             is_edge_above = true;
-             break;
-          }
-       }
-       if (!is_edge_above) {
-          const float fix_distance = 0.02f;
-          
-       }
-    }
-    */
-    // -----------------------------
-
     
     // TODO(HERE): select closest and best candidate
     // select point in direction of normal few dist away
@@ -1205,14 +1204,49 @@ bool InteractiveSegmentation::estimateAnchorPoints(
        anchor_indices->indices.push_back(fp_indx);
        return true;
     }
-
-
+    
     Eigen::Vector3f polygon_normal;
-    pcl::PointCloud<PointT>::Ptr tmp_ap(new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointT, PointT>(*anchor_points, *tmp_ap);
-    this->fixPlaneModelToEdgeBoundaryPoints(tmp_ap, filter_indices,
+    pcl::PointCloud<PointT>::Ptr truncated_points(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*anchor_points, *truncated_points);
+    this->fixPlaneModelToEdgeBoundaryPoints(truncated_points, filter_indices,
                                             polygon_normal, center);
 
+    // No other edge above the concave edge
+    if (concave_edge_centroids.size() == 1) {
+       bool is_edge_above = false;
+       for (int i = 0; i < convex_edge_centroids.size(); i++) {
+          if (convex_edge_centroids[i](1) < center(1)) {
+             is_edge_above = true;
+             break;
+          }
+       }
+       if (!is_edge_above) {
+          const float fix_distance = 0.04f;
+          int indx = -1;
+          PointT pt;
+          for (int i = 0; i < truncated_points->size(); i++) {
+             pt = truncated_points->points[i];
+             double d = pcl::distances::l2(pt.getVector4fMap(), center);
+             if ((static_cast<float>(d) > fix_distance) &&
+                 (static_cast<float>(d) < fix_distance + 0.01f) &&
+                 pt.y < center(1)) {
+                indx = i;
+                break;
+             }
+          }
+          if (indx != -1) {
+             anchor_points->clear();
+             anchor_points->push_back(pt);
+             anchor_indices->indices.clear();
+             anchor_indices->indices.push_back(indx);
+             return true;
+          } else {
+             return false;
+          }
+       }
+    }
+    // -----------------------------
+    
     double object_lenght_thresh = 0.50;
     double nearest_cv_dist = DBL_MAX;
     Eigen::Vector4f cc_nearest_cv_pt;
@@ -1230,8 +1264,7 @@ bool InteractiveSegmentation::estimateAnchorPoints(
     for (int i = 0; i < cluster_convx.size(); i++) {
        float pt_pos = polygon_normal.dot(convex_edge_centroids[i].head<3>() -
                                          adj_center);
-       /*if (pt_pos > 0.0f) */
-       {
+       if (pt_pos > 0.0f) {
           pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
           *region_indices = cluster_convx[i];
           eifilter->setIndices(region_indices);
