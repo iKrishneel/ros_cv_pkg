@@ -43,13 +43,15 @@ void ObjectRegionEstimation::subscribe() {
     // info before robot pushes the object
     this->sub_cloud_prev_.subscribe(this->pnh_, "prev_cloud", 1);
     this->sub_image_prev_.subscribe(this->pnh_, "prev_image", 1);
+    this->sub_mask_prev_.subscribe(this->pnh_, "prev_mask", 1);
     this->sub_plane_prev_.subscribe(this->pnh_, "prev_plane", 1);
     this->sync_prev_ = boost::make_shared<message_filters::Synchronizer<
       SyncPolicyPrev> >(100);
     this->sync_prev_->connectInput(
-       sub_image_prev_, sub_cloud_prev_, sub_plane_prev_);
-    this->sync_prev_->registerCallback(
-       boost::bind(&ObjectRegionEstimation::callbackPrev, this, _1, _2, _3));
+       sub_image_prev_, sub_mask_prev_, sub_cloud_prev_, sub_plane_prev_);
+    this->sync_prev_->registerCallback(boost::bind(
+                                          &ObjectRegionEstimation::callbackPrev,
+                                          this, _1, _2, _3, _4));
 
     
     this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
@@ -71,12 +73,9 @@ void ObjectRegionEstimation::unsubscribe() {
     this->sub_image_prev_.unsubscribe();
 }
 
-
-/**
- * table removed image and object region point cloud
- */
 void ObjectRegionEstimation::callbackPrev(
     const sensor_msgs::Image::ConstPtr &image_msg,
+    const sensor_msgs::Image::ConstPtr &mask_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
     const sensor_msgs::PointCloud2::ConstPtr &plane_msg) {
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
@@ -87,6 +86,10 @@ void ObjectRegionEstimation::callbackPrev(
           image_msg, sensor_msgs::image_encodings::BGR8);
     } catch (cv_bridge::Exception &e) {
        ROS_ERROR("cv_bridge exception: %s", e.what());
+       return;
+    }
+    cv::Mat mask_img;
+    if (!this->convertToCvMat(mask_img, mask_msg)) {
        return;
     }
     if (cloud->empty() || cv_ptr->image.empty()) {
@@ -100,6 +103,21 @@ void ObjectRegionEstimation::callbackPrev(
        this->plane_norm_ = plane_info->points[0].getNormalVector3fMap();
        this->plane_point_ = plane_info->points[0].getVector3fMap();
        pcl::copyPointCloud<PointT, PointT>(*cloud, *prev_cloud_);
+
+       cv::Mat mask_image = cv::Mat::zeros(mask_img.size(), CV_8UC3);
+       for (int j = 0; j < mask_img.rows; j++) {
+          for (int i = 0; i < mask_img.cols; i++) {
+             cv::Vec3b pixel = mask_img.at<cv::Vec3b>(j, i);
+             if (pixel.val[0] != 0) {
+                mask_image.at<cv::Vec3b>(j, i) = cv_ptr->image.at<
+                   cv::Vec3b>(j, i);
+             }
+          }
+       }
+
+       cv::imshow("rgb_mask", mask_image);
+       cv::waitKey(0);
+       
        this->prev_image_ = cv_ptr->image.clone();
        is_prev_ok = true;
     }
@@ -153,6 +171,20 @@ void ObjectRegionEstimation::callback(
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
+}
+
+bool ObjectRegionEstimation::convertToCvMat(
+    cv::Mat &image, const sensor_msgs::Image::ConstPtr &image_msg) {
+    cv_bridge::CvImagePtr cv_ptr;
+    try {
+       cv_ptr = cv_bridge::toCvCopy(
+          image_msg, sensor_msgs::image_encodings::BGR8);
+    } catch (cv_bridge::Exception &e) {
+       ROS_ERROR("cv_bridge exception: %s", e.what());
+       return false;
+    }
+    image = cv_ptr->image.clone();
+    return true;
 }
 
 void ObjectRegionEstimation::sceneFlow(

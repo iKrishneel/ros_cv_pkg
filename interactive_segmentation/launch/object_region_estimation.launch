@@ -3,6 +3,9 @@
   <arg name="input_image" default="/camera/rgb/image_rect_color" />
   <arg name="input_pose" default="/pr2_pushing_node/assumed_pose" />
   <arg name="camera_info" default="/kinect_head_c2/depth_registered/camera_info" />
+
+  <arg name="non_plane_cloud" default="/plane_extraction/output_nonplane_cloud" />
+  
   <!-- <arg name="input_indices" default="/multi_plane_estimate/output_normal" /> -->
   <!-- <arg name="filter_point" default="/pcl_filter_utils/output/cloud" /> -->
   
@@ -18,23 +21,31 @@
   <!--   <arg name="INPUT" value="$(arg filter_point)"/> -->
   <!-- </include> -->
 
+  
   <include file="$(find point_cloud_image_creator)/launch/point_cloud_image_creator.launch">
     <arg name="input" value="/interactive_segmentation/output/cloud" />
     <arg name="info" value="$(arg camera_info)" />
     <arg name="ns" value="previous" />
   </include>
 
+  <include file="$(find point_cloud_image_creator)/launch/point_cloud_image_creator.launch">
+    <arg name="input" value="$(arg non_plane_cloud)" />
+    <arg name="info" value="$(arg camera_info)" />
+    <arg name="ns" value="next" />
+  </include>
+  
   <node pkg="interactive_segmentation" name="object_region_estimation"
 	type="object_region_estimation_node" output="screen" clear_params="true">
-    <remap from="input_cloud" to="/plane_extraction/output_nonplane_cloud" />
+    <remap from="input_cloud" to="$(arg non_plane_cloud)" />
     <remap from="input_orig" to="$(arg input_point)" />
-    <remap from="input_image" to="$(arg input_image)" />
+    <remap from="input_image" to="/next/output/image" />
     <remap from="input_pose" to="$(arg input_pose)" />
 
     <!-- subscribing to segmented topics -->
     <remap from="prev_cloud" to ="/interactive_segmentation/output/cloud" />
-    <remap from="prev_image" to ="/cloud_image/output/image" />
+    <remap from="prev_mask" to ="/previous/output/image" />
     <remap from="prev_plane" to ="/interactive_segmentation/output/plane_info" />
+    <remap from="prev_image" to ="$(arg input_image)" />
   </node>
 
   

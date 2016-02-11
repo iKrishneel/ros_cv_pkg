@@ -201,7 +201,7 @@ void InteractiveSegmentation::callback(
        pub_indices_.publish(ros_indices);
        
        publishAsROSMsg(final_object, pub_cloud_, cloud_msg->header);
-       // publishAsROSMsg(cloud, pub_cloud_, cloud_msg->header);
+       // publishAsROSMsg(cloud, pub_pt_map_, cloud_msg->header);
     }
     
     ROS_INFO("\033[34m PUBLISHING INFO\033[0m");

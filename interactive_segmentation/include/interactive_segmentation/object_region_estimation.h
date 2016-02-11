@@ -79,10 +79,12 @@ class ObjectRegionEstimation {
 
     typedef message_filters::sync_policies::ApproximateTime<
        sensor_msgs::Image,
+       sensor_msgs::Image,
        sensor_msgs::PointCloud2,
        sensor_msgs::PointCloud2> SyncPolicyPrev;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_prev_;
     message_filters::Subscriber<sensor_msgs::Image> sub_image_prev_;
+    message_filters::Subscriber<sensor_msgs::Image> sub_mask_prev_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_plane_prev_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicyPrev> >sync_prev_;
   
@@ -116,9 +118,11 @@ class ObjectRegionEstimation {
        const geometry_msgs::PoseStamped::ConstPtr &);
     virtual void callbackPrev(
        const sensor_msgs::Image::ConstPtr &,
+       const sensor_msgs::Image::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
-       
+    bool convertToCvMat(
+       cv::Mat &, const sensor_msgs::Image::ConstPtr &);
     virtual void sceneFlow(
        pcl::PointCloud<PointT>::Ptr, const cv::Mat, const cv::Mat,
        const pcl::PointCloud<PointT>::Ptr, const Eigen::Vector3f,
