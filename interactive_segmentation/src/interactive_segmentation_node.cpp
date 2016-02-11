@@ -154,12 +154,17 @@ void InteractiveSegmentation::callback(
        this->selectedVoxelObjectHypothesis(
           weight_cloud, cloud, normals, anchor_indices, cloud_msg->header);
 
+       
+       std::cout << "\nBEFORE WEIGHT: " << weight_cloud->size() << ", "
+                 << cloud->size() << "\n";
+
+       
        // fix for index irregularity after plane segm. fix 4 imprv
        // compt.
        pcl::PointCloud<PointT>::Ptr obj_cloud(new pcl::PointCloud<PointT>);
        pcl::copyPointCloud<PointT, PointT>(*cloud, *obj_cloud);
        if (!filtered_indices->indices.empty()) {
-          obj_cloud->empty();
+          obj_cloud->clear();
           pcl::PointCloud<PointT>::Ptr filtered_cloud(
              new pcl::PointCloud<PointT>);
           for (int i = 0; i < filtered_indices->indices.size(); i++) {
@@ -170,12 +175,22 @@ void InteractiveSegmentation::callback(
           weight_cloud->clear();
           pcl::copyPointCloud<PointT, PointT>(*filtered_cloud, *weight_cloud);
        }
+
+       std::cout << "\nAFTER COPTY : " << weight_cloud->size() << ", "
+                        << obj_cloud->size() << "\n";
+              
+       
        pcl::PointIndices::Ptr object_indices(new pcl::PointIndices);
        pcl::PointCloud<PointT>::Ptr final_object(new pcl::PointCloud<PointT>);
        this->attentionSurfelRegionPointCloudMask(
           weight_cloud, anchor_points->points[0].getVector4fMap(),
           final_object, object_indices);
 
+       std::cout << "INFO: " << final_object->size() << ", "
+                 << object_indices->indices.size()  << "\n";
+       std::cout << weight_cloud->size() << "\t" << obj_cloud->size()
+                 << "\n";
+       
        // extract the color cloud object---------
        // TODO(FIX): not has BUG
        cloud->clear();
@@ -200,8 +215,8 @@ void InteractiveSegmentation::callback(
        ros_indices.header = cloud_msg->header;
        pub_indices_.publish(ros_indices);
        
-       publishAsROSMsg(final_object, pub_cloud_, cloud_msg->header);
-       // publishAsROSMsg(cloud, pub_pt_map_, cloud_msg->header);
+       // publishAsROSMsg(final_object, pub_cloud_, cloud_msg->header);
+       publishAsROSMsg(cloud, pub_cloud_, cloud_msg->header);
     }
     
     ROS_INFO("\033[34m PUBLISHING INFO\033[0m");
