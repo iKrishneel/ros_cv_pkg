@@ -217,7 +217,7 @@ void InteractiveSegmentation::callback(
        //! fix this as cloud is filtered avbove ----<<
        // pt.x = cloud->points[idx].x;
        // pt.y = cloud->points[idx].y;
-       // pt.z = cloud->points[idx].z; 
+       // pt.z = cloud->points[idx].z;
        pt.r = 255;
        pt.g = 0;
        pt.b = 255;
