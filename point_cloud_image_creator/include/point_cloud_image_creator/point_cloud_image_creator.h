@@ -59,4 +59,6 @@ class PointCloudImageCreator {
     cv::Mat foreground_mask_;
     cv::Rect rect_;
     boost::mutex mutex_;
+
+    bool is_info_;
 };

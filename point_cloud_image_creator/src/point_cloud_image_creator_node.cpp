@@ -7,6 +7,8 @@
 PointCloudImageCreator::PointCloudImageCreator() {
     pnh_.getParam("mask_image", this->is_mask_image_);
     pnh_.getParam("roi_image", this->is_roi_);
+    is_mask_image_ = false;
+    is_info_ = false;
     this->subsribe();
     this->onInit();
 }
@@ -46,15 +48,19 @@ void PointCloudImageCreator::subsribe() {
 
 void PointCloudImageCreator::cloudCallback(
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
+    if (!is_info_) {
+       return;
+    }
     boost::mutex::scoped_lock lock(this->lock_);
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-
+    if (cloud->empty()) {
+       return;
+    }
     cv::Mat mask;
     cv::Mat img_out = this->projectPointCloudToImagePlane(
        cloud, this->camera_info_, mask);
     cv::Mat interpolate_img = this->interpolateImage(img_out, mask);
-    
     if (is_mask_image_) {
        cv::Mat foreground_mask;
        cv::Mat background_mask;
@@ -75,7 +81,6 @@ void PointCloudImageCreator::cloudCallback(
 
        this->pub_fmask_.publish(fmask_msg->toImageMsg());
        this->pub_bmask_.publish(bmask_msg->toImageMsg());
-       
     } else {
        sensor_msgs::PointCloud2 ros_cloud;
        pcl::toROSMsg(*cloud, ros_cloud);
@@ -95,13 +100,15 @@ void PointCloudImageCreator::cloudCallback(
        pub_iimage_.publish(iimage_msg->toImageMsg());
     }
     this->header_ = cloud_msg->header;
-
 }
 
 void PointCloudImageCreator::cameraInfoCallback(
     const sensor_msgs::CameraInfo::ConstPtr &info_msg) {
     boost::mutex::scoped_lock lock(this->lock_);
     camera_info_ = info_msg;
+
+    ROS_INFO("CAMERA INFO SET");
+    is_info_ = true;
 }
 
 void PointCloudImageCreator::imageCallback(
