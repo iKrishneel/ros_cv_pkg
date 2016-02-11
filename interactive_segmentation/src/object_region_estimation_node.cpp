@@ -43,15 +43,13 @@ void ObjectRegionEstimation::subscribe() {
     // info before robot pushes the object
     this->sub_cloud_prev_.subscribe(this->pnh_, "prev_cloud", 1);
     this->sub_image_prev_.subscribe(this->pnh_, "prev_image", 1);
-    this->sub_mask_prev_.subscribe(this->pnh_, "prev_mask", 1);
     this->sub_plane_prev_.subscribe(this->pnh_, "prev_plane", 1);
     this->sync_prev_ = boost::make_shared<message_filters::Synchronizer<
       SyncPolicyPrev> >(100);
     this->sync_prev_->connectInput(
-       sub_image_prev_, sub_mask_prev_, sub_cloud_prev_, sub_plane_prev_);
-    this->sync_prev_->registerCallback(boost::bind(
-                                          &ObjectRegionEstimation::callbackPrev,
-                                          this, _1, _2, _3, _4));
+       sub_image_prev_, sub_cloud_prev_, sub_plane_prev_);
+    this->sync_prev_->registerCallback(
+       boost::bind(&ObjectRegionEstimation::callbackPrev, this, _1, _2, _3));
 
     
     this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
@@ -75,9 +73,13 @@ void ObjectRegionEstimation::unsubscribe() {
 
 void ObjectRegionEstimation::callbackPrev(
     const sensor_msgs::Image::ConstPtr &image_msg,
-    const sensor_msgs::Image::ConstPtr &mask_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
     const sensor_msgs::PointCloud2::ConstPtr &plane_msg) {
+
+    if (is_prev_ok) {
+       return;
+    }
+   
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     cv_bridge::CvImagePtr cv_ptr;
@@ -86,10 +88,6 @@ void ObjectRegionEstimation::callbackPrev(
           image_msg, sensor_msgs::image_encodings::BGR8);
     } catch (cv_bridge::Exception &e) {
        ROS_ERROR("cv_bridge exception: %s", e.what());
-       return;
-    }
-    cv::Mat mask_img;
-    if (!this->convertToCvMat(mask_img, mask_msg)) {
        return;
     }
     if (cloud->empty() || cv_ptr->image.empty()) {
@@ -103,21 +101,6 @@ void ObjectRegionEstimation::callbackPrev(
        this->plane_norm_ = plane_info->points[0].getNormalVector3fMap();
        this->plane_point_ = plane_info->points[0].getVector3fMap();
        pcl::copyPointCloud<PointT, PointT>(*cloud, *prev_cloud_);
-
-       cv::Mat mask_image = cv::Mat::zeros(mask_img.size(), CV_8UC3);
-       for (int j = 0; j < mask_img.rows; j++) {
-          for (int i = 0; i < mask_img.cols; i++) {
-             cv::Vec3b pixel = mask_img.at<cv::Vec3b>(j, i);
-             if (pixel.val[0] != 0) {
-                mask_image.at<cv::Vec3b>(j, i) = cv_ptr->image.at<
-                   cv::Vec3b>(j, i);
-             }
-          }
-       }
-
-       cv::imshow("rgb_mask", mask_image);
-       cv::waitKey(0);
-       
        this->prev_image_ = cv_ptr->image.clone();
        is_prev_ok = true;
     }
@@ -156,7 +139,34 @@ void ObjectRegionEstimation::callback(
     this->sceneFlow(motion_region_cloud, this->prev_image_, next_img,
                     in_cloud, this->plane_norm_, this->plane_point_);
 
+    ROS_INFO("SEGMENT CLUSTERING");
+    
+    // cluster regions into different segments
+    std::vector<pcl::PointIndices> cluster_indices;
+    this->clusterSegments(cluster_indices, motion_region_cloud);
 
+    ROS_INFO("CLUSTERING DONE");
+    std::cout << cluster_indices.size() << "\n";
+    
+    // clarify each segments
+    pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
+    eifilter->setInputCloud(motion_region_cloud);
+    cloud->clear();
+    for (int i = 0; i < cluster_indices.size(); i++) {
+       pcl::PointCloud<PointT>::Ptr region_cloud(
+          new pcl::PointCloud<PointT>);
+       pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
+       *region_indices = cluster_indices[i];
+       eifilter->setIndices(region_indices);
+       eifilter->filter(*region_cloud);
+
+       ROS_INFO("GETTING HYPOTHESIS");
+       
+       if (this->getHypothesis(this->prev_cloud_, region_cloud)) {
+          pcl::copyPointCloud<PointT, PointT>(*region_cloud, *cloud);
+       }
+    }
+    
     
     std::vector<pcl::PointIndices> all_indices;
     // this->clusterFeatures(all_indices, cloud, normals, 5, 0.5);
@@ -210,6 +220,8 @@ void ObjectRegionEstimation::sceneFlow(
     cv::Mat image = cv::Mat::zeros(next_img.size(), next_img.type());
 
     // for the threshold use end-effector
+    Eigen::Vector3f plane_point = plane_pt;
+    plane_point(1) -= 0.015f;
     for (int j = 0; j < angle.rows; j++) {
        for (int i = 0; i < angle.cols; i++) {
           float val = angle.at<float>(j, i);
@@ -217,15 +229,12 @@ void ObjectRegionEstimation::sceneFlow(
              val /= 360.0f;
              orientation.at<cv::Vec3b>(j, i) [0]=  val * 255.0f;
              image.at<uchar>(j, i) += next_img.at<uchar>(j, i);
-
-             /*
              PointT pt = cloud->points[i + (j * angle.cols)];
              if (!isnan(pt.x) && !isnan(pt.y) && !isnan(pt.z)) {
-               if (plane_norm.dot(pt.getVector3fMap() - plane_pt) >= 0.0f) {
-                 filtered->push_back(pt);
-               }
-               }
-             */
+                if (plane_norm.dot(pt.getVector3fMap() - plane_point) >= 0.0f) {
+                   filtered->push_back(pt);
+                }
+             }
           } else {
              orientation.at<cv::Vec3b>(j, i) [1]=  val * 255.0f;
           }
@@ -237,7 +246,7 @@ void ObjectRegionEstimation::sceneFlow(
 
     cv::Mat cflowmap;
     cv::cvtColor(next_img, cflowmap, CV_GRAY2BGR);
-    drawOptFlowMap(flow, cflowmap, 5, 50, cv::Scalar(0, 255, 0));
+    plotOpticalFlowMap(flow, cflowmap, 5, 50, cv::Scalar(0, 255, 0));
     cv::imshow("map_flow", cflowmap);
     
 
@@ -251,17 +260,16 @@ void ObjectRegionEstimation::sceneFlow(
     this->pub_cloud_.publish(ros_cloud);
     */
     // cv::imshow("image", result);
-    cv::waitKey(0);
+    cv::waitKey(3);
 }
 
-
-void ObjectRegionEstimation::drawOptFlowMap(
+void ObjectRegionEstimation::plotOpticalFlowMap(
     const cv::Mat& flow, cv::Mat& cflowmap, int step,
     double scale, const cv::Scalar& color) {
-    for(int y = 0; y < cflowmap.rows; y += step) {
-      for(int x = 0; x < cflowmap.cols; x += step) {
+    for (int y = 0; y < cflowmap.rows; y += step) {
+      for (int x = 0; x < cflowmap.cols; x += step) {
         const cv::Point2f& fxy = flow.at<cv::Point2f>(y, x);
-        cv::line(cflowmap, cv::Point(x,y),
+        cv::line(cflowmap, cv::Point(x, y),
                  cv::Point(cvRound(x+fxy.x), cvRound(y+fxy.y)), color);
         cv::circle(cflowmap, cv::Point(cvRound(x+fxy.x),
                                        cvRound(y+fxy.y)), 1, color, -1);
@@ -269,17 +277,15 @@ void ObjectRegionEstimation::drawOptFlowMap(
     }
 }
 
-void ObjectRegionEstimation::noiseClusterFilter(
-    pcl::PointCloud<PointT>::Ptr object_cloud,
-    pcl::PointIndices::Ptr indices,
+void ObjectRegionEstimation::clusterSegments(
+    std::vector<pcl::PointIndices> &cluster_indices,
     const pcl::PointCloud<PointT>::Ptr cloud) {
     if (cloud->empty()) {
       return;
     }
+    cluster_indices.clear();
     pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
     tree->setInputCloud(cloud);
-    std::vector<pcl::PointIndices> cluster_indices;
-    cluster_indices.clear();
     pcl::EuclideanClusterExtraction<PointT> euclidean_clustering;
     euclidean_clustering.setClusterTolerance(0.01f);
     euclidean_clustering.setMinClusterSize(this->min_cluster_size_);
@@ -288,7 +294,7 @@ void ObjectRegionEstimation::noiseClusterFilter(
     euclidean_clustering.setInputCloud(cloud);
     euclidean_clustering.extract(cluster_indices);
 
-    // for now just select the largest cluster size
+    /*
     int index = -1;
     int size = 0;
     for (int i = 0; i < cluster_indices.size(); i++) {
@@ -297,57 +303,71 @@ void ObjectRegionEstimation::noiseClusterFilter(
         index = i;
       }
     }
+    pcl::PointCloud<PointT>::Ptr object_cloud(new pcl::PointCloud<PointT>);
+    pcl::PointIndices::Ptr indices(new pcl::PointIndices);
     pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
     eifilter->setInputCloud(cloud);
     *indices = cluster_indices[index];
     eifilter->setIndices(indices);
     eifilter->filter(*object_cloud);
-    
-    std::cout << "MAX SIZE: " << size   << "\n";
+    */
 }
 
 void ObjectRegionEstimation::keypoints3D(
-    pcl::PointCloud<PointI>::Ptr keypoints,
-    const pcl::PointCloud<PointT>::Ptr cloud) {
+    pcl::PointCloud<PointT>::Ptr keypoints,
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const float radius_thresh, const bool uniform_keypoints) {
     if (cloud->empty()) {
        return;
     }
-    pcl::HarrisKeypoint3D<PointT, PointI>::Ptr detector(
-       new pcl::HarrisKeypoint3D<PointT, PointI>);
-    detector->setNonMaxSupression(true);
-    detector->setInputCloud(cloud);
-    detector->setThreshold(1e-6);
-    detector->compute(*keypoints);
+    keypoints->clear();
+    if (uniform_keypoints) {
+       pcl::PointCloud<int> keypoint_idx;
+       pcl::UniformSampling<PointT> uniform_sampling;
+       uniform_sampling.setInputCloud(cloud);
+       uniform_sampling.setRadiusSearch(radius_thresh);
+       uniform_sampling.compute(keypoint_idx);
+       pcl::copyPointCloud<PointT, PointT>(
+          *cloud, keypoint_idx.points, *keypoints);
+    } else {
+       pcl::HarrisKeypoint3D<PointT, PointI>::Ptr detector(
+          new pcl::HarrisKeypoint3D<PointT, PointI>);
+       detector->setNonMaxSupression(true);
+       detector->setInputCloud(cloud);
+       detector->setThreshold(1e-6);
+       pcl::PointCloud<PointI>::Ptr keypoint_i(new pcl::PointCloud<PointI>);
+       detector->compute(*keypoint_i);
+       pcl::copyPointCloud<PointI, PointT>(*keypoint_i, *keypoints);
+    }
 }
 
 void ObjectRegionEstimation::features3D(
     pcl::PointCloud<SHOT1344>::Ptr descriptors,
     const pcl::PointCloud<PointT>::Ptr cloud,
     const pcl::PointCloud<Normal>::Ptr normals,
-    const pcl::PointCloud<PointI>::Ptr keypoints) {
-    pcl::PointCloud<PointT>::Ptr keypoints_xyz(new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointI, PointT>(*keypoints, *keypoints_xyz);
+    const pcl::PointCloud<PointT>::Ptr keypoints,
+    const float radius_thresh) {
     // pcl::SHOTEstimationOMP<PointT, Normal, SHOT352> shot;
     pcl::SHOTColorEstimationOMP<PointT, Normal, SHOT1344> shot;
     shot.setSearchSurface(cloud);
-    shot.setInputCloud(keypoints_xyz);
+    shot.setInputCloud(keypoints);
     shot.setInputNormals(normals);
-    shot.setRadiusSearch(0.02f);
+    shot.setRadiusSearch(radius_thresh);
     shot.compute(*descriptors);
 }
 
-void ObjectRegionEstimation::getHypothesis(
+bool ObjectRegionEstimation::getHypothesis(
     const pcl::PointCloud<PointT>::Ptr prev_cloud,
     const pcl::PointCloud<PointT>::Ptr next_cloud) {
     if (prev_cloud->empty() || next_cloud->empty()) {
       ROS_ERROR("ERROR: EMPTY CANNOT CREATE OBJECT HYPOTHESIS");
-      return;
+      return false;
     }
     const int k = 50;
     pcl::PointCloud<Normal>::Ptr prev_normals(new pcl::PointCloud<Normal>);
     pcl::PointCloud<Normal>::Ptr next_normals(new pcl::PointCloud<Normal>);
-    pcl::PointCloud<PointI>::Ptr prev_keypoints(new pcl::PointCloud<PointI>);
-    pcl::PointCloud<PointI>::Ptr next_keypoints(new pcl::PointCloud<PointI>);
+    pcl::PointCloud<PointT>::Ptr prev_keypoints(new pcl::PointCloud<PointT>);
+    pcl::PointCloud<PointT>::Ptr next_keypoints(new pcl::PointCloud<PointT>);
     pcl::PointCloud<SHOT1344>::Ptr prev_descriptors(
        new pcl::PointCloud<SHOT1344>);
     pcl::PointCloud<SHOT1344>::Ptr next_descriptors(
@@ -377,50 +397,70 @@ void ObjectRegionEstimation::getHypothesis(
                            next_normals, next_keypoints);
        }
     }
+
+    std::cout << "------------------------------------------------"  << "\n";
+    std::cout << "DEBUG: "  << "\n";
+    std::cout << prev_cloud->size() << ", " << prev_keypoints->size()
+              << ", "
+              << prev_normals->size() << ", " << prev_descriptors->size()
+              << "\n";
+    std::cout << next_cloud->size() << ", " << next_keypoints->size()
+              << ", "
+              << next_normals->size() << ", " << next_descriptors->size()
+              << "\n";
+    
     // finding correspondances
     pcl::CorrespondencesPtr correspondences (new pcl::Correspondences);
     pcl::KdTreeFLANN<SHOT1344>::Ptr matcher(new pcl::KdTreeFLANN<SHOT1344>);
     matcher->setInputCloud(prev_descriptors);
     std::vector<int> indices;
     std::vector<float> distances;
-    const float thresh = 0.25f;
+    const float thresh = 0.50f;
     for (int i = 0; i < next_descriptors->size(); i++) {
-       SHOT1344 des = next_descriptors->points[i];
-       int found = matcher->nearestKSearch(next_descriptors->at(i), 1,
-                                           indices, distances);
-       if (found == 1 && distances[0] < thresh) {
-          pcl::Correspondence corresp(indices[0], i, distances[0]);
-          correspondences->push_back(corresp);
+       bool is_finite = true;
+       for (int j = 0; j < FEATURE_DIM; j++) {
+          if (isnan(next_descriptors->points[i].descriptor[j])) {
+             is_finite = false;
+             break;
+          }
+       }
+       if (is_finite) {
+          int found = matcher->nearestKSearch(next_descriptors->at(i), 1,
+                                              indices, distances);
+          if (found == 1 && distances[0] < thresh) {
+             pcl::Correspondence corresp(indices[0], i, distances[0]);
+             correspondences->push_back(corresp);
+          }
        }
     }
+
+
+    std::cout << "correspondance: " << correspondences->size()  << "\n";
+    
     // corresponding using Hough like voting
     pcl::PointCloud<RFType>::Ptr prev_rf (new pcl::PointCloud<RFType> ());
     pcl::PointCloud<RFType>::Ptr next_rf (new pcl::PointCloud<RFType> ());
     pcl::BOARDLocalReferenceFrameEstimation<PointT, Normal, RFType> rf_est;
     rf_est.setFindHoles(true);
     rf_est.setRadiusSearch(0.02f);
-    pcl::PointCloud<PointT>::Ptr prev_kpt_xyz(new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointI, PointT>(*prev_keypoints, *prev_kpt_xyz);
-    rf_est.setInputCloud(prev_kpt_xyz);
+    rf_est.setInputCloud(prev_keypoints);
     rf_est.setInputNormals(prev_normals);
     rf_est.setSearchSurface(prev_cloud);
     rf_est.compute(*prev_rf);
-    pcl::PointCloud<PointT>::Ptr next_kpt_xyz(new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointI, PointT>(*next_keypoints, *next_kpt_xyz);
-    rf_est.setInputCloud(next_kpt_xyz);
+    rf_est.setInputCloud(next_keypoints);
     rf_est.setInputNormals(next_normals);
     rf_est.setSearchSurface(next_cloud);
     rf_est.compute(*next_rf);
 
     pcl::Hough3DGrouping<PointT, PointT, RFType, RFType> clusterer;
-    clusterer.setHoughBinSize(0.01f);
-    clusterer.setHoughThreshold(5.0f);
+    clusterer.setHoughBinSize(0.02f);
+    clusterer.setHoughThreshold(4.0f);
     clusterer.setUseInterpolation(true);
     clusterer.setUseDistanceWeight(false);
     
-    clusterer.setInputCloud(prev_kpt_xyz);
+    clusterer.setInputCloud(prev_keypoints);
     clusterer.setInputRf(prev_rf);
-    clusterer.setSceneCloud(next_kpt_xyz);
+    clusterer.setSceneCloud(next_keypoints);
     clusterer.setSceneRf(next_rf);
     clusterer.setModelSceneCorrespondences(correspondences);
 
@@ -428,6 +468,14 @@ void ObjectRegionEstimation::getHypothesis(
     std::vector<Eigen::Matrix4f,
                 Eigen::aligned_allocator<Eigen::Matrix4f> > rototranslations;
     clusterer.recognize(rototranslations, clustered_corrs);
+
+    std::cout << "\n NUM_CORRESPONDANCE: " << clustered_corrs.size()  << "\n";
+    
+    if (clustered_corrs.size() > 0) {
+       return true;
+    } else {
+       return false;
+    }
 }
 
 template<class T>
@@ -493,6 +541,9 @@ void ObjectRegionEstimation::clusterFeatures(
     }
 }
 
+/**
+ * NOT USED
+ */
 void ObjectRegionEstimation::removeStaticKeypoints(
     pcl::PointCloud<PointI>::Ptr prev_keypoints,
     pcl::PointCloud<PointI>::Ptr curr_keypoints,

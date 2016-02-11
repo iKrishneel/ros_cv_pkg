@@ -154,11 +154,6 @@ void InteractiveSegmentation::callback(
        this->selectedVoxelObjectHypothesis(
           weight_cloud, cloud, normals, anchor_indices, cloud_msg->header);
 
-       
-       std::cout << "\nBEFORE WEIGHT: " << weight_cloud->size() << ", "
-                 << cloud->size() << "\n";
-
-       
        // fix for index irregularity after plane segm. fix 4 imprv
        // compt.
        pcl::PointCloud<PointT>::Ptr obj_cloud(new pcl::PointCloud<PointT>);
@@ -175,24 +170,11 @@ void InteractiveSegmentation::callback(
           weight_cloud->clear();
           pcl::copyPointCloud<PointT, PointT>(*filtered_cloud, *weight_cloud);
        }
-
-       std::cout << "\nAFTER COPTY : " << weight_cloud->size() << ", "
-                        << obj_cloud->size() << "\n";
-              
-       
        pcl::PointIndices::Ptr object_indices(new pcl::PointIndices);
        pcl::PointCloud<PointT>::Ptr final_object(new pcl::PointCloud<PointT>);
        this->attentionSurfelRegionPointCloudMask(
           weight_cloud, anchor_points->points[0].getVector4fMap(),
           final_object, object_indices);
-
-       std::cout << "INFO: " << final_object->size() << ", "
-                 << object_indices->indices.size()  << "\n";
-       std::cout << weight_cloud->size() << "\t" << obj_cloud->size()
-                 << "\n";
-       
-       // extract the color cloud object---------
-       // TODO(FIX): not has BUG
        cloud->clear();
        for (int i = 0; i < object_indices->indices.size(); i++) {
           int idx = object_indices->indices[i];

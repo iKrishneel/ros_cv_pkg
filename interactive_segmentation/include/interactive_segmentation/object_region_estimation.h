@@ -37,6 +37,7 @@
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/features/board.h>
 #include <pcl/recognition/cg/hough_3d.h>
+#include <pcl/keypoints/uniform_sampling.h>
 
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
@@ -60,7 +61,7 @@ class ObjectRegionEstimation {
     typedef pcl::SHOT1344 SHOT1344;
     typedef pcl::ReferenceFrame RFType;
    
-#define FEATURE_DIM 352
+#define FEATURE_DIM 1344
   
  private:
     boost::mutex mutex_;
@@ -79,12 +80,10 @@ class ObjectRegionEstimation {
 
     typedef message_filters::sync_policies::ApproximateTime<
        sensor_msgs::Image,
-       sensor_msgs::Image,
        sensor_msgs::PointCloud2,
        sensor_msgs::PointCloud2> SyncPolicyPrev;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_prev_;
     message_filters::Subscriber<sensor_msgs::Image> sub_image_prev_;
-    message_filters::Subscriber<sensor_msgs::Image> sub_mask_prev_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_plane_prev_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicyPrev> >sync_prev_;
   
@@ -118,7 +117,6 @@ class ObjectRegionEstimation {
        const geometry_msgs::PoseStamped::ConstPtr &);
     virtual void callbackPrev(
        const sensor_msgs::Image::ConstPtr &,
-       const sensor_msgs::Image::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
     bool convertToCvMat(
@@ -131,19 +129,19 @@ class ObjectRegionEstimation {
     void estimatePointCloudNormals(
        const pcl::PointCloud<PointT>::Ptr, pcl::PointCloud<Normal>::Ptr,
        T = 0.05f, bool = false) const;
-
-   
+    void clusterSegments(
+       std::vector<pcl::PointIndices> &, const pcl::PointCloud<PointT>::Ptr);
     void keypoints3D(
-        pcl::PointCloud<PointI>::Ptr, const pcl::PointCloud<PointT>::Ptr);
+       pcl::PointCloud<PointT>::Ptr, const pcl::PointCloud<PointT>::Ptr,
+       const float = 0.01f, const bool = true);
     void features3D(
        pcl::PointCloud<SHOT1344>::Ptr, const pcl::PointCloud<PointT>::Ptr,
-       const pcl::PointCloud<Normal>::Ptr, const pcl::PointCloud<PointI>::Ptr);
-    void getHypothesis(
+       const pcl::PointCloud<Normal>::Ptr, const pcl::PointCloud<PointT>::Ptr,
+       const float = 0.01f);
+    bool getHypothesis(
         const pcl::PointCloud<PointT>::Ptr, const pcl::PointCloud<PointT>::Ptr);
-
-    void noiseClusterFilter(
-       pcl::PointCloud<PointT>::Ptr, pcl::PointIndices::Ptr indices,
-       const pcl::PointCloud<PointT>::Ptr);
+    void plotOpticalFlowMap(
+       const cv::Mat&, cv::Mat&, int, double, const cv::Scalar&);
    
     void removeStaticKeypoints(
        pcl::PointCloud<PointI>::Ptr, pcl::PointCloud<PointI>::Ptr,
@@ -151,9 +149,6 @@ class ObjectRegionEstimation {
     void clusterFeatures(
         std::vector<pcl::PointIndices> &, const pcl::PointCloud<PointT>::Ptr,
         const pcl::PointCloud<Normal>::Ptr, const int, const float);
-
-    void drawOptFlowMap(
-        const cv::Mat&, cv::Mat&, int, double, const cv::Scalar&);
 };
 
 
