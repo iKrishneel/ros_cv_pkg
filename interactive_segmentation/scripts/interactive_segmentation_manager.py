@@ -13,15 +13,15 @@ from sensor_msgs.msg import PointCloud2, Image
 from geometry_msgs.msg import Pose, Vector3
 
 topic_boxes_ = '/cluster_decomposer_final/boxes'
-boxes_topic_ = '/interactive_segmentation_manager/output/boxes'
+boxes_topic_ = '/bounding_box_manager/output/boxes'
 pub_boxes_ = None
 
-signal_topic_ = '/interactive_segmentation_manager/output/signal'
+signal_topic_ = '/bounding_box_manager/output/signal'
 pub_signal_ = None
 
-min_threshold_x_ = 0.04
-min_threshold_y_ = 0.04
-min_threshold_z_ = 0.04
+min_threshold_x_ = 0.03
+min_threshold_y_ = 0.03
+min_threshold_z_ = 0.03
 
 def bounding_box_array_callback(msg):
     rospy.loginfo("CHECKING FOR VALIDITY OF BOXES")
@@ -33,6 +33,8 @@ def bounding_box_array_callback(msg):
            (box_dim.y > min_threshold_y_) and \
            (box_dim.z > min_threshold_z_):
             valid_boxes.boxes.append(m)
+    print "LENGHT: ", len(valid_boxes.boxes)
+            
     if (len(valid_boxes.boxes) == 0):
         int_stamp = Int32Stamped()
         int_stamp.header = msg.header
@@ -59,7 +61,7 @@ def onInit():
     subscribe()
 
 def main():
-    rospy.init_node('interactive_segmentation_manager')
+    rospy.init_node('bounding_box_manager')
     onInit()
     rospy.spin()
 

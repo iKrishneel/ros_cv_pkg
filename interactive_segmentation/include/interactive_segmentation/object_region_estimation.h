@@ -89,6 +89,7 @@ class ObjectRegionEstimation {
   
     ros::Publisher pub_cloud_;
     ros::Publisher pub_indices_;
+    ros::Publisher pub_flow_;
     ros::ServiceClient srv_client_;
   
     int num_threads_;

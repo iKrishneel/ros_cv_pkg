@@ -31,11 +31,16 @@ void ObjectRegionEstimation::onInit() {
           "feature3d_clustering_srv");
   
     this->subscribe();
+    
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/object_region_estimation/output/cloud", 1);
+    
     this->pub_indices_ = this->pnh_.advertise<
        jsk_recognition_msgs::ClusterPointIndices>(
           "/object_region_estimation/output/indices", 1);
+
+    this->pub_flow_ = this->pnh_.advertise<sensor_msgs::Image>(
+       "/object_region_estimation/output/scene_flow", 1);
 }
 
 void ObjectRegionEstimation::subscribe() {
@@ -146,12 +151,13 @@ void ObjectRegionEstimation::callback(
     this->clusterSegments(cluster_indices, motion_region_cloud);
 
     ROS_INFO("CLUSTERING DONE");
-    std::cout << cluster_indices.size() << "\n";
     
     // clarify each segments
     pcl::ExtractIndices<PointT>::Ptr eifilter(new pcl::ExtractIndices<PointT>);
     eifilter->setInputCloud(motion_region_cloud);
     cloud->clear();
+
+    std::vector<pcl::PointIndices> all_indices;
     for (int i = 0; i < cluster_indices.size(); i++) {
        pcl::PointCloud<PointT>::Ptr region_cloud(
           new pcl::PointCloud<PointT>);
@@ -161,14 +167,15 @@ void ObjectRegionEstimation::callback(
        eifilter->filter(*region_cloud);
 
        ROS_INFO("GETTING HYPOTHESIS");
-       
+
+       // TODO(fix): MIGHT HAVE BUG
        if (this->getHypothesis(this->prev_cloud_, region_cloud)) {
           pcl::copyPointCloud<PointT, PointT>(*region_cloud, *cloud);
+          all_indices.clear();
+          all_indices.push_back(cluster_indices[i]);
        }
     }
     
-    
-    std::vector<pcl::PointIndices> all_indices;
     // this->clusterFeatures(all_indices, cloud, normals, 5, 0.5);
 
     jsk_recognition_msgs::ClusterPointIndices ros_indices;
@@ -221,7 +228,7 @@ void ObjectRegionEstimation::sceneFlow(
 
     // for the threshold use end-effector
     Eigen::Vector3f plane_point = plane_pt;
-    plane_point(1) -= 0.015f;
+    plane_point(1) -= 0.02f;
     for (int j = 0; j < angle.rows; j++) {
        for (int i = 0; i < angle.cols; i++) {
           float val = angle.at<float>(j, i);
@@ -236,42 +243,30 @@ void ObjectRegionEstimation::sceneFlow(
                 }
              }
           } else {
-             orientation.at<cv::Vec3b>(j, i) [1]=  val * 255.0f;
+             orientation.at<cv::Vec3b>(j, i)[1] =  val * 255.0f;
           }
        }
     }
-    cv::imshow("orientation", orientation);
-    cv::imshow("view", image);
+    cv::Mat flow_map;
+    cv::cvtColor(next_img, flow_map, CV_GRAY2BGR);
+    plotOpticalFlowMap(flow, flow_map, 5, 50, cv::Scalar(0, 255, 0));
 
-
-    cv::Mat cflowmap;
-    cv::cvtColor(next_img, cflowmap, CV_GRAY2BGR);
-    plotOpticalFlowMap(flow, cflowmap, 5, 50, cv::Scalar(0, 255, 0));
-    cv::imshow("map_flow", cflowmap);
-    
-
-    /*
-    int threshold = 10;
-    pnh_.getParam("thresh", threshold);
-
-    sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*filtered, ros_cloud);
-    ros_cloud.header = header_;
-    this->pub_cloud_.publish(ros_cloud);
-    */
-    // cv::imshow("image", result);
-    cv::waitKey(3);
+    cv_bridge::CvImagePtr pub_flow(new cv_bridge::CvImage);
+    pub_flow->header = header_;
+    pub_flow->encoding = sensor_msgs::image_encodings::BGR8;
+    pub_flow->image = flow_map.clone();
+    this->pub_flow_.publish(pub_flow);
 }
 
 void ObjectRegionEstimation::plotOpticalFlowMap(
-    const cv::Mat& flow, cv::Mat& cflowmap, int step,
+    const cv::Mat& flow, cv::Mat& flow_map, int step,
     double scale, const cv::Scalar& color) {
-    for (int y = 0; y < cflowmap.rows; y += step) {
-      for (int x = 0; x < cflowmap.cols; x += step) {
+    for (int y = 0; y < flow_map.rows; y += step) {
+      for (int x = 0; x < flow_map.cols; x += step) {
         const cv::Point2f& fxy = flow.at<cv::Point2f>(y, x);
-        cv::line(cflowmap, cv::Point(x, y),
+        cv::line(flow_map, cv::Point(x, y),
                  cv::Point(cvRound(x+fxy.x), cvRound(y+fxy.y)), color);
-        cv::circle(cflowmap, cv::Point(cvRound(x+fxy.x),
+        cv::circle(flow_map, cv::Point(cvRound(x+fxy.x),
                                        cvRound(y+fxy.y)), 1, color, -1);
       }
     }

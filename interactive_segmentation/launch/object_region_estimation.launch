@@ -49,10 +49,10 @@
     <remap from="~target" to="/object_region_estimation/output/indices" />
     <remap from="~align_planes" to="/multi_plane_estimate/output_refined_polygon" />
     <remap from="~align_planes_coefficients" to="/multi_plane_estimate/output_refined_coefficients" />
-    <param name="/interactive_segmentation_decomposer/align_boxes" value="true" />
-    <param name="/interactive_segmentation_decomposer/use_pca" value="true" />
-    <param name="/interactive_segmentation_decomposer/publish_clouds" value="false" />
-    <param name="/interactive_segmentation_decomposer/publish_tf" value="true" />
+    <param name="align_boxes" value="true" />
+    <param name="use_pca" value="true" />
+    <param name="publish_clouds" value="false" />
+    <param name="publish_tf" value="true" />
   </node>
   
 </launch>
