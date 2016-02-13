@@ -1467,7 +1467,11 @@ InteractiveSegmentation::thinBoundaryAndComputeCentroid(
     std::vector<pcl::PointIndices> tmp_ci;
     edge_cloud->clear();
     cluster_centroids.clear();
-    const int min_size_thresh = 20;
+    int min_size_thresh = 20;
+    this->pnh_.getParam("skeleton_thresh", min_size_thresh);
+
+    ROS_INFO("\033[35m EDGE SKELETION THRESHOLD: %d \033[0m", min_size_thresh);
+    
     for (int i = 0; i < cluster_indices.size(); i++) {
        pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
        *region_indices = cluster_indices[i];
