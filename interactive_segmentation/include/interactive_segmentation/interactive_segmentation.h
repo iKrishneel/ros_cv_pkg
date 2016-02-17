@@ -115,8 +115,8 @@ class InteractiveSegmentation {
     PointT user_marked_pt_;
     cv::Point2i screen_pt_;
     bool is_init_;
-    bool is_stop_signal_;
-    
+    bool is_segment_scene_;
+   
     int min_cluster_size_;
     int num_threads_;
     double outlier_concave_;
@@ -141,6 +141,8 @@ class InteractiveSegmentation {
     virtual void screenPointCallback(
        const geometry_msgs::PointStamped::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
+    virtual void managerCallback(
+       const jsk_recognition_msgs::Int32Stamped::ConstPtr &);
     virtual void polygonArrayCallback(
        const jsk_recognition_msgs::PolygonArray::ConstPtr &);
     virtual void callback(

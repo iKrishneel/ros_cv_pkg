@@ -5,7 +5,7 @@
 #include <vector>
 
 InteractiveSegmentation::InteractiveSegmentation():
-    is_init_(true), is_stop_signal_(false), num_threads_(8) {
+    is_init_(true), is_segment_scene_(true), num_threads_(8) {
     pnh_.getParam("num_threads", this->num_threads_);
     this->srv_ = boost::shared_ptr<dynamic_reconfigure::Server<Config> >(
        new dynamic_reconfigure::Server<Config>);
@@ -102,6 +102,14 @@ void InteractiveSegmentation::screenPointCallback(
     }
 }
 
+void InteractiveSegmentation::managerCallback(
+    const jsk_recognition_msgs::Int32Stamped::ConstPtr &manager_msg) {
+    if (manager_msg->data == 1) {
+       is_segment_scene_ = true;
+    }
+}
+
+// move this to below callback
 void InteractiveSegmentation::polygonArrayCallback(
     const jsk_recognition_msgs::PolygonArray::ConstPtr &poly_msg) {
     this->polygon_array_ = *poly_msg;
@@ -112,7 +120,7 @@ void InteractiveSegmentation::callback(
     const sensor_msgs::CameraInfo::ConstPtr &info_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
     const sensor_msgs::PointCloud2::ConstPtr &orig_cloud_msg) {
-    if (!is_init_) {
+    if (!is_init_ && !is_segment_scene_) {
        ROS_ERROR("ERROR: MARK A TARGET REGION IN THE CLUSTER");
        return;
     }
@@ -190,7 +198,6 @@ void InteractiveSegmentation::callback(
        // check if it is the marked object --------
        if (this->markedPointInSegmentedRegion(
               final_object, this->user_marked_pt_)) {
-          this->is_stop_signal_ = true;
           jsk_recognition_msgs::Int32Stamped tgt_signal;
           tgt_signal.header = cloud_msg->header;
           tgt_signal.data = 1;
@@ -240,7 +247,9 @@ void InteractiveSegmentation::callback(
     pcl::toROSMsg(*centroid_normal, ros_normal);
     ros_normal.header = cloud_msg->header;
     pub_normal_.publish(ros_normal);
-    
+
+    // reset processing signal
+    this->is_segment_scene_ = false;
     ROS_INFO("\n\033[34m ALL VALID REGION LABELED \033[0m");
 }
 
