@@ -53,7 +53,7 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 generate_dynamic_reconfigure_options(
-  cfg/SupervoxelSegmentation.cfg)
+  cfg/InteractiveSegmentation.cfg)
 
 ## Generate messages in the 'msg' folder
 # add_message_files(

@@ -5,11 +5,13 @@
 #include <vector>
 
 InteractiveSegmentation::InteractiveSegmentation():
-    min_cluster_size_(100), is_init_(true),
-    is_stop_signal_(false), num_threads_(8) {
+    is_init_(true), is_stop_signal_(false), num_threads_(8) {
     pnh_.getParam("num_threads", this->num_threads_);
-
-    // std::cout << "STARTING WITH: " << num_threads_  << "\n";
+    this->srv_ = boost::shared_ptr<dynamic_reconfigure::Server<Config> >(
+       new dynamic_reconfigure::Server<Config>);
+    dynamic_reconfigure::Server<Config>::CallbackType f = boost::bind(
+       &InteractiveSegmentation::configCallback, this, _1, _2);
+    this->srv_->setCallback(f);
     
     this->subscribe();
     this->onInit();
@@ -1009,8 +1011,7 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
 #pragma omp section
 #endif
        {
-          double ccof = 0.015f;
-          this->pnh_.getParam("outlier_concave", ccof);
+          double ccof = this->outlier_concave_;
           this->edgeBoundaryOutlierFiltering(concave_edge_points,
                                              static_cast<float>(ccof));
        }
@@ -1018,7 +1019,7 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
 #pragma omp section
 #endif
        {
-          double cvof = 0.015f;
+          double cvof = this->outlier_convex_;
           this->pnh_.getParam("outlier_convex", cvof);
           this->edgeBoundaryOutlierFiltering(convex_edge_points,
                                              static_cast<float>(cvof));
@@ -1467,10 +1468,6 @@ InteractiveSegmentation::thinBoundaryAndComputeCentroid(
     std::vector<pcl::PointIndices> tmp_ci;
     edge_cloud->clear();
     cluster_centroids.clear();
-    int min_size_thresh = 20;
-    this->pnh_.getParam("skeleton_thresh", min_size_thresh);
-
-    ROS_INFO("\033[35m EDGE SKELETION THRESHOLD: %d \033[0m", min_size_thresh);
     
     for (int i = 0; i < cluster_indices.size(); i++) {
        pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
@@ -1481,7 +1478,7 @@ InteractiveSegmentation::thinBoundaryAndComputeCentroid(
        pcl::PointIndices::Ptr indices(new pcl::PointIndices);
        this->skeletonization2D(tmp_cloud, indices, original_cloud,
                                this->camera_info_, color);
-       if (tmp_cloud->size() > min_size_thresh) {
+       if (tmp_cloud->size() > this->skeleton_min_thresh_) {
           tmp_ci.push_back(*indices);
           *edge_cloud = *edge_cloud + *tmp_cloud;
           Eigen::Vector4f center;
@@ -1705,7 +1702,6 @@ void InteractiveSegmentation::normalizedCurvatureNormalHistogram(
     }
 }
 
-
 void InteractiveSegmentation::publishAsROSMsg(
     const pcl::PointCloud<PointT>::Ptr cloud, const ros::Publisher publisher,
     const std_msgs::Header header) {
@@ -1716,6 +1712,15 @@ void InteractiveSegmentation::publishAsROSMsg(
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = header;
     publisher.publish(ros_cloud);
+}
+
+void InteractiveSegmentation::configCallback(
+    Config &config, uint32_t level) {
+    boost::mutex::scoped_lock lock(mutex_);
+    this->min_cluster_size_ = config.min_cluster_size;
+    this->outlier_concave_ = config.outlier_concave;
+    this->outlier_convex_ = config.outlier_convex;
+    this->skeleton_min_thresh_ = config.skeleton_min_thresh;
 }
 
 int main(int argc, char *argv[]) {

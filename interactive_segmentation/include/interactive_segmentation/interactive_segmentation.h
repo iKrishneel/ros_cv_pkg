@@ -9,6 +9,7 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
+#include <dynamic_reconfigure/server.h>
 
 #include <image_geometry/pinhole_camera_model.h>
 #include <sensor_msgs/Image.h>
@@ -63,6 +64,8 @@
 #include <jsk_recognition_utils/geo/polygon.h>
 #include <jsk_perception/skeletonization.h>
 
+#include <interactive_segmentation/InteractiveSegmentationConfig.h>
+
 #include <omp.h>
 
 class InteractiveSegmentation {
@@ -112,10 +115,13 @@ class InteractiveSegmentation {
     cv::Point2i screen_pt_;
     bool is_init_;
     bool is_stop_signal_;
-  
+    
     int min_cluster_size_;
     int num_threads_;
-  
+    double outlier_concave_;
+    double outlier_convex_;
+    int skeleton_min_thresh_;
+   
     sensor_msgs::CameraInfo::ConstPtr camera_info_;
     jsk_recognition_msgs::PolygonArray polygon_array_;
    
@@ -123,6 +129,11 @@ class InteractiveSegmentation {
     void onInit();
     void subscribe();
     void unsubscribe();
+
+    typedef interactive_segmentation::InteractiveSegmentationConfig Config;
+    boost::shared_ptr<dynamic_reconfigure::Server<Config> > srv_;
+   
+    virtual void configCallback(Config &, uint32_t);
    
  public:
     InteractiveSegmentation();
