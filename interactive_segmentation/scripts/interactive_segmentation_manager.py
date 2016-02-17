@@ -18,7 +18,7 @@ signal_topic_ = '/interactive_segmentation_manager/critical/signal'
 pub_signal_ = None
 
 # incoming subscribing topics
-iseg_node_ = '/interactive_segmentation/final/object'
+iseg_node_ = '/interactive_segmentation/signal/target_object'
 push_node_ = '/pr2/failure/signal'
 merge_node_ = '/merge/failure/signal'
 grasp_node = '/grasp/failure/signal'
@@ -26,7 +26,7 @@ grasp_node = '/grasp/failure/signal'
 # flag for marked object
 is_marked_object_ = False
 START_SEGMENT_NODE = 1
-NOT_RELEASE_OBJECT = 2
+NOT_RELEASE_OBJECT = 2  # tell PR2 not to release this object
 
 def nodelet_manager_signal(value, header):
     restart = Int32Stamped()
@@ -82,7 +82,7 @@ def onInit():
     pub_signal_.publish(start)
     
 def main():
-    rospy.init_node('bounding_box_manager')    
+    rospy.init_node('interactive_segmentation_manager')    
     onInit()
     rospy.spin()
 

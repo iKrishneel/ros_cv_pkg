@@ -45,6 +45,10 @@ void InteractiveSegmentation::onInit() {
     
     this->pub_plane_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/interactive_segmentation/output/plane_info", 1);
+
+    this->pub_signal_ = this->pnh_.advertise<
+       jsk_recognition_msgs::Int32Stamped>(
+          "/interactive_segmentation/signal/target_object", 1);
 }
 
 void InteractiveSegmentation::subscribe() {
@@ -109,7 +113,7 @@ void InteractiveSegmentation::callback(
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
     const sensor_msgs::PointCloud2::ConstPtr &orig_cloud_msg) {
     if (!is_init_) {
-       ROS_ERROR("ERROR: MARKED A TARGET REGION IN THE CLUSTER");
+       ROS_ERROR("ERROR: MARK A TARGET REGION IN THE CLUSTER");
        return;
     }
     boost::mutex::scoped_lock lock(this->mutex_);
@@ -187,6 +191,10 @@ void InteractiveSegmentation::callback(
        if (this->markedPointInSegmentedRegion(
               final_object, this->user_marked_pt_)) {
           this->is_stop_signal_ = true;
+          jsk_recognition_msgs::Int32Stamped tgt_signal;
+          tgt_signal.header = cloud_msg->header;
+          tgt_signal.data = 1;
+          this->pub_signal_.publish(tgt_signal);
        }
        // ----------------------------------------
        

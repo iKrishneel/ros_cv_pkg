@@ -109,6 +109,7 @@ class InteractiveSegmentation {
     ros::Publisher pub_image_;
     ros::Publisher pub_pt_map_;
     ros::Publisher pub_plane_;
+    ros::Publisher pub_signal_;  // signal for final object
    
     ros::ServiceClient srv_client_;
     PointT user_marked_pt_;
