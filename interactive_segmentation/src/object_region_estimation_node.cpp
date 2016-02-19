@@ -10,18 +10,6 @@ ObjectRegionEstimation::ObjectRegionEstimation() :
     this->prev_cloud_ = pcl::PointCloud<PointT>::Ptr(
        new pcl::PointCloud<PointT>);
     this->onInit();
-    /*
-    cv::Mat img1 = cv::imread("/home/krishneel/Desktop/frame0000.jpg");
-    cv::Mat img2 = cv::imread("/home/krishneel/Desktop/frame0001.jpg");
-    
-    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
-
-    if (img1.empty() || img2.empty()) {
-       std::cout << "EMPTY"  << "\n";
-    }
-    
-    this->sceneFlow(cloud, img1, img2, cloud, plane_norm_, plane_norm_);
-    */
 }
 
 void ObjectRegionEstimation::onInit() {

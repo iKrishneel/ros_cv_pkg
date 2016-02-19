@@ -56,7 +56,7 @@
   ;; (report-to-recognition-node)
   )
 
-(while t
- (push-test)
- (ros::spin-once)
+(while (ros::ok)
+  (ros::spin-once)
+  (push-test)
  )

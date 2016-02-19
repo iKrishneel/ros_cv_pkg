@@ -18,8 +18,8 @@ signal_topic_ = '/interactive_segmentation_manager/critical/signal'
 pub_signal_ = None
 
 # incoming subscribing topics
-iseg_node_ = '/interactive_segmentation/signal/target_object'
-push_node_ = '/pr2/failure/signal'
+iseg_node_ = '/interactive_segmentation/output/user_object'
+push_node_ = '/pr2_push_node/failure/signal'
 merge_node_ = '/merge/failure/signal'
 grasp_node = '/grasp/failure/signal'
 
@@ -27,6 +27,7 @@ grasp_node = '/grasp/failure/signal'
 is_marked_object_ = False
 START_SEGMENT_NODE = 1
 NOT_RELEASE_OBJECT = 2  # tell PR2 not to release this object
+FAILURE = -1
 
 def nodelet_manager_signal(value, header):
     restart = Int32Stamped()
@@ -35,7 +36,9 @@ def nodelet_manager_signal(value, header):
     return restart
 
 def interactive_segmentation_callback(msg):
+    global pub_signal_
     if msg.data == 1:
+        rospy.loginfo("user marked object retrieved by pr2")
         hold_object = nodelet_manager_signal(NOT_RELEASE_OBJECT, msg.header)
         pub_signal_.publish(hold_object)
     
@@ -43,19 +46,24 @@ def interactive_segmentation_callback(msg):
         is_marked_object_ = True
 
 def pr2_pushing_callback(msg):
-    if msg.data == -1:
+    global pub_signal_
+    if msg.data == FAILURE:
+        rospy.logerr("pr2 push nodelet raised error on current object")
         restart = nodelet_manager_signal(START_SEGMENT_NODE, msg.header)
         pub_signal_.publish(restart)
 
 def object_region_estimation_callback(msg):
-    if msg.data == -1:
+    global pub_signal_
+    if msg.data == FAILURE:
+        rospy.logerr("object merging nodelet raised error on current object")
         restart = nodelet_manager_signal(START_SEGMENT_NODE, msg.header)
         pub_signal_.publish(restart)
 
 def grasp_object_callback(msg):
+    global pub_signal_
     if is_marked_object_ and msg.data == 1:
         rospy.loginfo("THE TARGET OBJECT IS FOUND")
-    elif msg.data == -1:
+    elif msg.data == FAILURE:
         next = nodelet_manager_signal(START_SEGMENT_NODE, msg.header)
         pub_signal_.publish(next)
     else:
@@ -68,6 +76,7 @@ def subscribe():
     rospy.Subscriber(grasp_node, Int32Stamped, grasp_object_callback)
 
 def onInit():
+    global pub_signal_
     pub_signal_ = rospy.Publisher(signal_topic_, Int32Stamped, queue_size = 10)
     subscribe()
 

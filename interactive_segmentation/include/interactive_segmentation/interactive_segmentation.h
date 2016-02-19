@@ -98,6 +98,7 @@ class InteractiveSegmentation {
     boost::shared_ptr<message_filters::Synchronizer<UsrSyncPolicy> >usr_sync_;
 
     ros::Subscriber sub_polyarray_;
+    ros::Subscriber sub_manager_;
    
     ros::Publisher pub_cloud_;
     ros::Publisher pub_convex_;

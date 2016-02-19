@@ -64,6 +64,9 @@ void InteractiveSegmentation::subscribe() {
        this->sub_polyarray_ = pnh_.subscribe(
           "/multi_plane_estimate/output_refined_polygon", 1,
           &InteractiveSegmentation::polygonArrayCallback, this);
+
+       this->sub_manager_ = pnh_.subscribe(
+          "manager_signal", 1, &InteractiveSegmentation::managerCallback, this);
        
        this->sub_image_.subscribe(this->pnh_, "input_image", 1);
        this->sub_info_.subscribe(this->pnh_, "input_info", 1);
@@ -121,7 +124,7 @@ void InteractiveSegmentation::callback(
     const sensor_msgs::CameraInfo::ConstPtr &info_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
     const sensor_msgs::PointCloud2::ConstPtr &orig_cloud_msg) {
-    if (!is_init_ && !is_segment_scene_) {
+    if (!is_init_ || !is_segment_scene_) {
        ROS_ERROR("ERROR: MARK A TARGET REGION IN THE CLUSTER");
        return;
     }

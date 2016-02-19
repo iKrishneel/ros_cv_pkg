@@ -1,3 +1,5 @@
+#!/usr/bin/env roseus
+
 ;; (ros::load-ros-manifest "roseus")
 ;; (ros::load-ros-manifest "jsk_recognition_msgs")
 
@@ -22,11 +24,8 @@
 (setq *pushed-box* nil)
 (setq *manip-pose* #f(131.783 54.9158 -1.3071 0.272882 -88.7191 -357.653 -5.85497 360.042 -45.3354 1.53671 2.39065 -95.778 -1.10987 -5.93392 359.975 1.67125 48.912))
 
-;;#f(117.164 54.9158 -1.3071 0.272882 -88.7191 -357.647 -5.78018 360.042 -45.3354 1.53671 2.39065 -95.778 -1.10987 -5.93392 359.975 1.70125 46.872) lower pose
-;;#f(296.291 54.9158 -1.3071 0.272882 -88.7191 -357.647 -5.7403 360.042 -45.3354 1.53671 2.39065 -95.778 -1.10987 -5.91148 359.972 7.46125 44.208) higher pose
 
 (send *ri* :angle-vector *manip-pose* 4000)
-;; (send *ri* :wait-interpolation)
 (send *ri* :start-grasp)
 (setq *tfl* (instance ros::transform-listener :init))
 
@@ -37,7 +36,7 @@
 
 ;; report to manager
 (defvar *signal* -1)
-(setq *signal-topic* "/signal")
+(setq *signal-topic* "/pr2_push_node/failure/signal")
 (ros::advertise *signal-topic* jsk_recognition_msgs::Int32Stamped 1)
 
 (defun report-to-recognition-node ()
