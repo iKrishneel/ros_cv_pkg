@@ -20,6 +20,7 @@
 
 (load "generate-tabletop-scene.l")
 (load "move-objects.l")
+(load "grasp-object.l")
 
 (defvar *thresh-x* 30.0)
 (defvar *thresh-y* 30.0)
@@ -60,10 +61,9 @@
   )
 
 
-					;(defun push-node()
 (while (ros::ok)
   (ros::spin-once)
   (push-test)
+  (grasp-object)
   (ros::sleep)
   )
-					;)

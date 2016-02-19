@@ -21,7 +21,8 @@ pub_signal_ = None
 iseg_node_ = '/interactive_segmentation/output/user_object'
 push_node_ = '/pr2_push_node/failure/signal'
 merge_node_ = '/object_region_estimation/failure/signal'
-grasp_node = '/grasp/failure/signal'
+bbox_node_ = '/bounding_box_handler/failure/signal' # if box is empty
+grasp_node_ = '/grasp_node/failure/signal'
 
 # flag for marked object
 is_marked_object_ = False
@@ -73,7 +74,7 @@ def subscribe():
     rospy.Subscriber(iseg_node_, Int32Stamped, interactive_segmentation_callback)
     rospy.Subscriber(push_node_, Int32Stamped, pr2_pushing_callback)
     rospy.Subscriber(merge_node_, Int32Stamped, object_region_estimation_callback)
-    rospy.Subscriber(grasp_node, Int32Stamped, grasp_object_callback)
+    rospy.Subscriber(grasp_node_, Int32Stamped, grasp_object_callback)
 
 def onInit():
     global pub_signal_

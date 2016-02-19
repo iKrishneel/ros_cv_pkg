@@ -56,6 +56,11 @@
     <arg name="input_point" value="$(arg input_point)" />
     <arg name="camera_info" value="$(arg input_info)" />
   </include>
+
+  <!-- launch node to get the bounding box -->
+  <node pkg="interactive_segmentation" type="bounding_box_handler.py"
+	name="bounding_box_handler" output="screen">
+  </node>
   
   <!-- launch topic manager -->
   <node pkg="interactive_segmentation" type="interactive_segmentation_manager.py"

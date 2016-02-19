@@ -4,6 +4,7 @@
   <arg name="MANAGER" default="organized_multi_plane_manager" />
   <arg name="MACHINE" default="localhost"/>
   <arg name="GDB" default="false" />
+  <arg name="HANDLE_ESTIMATOR" default="true" />
   <machine name="localhost" address="localhost" />
   
   <group if="$(arg LAUNCH_MANAGER)">
@@ -76,4 +77,19 @@
     <remap from="~input_polygons" to="/multi_plane_estimate/output_refined_polygon" />
     <remap from="~input_coefficients" to="/multi_plane_estimate/output_refined_coefficients" />
   </node>
+
+  <node pkg="roseus" type="roseus" name="handle_estimator"
+	if="$(arg HANDLE_ESTIMATOR)"
+	machine="$(arg MACHINE)"
+	args="$(find jsk_pcl_ros)/euslisp/handle_estimator.l"
+	output="screen">
+    <remap from="~input_box" to="/bounding_box_handler/output/box" />
+    <rosparam>
+      approach_offset: 0.1
+      gripper_size: 0.8
+      angle_difference: 20
+      candidate_num: 5
+    </rosparam>
+  </node>
+  
 </launch>

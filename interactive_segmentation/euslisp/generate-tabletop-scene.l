@@ -176,8 +176,7 @@
   )
 
 (defmethod generate-boundingbox-array
-  (:init
-   ()
+  (:init()
    (ros::subscribe *boundingbox-array-topic* jsk_recognition_msgs::BoundingBoxArray #'send self :boundingbox-array-cb))
 
   (:boundingbox-array-cb

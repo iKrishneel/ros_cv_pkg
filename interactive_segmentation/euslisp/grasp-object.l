@@ -1,18 +1,17 @@
 #!/usr/bin/env roseus
 
-(require "package://pr2eus/pr2-interface.l")
+;(require "package://pr2eus/pr2-interface.l")
 (require "package://pr2eus_moveit/euslisp/pr2eus-moveit.l")
 
 (ros::load-ros-manifest "interactive_segmentation")
 (ros::load-ros-manifest "jsk_recognition_msgs")
 (ros::load-ros-manifest "geometry_msgs")
 
-(load "pr2_main.l")
+; (load "pr2_main.l")
 
 (setq *parent-link* "/base_footprint")
 (setq *child-link* "/head_mount_kinect_rgb_optical_frame")
 (setq *tf-listener* (instance ros::transform-listener :init))
-
 
 (defclass handle-object
   :slots
@@ -155,7 +154,7 @@
 (defun lift-up(&optional (use-arm :larm))
 
   ;; (send *ri* :start-grasp use-arm :gain 0.01)
-  (speak-en "object grasped")
+					;(speak-en "object grasped")
   (send *ri* :wait-interpolation)
   
   (setq trans-up-pos #f(0 0 100))
@@ -167,7 +166,7 @@
 
   (move-object)
 
-  (speak-en "releasing object")
+  ;(speak-en "releasing object")
   (setq trans-down-pos #f(0 0 -100))
   (setq endpos (send *pr2* :larm :end-coords :copy-worldcoords))
   (send endpos :translate trans-down-pos :world)
@@ -178,12 +177,14 @@
   (send *ri* :stop-grasp use-arm)
   (send *ri* :wait-interpolation)
 
+  (unix:usleep (* 1000 2000))
+
   ;; move-hand up
   (setq trans-up-pos #f(0 0 200))
   (setq endpos (send *pr2* :larm :end-coords :copy-worldcoords))
   (send endpos :translate trans-up-pos :world)
   (send *pr2* use-arm :inverse-kinematics  endpos)
-  (send *ri* :angle-vector (send *pr2* :angle-vector) 3000)
+  (send *ri* :angle-vector (send *pr2* :angle-vector) 5000)
   (send *ri* :wait-interpolation)
 
   (send *ri* :angle-vector (send *pr2* :angle-vector *manip-pose*) 2000)
@@ -191,7 +192,7 @@
   )
 
 (defun move-object(&optional (use-arm :larm) )
-  (speak-en "Moving Object to new position")
+  ;(speak-en "Moving Object to new position")
   (setq endpos (send *pr2* :larm :end-coords :copy-worldcoords))
   (send endpos :translate #f(0 400 0) :world)
   (send *pr2* use-arm :inverse-kinematics  endpos)
@@ -199,16 +200,16 @@
   (send *ri* :wait-interpolation)
   )
 
-(defun main()
+(defun grasp-object()
   (init-grasp)
-  (while (ros::ok)
-    (ros::spin-once)
-    (setq *use-arm* :larm)
-    (setq process (send *handle-obj* :grasp-selected-object *use-arm*))
-    (when process
-      (lift-up *use-arm*))
-    (unix:usleep (* 1000 3000))
+  ;; (while (ros::ok)
+  (ros::spin-once)
+  (setq *use-arm* :larm)
+  (setq process (send *handle-obj* :grasp-selected-object *use-arm*))
+  (when process
+    (lift-up *use-arm*))
+  (unix:usleep (* 1000 3000))
 
     ;; (manip-pose)
-    )
-)
+  ;; )
+  t)
