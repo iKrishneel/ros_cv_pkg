@@ -20,6 +20,10 @@
 
 (load "generate-tabletop-scene.l")
 
+(defvar *thresh-x* 30.0)
+(defvar *thresh-y* 30.0)
+(defvar *thresh-z* 30.0)
+
 (ros::ros-info "RUNNING")
 
 (defun manip-pose(&optional(time 12000))
@@ -37,40 +41,31 @@
     )
   )
 
-(defun check-arm-reachability(pose-vector &optional (arm :larm))
-  (send *pr2* arm :inverse-kinematics pose-vector :debug-view :t)
-  )
-
 (defun boundingbox-array-callback(msg)
-  (when (car (send msg :boxes))
-    (setq target-box (car (send msg :boxes)))
-    (setq dimension (send target-box :dimensions))
-    (setq pose (send target-box :pose))
-
-    (setq position (send pose :position))
-    
-    (setq target-position (make-coords))
-    (send target-position :replace-pos (float-vector (send position :x) (send position :y) (send position :z)))
-
-    (unix:usleep (* 1000 5000))
-
-    (ros::ros-warn "time-out")
-    
-    (check-arm-reachability target-position :larm)
-    (send-target-pose-to-robot target-position :larm 15000)
-     
-    
-    (setq x (send (send target-box :dimensions) :x))
-
-    (print target-position)
-    (ros::ros-warn "subscribing")
+  (let ((boxes (send msg :boxes)))
+    (dolist (box boxes)
+      (let*((dim (ros::tf-point->pos (send box :dimensions)))
+	    (pass-box nil))
+	(if (and (and (>= (elt dim 0) *thresh-x*)
+		      (>= (elt dim 1) *thresh-y*))
+		 (>= (elt dim 2) *thresh-z*))
+	    (progn
+	      (push-test)
+	      (print "TRUE")
+	      )
+	  (print "FALSE")
+	  ;; (return-from boundingbox-array-callback)
+	  )
+	pass-box)
+      )
+    (format t "~C~C" #\return #\linefeed)
     )
   )
 
 
 (defun main()
   (manip-pose)
-  (ros::subscribe "/interactive_segmentation_decomposer/boxes"
+  (ros::subscribe *boundingbox-array-topic*
 		  jsk_recognition_msgs::BoundingBoxArray #'boundingbox-array-callback)
   (do-until-key
   (ros::spin-once))
@@ -84,15 +79,14 @@
 (defun push-test ()
   (load "move-objects.l")
   (init-scene)
-  ;; (while (ros::ok)
-  ;; (ros::spin-once)
+
   (ros::ros-warn "Robot received an order, need to work now!")
-    ;; (unix:usleep (* 1000 5000))
-  (update-scene)
-  (push-one-time)
+
+  (if (update-scene)
+      (push-one-time)
+    (ros::ros-warn "DID NOT PUSH")
+    )
   (ros::ros-warn "Robot completed execution!")
-    ;; (ros::sleep))
   (report-to-recognition-node)
-  
   )
 

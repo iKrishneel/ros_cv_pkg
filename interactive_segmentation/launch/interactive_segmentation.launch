@@ -8,15 +8,17 @@
   <arg name="bounding_box" default="true" />
   <arg name="num_threads" default="8" />
   <arg name="RVIZ" default="false" />
+
+  <arg name="PR2" default="true" /> 
   
   <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch">
     <arg name="cloud" value="$(arg input_point)"/>
   </include>
 
-  <include file="$(find interactive_segmentation)/launch/organized_multi_plane_segmentation.launch">
-    <arg name="INPUT" value="$(arg filter_point)"/>
-  </include>
-  
+  <!-- <include file="$(find interactive_segmentation)/launch/organized_multi_plane_segmentation.launch"> -->
+  <!--   <arg name="INPUT" value="$(arg filter_point)"/> -->
+  <!-- </include> -->
+
   <node pkg="interactive_segmentation" name="interactive_segmentation"
 	type="interactive_segmentation_node" output="screen" clear_params="true">
     <remap from="input_image" to="$(arg image)" />

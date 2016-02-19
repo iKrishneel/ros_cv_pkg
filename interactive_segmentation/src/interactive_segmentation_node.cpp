@@ -105,6 +105,7 @@ void InteractiveSegmentation::screenPointCallback(
 void InteractiveSegmentation::managerCallback(
     const jsk_recognition_msgs::Int32Stamped::ConstPtr &manager_msg) {
     if (manager_msg->data == 1) {
+       ROS_INFO("\033[34m RECEIVED MANAGER SIGNAL \033[0m");
        is_segment_scene_ = true;
     }
 }
