@@ -1,3 +1,5 @@
+#!/usr/bin/env roseus
+
 ;; (ros::load-ros-manifest "roseus")
 ;; (ros::load-ros-manifest "jsk_recognition_msgs")
 
@@ -5,6 +7,7 @@
 
 (setq *polygon-array-topic* "/multi_plane_estimate/output_refined_polygon")
 (setq *boundingbox-array-topic* "/interactive_segmentation_decomposer/boxes")
+;; (setq *boundingbox-array-topic* "/cluster_decomposer_final/boxes")
 
 
 ;; (if (not (boundp '*pr2*))
@@ -21,11 +24,8 @@
 (setq *pushed-box* nil)
 (setq *manip-pose* #f(131.783 54.9158 -1.3071 0.272882 -88.7191 -357.653 -5.85497 360.042 -45.3354 1.53671 2.39065 -95.778 -1.10987 -5.93392 359.975 1.67125 48.912))
 
-;;#f(117.164 54.9158 -1.3071 0.272882 -88.7191 -357.647 -5.78018 360.042 -45.3354 1.53671 2.39065 -95.778 -1.10987 -5.93392 359.975 1.70125 46.872) lower pose
-;;#f(296.291 54.9158 -1.3071 0.272882 -88.7191 -357.647 -5.7403 360.042 -45.3354 1.53671 2.39065 -95.778 -1.10987 -5.91148 359.972 7.46125 44.208) higher pose
 
 (send *ri* :angle-vector *manip-pose* 4000)
-;; (send *ri* :wait-interpolation)
 (send *ri* :start-grasp)
 (setq *tfl* (instance ros::transform-listener :init))
 
@@ -33,6 +33,11 @@
 (setq *pose-topic* "/pr2_pushing_node/assumed_pose")
 (ros::advertise "/robot_pushing_motion_node/pushed_box_index" std_msgs::Int64 1)
 (ros::advertise *pose-topic* geometry_msgs::PoseStamped 1)
+
+;; report to manager
+(defvar *signal* -1)
+(setq *signal-topic* "/pr2_push_node/failure/signal")
+(ros::advertise *signal-topic* jsk_recognition_msgs::Int32Stamped 1)
 
 (defun report-to-recognition-node ()
   (let ((idx (instance std_msgs::Int64 :init))
@@ -57,7 +62,15 @@
 
 (defclass generate-polygon-array
   :slots 
-  (*vertices-list-org* *plane-normal-list* *latest-polygon-list* *polygon-list* *cloud-stamp* *cloud-centroid-list* *plgs-cb-flag* *cofs-cb-flag*))
+  (*vertices-list-org*
+   *plane-normal-list*
+   *latest-polygon-list*
+   *polygon-list*
+   *cloud-stamp*
+   *cloud-centroid-list*
+   *plgs-cb-flag*
+   *cofs-cb-flag*)
+  )
 
 (defmethod generate-polygon-array
   (:init 
@@ -80,7 +93,12 @@
 							       "/base_footprint" "/head_mount_kinect_rgb_optical_frame" (ros::time 0)))
                                              (dolist (pt pts)
                                                (setq trans-pt (send trans :transform-vector
-                                                                    (scale 1000 (float-vector (send pt :x) (send pt :y) (send pt :z)))))
+                                                                    (scale 1000 (float-vector (send pt :x)
+											      (send pt :y)
+											      (send pt :z))
+									   )
+								    )
+						     )
                                                (push trans-pt pts-list))
                                              (reverse pts-list)))
                                        plg-list))
@@ -152,80 +170,76 @@
 
 (defclass generate-boundingbox-array
   :slots
-  (*latest-box-list* *box-list* *boxs-stamp*))
+  (*latest-box-list*
+   *box-list*
+   *boxs-stamp*)
+  )
 
 (defmethod generate-boundingbox-array
-  (:init
-   ()
+  (:init()
    (ros::subscribe *boundingbox-array-topic* jsk_recognition_msgs::BoundingBoxArray #'send self :boundingbox-array-cb))
 
   (:boundingbox-array-cb
    (msg)
    (ros::ros-info "boundingbox callback")
    (setq *boxes-stamp* (send msg :header :stamp))
-
+   
    (let ((boxes (send msg :boxes))
          (trans (send *tfl* :lookup-transform "/base_footprint" "/head_mount_kinect_rgb_optical_frame" (ros::time 0))))
      (print trans)
      (setq *latest-box-list*
            (mapcar #'(lambda (box)
-		      
+		       
 		       ;; convert m -> mm ros::tf-point->pos
                        (let* ((dim (ros::tf-point->pos (send box :dimensions)))  
                               (cube (make-cube (elt dim 0) (elt dim 1) (elt dim 2)))
                               (cds (ros::tf-pose->coords (send box :pose))))
 
-			 (print "DEBUG")
-			 (print cds)
-			 
                          (send cds :transform trans :world)			 
                          (send cube :move-to cds)
-
-			 
-			 (print cds)
-			 (print "END Debug")
 			 
                          (send cube :set-color (float-vector (random 1.0) (random 1.0) (random 1.0)))
                          cube))
-                   boxes))))
+                   boxes)
+	   )
+     )
+   )
 
-  (:draw-boxes
-   (boxes)
-   (send *irtviewer* :objects (append (send *irtviewer* :objects) boxes))
-   (send *irtviewer* :draw-objects :flush t))
+  (:draw-boxes(boxes)
+	      (send *irtviewer* :objects (append (send *irtviewer* :objects) boxes))
+	      (send *irtviewer* :draw-objects :flush t)
+	      )
 
-  (:update-boxes
-   ()
-   (setq *box-list* (copy-object *latest-box-list*)))
+  (:update-boxes()
+		(setq *box-list* (copy-object *latest-box-list*))
+		)
 
-  (:get-all-boxes
-   ()
-   *box-list*)
+  (:get-all-boxes()
+		 *box-list*)
   
-  (:get-tabletop-boxes
-   ()
-   *filter-boxes*)
+  (:get-tabletop-boxes()
+		      *filter-boxes*)
 
-  (:filter-tabletop-boxes
-   ()
-   (let (boxes-temp
-         ground-pos)
-     (dolist (b *box-list*)
-       ;;filter boxes that are not on table
-       (setf (elt (setq ground-pos (send (send b :copy-worldcoords) :worldpos)) 2) 0)
-       (if (send *table* :intersect-line (send b :worldpos) ground-pos)
-         ;; (if (send *table* :intersect-point-vector (send b :worldpos) #f(0 0 -1))
-         ;;     (if (> (elt (send b :worldpos) 2) (elt (cadr (send *table* :centroid)) 2))
-           (push b boxes-temp)))
-     (setq *filter-boxes* (reverse boxes-temp))))
+  (:filter-tabletop-boxes()
+			 (let (boxes-temp
+			       ground-pos)
+			   (dolist (b *box-list*)
+			     ;;filter boxes that are not on table
+			     (setf (elt (setq ground-pos (send (send b :copy-worldcoords) :worldpos)) 2) 0)
+			     (if (send *table* :intersect-line (send b :worldpos) ground-pos)
+				 ;; (if (send *table* :intersect-point-vector (send b :worldpos) #f(0 0 -1))
+				 ;;     (if (> (elt (send b :worldpos) 2) (elt (cadr (send *table* :centroid)) 2))
+				 (push b boxes-temp)))
+			   (setq *filter-boxes* (reverse boxes-temp)))
+			 )
 
-  (:boxes-centroid
-   ()
-   (let ((sum #f(0 0 0)))
-     (dolist (b *boxes*)
-       (setq sum (v+ sum (send b :worldpos))))
-     (setq sum (scale (/ 1.0 (length *boxes*)) sum))
-     sum))
+  (:boxes-centroid()
+		  (let ((sum #f(0 0 0)))
+		    (dolist (b *boxes*)
+		      (setq sum (v+ sum (send b :worldpos))))
+		    (setq sum (scale (/ 1.0 (length *boxes*)) sum))
+		    sum)
+		  )
 
   )
 
@@ -241,12 +255,49 @@
   (send *irtviewer* :objects (list *pr2*))
   (setq *table* nil)
   (setq *boxes* nil)
+  ;; (while t
+  ;;   (ros::spin-once)
+  ;;   (if (and (send *gpa* :update-polygons)
+  ;; 	     (send *gba* :update-boxes))
+  ;;       (return)
+  ;;     (ros::spin-once))
+  ;;   )
+
+  ;; ------------------------------------------------------------------
+  (setq *box-valid* nil)
   (while t
     (ros::spin-once)
     (if (and (send *gpa* :update-polygons)
 	     (send *gba* :update-boxes))
-        (return)
-      (ros::spin-once)))
+	(progn
+	  (dolist (box (send *gba* :update-boxes))
+	    (if (and (and (>= (elt (car (send box :csg)) 1) *thresh-x*)
+			  (>= (elt (car (send box :csg)) 2) *thresh-y*))
+		     (>= (elt (car (send box :csg)) 3) *thresh-z*))
+		(progn
+		  (setq *box-valid* t)
+		  (print box)
+		  ;; (print (elt (car (send box :csg)) 1))
+		  )
+	      )
+	    )
+	  (speak-en "OBJECT PASSED VALID CHECK")
+	  (return)
+	  )
+      (ros::spin-once)
+      )
+    )
+  ;; publish failure signal
+  (unless *box-valid*
+    (setq signal-flag (instance jsk_recognition_msgs::Int32Stamped :init))
+    (send signal-flag :header :stamp (ros::time-now))
+    (send signal-flag :header :frame_id "/camera_rgb_optical_frame")
+    (send signal-flag :data -1)
+    (ros::publish *signal-topic* signal-flag)
+    (return-from update-scene nil)
+    )
+    ;; ------------------------------------------------------------
+  
   (send *gpa* :sort-polygons-by-dist-from-head)
   (setq *table* (car (send *gpa* :get-polygons)))
   (send *gba* :filter-tabletop-boxes)
@@ -256,13 +307,20 @@
   (send *gba* :draw-boxes *boxes*)
   (setq *left-arm-candidates* (sort-boxes-by-dist-from *boxes* (send *pr2* :larm :end-coords)))
   (setq *right-arm-candidates* (sort-boxes-by-dist-from *boxes* (send *pr2* :rarm :end-coords)))
-  (setq *boxes-small-to-big* (sort (copy-seq *boxes*) #'(lambda (b1 b2)
-                                                        (if (<= (send b1 :volume) (send b2 :volume))
-                                                            t))))
+  (setq *boxes-small-to-big* (sort (copy-seq *boxes*) #'
+				   (lambda (b1 b2)
+				     (if (<= (send b1 :volume) (send b2 :volume))
+					 t)
+				     )
+				   )
+	)
   (setq *boxes-on-table* nil)
   (dolist (b *boxes*)
     (if (<= (smallest-dist-to-table b) 50)
-        (push b *boxes-on-table*))))
+        (push b *boxes-on-table*)
+      )
+    )
+  t)
 
 
 (defun smallest-dist-to-table (box &optional (table *table*))

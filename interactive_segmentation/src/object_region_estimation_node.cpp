@@ -4,24 +4,12 @@
 #include <interactive_segmentation/object_region_estimation.h>
 
 ObjectRegionEstimation::ObjectRegionEstimation() :
-    num_threads_(8), is_prev_ok(false), min_cluster_size_(100) {
+    num_threads_(8), is_prev_ok_(false), min_cluster_size_(100) {
     this->go_signal_ = false;
     
     this->prev_cloud_ = pcl::PointCloud<PointT>::Ptr(
        new pcl::PointCloud<PointT>);
     this->onInit();
-    /*
-    cv::Mat img1 = cv::imread("/home/krishneel/Desktop/frame0000.jpg");
-    cv::Mat img2 = cv::imread("/home/krishneel/Desktop/frame0001.jpg");
-    
-    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
-
-    if (img1.empty() || img2.empty()) {
-       std::cout << "EMPTY"  << "\n";
-    }
-    
-    this->sceneFlow(cloud, img1, img2, cloud, plane_norm_, plane_norm_);
-    */
 }
 
 void ObjectRegionEstimation::onInit() {
@@ -41,6 +29,9 @@ void ObjectRegionEstimation::onInit() {
 
     this->pub_flow_ = this->pnh_.advertise<sensor_msgs::Image>(
        "/object_region_estimation/output/scene_flow", 1);
+
+    this->pub_signal_ = this->pnh_.advertise<Int32Stamped>(
+       "/object_region_estimation/failure/signal", 1);
 }
 
 void ObjectRegionEstimation::subscribe() {
@@ -80,11 +71,9 @@ void ObjectRegionEstimation::callbackPrev(
     const sensor_msgs::Image::ConstPtr &image_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
     const sensor_msgs::PointCloud2::ConstPtr &plane_msg) {
-
-    if (is_prev_ok) {
-       return;
-    }
-   
+    // if (is_prev_ok_) {
+    //    return;
+    // }
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     cv_bridge::CvImagePtr cv_ptr;
@@ -96,7 +85,7 @@ void ObjectRegionEstimation::callbackPrev(
        return;
     }
     if (cloud->empty() || cv_ptr->image.empty()) {
-       is_prev_ok = false;
+       is_prev_ok_ = false;
     } else {
        pcl::PointCloud<pcl::PointNormal>::Ptr plane_info(
           new pcl::PointCloud<pcl::PointNormal>);
@@ -107,9 +96,9 @@ void ObjectRegionEstimation::callbackPrev(
        this->plane_point_ = plane_info->points[0].getVector3fMap();
        pcl::copyPointCloud<PointT, PointT>(*cloud, *prev_cloud_);
        this->prev_image_ = cv_ptr->image.clone();
-       is_prev_ok = true;
+       is_prev_ok_ = true;
     }
-    ROS_INFO("SEGMENTED REGION SET...");
+    ROS_INFO("\033[33mSEGMENTED REGION SET...\033[0m");
 }
 
 void ObjectRegionEstimation::callback(
@@ -117,7 +106,7 @@ void ObjectRegionEstimation::callback(
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,  // table -
     const sensor_msgs::PointCloud2::ConstPtr &orig_msg,   // full scene
     const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {  // end-eff
-    if (!is_prev_ok) {
+    if (!is_prev_ok_) {
        ROS_ERROR("ERROR: PREV INFO NOT FOUND");
        return;
     }
@@ -177,17 +166,30 @@ void ObjectRegionEstimation::callback(
     }
     
     // this->clusterFeatures(all_indices, cloud, normals, 5, 0.5);
-
-    jsk_recognition_msgs::ClusterPointIndices ros_indices;
-    ros_indices.cluster_indices = pcl_conversions::convertToROSPointIndices(
-        all_indices, cloud_msg->header);
-    ros_indices.header = cloud_msg->header;
-    pub_indices_.publish(ros_indices);
+    if (all_indices.empty()) {
+       ROS_ERROR("\nOBJECT MERGING FAIL. RESETTING SEGMENTATION");
+       Int32Stamped fail_signal;
+       fail_signal.header = cloud_msg->header;
+       fail_signal.data = -1;
+       this->pub_signal_.publish(fail_signal);
+    } else {
+       jsk_recognition_msgs::ClusterPointIndices ros_indices;
+       ros_indices.cluster_indices = pcl_conversions::convertToROSPointIndices(
+          all_indices, cloud_msg->header);
+       ros_indices.header = cloud_msg->header;
+       pub_indices_.publish(ros_indices);
     
-    sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*cloud, ros_cloud);
-    ros_cloud.header = cloud_msg->header;
-    this->pub_cloud_.publish(ros_cloud);
+       sensor_msgs::PointCloud2 ros_cloud;
+       pcl::toROSMsg(*cloud, ros_cloud);
+       ros_cloud.header = cloud_msg->header;
+       this->pub_cloud_.publish(ros_cloud);
+    }
+
+    //---
+    Int32Stamped fail_signal;
+    fail_signal.header = cloud_msg->header;
+    fail_signal.data = -1;
+    this->pub_signal_.publish(fail_signal);
 }
 
 bool ObjectRegionEstimation::convertToCvMat(

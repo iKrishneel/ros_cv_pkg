@@ -44,6 +44,7 @@
 #include <jsk_recognition_utils/geo/polygon.h>
 #include <jsk_recognition_msgs/PolygonArray.h>
 #include <jsk_recognition_msgs/Histogram.h>
+#include <jsk_recognition_msgs/Int32Stamped.h>
 
 #include <std_msgs/Header.h>
 #include <geometry_msgs/PoseStamped.h>
@@ -57,9 +58,9 @@ class ObjectRegionEstimation {
     typedef pcl::PointXYZRGB PointT;
     typedef pcl::PointXYZI PointI;
     typedef pcl::Normal Normal;
-    typedef pcl::SHOT352 SHOT352;
     typedef pcl::SHOT1344 SHOT1344;
     typedef pcl::ReferenceFrame RFType;
+    typedef jsk_recognition_msgs::Int32Stamped Int32Stamped;
    
 #define FEATURE_DIM 1344
   
@@ -90,10 +91,11 @@ class ObjectRegionEstimation {
     ros::Publisher pub_cloud_;
     ros::Publisher pub_indices_;
     ros::Publisher pub_flow_;
+    ros::Publisher pub_signal_;
     ros::ServiceClient srv_client_;
   
     int num_threads_;
-    bool is_prev_ok;
+    bool is_prev_ok_;
     float min_cluster_size_;
     std_msgs::Header header_;
   

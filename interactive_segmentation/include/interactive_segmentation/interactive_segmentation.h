@@ -9,6 +9,7 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
+#include <dynamic_reconfigure/server.h>
 
 #include <image_geometry/pinhole_camera_model.h>
 #include <sensor_msgs/Image.h>
@@ -63,23 +64,24 @@
 #include <jsk_recognition_utils/geo/polygon.h>
 #include <jsk_perception/skeletonization.h>
 
+#include <interactive_segmentation/InteractiveSegmentationConfig.h>
+
 #include <omp.h>
 
 class InteractiveSegmentation {
 
     typedef pcl::PointXYZRGB PointT;
     typedef  pcl::FPFHSignature33 FPFHS;
-
+    typedef jsk_recognition_msgs::Int32Stamped Int32Stamped;
+   
  private:
     boost::mutex mutex_;
     ros::NodeHandle pnh_;
     typedef message_filters::sync_policies::ApproximateTime<
-       sensor_msgs::Image,
        sensor_msgs::CameraInfo,
        sensor_msgs::PointCloud2,
        sensor_msgs::PointCloud2> SyncPolicy;
 
-    message_filters::Subscriber<sensor_msgs::Image> sub_image_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
     message_filters::Subscriber<sensor_msgs::CameraInfo> sub_info_;
@@ -95,6 +97,7 @@ class InteractiveSegmentation {
     boost::shared_ptr<message_filters::Synchronizer<UsrSyncPolicy> >usr_sync_;
 
     ros::Subscriber sub_polyarray_;
+    ros::Subscriber sub_manager_;
    
     ros::Publisher pub_cloud_;
     ros::Publisher pub_convex_;
@@ -106,16 +109,20 @@ class InteractiveSegmentation {
     ros::Publisher pub_image_;
     ros::Publisher pub_pt_map_;
     ros::Publisher pub_plane_;
+    ros::Publisher pub_signal_;  // signal for final object
    
     ros::ServiceClient srv_client_;
     PointT user_marked_pt_;
     cv::Point2i screen_pt_;
     bool is_init_;
-    bool is_stop_signal_;
-  
+    bool is_segment_scene_;
+   
     int min_cluster_size_;
     int num_threads_;
-  
+    double outlier_concave_;
+    double outlier_convex_;
+    int skeleton_min_thresh_;
+   
     sensor_msgs::CameraInfo::ConstPtr camera_info_;
     jsk_recognition_msgs::PolygonArray polygon_array_;
    
@@ -123,16 +130,22 @@ class InteractiveSegmentation {
     void onInit();
     void subscribe();
     void unsubscribe();
+
+    typedef interactive_segmentation::InteractiveSegmentationConfig Config;
+    boost::shared_ptr<dynamic_reconfigure::Server<Config> > srv_;
+   
+    virtual void configCallback(Config &, uint32_t);
    
  public:
     InteractiveSegmentation();
     virtual void screenPointCallback(
        const geometry_msgs::PointStamped::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);
+    virtual void managerCallback(
+       const jsk_recognition_msgs::Int32Stamped::ConstPtr &);
     virtual void polygonArrayCallback(
        const jsk_recognition_msgs::PolygonArray::ConstPtr &);
     virtual void callback(
-       const sensor_msgs::Image::ConstPtr &,
        const sensor_msgs::CameraInfo::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);

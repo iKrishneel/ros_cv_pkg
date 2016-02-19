@@ -5,11 +5,13 @@
 #include <vector>
 
 InteractiveSegmentation::InteractiveSegmentation():
-    min_cluster_size_(100), is_init_(true),
-    is_stop_signal_(false), num_threads_(8) {
+    is_init_(true), is_segment_scene_(true), num_threads_(8) {
     pnh_.getParam("num_threads", this->num_threads_);
-
-    // std::cout << "STARTING WITH: " << num_threads_  << "\n";
+    this->srv_ = boost::shared_ptr<dynamic_reconfigure::Server<Config> >(
+       new dynamic_reconfigure::Server<Config>);
+    dynamic_reconfigure::Server<Config>::CallbackType f = boost::bind(
+       &InteractiveSegmentation::configCallback, this, _1, _2);
+    this->srv_->setCallback(f);
     
     this->subscribe();
     this->onInit();
@@ -43,6 +45,10 @@ void InteractiveSegmentation::onInit() {
     
     this->pub_plane_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/interactive_segmentation/output/plane_info", 1);
+
+    this->pub_signal_ = this->pnh_.advertise<
+       jsk_recognition_msgs::Int32Stamped>(
+          "/interactive_segmentation/signal/target_object", 1);
 }
 
 void InteractiveSegmentation::subscribe() {
@@ -58,22 +64,24 @@ void InteractiveSegmentation::subscribe() {
        this->sub_polyarray_ = pnh_.subscribe(
           "/multi_plane_estimate/output_refined_polygon", 1,
           &InteractiveSegmentation::polygonArrayCallback, this);
+
+       this->sub_manager_ = pnh_.subscribe(
+          "manager_signal", 1, &InteractiveSegmentation::managerCallback, this);
        
-       this->sub_image_.subscribe(this->pnh_, "input_image", 1);
        this->sub_info_.subscribe(this->pnh_, "input_info", 1);
        this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
        this->sub_normal_.subscribe(this->pnh_, "input_normal", 1);
        this->sync_ = boost::make_shared<message_filters::Synchronizer<
           SyncPolicy> >(100);
-       sync_->connectInput(sub_image_, sub_info_, sub_cloud_, sub_normal_);
+       sync_->connectInput(sub_info_, sub_cloud_, sub_normal_);
        sync_->registerCallback(boost::bind(&InteractiveSegmentation::callback,
-                                           this, _1, _2, _3, _4));
+                                           this, _1, _2, _3));
 }
 
 void InteractiveSegmentation::unsubscribe() {
     this->sub_cloud_.unsubscribe();
     this->sub_info_.unsubscribe();
-    this->sub_image_.unsubscribe();
+    // this->sub_image_.unsubscribe();
 }
 
 void InteractiveSegmentation::screenPointCallback(
@@ -96,23 +104,32 @@ void InteractiveSegmentation::screenPointCallback(
     }
 }
 
+void InteractiveSegmentation::managerCallback(
+    const jsk_recognition_msgs::Int32Stamped::ConstPtr &manager_msg) {
+    if (manager_msg->data == 1) {
+       ROS_INFO("\033[34m RECEIVED MANAGER SIGNAL \033[0m");
+       is_segment_scene_ = true;
+    }
+}
+
+// move this to below callback
 void InteractiveSegmentation::polygonArrayCallback(
     const jsk_recognition_msgs::PolygonArray::ConstPtr &poly_msg) {
     this->polygon_array_ = *poly_msg;
 }
 
 void InteractiveSegmentation::callback(
-    const sensor_msgs::Image::ConstPtr &image_msg,
     const sensor_msgs::CameraInfo::ConstPtr &info_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
     const sensor_msgs::PointCloud2::ConstPtr &orig_cloud_msg) {
+    if (!is_segment_scene_) {
+       return;
+    }
     if (!is_init_) {
-       ROS_ERROR("ERROR: MARKED A TARGET REGION IN THE CLUSTER");
+       ROS_ERROR("ERROR: MARK A TARGET REGION IN THE CLUSTER");
        return;
     }
     boost::mutex::scoped_lock lock(this->mutex_);
-    cv::Mat image = cv_bridge::toCvShare(
-       image_msg, image_msg->encoding)->image;
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     pcl::PointCloud<PointT>::Ptr original_cloud(
@@ -184,7 +201,10 @@ void InteractiveSegmentation::callback(
        // check if it is the marked object --------
        if (this->markedPointInSegmentedRegion(
               final_object, this->user_marked_pt_)) {
-          this->is_stop_signal_ = true;
+          jsk_recognition_msgs::Int32Stamped tgt_signal;
+          tgt_signal.header = cloud_msg->header;
+          tgt_signal.data = 1;
+          this->pub_signal_.publish(tgt_signal);
        }
        // ----------------------------------------
        
@@ -230,7 +250,9 @@ void InteractiveSegmentation::callback(
     pcl::toROSMsg(*centroid_normal, ros_normal);
     ros_normal.header = cloud_msg->header;
     pub_normal_.publish(ros_normal);
-    
+
+    // reset processing signal
+    this->is_segment_scene_ = false;
     ROS_INFO("\n\033[34m ALL VALID REGION LABELED \033[0m");
 }
 
@@ -1009,8 +1031,7 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
 #pragma omp section
 #endif
        {
-          double ccof = 0.015f;
-          this->pnh_.getParam("outlier_concave", ccof);
+          double ccof = this->outlier_concave_;
           this->edgeBoundaryOutlierFiltering(concave_edge_points,
                                              static_cast<float>(ccof));
        }
@@ -1018,7 +1039,7 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
 #pragma omp section
 #endif
        {
-          double cvof = 0.015f;
+          double cvof = this->outlier_convex_;
           this->pnh_.getParam("outlier_convex", cvof);
           this->edgeBoundaryOutlierFiltering(convex_edge_points,
                                              static_cast<float>(cvof));
@@ -1467,10 +1488,6 @@ InteractiveSegmentation::thinBoundaryAndComputeCentroid(
     std::vector<pcl::PointIndices> tmp_ci;
     edge_cloud->clear();
     cluster_centroids.clear();
-    int min_size_thresh = 20;
-    this->pnh_.getParam("skeleton_thresh", min_size_thresh);
-
-    ROS_INFO("\033[35m EDGE SKELETION THRESHOLD: %d \033[0m", min_size_thresh);
     
     for (int i = 0; i < cluster_indices.size(); i++) {
        pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
@@ -1481,7 +1498,7 @@ InteractiveSegmentation::thinBoundaryAndComputeCentroid(
        pcl::PointIndices::Ptr indices(new pcl::PointIndices);
        this->skeletonization2D(tmp_cloud, indices, original_cloud,
                                this->camera_info_, color);
-       if (tmp_cloud->size() > min_size_thresh) {
+       if (tmp_cloud->size() > this->skeleton_min_thresh_) {
           tmp_ci.push_back(*indices);
           *edge_cloud = *edge_cloud + *tmp_cloud;
           Eigen::Vector4f center;
@@ -1705,7 +1722,6 @@ void InteractiveSegmentation::normalizedCurvatureNormalHistogram(
     }
 }
 
-
 void InteractiveSegmentation::publishAsROSMsg(
     const pcl::PointCloud<PointT>::Ptr cloud, const ros::Publisher publisher,
     const std_msgs::Header header) {
@@ -1716,6 +1732,15 @@ void InteractiveSegmentation::publishAsROSMsg(
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = header;
     publisher.publish(ros_cloud);
+}
+
+void InteractiveSegmentation::configCallback(
+    Config &config, uint32_t level) {
+    boost::mutex::scoped_lock lock(mutex_);
+    this->min_cluster_size_ = config.min_cluster_size;
+    this->outlier_concave_ = config.outlier_concave;
+    this->outlier_convex_ = config.outlier_convex;
+    this->skeleton_min_thresh_ = config.skeleton_min_thresh;
 }
 
 int main(int argc, char *argv[]) {

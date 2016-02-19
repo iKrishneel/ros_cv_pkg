@@ -248,7 +248,7 @@
 			    :link-list (send *pr2* :link-list (send *pr2* arm :end-coords :parent))
 			    :use-torso 0
 			    :rotation-axis t
-			    :debug-view t
+			    :debug-view nil
 			    :warnp nil)
 		      )
           (unless (setq pre-av (send *pr2* :inverse-kinematics (send (send tgt-cds :copy-worldcoords)
@@ -258,7 +258,7 @@
 				     :link-list (send *pr2* :link-list (send *pr2* arm :end-coords :parent))
 				     :use-torso 0
 				     :rotation-axis t
-				     :debug-view t
+				     :debug-view nil
 				     :warnp nil))
 	    (return-from push-boxes)
 	    )

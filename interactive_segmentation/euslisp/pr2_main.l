@@ -19,6 +19,12 @@
 (setq *init-pose* (float-vector 12.0 45.0 60.0 0.0 -120.0 0.0 -45.0 0.0 -45.0 60.0 0.0 -120.0 0.0 -45.0 0.0 0.0 35.0))
 
 (load "generate-tabletop-scene.l")
+(load "move-objects.l")
+(load "grasp-object.l")
+
+(defvar *thresh-x* 30.0)
+(defvar *thresh-y* 30.0)
+(defvar *thresh-z* 30.0)
 
 (ros::ros-info "RUNNING")
 
@@ -30,69 +36,34 @@
     )
   )
 
-(defun send-target-pose-to-robot(pose-vector &optional (arm :larm) &optional (time 5000))
-  (when (boundp '*ri*)
-    (send *ri* :angle-vector (send *pr2* :angle-vector) time)
-    (send *ri* :wait-interpolation)
-    )
-  )
-
-(defun check-arm-reachability(pose-vector &optional (arm :larm))
-  (send *pr2* arm :inverse-kinematics pose-vector :debug-view :t)
-  )
-
-(defun boundingbox-array-callback(msg)
-  (when (car (send msg :boxes))
-    (setq target-box (car (send msg :boxes)))
-    (setq dimension (send target-box :dimensions))
-    (setq pose (send target-box :pose))
-
-    (setq position (send pose :position))
-    
-    (setq target-position (make-coords))
-    (send target-position :replace-pos (float-vector (send position :x) (send position :y) (send position :z)))
-
-    (unix:usleep (* 1000 5000))
-
-    (ros::ros-warn "time-out")
-    
-    (check-arm-reachability target-position :larm)
-    (send-target-pose-to-robot target-position :larm 15000)
-     
-    
-    (setq x (send (send target-box :dimensions) :x))
-
-    (print target-position)
-    (ros::ros-warn "subscribing")
-    )
-  )
-
 
 (defun main()
   (manip-pose)
-  (ros::subscribe "/interactive_segmentation_decomposer/boxes"
+  (ros::subscribe *boundingbox-array-topic*
 		  jsk_recognition_msgs::BoundingBoxArray #'boundingbox-array-callback)
   (do-until-key
   (ros::spin-once))
   )
 
-;; (main)
-
-
-;; test using au-kun code
 
 (defun push-test ()
-  (load "move-objects.l")
+  ;; (load "move-objects.l")
   (init-scene)
-  ;; (while (ros::ok)
-  ;; (ros::spin-once)
-  (ros::ros-warn "Robot received an order, need to work now!")
-    ;; (unix:usleep (* 1000 5000))
-  (update-scene)
-  (push-one-time)
+  (if (update-scene)
+      (progn
+	(ros::ros-warn "Robot received an order, need to work now!")
+	(push-one-time)
+	)
+    (ros::ros-warn "CAN NOT PUSH CURRENT BOX")
+    )
   (ros::ros-warn "Robot completed execution!")
-    ;; (ros::sleep))
   (report-to-recognition-node)
-  
   )
 
+
+(while (ros::ok)
+  (ros::spin-once)
+  (push-test)
+  (grasp-object)
+  (ros::sleep)
+  )
