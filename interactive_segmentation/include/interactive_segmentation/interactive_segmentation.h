@@ -72,17 +72,16 @@ class InteractiveSegmentation {
 
     typedef pcl::PointXYZRGB PointT;
     typedef  pcl::FPFHSignature33 FPFHS;
-
+    typedef jsk_recognition_msgs::Int32Stamped Int32Stamped;
+   
  private:
     boost::mutex mutex_;
     ros::NodeHandle pnh_;
     typedef message_filters::sync_policies::ApproximateTime<
-       sensor_msgs::Image,
        sensor_msgs::CameraInfo,
        sensor_msgs::PointCloud2,
        sensor_msgs::PointCloud2> SyncPolicy;
 
-    message_filters::Subscriber<sensor_msgs::Image> sub_image_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
     message_filters::Subscriber<sensor_msgs::CameraInfo> sub_info_;
@@ -147,7 +146,6 @@ class InteractiveSegmentation {
     virtual void polygonArrayCallback(
        const jsk_recognition_msgs::PolygonArray::ConstPtr &);
     virtual void callback(
-       const sensor_msgs::Image::ConstPtr &,
        const sensor_msgs::CameraInfo::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &);

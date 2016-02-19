@@ -68,21 +68,20 @@ void InteractiveSegmentation::subscribe() {
        this->sub_manager_ = pnh_.subscribe(
           "manager_signal", 1, &InteractiveSegmentation::managerCallback, this);
        
-       this->sub_image_.subscribe(this->pnh_, "input_image", 1);
        this->sub_info_.subscribe(this->pnh_, "input_info", 1);
        this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
        this->sub_normal_.subscribe(this->pnh_, "input_normal", 1);
        this->sync_ = boost::make_shared<message_filters::Synchronizer<
           SyncPolicy> >(100);
-       sync_->connectInput(sub_image_, sub_info_, sub_cloud_, sub_normal_);
+       sync_->connectInput(sub_info_, sub_cloud_, sub_normal_);
        sync_->registerCallback(boost::bind(&InteractiveSegmentation::callback,
-                                           this, _1, _2, _3, _4));
+                                           this, _1, _2, _3));
 }
 
 void InteractiveSegmentation::unsubscribe() {
     this->sub_cloud_.unsubscribe();
     this->sub_info_.unsubscribe();
-    this->sub_image_.unsubscribe();
+    // this->sub_image_.unsubscribe();
 }
 
 void InteractiveSegmentation::screenPointCallback(
@@ -120,17 +119,17 @@ void InteractiveSegmentation::polygonArrayCallback(
 }
 
 void InteractiveSegmentation::callback(
-    const sensor_msgs::Image::ConstPtr &image_msg,
     const sensor_msgs::CameraInfo::ConstPtr &info_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
     const sensor_msgs::PointCloud2::ConstPtr &orig_cloud_msg) {
-    if (!is_init_ || !is_segment_scene_) {
+    if (!is_segment_scene_) {
+       return;
+    }
+    if (!is_init_) {
        ROS_ERROR("ERROR: MARK A TARGET REGION IN THE CLUSTER");
        return;
     }
     boost::mutex::scoped_lock lock(this->mutex_);
-    cv::Mat image = cv_bridge::toCvShare(
-       image_msg, image_msg->encoding)->image;
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     pcl::PointCloud<PointT>::Ptr original_cloud(
