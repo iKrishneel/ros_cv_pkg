@@ -98,7 +98,7 @@ void ObjectRegionEstimation::callbackPrev(
        this->prev_image_ = cv_ptr->image.clone();
        is_prev_ok_ = true;
     }
-    ROS_INFO("SEGMENTED REGION SET...");
+    ROS_INFO("\033[33mSEGMENTED REGION SET...\033[0m");
 }
 
 void ObjectRegionEstimation::callback(
@@ -184,6 +184,12 @@ void ObjectRegionEstimation::callback(
        ros_cloud.header = cloud_msg->header;
        this->pub_cloud_.publish(ros_cloud);
     }
+
+    //---
+    Int32Stamped fail_signal;
+    fail_signal.header = cloud_msg->header;
+    fail_signal.data = -1;
+    this->pub_signal_.publish(fail_signal);
 }
 
 bool ObjectRegionEstimation::convertToCvMat(

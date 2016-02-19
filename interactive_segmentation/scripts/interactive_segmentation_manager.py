@@ -20,7 +20,7 @@ pub_signal_ = None
 # incoming subscribing topics
 iseg_node_ = '/interactive_segmentation/output/user_object'
 push_node_ = '/pr2_push_node/failure/signal'
-merge_node_ = '/merge/failure/signal'
+merge_node_ = '/object_region_estimation/failure/signal'
 grasp_node = '/grasp/failure/signal'
 
 # flag for marked object
@@ -79,16 +79,15 @@ def onInit():
     global pub_signal_
     pub_signal_ = rospy.Publisher(signal_topic_, Int32Stamped, queue_size = 10)
     subscribe()
-
-    rospy.loginfo("WAITING TO PUBLISH")
-    rospy.sleep(10.0)
-    rospy.loginfo("NODELET SETUP AND READY TO PUBLISH GO SIGNAL")
     
-    header = Header()
-    header.frame_id = '/base_link'
-    header.stamp = rospy.Time.now()
-    start = nodelet_manager_signal(START_SEGMENT_NODE, header)
-    pub_signal_.publish(start)
+    # rospy.loginfo("WAITING TO PUBLISH")
+    # rospy.sleep(10.0)
+    # rospy.loginfo("NODELET SETUP AND READY TO PUBLISH GO SIGNAL")
+    # header = Header()
+    # header.frame_id = '/base_link'
+    # header.stamp = rospy.Time.now()
+    # start = nodelet_manager_signal(START_SEGMENT_NODE, header)
+    # pub_signal_.publish(start)
     
 def main():
     rospy.init_node('interactive_segmentation_manager')    

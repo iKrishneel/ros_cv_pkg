@@ -19,6 +19,7 @@
 (setq *init-pose* (float-vector 12.0 45.0 60.0 0.0 -120.0 0.0 -45.0 0.0 -45.0 60.0 0.0 -120.0 0.0 -45.0 0.0 0.0 35.0))
 
 (load "generate-tabletop-scene.l")
+(load "move-objects.l")
 
 (defvar *thresh-x* 30.0)
 (defvar *thresh-y* 30.0)
@@ -45,21 +46,24 @@
 
 
 (defun push-test ()
-  (load "move-objects.l")
+  ;; (load "move-objects.l")
   (init-scene)
-  (ros::ros-warn "Robot received an order, need to work now!")
   (if (update-scene)
-      (push-one-time)
-    (ros::ros-warn "CAN NOT PUSH CUURRENT BOX")
+      (progn
+	(ros::ros-warn "Robot received an order, need to work now!")
+	(push-one-time)
+	)
+    (ros::ros-warn "CAN NOT PUSH CURRENT BOX")
     )
   (ros::ros-warn "Robot completed execution!")
-  ;; (report-to-recognition-node)
+  (report-to-recognition-node)
   )
 
 
-(defun push-node()
-  (while (ros::ok)
-    (ros::spin-once)
-    (push-test)
-    )
-)
+					;(defun push-node()
+(while (ros::ok)
+  (ros::spin-once)
+  (push-test)
+  (ros::sleep)
+  )
+					;)

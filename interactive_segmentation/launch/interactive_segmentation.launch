@@ -2,13 +2,11 @@
   <arg name="input_point" default="/camera/depth_registered/points" />
   <arg name="input_info" default="/camera/depth_registered/camera_info" />
   <arg name="input_normal" default="/multi_plane_estimate/output_normal" />
-  <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />
-  
-  <arg name="image" default="/camera/rgb/image_rect_color" />
+  <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />  
+
   <arg name="bounding_box" default="true" />
   <arg name="num_threads" default="8" />
   <arg name="RVIZ" default="false" />
-
   <arg name="PR2" default="true" /> 
   
   <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch">
@@ -21,7 +19,6 @@
 
   <node pkg="interactive_segmentation" name="interactive_segmentation"
 	type="interactive_segmentation_node" output="screen" clear_params="true">
-    <remap from="input_image" to="$(arg image)" />
     <remap from="input_cloud" to="/plane_extraction/output_nonplane_cloud" />
     <remap from="input_normal" to="$(arg input_point)" />
     <remap from="input_info" to="$(arg input_info)" />
@@ -54,11 +51,18 @@
   <!-- 	args="$(find interactive_segmentation)/euslisp/pr2_main.l"> -->
   <!-- </node> -->
 
+  <!-- launch object_region_estimation -->
+  <include file="$(find interactive_segmentation)/launch/object_region_estimation.launch">
+    <arg name="input_point" value="$(arg input_point)" />
+    <arg name="camera_info" value="$(arg input_info)" />
+  </include>
+  
   <!-- launch topic manager -->
   <node pkg="interactive_segmentation" type="interactive_segmentation_manager.py"
 	name="interactive_segmentation_manager" output="screen">
   </node>
-  
+
+  <!-- launch custom rviz  -->
   <group if="$(arg RVIZ)" >
       <include file="$(find interactive_segmentation)/launch/rviz.launch"/>
   </group>
