@@ -15,9 +15,9 @@
     <arg name="cloud" value="$(arg input_point)"/>
   </include>
 
-  <!-- <include file="$(find interactive_segmentation)/launch/organized_multi_plane_segmentation.launch"> -->
-  <!--   <arg name="INPUT" value="$(arg filter_point)"/> -->
-  <!-- </include> -->
+  <include file="$(find interactive_segmentation)/launch/organized_multi_plane_segmentation.launch">
+    <arg name="INPUT" value="$(arg filter_point)"/>
+  </include>
 
   <node pkg="interactive_segmentation" name="interactive_segmentation"
 	type="interactive_segmentation_node" output="screen" clear_params="true">

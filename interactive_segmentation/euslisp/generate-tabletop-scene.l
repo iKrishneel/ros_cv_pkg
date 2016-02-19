@@ -4,8 +4,8 @@
 ;; (require "package://pr2eus/pr2-interface.l")
 
 (setq *polygon-array-topic* "/multi_plane_estimate/output_refined_polygon")
-;; (setq *boundingbox-array-topic* "/interactive_segmentation_decomposer/boxes")
-(setq *boundingbox-array-topic* "/cluster_decomposer_final/boxes")
+(setq *boundingbox-array-topic* "/interactive_segmentation_decomposer/boxes")
+;; (setq *boundingbox-array-topic* "/cluster_decomposer_final/boxes")
 
 
 ;; (if (not (boundp '*pr2*))
@@ -279,7 +279,7 @@
 		(progn
 		  (setq *box-valid* t)
 		  (print box)
-		  (print (elt (car (send box :csg)) 1))
+		  ;; (print (elt (car (send box :csg)) 1))
 		  )
 	      )
 	    )
