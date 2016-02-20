@@ -80,14 +80,15 @@ class InteractiveSegmentation {
     typedef message_filters::sync_policies::ApproximateTime<
        sensor_msgs::CameraInfo,
        sensor_msgs::PointCloud2,
-       sensor_msgs::PointCloud2,
-       jsk_recognition_msgs::ClusterPointIndices> SyncPolicy;
+       sensor_msgs::PointCloud2
+       // jsk_recognition_msgs::ClusterPointIndices
+       > SyncPolicy;
 
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
     message_filters::Subscriber<sensor_msgs::CameraInfo> sub_info_;
-    message_filters::Subscriber<
-      jsk_recognition_msgs::ClusterPointIndices> sub_cluster_;
+    // message_filters::Subscriber<
+    //   jsk_recognition_msgs::ClusterPointIndices> sub_cluster_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
     // user mark the point
@@ -151,8 +152,9 @@ class InteractiveSegmentation {
     virtual void callback(
        const sensor_msgs::CameraInfo::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &,
-       const sensor_msgs::PointCloud2::ConstPtr &,
-       const jsk_recognition_msgs::ClusterPointIndices::ConstPtr &);
+       const sensor_msgs::PointCloud2::ConstPtr &
+       // const jsk_recognition_msgs::ClusterPointIndices::ConstPtr &
+       );
     void selectedVoxelObjectHypothesis(
        pcl::PointCloud<PointT>::Ptr, const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr,

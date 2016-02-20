@@ -72,12 +72,12 @@ void InteractiveSegmentation::subscribe() {
     this->sub_info_.subscribe(this->pnh_, "input_info", 1);
     this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
     this->sub_normal_.subscribe(this->pnh_, "input_normal", 1);
-    this->sub_cluster_.subscribe(this->pnh_, "input_cluster", 1);
+    // this->sub_cluster_.subscribe(this->pnh_, "input_cluster", 1);
     this->sync_ = boost::make_shared<message_filters::Synchronizer<
                                         SyncPolicy> >(100);
-    sync_->connectInput(sub_info_, sub_cloud_, sub_normal_, sub_cluster_);
+    sync_->connectInput(sub_info_, sub_cloud_, sub_normal_);
     sync_->registerCallback(boost::bind(&InteractiveSegmentation::callback,
-                                        this, _1, _2, _3, _4));
+                                        this, _1, _2, _3));
 }
 
 void InteractiveSegmentation::unsubscribe() {
@@ -124,8 +124,9 @@ void InteractiveSegmentation::polygonArrayCallback(
 void InteractiveSegmentation::callback(
     const sensor_msgs::CameraInfo::ConstPtr &info_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
-    const sensor_msgs::PointCloud2::ConstPtr &orig_cloud_msg,
-    const jsk_recognition_msgs::ClusterPointIndices::ConstPtr &cluster_msg) {
+    const sensor_msgs::PointCloud2::ConstPtr &orig_cloud_msg
+    // const jsk_recognition_msgs::ClusterPointIndices::ConstPtr &cluster_msg
+   ) {
     if (!is_segment_scene_) {
        return;
     }
@@ -234,7 +235,6 @@ void InteractiveSegmentation::callback(
     this->publishAsROSMsg(anchor_points, pub_apoints_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
     this->publishAsROSMsg(convex_edge_points, pub_convex_, cloud_msg->header);
-
     
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
        new pcl::PointCloud<pcl::PointXYZRGBNormal>);
