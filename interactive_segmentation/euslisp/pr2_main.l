@@ -20,11 +20,11 @@
 
 (load "generate-tabletop-scene.l")
 (load "move-objects.l")
-(load "grasp-object.l")
+;; (load "grasp-object.l")
 
-(defvar *thresh-x* 30.0)
-(defvar *thresh-y* 30.0)
-(defvar *thresh-z* 30.0)
+(defvar *thresh-x* 10.0)
+(defvar *thresh-y* 10.0)
+(defvar *thresh-z* 10.0)
 
 (ros::ros-info "RUNNING")
 
@@ -60,10 +60,9 @@
   (report-to-recognition-node)
   )
 
-
-(while (ros::ok)
-  (ros::spin-once)
-  (push-test)
-  (grasp-object)
-  (ros::sleep)
-  )
+;(while (ros::ok)
+(do-until-key
+ (ros::spin-once)
+ (push-test)
+ (ros::sleep)
+ )

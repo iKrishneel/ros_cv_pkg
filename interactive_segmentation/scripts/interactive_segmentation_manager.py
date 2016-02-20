@@ -22,7 +22,7 @@ iseg_node_ = '/interactive_segmentation/output/user_object'
 push_node_ = '/pr2_push_node/failure/signal'
 merge_node_ = '/object_region_estimation/failure/signal'
 bbox_node_ = '/bounding_box_handler/failure/signal' # if box is empty
-grasp_node_ = '/grasp_node/failure/signal'
+grasp_node_ = '/pr2_grasp_object/failure/signal'
 
 # flag for marked object
 is_marked_object_ = False
@@ -64,7 +64,8 @@ def grasp_object_callback(msg):
     global pub_signal_
     if is_marked_object_ and msg.data == 1:
         rospy.loginfo("THE TARGET OBJECT IS FOUND")
-    elif msg.data == FAILURE:
+    elif msg.data == START_SEGMENT_NODE:
+        rospy.logdebug("going to segmentation node")
         next = nodelet_manager_signal(START_SEGMENT_NODE, msg.header)
         pub_signal_.publish(next)
     else:

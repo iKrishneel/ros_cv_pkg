@@ -7,16 +7,17 @@
   <arg name="bounding_box" default="true" />
   <arg name="num_threads" default="8" />
   <arg name="RVIZ" default="false" />
-  <arg name="PR2" default="true" /> 
-  
-  <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch">
-    <arg name="cloud" value="$(arg input_point)"/>
-  </include>
 
-  <include file="$(find interactive_segmentation)/launch/organized_multi_plane_segmentation.launch">
-    <arg name="INPUT" value="$(arg filter_point)"/>
-  </include>
 
+  <!-- <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch"> -->
+  <!--   <arg name="cloud" value="$(arg input_point)"/> -->
+  <!-- </include> -->
+
+  <!-- <include file="$(find interactive_segmentation)/launch/organized_multi_plane_segmentation.launch"> -->
+  <!--   <arg name="INPUT" value="$(arg filter_point)"/> -->
+  <!-- </include> -->
+
+  <!-- launch the main segmentation module -->
   <node pkg="interactive_segmentation" name="interactive_segmentation"
 	type="interactive_segmentation_node" output="screen" clear_params="true">
     <remap from="input_cloud" to="/plane_extraction/output_nonplane_cloud" />
@@ -31,7 +32,8 @@
     <param name="num_threads" value="$(arg num_threads)" />
     <remap from="num_threads" to="/interactive_segmentation/num_threads" />
   </node>
-  
+
+  <!-- launch the cluster point indices decomposer -->
   <group if="$(arg bounding_box)" >
     <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer"
 	  name="interactive_segmentation_decomposer" output="screen">

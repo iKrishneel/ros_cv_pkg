@@ -1,0 +1,14 @@
+<launch>
+  <arg name="input_point" default="/kinect_head_c2/depth_registered/points" />
+  <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />
+  
+  <!-- launch the point cloud distance filter -->
+  <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch">
+    <arg name="cloud" value="$(arg input_point)"/>
+  </include>
+
+  <!-- launch the plane segmentation nodelet -->
+  <include file="$(find interactive_segmentation)/launch/organized_multi_plane_segmentation.launch">
+    <arg name="INPUT" value="$(arg filter_point)"/>
+  </include>
+</launch>
