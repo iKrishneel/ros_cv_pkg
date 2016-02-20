@@ -80,11 +80,14 @@ class InteractiveSegmentation {
     typedef message_filters::sync_policies::ApproximateTime<
        sensor_msgs::CameraInfo,
        sensor_msgs::PointCloud2,
-       sensor_msgs::PointCloud2> SyncPolicy;
+       sensor_msgs::PointCloud2,
+       jsk_recognition_msgs::ClusterPointIndices> SyncPolicy;
 
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
     message_filters::Subscriber<sensor_msgs::CameraInfo> sub_info_;
+    message_filters::Subscriber<
+      jsk_recognition_msgs::ClusterPointIndices> sub_cluster_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
     // user mark the point
@@ -148,7 +151,8 @@ class InteractiveSegmentation {
     virtual void callback(
        const sensor_msgs::CameraInfo::ConstPtr &,
        const sensor_msgs::PointCloud2::ConstPtr &,
-       const sensor_msgs::PointCloud2::ConstPtr &);
+       const sensor_msgs::PointCloud2::ConstPtr &,
+       const jsk_recognition_msgs::ClusterPointIndices::ConstPtr &);
     void selectedVoxelObjectHypothesis(
        pcl::PointCloud<PointT>::Ptr, const pcl::PointCloud<PointT>::Ptr,
        const pcl::PointCloud<pcl::Normal>::Ptr,
@@ -218,6 +222,8 @@ class InteractiveSegmentation {
     void supportPlaneNormal(const Eigen::Vector4f, const std_msgs::Header);
     bool markedPointInSegmentedRegion(
        const pcl::PointCloud<PointT>::Ptr, const PointT);
+    bool selectMarkedCluster(
+       pcl::PointCloud<PointT>::Ptr);
    
     void normalizedCurvatureNormalHistogram(
        pcl::PointCloud<PointT>::Ptr,

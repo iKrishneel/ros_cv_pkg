@@ -91,5 +91,15 @@
       candidate_num: 5
     </rosparam>
   </node>
+
+  <node pkg="nodelet" type="nodelet" name="euclidean_clustering"
+        machine="$(arg MACHINE)"
+        args="load jsk_pcl/EuclideanClustering /$(arg MANAGER)" output="screen">
+    <remap from="~input" to="/plane_extraction/output" />
+    <rosparam>
+      tolerance: 0.01
+      min_size: 100
+    </rosparam>
+  </node>de>
   
 </launch>
