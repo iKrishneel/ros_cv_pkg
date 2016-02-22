@@ -72,7 +72,6 @@ void InteractiveSegmentation::subscribe() {
     this->sub_info_.subscribe(this->pnh_, "input_info", 1);
     this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
     this->sub_normal_.subscribe(this->pnh_, "input_normal", 1);
-    // this->sub_cluster_.subscribe(this->pnh_, "input_cluster", 1);
     this->sync_ = boost::make_shared<message_filters::Synchronizer<
                                         SyncPolicy> >(100);
     sync_->connectInput(sub_info_, sub_cloud_, sub_normal_);
@@ -124,9 +123,7 @@ void InteractiveSegmentation::polygonArrayCallback(
 void InteractiveSegmentation::callback(
     const sensor_msgs::CameraInfo::ConstPtr &info_msg,
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
-    const sensor_msgs::PointCloud2::ConstPtr &orig_cloud_msg
-    // const jsk_recognition_msgs::ClusterPointIndices::ConstPtr &cluster_msg
-   ) {
+    const sensor_msgs::PointCloud2::ConstPtr &orig_cloud_msg) {
     if (!is_segment_scene_) {
        return;
     }
