@@ -247,7 +247,7 @@
 		  )
 	      )
 	    )
-	  (speak-en "OBJECT PASSED VALID CHECK")
+	  ;;(speak-en "OBJECT PASSED VALID CHECK")
 	  (return)
 	  )
       (ros::spin-once)

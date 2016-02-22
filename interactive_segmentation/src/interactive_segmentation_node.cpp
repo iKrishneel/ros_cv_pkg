@@ -144,6 +144,7 @@ void InteractiveSegmentation::callback(
     pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, nan_indices);
 
     if (!this->selectMarkedCluster(cloud)) {
+       ROS_ERROR("CANNOT GET MARKED REGION");
        return;
     }
     
@@ -207,6 +208,7 @@ void InteractiveSegmentation::callback(
        // check if it is the marked object --------
        if (this->markedPointInSegmentedRegion(
               cloud, this->user_marked_pt_)) {
+          ROS_INFO("\033[32m THIS IS THE MARKED OBJECT \033[0m");
           jsk_recognition_msgs::Int32Stamped tgt_signal;
           tgt_signal.header = cloud_msg->header;
           tgt_signal.data = 1;
@@ -1680,11 +1682,12 @@ bool InteractiveSegmentation::markedPointInSegmentedRegion(
        ROS_ERROR("ERROR: EMPTY CLOUD FOR MARKED POINT TEST");
        return false;
     }
+    // TODO(here): dont use distance but plane to point distance
     Eigen::Vector4f mark = mark_pt.getVector4fMap();
     bool is_inside = false;
     for (int i = 0; i < cloud->size(); i++) {
        double d = pcl::distances::l2(cloud->points[i].getVector4fMap(), mark);
-       if (d < 0.01) {
+       if (d < 0.03) {
           is_inside = true;
           break;
        }
@@ -1738,7 +1741,8 @@ bool InteractiveSegmentation::selectMarkedCluster(
     Eigen::Vector4f user_pt = user_marked_pt_.getVector4fMap();
     int index = -1;
     double distance = DBL_MAX;
-    double dist_thresh = 0.01;
+    // TODO(here): use plane to point distance
+    double dist_thresh = 0.05;
     for (int i = 0; i < cluster_indices.size(); i++) {
        for (int j = 0; j < cluster_indices[i].indices.size(); j++) {
           int indx = cluster_indices[i].indices[j];

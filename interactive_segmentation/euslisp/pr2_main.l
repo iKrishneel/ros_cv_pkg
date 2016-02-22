@@ -60,9 +60,11 @@
   (report-to-recognition-node)
   )
 
-;(while (ros::ok)
-(do-until-key
- (ros::spin-once)
- (push-test)
- (ros::sleep)
- )
+					;(while (ros::ok)
+(defun push-node()
+  (do-until-key
+   (ros::spin-once)
+   (push-test)
+   (ros::sleep)
+   )
+  )

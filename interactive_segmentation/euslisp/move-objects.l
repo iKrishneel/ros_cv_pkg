@@ -294,9 +294,9 @@
         
         ;;robot-start-moving
         (setq av-list (reverse av-list))
-        (send *ri* :angle-vector (elt av-list 0) 4000)
+        (send *ri* :angle-vector (elt av-list 0) 3000)
 	(send *ri* :wait-interpolation)
-	(send *ri* :angle-vector (elt av-list 1) 5000)
+	(send *ri* :angle-vector (elt av-list 1) 2000)
 	(send *ri* :wait-interpolation)
 	(send *ri* :angle-vector (elt av-list 2) 5000)
         (send *ri* :wait-interpolation)

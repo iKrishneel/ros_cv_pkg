@@ -10,7 +10,6 @@
   <arg name="num_threads" default="8" />
   <arg name="RVIZ" default="false" />
 
-
   <!-- launch the pcl distance filter -->
   <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch">
     <arg name="cloud" value="$(arg input_point)"/>
@@ -31,11 +30,10 @@
   <!-- launch the main segmentation module -->
   <node pkg="interactive_segmentation" name="interactive_segmentation"
 	type="interactive_segmentation_node" output="screen" clear_params="true">
-    <!-- <remap from="input_cloud" to="/plane_extraction/output_nonplane_cloud" /> -->
-    <remap from="input_cloud" to="/plane_extraction/output" />
+    <remap from="input_cloud" to="/plane_extraction/output_nonplane_cloud" />
+    <!-- <remap from="input_cloud" to="/plane_extraction/output" /> -->
     <remap from="input_normal" to="$(arg input_point)" />
     <remap from="input_info" to="$(arg input_info)" />
-    <remap from="input_cluster" to="/euclidean_clustering/output" />
     
     <remap from="input_screen" to="$(arg image)/screenpoint" />
     <remap from="input_orig_cloud" to="$(arg input_point)" />

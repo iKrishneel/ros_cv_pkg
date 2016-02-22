@@ -18,7 +18,7 @@ signal_topic_ = '/interactive_segmentation_manager/critical/signal'
 pub_signal_ = None
 
 # incoming subscribing topics
-iseg_node_ = '/interactive_segmentation/output/user_object'
+iseg_node_ = '/interactive_segmentation/signal/target_object'
 push_node_ = '/pr2_push_node/failure/signal'
 merge_node_ = '/object_region_estimation/failure/signal'
 bbox_node_ = '/bounding_box_handler/failure/signal' # if box is empty
