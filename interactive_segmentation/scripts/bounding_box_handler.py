@@ -25,6 +25,7 @@ def callback(msg):
         box.header = msg.header
         pub_box_.publish(box)
     else:  # report error to the manager
+        rospy.logerr("bounding_box_handler failed. no input box")
         global pub_signal_
         signal = Int32Stamped()
         signal.header = msg.header

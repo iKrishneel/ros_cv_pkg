@@ -108,6 +108,10 @@ void ObjectRegionEstimation::callback(
     const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {  // end-eff
     if (!is_prev_ok_) {
        ROS_ERROR("ERROR: PREV INFO NOT FOUND");
+       Int32Stamped fail_signal;
+       fail_signal.header = cloud_msg->header;
+       fail_signal.data = -1;
+       this->pub_signal_.publish(fail_signal);
        return;
     }
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
@@ -184,12 +188,6 @@ void ObjectRegionEstimation::callback(
        ros_cloud.header = cloud_msg->header;
        this->pub_cloud_.publish(ros_cloud);
     }
-
-    //---
-    Int32Stamped fail_signal;
-    fail_signal.header = cloud_msg->header;
-    fail_signal.data = -1;
-    this->pub_signal_.publish(fail_signal);
 }
 
 bool ObjectRegionEstimation::convertToCvMat(

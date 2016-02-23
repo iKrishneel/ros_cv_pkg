@@ -5,7 +5,7 @@
 #include <vector>
 
 InteractiveSegmentation::InteractiveSegmentation():
-    is_init_(true), is_segment_scene_(true), num_threads_(8) {
+    is_init_(false), is_segment_scene_(true), num_threads_(8) {
     pnh_.getParam("num_threads", this->num_threads_);
     this->srv_ = boost::shared_ptr<dynamic_reconfigure::Server<Config> >(
        new dynamic_reconfigure::Server<Config>);
@@ -53,29 +53,30 @@ void InteractiveSegmentation::onInit() {
 
 void InteractiveSegmentation::subscribe() {
 
-       this->sub_screen_pt_.subscribe(this->pnh_, "input_screen", 1);
-       this->sub_orig_cloud_.subscribe(this->pnh_, "input_orig_cloud", 1);
-       this->usr_sync_ = boost::make_shared<message_filters::Synchronizer<
-         UsrSyncPolicy> >(100);
-       usr_sync_->connectInput(sub_screen_pt_, sub_orig_cloud_);
-       usr_sync_->registerCallback(boost::bind(
-           &InteractiveSegmentation::screenPointCallback, this, _1, _2));
+    this->sub_screen_pt_.subscribe(this->pnh_, "input_screen", 1);
+    this->sub_orig_cloud_.subscribe(this->pnh_, "input_orig_cloud", 1);
+    this->usr_sync_ = boost::make_shared<message_filters::Synchronizer<
+       UsrSyncPolicy> >(100);
+    usr_sync_->connectInput(sub_screen_pt_, sub_orig_cloud_);
+    usr_sync_->registerCallback(
+       boost::bind(
+          &InteractiveSegmentation::screenPointCallback, this, _1, _2));
 
-       this->sub_polyarray_ = pnh_.subscribe(
-          "/multi_plane_estimate/output_refined_polygon", 1,
-          &InteractiveSegmentation::polygonArrayCallback, this);
+    this->sub_polyarray_ = pnh_.subscribe(
+       "/multi_plane_estimate/output_refined_polygon", 1,
+       &InteractiveSegmentation::polygonArrayCallback, this);
 
-       this->sub_manager_ = pnh_.subscribe(
-          "manager_signal", 1, &InteractiveSegmentation::managerCallback, this);
+    this->sub_manager_ = pnh_.subscribe(
+       "manager_signal", 1, &InteractiveSegmentation::managerCallback, this);
        
-       this->sub_info_.subscribe(this->pnh_, "input_info", 1);
-       this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
-       this->sub_normal_.subscribe(this->pnh_, "input_normal", 1);
-       this->sync_ = boost::make_shared<message_filters::Synchronizer<
-          SyncPolicy> >(100);
-       sync_->connectInput(sub_info_, sub_cloud_, sub_normal_);
-       sync_->registerCallback(boost::bind(&InteractiveSegmentation::callback,
-                                           this, _1, _2, _3));
+    this->sub_info_.subscribe(this->pnh_, "input_info", 1);
+    this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
+    this->sub_normal_.subscribe(this->pnh_, "input_normal", 1);
+    this->sync_ = boost::make_shared<message_filters::Synchronizer<
+                                        SyncPolicy> >(100);
+    sync_->connectInput(sub_info_, sub_cloud_, sub_normal_);
+    sync_->registerCallback(boost::bind(&InteractiveSegmentation::callback,
+                                        this, _1, _2, _3));
 }
 
 void InteractiveSegmentation::unsubscribe() {
@@ -101,6 +102,7 @@ void InteractiveSegmentation::screenPointCallback(
         !isnan(user_marked_pt_.y) &&
         !isnan(user_marked_pt_.z)) {
       this->is_init_ = true;
+      ROS_INFO("\033[33mUSER OBJECT MARKED \033[0m");
     }
 }
 
@@ -140,7 +142,12 @@ void InteractiveSegmentation::callback(
     
     std::vector<int> nan_indices;
     pcl::removeNaNFromPointCloud<PointT>(*cloud, *cloud, nan_indices);
-        
+
+    if (!this->selectMarkedCluster(cloud)) {
+       ROS_ERROR("CANNOT GET MARKED REGION");
+       return;
+    }
+    
     ROS_INFO("\033[32m DEBUG: PROCESSING CALLBACK \033[0m");
     ROS_INFO("\033[34m ESTIMATIONG CLOUD NORMALS \033[0m");
 
@@ -200,10 +207,11 @@ void InteractiveSegmentation::callback(
        
        // check if it is the marked object --------
        if (this->markedPointInSegmentedRegion(
-              final_object, this->user_marked_pt_)) {
+              cloud, this->user_marked_pt_)) {
+          ROS_INFO("\033[32m THIS IS THE MARKED OBJECT \033[0m");
           jsk_recognition_msgs::Int32Stamped tgt_signal;
           tgt_signal.header = cloud_msg->header;
-          tgt_signal.data = 1;
+          // tgt_signal.data = 1;
           this->pub_signal_.publish(tgt_signal);
        }
        // ----------------------------------------
@@ -219,6 +227,11 @@ void InteractiveSegmentation::callback(
        
        // publishAsROSMsg(final_object, pub_cloud_, cloud_msg->header);
        publishAsROSMsg(cloud, pub_cloud_, cloud_msg->header);
+    } else {  // tell manager to restart
+       jsk_recognition_msgs::Int32Stamped tgt_signal;
+       tgt_signal.header = cloud_msg->header;
+       tgt_signal.data = -1;
+       this->pub_signal_.publish(tgt_signal);
     }
     
     ROS_INFO("\033[34m PUBLISHING INFO\033[0m");
@@ -226,7 +239,6 @@ void InteractiveSegmentation::callback(
     this->publishAsROSMsg(anchor_points, pub_apoints_, cloud_msg->header);
     this->publishAsROSMsg(concave_edge_points, pub_concave_, cloud_msg->header);
     this->publishAsROSMsg(convex_edge_points, pub_convex_, cloud_msg->header);
-
     
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr centroid_normal(
        new pcl::PointCloud<pcl::PointXYZRGBNormal>);
@@ -254,6 +266,9 @@ void InteractiveSegmentation::callback(
     // reset processing signal
     this->is_segment_scene_ = false;
     ROS_INFO("\n\033[34m ALL VALID REGION LABELED \033[0m");
+
+    // temp reset object region
+    this->is_init_ = false;
 }
 
 void InteractiveSegmentation::selectedVoxelObjectHypothesis(
@@ -1040,7 +1055,6 @@ void InteractiveSegmentation::highCurvatureEdgeBoundary(
 #endif
        {
           double cvof = this->outlier_convex_;
-          this->pnh_.getParam("outlier_convex", cvof);
           this->edgeBoundaryOutlierFiltering(convex_edge_points,
                                              static_cast<float>(cvof));
        }
@@ -1676,11 +1690,12 @@ bool InteractiveSegmentation::markedPointInSegmentedRegion(
        ROS_ERROR("ERROR: EMPTY CLOUD FOR MARKED POINT TEST");
        return false;
     }
+    // TODO(here): dont use distance but plane to point distance
     Eigen::Vector4f mark = mark_pt.getVector4fMap();
     bool is_inside = false;
     for (int i = 0; i < cloud->size(); i++) {
        double d = pcl::distances::l2(cloud->points[i].getVector4fMap(), mark);
-       if (d < 0.01) {
+       if (d < 0.03) {
           is_inside = true;
           break;
        }
@@ -1720,6 +1735,44 @@ void InteractiveSegmentation::normalizedCurvatureNormalHistogram(
        float z = (normals->points[i].normal_z - min_val[2]) /
           (max_val[2] - min_val[2]);
     }
+}
+
+bool InteractiveSegmentation::selectMarkedCluster(
+    pcl::PointCloud<PointT>::Ptr cloud) {
+    if (cloud->empty()) {
+       return false;
+    }
+    pcl::PointIndices::Ptr indices(new pcl::PointIndices);
+    std::vector<pcl::PointIndices> cluster_indices;
+    std::vector<Eigen::Vector4f> centroids = this->doEuclideanClustering(
+       cluster_indices, cloud, indices, true, 0.01f, 100, 50000);
+    Eigen::Vector4f user_pt = user_marked_pt_.getVector4fMap();
+    int index = -1;
+    double distance = DBL_MAX;
+    // TODO(here): use plane to point distance
+    double dist_thresh = 0.05;
+    for (int i = 0; i < cluster_indices.size(); i++) {
+       for (int j = 0; j < cluster_indices[i].indices.size(); j++) {
+          int indx = cluster_indices[i].indices[j];
+          Eigen::Vector4f pt = cloud->points[indx].getVector4fMap();
+          double d = pcl::distances::l2(user_pt, pt);
+          if (d < dist_thresh && d < distance) {
+             index = i;
+             distance = d;
+          }
+       }
+    }
+    if (index == -1) {
+       return false;
+    }
+    pcl::PointCloud<PointT>::Ptr temp(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*cloud, *temp);
+    cloud->clear();
+    for (int i = 0; i < cluster_indices[index].indices.size(); i++) {
+       int indx = cluster_indices[index].indices[i];
+       cloud->push_back(temp->points[indx]);
+    }
+    return true;
 }
 
 void InteractiveSegmentation::publishAsROSMsg(

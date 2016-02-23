@@ -3,27 +3,39 @@
   <arg name="input_info" default="/camera/depth_registered/camera_info" />
   <arg name="input_normal" default="/multi_plane_estimate/output_normal" />
   <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />  
+  <arg name="image" default="/camera/rgb/image_rect_color" />
 
+  <arg name="HANDLE_ESTIMATOR" default="true" />
   <arg name="bounding_box" default="true" />
   <arg name="num_threads" default="8" />
   <arg name="RVIZ" default="false" />
-  <arg name="PR2" default="true" /> 
+
+   <!-- launch the pcl distance filter -->
+  <!-- <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch"> -->
+  <!--   <arg name="cloud" value="$(arg input_point)"/> -->
+  <!-- </include> -->
+
+  <!-- launch the plane segmentation -->
+  <!-- <include file="$(find interactive_segmentation)/launch/organized_multi_plane_segmentation.launch"> -->
+  <!--   <arg name="INPUT" value="$(arg filter_point)"/> -->
+  <!--   <arg name="HANDLE_ESTIMATOR" value="$(arg HANDLE_ESTIMATOR)" /> -->
+  <!-- </include> -->
   
-  <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch">
-    <arg name="cloud" value="$(arg input_point)"/>
-  </include>
-
-  <include file="$(find interactive_segmentation)/launch/organized_multi_plane_segmentation.launch">
-    <arg name="INPUT" value="$(arg filter_point)"/>
-  </include>
-
+  <!-- launch image to get object of interestx -->
+  <node pkg="image_view2" type="image_view2"
+	name="image_view2" output="screen">
+    <remap from="image" to="$(arg image)"/>
+  </node>
+  
+  <!-- launch the main segmentation module -->
   <node pkg="interactive_segmentation" name="interactive_segmentation"
 	type="interactive_segmentation_node" output="screen" clear_params="true">
     <remap from="input_cloud" to="/plane_extraction/output_nonplane_cloud" />
+    <!-- <remap from="input_cloud" to="/plane_extraction/output" /> -->
     <remap from="input_normal" to="$(arg input_point)" />
     <remap from="input_info" to="$(arg input_info)" />
     
-    <remap from="input_screen" to="/camera/rgb/image_rect_color/screenpoint" />
+    <remap from="input_screen" to="$(arg image)/screenpoint" />
     <remap from="input_orig_cloud" to="$(arg input_point)" />
 
     <remap from="manager_signal" to="/interactive_segmentation_manager/critical/signal"/>
@@ -31,7 +43,8 @@
     <param name="num_threads" value="$(arg num_threads)" />
     <remap from="num_threads" to="/interactive_segmentation/num_threads" />
   </node>
-  
+
+  <!-- launch the cluster point indices decomposer -->
   <group if="$(arg bounding_box)" >
     <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer"
 	  name="interactive_segmentation_decomposer" output="screen">

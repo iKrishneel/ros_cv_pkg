@@ -1,17 +1,31 @@
 #!/usr/bin/env roseus
 
-;(require "package://pr2eus/pr2-interface.l")
+(require "package://pr2eus/pr2-interface.l")
 (require "package://pr2eus_moveit/euslisp/pr2eus-moveit.l")
 
 (ros::load-ros-manifest "interactive_segmentation")
 (ros::load-ros-manifest "jsk_recognition_msgs")
 (ros::load-ros-manifest "geometry_msgs")
 
-; (load "pr2_main.l")
+(if (not
+     (boundp '*pr2*))
+    (pr2-init)
+  )
+(if (not
+     (boundp '*irtviewer*))
+    (make-irtviewer)
+  )
+(send *irtviewer* :objects *pr2*)
+
+(setq *manip-pose* #f(131.783 54.9158 -1.3071 0.272882 -88.7191 -357.653 -5.85497 360.042 -45.3354 1.53671 2.39065 -95.778 -1.10987 -5.93392 359.975 1.67125 48.912))
 
 (setq *parent-link* "/base_footprint")
 (setq *child-link* "/head_mount_kinect_rgb_optical_frame")
 (setq *tf-listener* (instance ros::transform-listener :init))
+
+;; signal to the manager
+(setq *grasp-signal* "/pr2_grasp_object/failure/signal")
+(ros::advertise *grasp-signal* jsk_recognition_msgs::Int32Stamped 1)
 
 (defclass handle-object
   :slots
@@ -166,8 +180,12 @@
 
   (move-object)
 
+  
+  
+  ;; (send *handle-obj* :release-object use-arm)
+  
   ;(speak-en "releasing object")
-  (setq trans-down-pos #f(0 0 -100))
+  (setq trans-down-pos #f(0 0 -300))
   (setq endpos (send *pr2* :larm :end-coords :copy-worldcoords))
   (send endpos :translate trans-down-pos :world)
   (send *pr2* use-arm :inverse-kinematics  endpos)
@@ -177,16 +195,21 @@
   (send *ri* :stop-grasp use-arm)
   (send *ri* :wait-interpolation)
 
-  (unix:usleep (* 1000 2000))
+  ;; (unix:usleep (* 1000 2000))
 
   ;; move-hand up
-  (setq trans-up-pos #f(0 0 200))
+  (setq trans-up-pos #f(0 0 400))
   (setq endpos (send *pr2* :larm :end-coords :copy-worldcoords))
   (send endpos :translate trans-up-pos :world)
-  (send *pr2* use-arm :inverse-kinematics  endpos)
+  (send *pr2* use-arm :inverse-kinematics  endpos :rotational-axis t :thres 50)
   (send *ri* :angle-vector (send *pr2* :angle-vector) 5000)
   (send *ri* :wait-interpolation)
 
+  ;; close the gripper
+  (unix:usleep (* 1000 1000))
+  (send *ri* :start-grasp)  
+  (send *ri* :wait-interpolation)
+  
   (send *ri* :angle-vector (send *pr2* :angle-vector *manip-pose*) 2000)
   (send *ri* :wait-interpolation)
   )
@@ -194,22 +217,38 @@
 (defun move-object(&optional (use-arm :larm) )
   ;(speak-en "Moving Object to new position")
   (setq endpos (send *pr2* :larm :end-coords :copy-worldcoords))
-  (send endpos :translate #f(0 400 0) :world)
-  (send *pr2* use-arm :inverse-kinematics  endpos)
+  (send endpos :translate #f(0 300 0) :world)
+  (send *pr2* use-arm :inverse-kinematics  endpos :rotational-axis t :thres 50)
   (send *ri* :angle-vector (send *pr2* :angle-vector) 5000)
   (send *ri* :wait-interpolation)
   )
 
 (defun grasp-object()
   (init-grasp)
-  ;; (while (ros::ok)
-  (ros::spin-once)
-  (setq *use-arm* :larm)
-  (setq process (send *handle-obj* :grasp-selected-object *use-arm*))
-  (when process
-    (lift-up *use-arm*))
-  (unix:usleep (* 1000 3000))
+  (while (ros::ok)
+    (ros::spin-once)
+    (setq *use-arm* :larm)
+    (setq process (send *handle-obj* :grasp-selected-object *use-arm*))
+    (when process
+      (lift-up *use-arm*)
+
+      ;; report to manager
+      (setq signal-flag (instance jsk_recognition_msgs::Int32Stamped :init))
+      (send signal-flag :header :stamp (ros::time-now))
+      (send signal-flag :header :frame_id *child-link*)
+      (send signal-flag :data 1)
+      (ros::publish *grasp-signal* signal-flag)
+      )
+    (unix:usleep (* 1000 3000))
 
     ;; (manip-pose)
-  ;; )
+    )
+  (ros::sleep)
   t)
+
+
+;; (while (ros::ok)
+;;   (ros::spin-once)
+;;   (grasp-object)
+;;   (ros::sleep)
+;;   )

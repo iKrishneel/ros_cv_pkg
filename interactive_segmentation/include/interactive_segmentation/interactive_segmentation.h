@@ -218,6 +218,8 @@ class InteractiveSegmentation {
     void supportPlaneNormal(const Eigen::Vector4f, const std_msgs::Header);
     bool markedPointInSegmentedRegion(
        const pcl::PointCloud<PointT>::Ptr, const PointT);
+    bool selectMarkedCluster(
+       pcl::PointCloud<PointT>::Ptr);
    
     void normalizedCurvatureNormalHistogram(
        pcl::PointCloud<PointT>::Ptr,
