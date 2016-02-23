@@ -198,10 +198,10 @@
   ;; (unix:usleep (* 1000 2000))
 
   ;; move-hand up
-  (setq trans-up-pos #f(0 0 400))
+  (setq trans-up-pos #f(0 0 200))
   (setq endpos (send *pr2* :larm :end-coords :copy-worldcoords))
   (send endpos :translate trans-up-pos :world)
-  (send *pr2* use-arm :inverse-kinematics  endpos :rotational-axis t :thres 50)
+  (send *pr2* use-arm :inverse-kinematics  endpos)
   (send *ri* :angle-vector (send *pr2* :angle-vector) 5000)
   (send *ri* :wait-interpolation)
 
@@ -218,7 +218,7 @@
   ;(speak-en "Moving Object to new position")
   (setq endpos (send *pr2* :larm :end-coords :copy-worldcoords))
   (send endpos :translate #f(0 300 0) :world)
-  (send *pr2* use-arm :inverse-kinematics  endpos :rotational-axis t :thres 50)
+  (send *pr2* use-arm :inverse-kinematics  endpos :rotational-axis t)
   (send *ri* :angle-vector (send *pr2* :angle-vector) 5000)
   (send *ri* :wait-interpolation)
   )

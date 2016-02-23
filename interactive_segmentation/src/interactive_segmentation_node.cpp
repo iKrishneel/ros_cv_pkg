@@ -211,7 +211,7 @@ void InteractiveSegmentation::callback(
           ROS_INFO("\033[32m THIS IS THE MARKED OBJECT \033[0m");
           jsk_recognition_msgs::Int32Stamped tgt_signal;
           tgt_signal.header = cloud_msg->header;
-          tgt_signal.data = 1;
+          // tgt_signal.data = 1;
           this->pub_signal_.publish(tgt_signal);
        }
        // ----------------------------------------
@@ -227,6 +227,11 @@ void InteractiveSegmentation::callback(
        
        // publishAsROSMsg(final_object, pub_cloud_, cloud_msg->header);
        publishAsROSMsg(cloud, pub_cloud_, cloud_msg->header);
+    } else {  // tell manager to restart
+       jsk_recognition_msgs::Int32Stamped tgt_signal;
+       tgt_signal.header = cloud_msg->header;
+       tgt_signal.data = -1;
+       this->pub_signal_.publish(tgt_signal);
     }
     
     ROS_INFO("\033[34m PUBLISHING INFO\033[0m");
@@ -261,6 +266,9 @@ void InteractiveSegmentation::callback(
     // reset processing signal
     this->is_segment_scene_ = false;
     ROS_INFO("\n\033[34m ALL VALID REGION LABELED \033[0m");
+
+    // temp reset object region
+    this->is_init_ = false;
 }
 
 void InteractiveSegmentation::selectedVoxelObjectHypothesis(

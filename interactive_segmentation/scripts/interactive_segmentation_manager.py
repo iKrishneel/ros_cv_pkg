@@ -45,6 +45,10 @@ def interactive_segmentation_callback(msg):
     
         global is_marked_object_
         is_marked_object_ = True
+    elif msg.data == -1:
+        rospy.logerr("segmentation node error... restaring")
+        restart = nodelet_manager_signal(START_SEGMENT_NODE, msg.header)
+        pub_signal_.publish(restart)
 
 def pr2_pushing_callback(msg):
     global pub_signal_

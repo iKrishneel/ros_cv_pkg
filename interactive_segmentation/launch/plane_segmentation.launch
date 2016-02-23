@@ -9,7 +9,7 @@
   </include>
 
   <!-- launch the plane segmentation nodelet -->
-  <include file="$(find jsk_pcl_ros)/launch/organized_multi_plane_segmentation.launch">
+  <include file="$(find interactive_segmentation)/launch/organized_multi_plane_segmentation.launch">
     <arg name="INPUT" value="$(arg filter_point)"/>
     <arg name="HANDLE_ESTIMATOR" value="$(arg HANDLE_ESTIMATOR)" />
   </include>

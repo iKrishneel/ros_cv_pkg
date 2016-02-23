@@ -10,17 +10,17 @@
   <arg name="num_threads" default="8" />
   <arg name="RVIZ" default="false" />
 
-  <!-- launch the pcl distance filter -->
-  <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch">
-    <arg name="cloud" value="$(arg input_point)"/>
-  </include>
+   <!-- launch the pcl distance filter -->
+  <!-- <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch"> -->
+  <!--   <arg name="cloud" value="$(arg input_point)"/> -->
+  <!-- </include> -->
 
   <!-- launch the plane segmentation -->
-  <include file="$(find interactive_segmentation)/launch/organized_multi_plane_segmentation.launch">
-    <arg name="INPUT" value="$(arg filter_point)"/>
-    <arg name="HANDLE_ESTIMATOR" value="$(arg HANDLE_ESTIMATOR)" />
-  </include>
-
+  <!-- <include file="$(find interactive_segmentation)/launch/organized_multi_plane_segmentation.launch"> -->
+  <!--   <arg name="INPUT" value="$(arg filter_point)"/> -->
+  <!--   <arg name="HANDLE_ESTIMATOR" value="$(arg HANDLE_ESTIMATOR)" /> -->
+  <!-- </include> -->
+  
   <!-- launch image to get object of interestx -->
   <node pkg="image_view2" type="image_view2"
 	name="image_view2" output="screen">
