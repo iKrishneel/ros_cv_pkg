@@ -72,8 +72,6 @@ void ConvexConnectedVoxels::surfelLevelObjectHypothesis(
        voxel_labels[it->first] = -1;
        pcl::Supervoxel<PointT>::Ptr supervoxel =
           supervoxel_clusters.at(it->first);
-       // *normals = *normals + *(supervoxel->normals_);
-       // *cloud = *cloud + *(supervoxel->voxels_);
     }
     int label = -1;
     AdjacencyList::vertex_iterator i, end;
@@ -90,8 +88,21 @@ void ConvexConnectedVoxels::surfelLevelObjectHypothesis(
        if (it->second == -1) {
           voxel_labels[vindex] = ++label;
        }
+
+       bool vertex_has_neigbor = false;
+       if (ai == a_end) {
+         vertex_has_neigbor = true;
+         std::cout << "SKIP CHECKING : "<< vindex << "\t" << vertex_has_neigbor  << "\n";
+         if (!supervoxel_clusters.at(vindex)->voxels_->empty()) {
+           convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
+         } else {
+           std::cout << "EMPTY INDEX: "<< vindex  << "\n";
+         }
+       }
+       
        std::vector<uint32_t> neigb_ind;
-       for (; ai != a_end; ai++) {
+       while (vertex_has_neigbor) {
+         // for (; ai != a_end; ai++) {
           bool found = false;
           AdjacencyList::edge_descriptor e_descriptor;
           boost::tie(e_descriptor, found) = boost::edge(
@@ -100,6 +111,9 @@ void ConvexConnectedVoxels::surfelLevelObjectHypothesis(
              float weight = adjacency_list[e_descriptor];
              uint32_t n_vindex = adjacency_list[*ai];
 
+
+             // std::cout << "processing: " <<n_vindex  << "\n";
+             
              // float conv_criteria = (
              //    supervoxel_clusters.at(vindex)->centroid_.getVector4fMap() -
              //    supervoxel_clusters.at(n_vindex)->centroid_.getVector4fMap()).
@@ -112,8 +126,9 @@ void ConvexConnectedVoxels::surfelLevelObjectHypothesis(
                    vindex)->centroid_.getVector4fMap() - supervoxel_clusters.at(
                       n_vindex)->centroid_.getVector4fMap()).norm();
              
-             float conv_criteria = (v_normal - supervoxel_clusters.at(
-                      n_vindex)->normal_.getNormalVector4fMap()).dot(dist);
+             float conv_criteria = (this->cloudMeanNormal(
+                 supervoxel_clusters.at(vindex)->normals_) - supervoxel_clusters.at(
+                     n_vindex)->normal_.getNormalVector4fMap()).dot(dist);
              
              neigb_ind.push_back(n_vindex);
              if (conv_criteria <= static_cast<float>(this->convex_threshold_) ||
@@ -133,7 +148,7 @@ void ConvexConnectedVoxels::surfelLevelObjectHypothesis(
                    bool is_found = false;
                    AdjacencyList::edge_descriptor n_edge;
                    boost::tie(n_edge, is_found) = boost::edge(
-                      *ai, *ni, adjacency_list);
+                       *ai, *ni, adjacency_list);
                    if (is_found && (*ni != *i)) {
                       boost::add_edge(*i, *ni, FLT_MIN, adjacency_list);
                    }
@@ -143,10 +158,19 @@ void ConvexConnectedVoxels::surfelLevelObjectHypothesis(
                 voxel_labels[n_vindex] = label;
              }
           }
+          
+          boost::tie(ai, a_end) = boost::adjacent_vertices(*i, adjacency_list);
+          if (ai == a_end) {
+            convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
+            vertex_has_neigbor = false;
+          } else {
+            // continue;
+          }
        }
-       convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
+       // convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
     }
     std::cout << "\033[31m LABEL: \033[0m"  << label << "\n";
+    std::cout << convex_supervoxels.size()  << "\n\n";
     supervoxel_clusters.clear();
 }
 
@@ -160,28 +184,36 @@ void ConvexConnectedVoxels::updateSupervoxelClusters(
        new pcl::PointCloud<pcl::Normal>);
     *normals = *(supervoxel_clusters.at(vindex)->normals_) +
        *(supervoxel_clusters.at(n_vindex)->normals_);
-    // Eigen::Vector4f centre;
-    // pcl::compute3DCentroid<PointT, float>(*cloud, centre);
-    // pcl::PointXYZRGBA centroid;
-    // centroid.x = centre(0);
-    // centroid.y = centre(1);
-    // centroid.z = centre(2);
+    Eigen::Vector4f centre;
+    pcl::compute3DCentroid<PointT, float>(*cloud, centre);
     pcl::PointXYZRGBA centroid;
+    centroid.x = centre(0);
+    centroid.y = centre(1);
+    centroid.z = centre(2);
+    // pcl::PointXYZRGBA centroid;
     pcl::PointXYZRGBA vcent = supervoxel_clusters.at(vindex)->centroid_;
     pcl::PointXYZRGBA n_vcent = supervoxel_clusters.at(n_vindex)->centroid_;
-    centroid.x = (vcent.x - n_vcent.x)/2 + n_vcent.x;
-    centroid.y = (vcent.y - n_vcent.y)/2 + n_vcent.y;
-    centroid.z = (vcent.z - n_vcent.z)/2 + n_vcent.z;
-    centroid.r = (vcent.r - n_vcent.r)/2 + n_vcent.r;
+    // centroid.x = (vcent.x - n_vcent.x)/2 + n_vcent.x;
+    // centroid.y = (vcent.y - n_vcent.y)/2 + n_vcent.y;
+    // centroid.z = (vcent.z - n_vcent.z)/2 + n_vcent.z;
+    // centroid.r = (vcent.r - n_vcent.r)/2 + n_vcent.r;
     centroid.g = (vcent.g - n_vcent.g)/2 + n_vcent.g;
     centroid.b = (vcent.b - n_vcent.b)/2 + n_vcent.b;
     centroid.a = (vcent.a - n_vcent.a)/2 + n_vcent.a;
+    supervoxel_clusters.at(vindex)->voxels_->clear();
+    supervoxel_clusters.at(vindex)->normals_->clear();
     *(supervoxel_clusters.at(vindex)->voxels_) = *cloud;
     *(supervoxel_clusters.at(vindex)->normals_) = *normals;
     supervoxel_clusters.at(vindex)->centroid_ = centroid;
-    *(supervoxel_clusters.at(n_vindex)->voxels_) = *cloud;
-    *(supervoxel_clusters.at(n_vindex)->normals_) = *normals;
-    supervoxel_clusters.at(n_vindex)->centroid_ = centroid;
+
+    supervoxel_clusters.at(n_vindex)->voxels_->clear();
+    supervoxel_clusters.at(n_vindex)->normals_->clear();
+    // *(supervoxel_clusters.at(n_vindex)->voxels_) = *cloud;
+    // *(supervoxel_clusters.at(n_vindex)->normals_) = *normals;
+    // supervoxel_clusters.at(n_vindex)->centroid_ = centroid;
+
+    // std::cout << "SIZE: " << supervoxel_clusters.at(n_vindex)->voxels_->size() << ", "
+    //           << n_vindex << "\n";
 }
 
 Eigen::Vector4f ConvexConnectedVoxels::cloudMeanNormal(
