@@ -99,14 +99,30 @@ void ConvexConnectedVoxels::surfelLevelObjectHypothesis(
           if (found) {
              float weight = adjacency_list[e_descriptor];
              uint32_t n_vindex = adjacency_list[*ai];
-             float conv_criteria = (
-                supervoxel_clusters.at(vindex)->centroid_.getVector4fMap() -
-                supervoxel_clusters.at(n_vindex)->centroid_.getVector4fMap()).
-                dot(v_normal);
+
+             // float conv_criteria = (
+             //    supervoxel_clusters.at(vindex)->centroid_.getVector4fMap() -
+             //    supervoxel_clusters.at(n_vindex)->centroid_.getVector4fMap()).
+             //    dot(v_normal);
+
+             Eigen::Vector4f dist = (supervoxel_clusters.at(
+                vindex)->centroid_.getVector4fMap() - supervoxel_clusters.at(
+                   n_vindex)->centroid_.getVector4fMap())/
+                (supervoxel_clusters.at(
+                   vindex)->centroid_.getVector4fMap() - supervoxel_clusters.at(
+                      n_vindex)->centroid_.getVector4fMap()).norm();
+             
+             float conv_criteria = (v_normal - supervoxel_clusters.at(
+                      n_vindex)->normal_.getNormalVector4fMap()).dot(dist);
+             
              neigb_ind.push_back(n_vindex);
-             if (conv_criteria <= this->convex_threshold_ ||
+             if (conv_criteria <= static_cast<float>(this->convex_threshold_) ||
                  isnan(conv_criteria)) {
                 boost::remove_edge(e_descriptor, adjacency_list);
+
+                std::cout << "Value: " << conv_criteria << "\t"
+                          << convex_threshold_<< "\n";
+                
              } else {
                 this->updateSupervoxelClusters(supervoxel_clusters,
                                                vindex, n_vindex);
@@ -130,6 +146,7 @@ void ConvexConnectedVoxels::surfelLevelObjectHypothesis(
        }
        convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
     }
+    std::cout << "\033[31m LABEL: \033[0m"  << label << "\n";
     supervoxel_clusters.clear();
 }
 
