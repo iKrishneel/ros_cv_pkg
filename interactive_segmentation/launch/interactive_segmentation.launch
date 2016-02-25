@@ -10,7 +10,7 @@
   <arg name="num_threads" default="8" />
   <arg name="RVIZ" default="false" />
 
-   <!-- launch the pcl distance filter -->
+  <!-- launch the pcl distance filter -->
   <!-- <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch"> -->
   <!--   <arg name="cloud" value="$(arg input_point)"/> -->
   <!-- </include> -->
