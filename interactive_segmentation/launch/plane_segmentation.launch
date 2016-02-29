@@ -1,6 +1,7 @@
 <launch>
   <arg name="input_point" default="/kinect_head_c2/depth_registered/points" />
   <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />
+  <arg name="image" default="/kinect_head_c2/rgb/image_rect_color" />
   <arg name="HANDLE_ESTIMATOR" default="true"/>
   
   <!-- launch the point cloud distance filter -->
@@ -13,4 +14,11 @@
     <arg name="INPUT" value="$(arg filter_point)"/>
     <arg name="HANDLE_ESTIMATOR" value="$(arg HANDLE_ESTIMATOR)" />
   </include>
+
+  <node pkg="image_view2" type="image_view2"
+	name="image_view2" output="screen">
+    <remap from="image" to="$(arg image)"/>
+  </node>
+
+  
 </launch>

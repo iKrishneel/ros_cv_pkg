@@ -123,7 +123,8 @@
 						 :link-list (send *pr2* :link-list
 								  (send *pr2* use-arm :end-coords :parent))
 						 :use-torso t
-						 :rotational-axis t)
+						 :rotational-axis t
+						 :debug-view t)
 					   (progn
 					     (push (send *pr2* :angle-vector) avs)
 					     (if (send *pr2* :inverse-kinematics
@@ -132,7 +133,8 @@
 						       :link-list (send *pr2* :link-list
 									(send *pr2* use-arm :end-coords :parent))
 						       :use-torso t
-						       :rotational-axis t)
+						       :rotational-axis t
+						       :debug-view t)
 						 (push (send *pr2* :angle-vector) avs)))
 					 (progn
 					   (if (send *pr2* :inverse-kinematics
@@ -141,7 +143,8 @@
 						     :link-list (send *pr2* :link-list
 								      (send *pr2* use-arm :end-coords :parent))
 						     :use-torso t
-						     :rotational-axis t)
+						     :rotational-axis t
+						     :debug-view t)
 					       (push (send *pr2* :angle-vector) avs))
 					   (if (send *pr2* :inverse-kinematics
 						     (send tgt-cds :rotate (deg2rad 180) :x)
@@ -149,7 +152,8 @@
 						     :link-list (send *pr2* :link-list
 								      (send *pr2* use-arm :end-coords :parent))
 						     :use-torso t
-						     :rotational-axis t)	
+						     :rotational-axis t
+						     :debug-view t)	
 					       (push (send *pr2* :angle-vector) avs))))
 				       (if (= (length avs) 2)
 					   (reverse avs)
