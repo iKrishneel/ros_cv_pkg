@@ -68,6 +68,11 @@ def grasp_object_callback(msg):
     global pub_signal_
     if is_marked_object_ and msg.data == 1:
         rospy.loginfo("THE TARGET OBJECT IS FOUND")
+
+        # delete this
+        next = nodelet_manager_signal(START_SEGMENT_NODE, msg.header)
+        pub_signal_.publish(next)
+        
     elif msg.data == START_SEGMENT_NODE:
         rospy.logdebug("going to segmentation node")
         next = nodelet_manager_signal(START_SEGMENT_NODE, msg.header)

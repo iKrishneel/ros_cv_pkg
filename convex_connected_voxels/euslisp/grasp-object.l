@@ -3,7 +3,7 @@
 (require "package://pr2eus/pr2-interface.l")
 (require "package://pr2eus_moveit/euslisp/pr2eus-moveit.l")
 
-(ros::load-ros-manifest "interactive_segmentation")
+(ros::load-ros-manifest "convex_connected_voxels")
 (ros::load-ros-manifest "jsk_recognition_msgs")
 (ros::load-ros-manifest "geometry_msgs")
 
@@ -88,7 +88,7 @@
 			    (send *ri* :wait-interpolation)
 			    (send *ri* :angle-vector (cadr avs) 4000)
 			    (send *ri* :wait-interpolation)
-			    (send *ri* :start-grasp use-arm :gain 0.02)
+			    (send *ri* :start-grasp use-arm :gain 0.01)
 			    (send *ri* :wait-interpolation)
 			    )
 
@@ -123,8 +123,7 @@
 						 :link-list (send *pr2* :link-list
 								  (send *pr2* use-arm :end-coords :parent))
 						 :use-torso t
-						 :rotational-axis t
-						 :debug-view t)
+						 :rotational-axis t)
 					   (progn
 					     (push (send *pr2* :angle-vector) avs)
 					     (if (send *pr2* :inverse-kinematics
@@ -133,8 +132,7 @@
 						       :link-list (send *pr2* :link-list
 									(send *pr2* use-arm :end-coords :parent))
 						       :use-torso t
-						       :rotational-axis t
-						       :debug-view t)
+						       :rotational-axis t)
 						 (push (send *pr2* :angle-vector) avs)))
 					 (progn
 					   (if (send *pr2* :inverse-kinematics
@@ -143,8 +141,7 @@
 						     :link-list (send *pr2* :link-list
 								      (send *pr2* use-arm :end-coords :parent))
 						     :use-torso t
-						     :rotational-axis t
-						     :debug-view t)
+						     :rotational-axis t)
 					       (push (send *pr2* :angle-vector) avs))
 					   (if (send *pr2* :inverse-kinematics
 						     (send tgt-cds :rotate (deg2rad 180) :x)
@@ -152,8 +149,7 @@
 						     :link-list (send *pr2* :link-list
 								      (send *pr2* use-arm :end-coords :parent))
 						     :use-torso t
-						     :rotational-axis t
-						     :debug-view t)	
+						     :rotational-axis t)	
 					       (push (send *pr2* :angle-vector) avs))))
 				       (if (= (length avs) 2)
 					   (reverse avs)
@@ -189,7 +185,7 @@
   ;; (send *handle-obj* :release-object use-arm)
   
   ;(speak-en "releasing object")
-  (setq trans-down-pos #f(0 0 -300))
+  (setq trans-down-pos #f(0 0 -100))
   (setq endpos (send *pr2* :larm :end-coords :copy-worldcoords))
   (send endpos :translate trans-down-pos :world)
   (send *pr2* use-arm :inverse-kinematics  endpos)

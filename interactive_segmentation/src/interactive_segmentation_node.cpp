@@ -211,7 +211,7 @@ void InteractiveSegmentation::callback(
           ROS_INFO("\033[32m THIS IS THE MARKED OBJECT \033[0m");
           jsk_recognition_msgs::Int32Stamped tgt_signal;
           tgt_signal.header = cloud_msg->header;
-          // tgt_signal.data = 1;
+          tgt_signal.data = 1;
           this->pub_signal_.publish(tgt_signal);
        }
        // ----------------------------------------

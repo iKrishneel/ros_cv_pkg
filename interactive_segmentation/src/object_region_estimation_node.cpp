@@ -410,7 +410,7 @@ bool ObjectRegionEstimation::getHypothesis(
     matcher->setInputCloud(prev_descriptors);
     std::vector<int> indices;
     std::vector<float> distances;
-    const float thresh = 0.50f;
+    const float thresh = 0.80f;
     for (int i = 0; i < next_descriptors->size(); i++) {
        bool is_finite = true;
        for (int j = 0; j < FEATURE_DIM; j++) {

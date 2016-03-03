@@ -1,0 +1,32 @@
+<launch>
+  <arg name="INPUT" default="/camera/depth_registered/points" />
+  <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />
+  
+  <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch">
+    <arg name="cloud" value="$(arg INPUT)"/>
+  </include>
+
+  <!-- launch the plane segmentation -->
+  <include file="$(find convex_connected_voxels)/launch/organized_multi_plane_segmentation.launch">
+    <arg name="INPUT" value="$(arg filter_point)"/>
+    <arg name="HANDLE_ESTIMATOR" value="true" />
+  </include>
+  
+  <node pkg="convex_connected_voxels" type="convex_connected_voxels_node"
+	name="convex_connected_voxels" output="screen" clear_params="true">
+    <remap from="input_cloud" to="/plane_extraction/output_nonplane_cloud" />
+    <remap from="input_normal" to="/plane_extraction/output_nonplane_cloud" />
+  </node>
+
+  <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer"
+	name="supervoxel_segmentation_decomposer" output="screen" clear_params="true">
+    <remap from="~input" to="/convex_connected_voxels/output/cloud" />
+    <remap from="~target" to="/convex_connected_voxels/output/indices" />
+    <remap from="~align_planes" to="/multi_plane_estimate/output_refined_polygon" />
+    <remap from="~align_planes_coefficients" to="/multi_plane_estimate/output_refined_coefficients" />
+    <param name="align_boxes" value="true" />
+    <param name="use_pca" value="false" />
+    <param name="publish_clouds" value="false" />
+    <param name="publish_tf" value="true" />
+  </node>
+</launch>
