@@ -15,12 +15,15 @@
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/features2d/features2d.hpp>
-// #include <opencv2/nonfree/features2d.hpp>
 #include <opencv2/highgui/highgui.hpp>
 // #include <opencv2/nonfree/nonfree.hpp>
 #include <opencv2/opencv.hpp>
 #include <opencv2/video/video.hpp>
 #include <opencv2/video/background_segm.hpp>
+
+#if CV_MAJOR_VERSION < 3
+#include <opencv2/nonfree/features2d.hpp>
+#endif
 
 #include <boost/thread/mutex.hpp>
 
