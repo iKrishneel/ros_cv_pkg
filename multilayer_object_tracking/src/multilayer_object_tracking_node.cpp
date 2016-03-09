@@ -174,7 +174,7 @@ void MultilayerObjectTracking::callback(
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
 
-    bool use_tf = true;
+    bool use_tf = false;
     tf::TransformListener tf_listener;
     tf::StampedTransform transform;
     ros::Time now = ros::Time(0);
@@ -399,7 +399,7 @@ void MultilayerObjectTracking::targetDescriptiveSurfelsEstimationAndUpdate(
     // this->backgroundReferenceLikelihood(
     //     this->background_reference_, t_voxels, background_probability);
     
-    ROS_INFO("\033[35m MODEL TRANSITION FOR MATCHING \033[0m");    
+    ROS_INFO("\033[35m MODEL TRANSITION FOR MATCHING \033[0m");
     std::map<int, int> matching_indices;  // hold the query and test case
     pcl::PointCloud<PointT>::Ptr template_cloud(new pcl::PointCloud<PointT>);
     for (int j = 0; j < obj_ref.size(); j++) {

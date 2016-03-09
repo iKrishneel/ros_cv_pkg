@@ -67,10 +67,6 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
     typedef pcl::PointXYZRGB PointT;
 
     struct AdjacentInfo {
-       /* -old type (remove) */
-       std::vector<int> adjacent_indices;
-       std::vector<float> adjacent_distances;
-       
        uint32_t voxel_index;
        std::map<uint32_t, std::vector<uint32_t> > adjacent_voxel_indices;
     };
@@ -82,13 +78,13 @@ class MultilayerObjectTracking: public SupervoxelSegmentation {
        AdjacentInfo cluster_neigbors;
        pcl::PointCloud<pcl::Normal>::Ptr cluster_normals;
        Eigen::Vector4f cluster_centroid;
-        Eigen::Vector3f centroid_distance;  // not used in ref model
+       Eigen::Vector3f centroid_distance;  // not used in ref model
        cv::Mat neigbour_pfh;
        int query_index;  // used for holding test-target match index
        bool flag;
-        uint32_t supervoxel_index;
-        std::vector<int> history_window;
-        int match_counter;
+       uint32_t supervoxel_index;
+       std::vector<int> history_window;
+       int match_counter;
     };
     typedef std::vector<ReferenceModel> Models;
     typedef boost::shared_ptr<Models> ModelsPtr;

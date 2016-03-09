@@ -31,9 +31,11 @@ def read_rosbag(argv):
             image_data.append(msg)
         print topic
     bag.close()
+    print len(cloud_data)
 
 def callback(data):
     global process_counter
+    print process_counter
     if process_counter < len(cloud_data):
         rospy.sleep(3)
         cloud = PointCloud2()
