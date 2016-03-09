@@ -18,7 +18,11 @@ public:
     bool estimateScale;
     bool estimateRotation;
 
+#if CV_MAJOR_VERSION < 3
     cv::Ptr<cv::FeatureDetector> detector;
+#elif CV_MAJOR_VERSION >= 3
+    cv::Ptr<cv::BRISK> detector;
+#endif
     cv::Ptr<cv::DescriptorExtractor> descriptorExtractor;
     cv::Ptr<cv::DescriptorMatcher> descriptorMatcher;
 

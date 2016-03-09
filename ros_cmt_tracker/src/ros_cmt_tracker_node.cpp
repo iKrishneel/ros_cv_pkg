@@ -35,7 +35,7 @@ void ROSCMTTracker::callback(const sensor_msgs::Image::ConstPtr &image_msg) {
        return;
     }
     if (!object_init_) {
-       ROS_WARN("PLEASE INITIALIZE THE OBJECT");
+       ROS_WARN_ONCE("PLEASE INITIALIZE THE OBJECT");
        return;
     }
     cv::Mat image = cv_ptr->image;
@@ -85,6 +85,7 @@ void ROSCMTTracker::screenPointCallback(
     if (width > this->block_size_ && height > this->block_size_) {
        this->object_init_ = true;
        this->tracker_init_ = false;
+       ROS_INFO("OBJECT INTIALIZED. NOW TRACKING..");
     } else {
        ROS_WARN("-- Selected Object Size is too small... Not init tracker");
     }

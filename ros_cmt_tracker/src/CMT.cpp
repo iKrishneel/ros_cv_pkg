@@ -96,7 +96,7 @@ CMT::CMT()
     detectorType = "Feature2D.BRISK";
     descriptorType = "Feature2D.BRISK";
     matcherType = "BruteForce-Hamming";
-    thrOutlier = 20;
+    thrOutlier = 30;
     thrConf = 0.75;
     thrRatio = 0.8;
     descriptorLength = 512;
@@ -109,11 +109,16 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft, cv::Point2f bottomri
 {
 
     //Initialise detector, descriptor, matcher
+#if CV_MAJOR_VERSION < 3
     detector = cv::Algorithm::create<cv::FeatureDetector>(detectorType.c_str());
     descriptorExtractor = cv::Algorithm::create<cv::DescriptorExtractor>(descriptorType.c_str());
-    descriptorMatcher = cv::DescriptorMatcher::create(matcherType.c_str());
     std::vector<std::string> list;
     cv::Algorithm::getList(list);
+#elif CV_MAJOR_VERSION >= 3
+    detector = cv::BRISK::create(thrOutlier, 3, 1.0f);
+    descriptorExtractor = cv::BRISK::create();
+#endif
+    descriptorMatcher = cv::DescriptorMatcher::create(matcherType.c_str());
 
     //Get initial keypoints in whole image
     std::vector<cv::KeyPoint> keypoints;
