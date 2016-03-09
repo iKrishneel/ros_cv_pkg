@@ -40,6 +40,8 @@ void ParticleFilterTracking::screenPointCallback(
 
 void ParticleFilterTracking::imageCallback(
     const sensor_msgs::Image::ConstPtr &image_msg) {
+    std::cout << "1 RUNNING"  << "\n";
+    
     cv_bridge::CvImagePtr cv_ptr;
     try {
         cv_ptr = cv_bridge::toCvCopy(
@@ -50,6 +52,9 @@ void ParticleFilterTracking::imageCallback(
     }
     cv::Mat image = cv_ptr->image.clone();
 
+    std::cout << "CV_VERSION:  " <<  CV_MAJOR_VERSION << "\n";
+
+    
     if (this->tracker_init_) {
        ROS_INFO("Initializing Tracker");
        this->initializeTracker(image, this->screen_rect_);

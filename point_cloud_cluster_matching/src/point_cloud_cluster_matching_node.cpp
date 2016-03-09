@@ -645,12 +645,17 @@ void PointCloudClusterMatching::getObjectRegionMask(
 void PointCloudClusterMatching::extractKeyPointsAndDescriptors(
     const cv::Mat &image, cv::Mat &descriptor,
     std::vector<cv::KeyPoint> &keypoints) {
+#if CV_MAJOR_VERSION < 3
     cv::Ptr<cv::FeatureDetector> detector =
        cv::FeatureDetector::create("SIFT");
     detector->detect(image, keypoints);
     // cv::SurfDescriptorExtractor extractor;
     cv::SiftDescriptorExtractor extractor;
     extractor.compute(image, keypoints, descriptor);
+#else
+    throw std::exception();
+    std::exit(-1);
+#endif
 }
 
 void PointCloudClusterMatching::computeFeatureMatch(

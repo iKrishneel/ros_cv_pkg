@@ -207,10 +207,15 @@ cv::Mat ImageAnnotationTool::shapeProbabilityMap(const cv::Mat &src) {
     if (image.type() != CV_8U) {
        cv::cvtColor(src, image, CV_BGR2GRAY);
     }
+    std::vector<cv::KeyPoint> keypoints;
+#if CV_MAJOR_VERSION < 3
     cv::Ptr<cv::FeatureDetector> detector =
        cv::FeatureDetector::create("GFTT");
-    std::vector<cv::KeyPoint> keypoints;
     detector->detect(image, keypoints);
+#else
+    throw std::exception();
+    std::exit(0);
+#endif
     if (keypoints.empty()) {
        ROS_WARN("NO KEYPOINTS AVALIABLE.");
        return cv::Mat();

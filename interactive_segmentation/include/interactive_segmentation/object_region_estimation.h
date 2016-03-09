@@ -13,7 +13,7 @@
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
 #include <opencv2/features2d/features2d.hpp>
-#include <opencv2/nonfree/nonfree.hpp>
+// #include <opencv2/nonfree/nonfree.hpp>
 
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>

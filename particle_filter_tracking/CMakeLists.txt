@@ -15,6 +15,8 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
 )
 
+find_package(OpenCV REQUIRED)
+
 #find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msgs std_srvs geometry_msgs roscpp rospy sensor_msgs visualization_msgs message_filters message_generation jsk_pcl_ros interactive_markers pcl_conversions jsk_topic_tools rviz eigen_conversions dynamic_tf_publisher jsk_interactive_marker jsk_recognition_msgs move_base_msgs rosgraph_msgs topic_tools jsk_topic_tools jsk_ik_server pcl_msgs jsk_footstep_msgs drc_com_common jsk_perception jsk_calibration resized_image_transport smach_msgs pcl_ros nav_msgs tf dynamic_reconfigure roseus)
 
 
@@ -118,7 +120,6 @@ include_directories(
 add_executable(particle_filter_tracking_node
   src/particle_filter_tracking_node.cpp
   src/particle_filter.cpp
-  src/histogram_of_oriented_gradients.cpp
   src/motion_dynamics.cpp
   src/color_histogram.cpp)
 
@@ -128,7 +129,7 @@ add_executable(particle_filter_tracking_node
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(particle_filter_tracking_node
-  ${catkin_LIBRARIES}
+  ${catkin_LIBRARIES} ${OpenCV_LIBS}
   )
 
 #############

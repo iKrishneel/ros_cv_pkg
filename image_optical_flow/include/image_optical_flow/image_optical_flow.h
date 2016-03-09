@@ -14,8 +14,8 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/video/tracking.hpp>
 #include <opencv2/features2d/features2d.hpp>
-#include <opencv2/nonfree/features2d.hpp>
-#include <opencv2/legacy/legacy.hpp>
+// #include <opencv2/nonfree/features2d.hpp>
+// #include <opencv2/legacy/legacy.hpp>
 #include <opencv2/videostab/videostab.hpp>
 #include <opencv2/videostab/global_motion.hpp>
 #include <opencv2/videostab/optical_flow.hpp>

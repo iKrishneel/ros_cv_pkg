@@ -25,10 +25,10 @@
 #include <pcl_msgs/PointIndices.h>
 
 // #if PCL_VERSION_COMPARE(<, 1, 7, 2)
-// #include <point_cloud_edge/organized_edge_detection.h>
+#include <point_cloud_edge/organized_edge_detection.h>
 // #endif
 // #if PCL_VERSION_COMPARE(=, 1, 7, 2)
-#include <pcl/features/organized_edge_detection.h>
+// #include <pcl/features/organized_edge_detection.h>
 // #endif
 class PointCloudEdge {
    

@@ -7,10 +7,12 @@ PointCloudClusterMatching::PointCloudClusterMatching() :
     depth_counter(0),
     min_object_size_(100),
     max_distance_(1.5f) {
-   
+
+#if CV_MAJOR_VERSION < 3
     this->detector_ = cv::FeatureDetector::create("FAST");
     this->descriptor_ = cv::DescriptorExtractor::create("ORB");
-
+#endif
+    
     this->known_object_bboxes_.clear();
     this->subscribe();
     this->onInit();
