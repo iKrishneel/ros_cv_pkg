@@ -2,7 +2,7 @@
   <arg name="image" default="/camera/rgb/image_rect_color" />
   <node pkg="ros_cmt_tracker" type="ros_cmt_tracker_node" name="ros_cmt_tracker" output="screen" >
     <remap from="input" to="$(arg image)" />
-    <remap from="input_screen" to="/camera/rgb/image_rect_color/screenrectangle"/>
+    <remap from="input_screen" to="$(arg image)/screenrectangle"/>
   </node>
   <node pkg="image_view2" type="image_view2"
 	name="image_view2" output="screen">
