@@ -2,6 +2,7 @@
 #define CMT_H
 
 #include <opencv2/opencv.hpp>
+#include <opencv2/ml/ml.hpp>
 #include <opencv2/features2d/features2d.hpp>
 
 class CMT

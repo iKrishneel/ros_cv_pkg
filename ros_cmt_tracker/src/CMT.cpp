@@ -140,6 +140,14 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft, cv::Point2f bottomri
     cv::Mat background_features;
     descriptorExtractor->compute(im_gray0, background_keypoints, background_features);
 
+
+    /**
+     * COMPUTE CLASSIFIER
+     */
+
+    cv::Ptr<cv::SVM> svm = new cv::SVM();
+    
+    
     //Assign each keypoint a class starting from 1, background is 0
     selectedClasses = std::vector<int>();
     for(unsigned int i = 1; i <= selected_keypoints.size(); i++)
@@ -149,11 +157,16 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft, cv::Point2f bottomri
         backgroundClasses.push_back(0);
 
     //Stack background features and selected features into database
-    featuresDatabase = cv::Mat(background_features.rows+selectedFeatures.rows, std::max(background_features.cols,selectedFeatures.cols), background_features.type());
+    featuresDatabase = cv::Mat(background_features.rows+selectedFeatures.rows,
+                               std::max(background_features.cols,selectedFeatures.cols),
+                               background_features.type());
     if(background_features.cols > 0)
-        background_features.copyTo(featuresDatabase(cv::Rect(0,0,background_features.cols, background_features.rows)));
+      background_features.copyTo(featuresDatabase(cv::Rect(0,0,background_features.cols,
+                                                           background_features.rows)));
     if(selectedFeatures.cols > 0)
-        selectedFeatures.copyTo(featuresDatabase(cv::Rect(0,background_features.rows,selectedFeatures.cols, selectedFeatures.rows)));
+      selectedFeatures.copyTo(featuresDatabase(cv::Rect(0,background_features.rows,
+                                                        selectedFeatures.cols,
+                                                        selectedFeatures.rows)));
 
     //Same for classes
     classesDatabase = std::vector<int>();
@@ -162,7 +175,8 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft, cv::Point2f bottomri
     for(unsigned int i = 0; i < selectedClasses.size(); i++)
         classesDatabase.push_back(selectedClasses[i]);
 
-    //Get all distances between selected keypoints in squareform and get all angles between selected keypoints
+    // Get all distances between selected keypoints in squareform and
+    // get all angles between selected keypoints
     squareForm = std::vector<std::vector<float> >();
     angles = std::vector<std::vector<float> >();
     for(unsigned int i = 0; i < selected_keypoints.size(); i++)
