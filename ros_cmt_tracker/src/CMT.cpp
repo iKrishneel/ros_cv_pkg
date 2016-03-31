@@ -33,7 +33,10 @@ void inout_rect(const std::vector<cv::KeyPoint>& keypoints, cv::Point2f topleft,
 }
 
 
-void track(cv::Mat im_prev, cv::Mat im_gray, const std::vector<std::pair<cv::KeyPoint, int> >& keypointsIN, std::vector<std::pair<cv::KeyPoint, int> >& keypointsTracked, std::vector<unsigned char>& status, int THR_FB)
+void track(cv::Mat im_prev, cv::Mat im_gray,
+           const std::vector<std::pair<cv::KeyPoint, int> >& keypointsIN,
+           std::vector<std::pair<cv::KeyPoint, int> >& keypointsTracked,
+           std::vector<unsigned char>& status, int THR_FB)
 {
     //Status of tracked keypoint - True means successfully tracked
     status = std::vector<unsigned char>();
@@ -103,6 +106,10 @@ CMT::CMT()
     estimateScale = true;
     estimateRotation = true;
     nbInitialKeypoints = 0;
+
+    this->classifier_ = boost::shared_ptr<KeyPointClassifier>(
+        new KeyPointClassifier());
+    
 }
 
 void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft, cv::Point2f bottomright)
@@ -127,9 +134,10 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft, cv::Point2f bottomri
     //Remember keypoints that are in the rectangle as selected keypoints
     std::vector<cv::KeyPoint> selected_keypoints;
     std::vector<cv::KeyPoint> background_keypoints;
-    inout_rect(keypoints, topleft, bottomright, selected_keypoints, background_keypoints);
+    inout_rect(keypoints, topleft, bottomright,
+               selected_keypoints, background_keypoints);
     descriptorExtractor->compute(im_gray0, selected_keypoints, selectedFeatures);
-
+    
     if(selected_keypoints.size() == 0)
     {
         printf("No keypoints found in selection");
@@ -144,8 +152,13 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft, cv::Point2f bottomri
     /**
      * COMPUTE CLASSIFIER
      */
-
-    cv::Ptr<cv::SVM> svm = new cv::SVM();
+    
+    this->classifier_->setForeGroundFeatures(selectedFeatures, 1);
+    this->classifier_->setBackGroundFeatures(background_features, -1);
+    if (this->classifier_->trainClassifier()) {
+        std::cout << "\033[34m KEYPOINT CLASSIFIER BUILT \033[0m"  << "\n";
+    }
+    
     
     
     //Assign each keypoint a class starting from 1, background is 0
@@ -217,7 +230,8 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft, cv::Point2f bottomri
     //Make keypoints 'active' keypoints
     activeKeypoints = std::vector<std::pair<cv::KeyPoint,int> >();
     for(unsigned int i = 0; i < selected_keypoints.size(); i++)
-        activeKeypoints.push_back(std::make_pair(selected_keypoints[i], selectedClasses[i]));
+        activeKeypoints.push_back(std::make_pair(selected_keypoints[i],
+                                                 selectedClasses[i]));
 
     //Remember number of initial keypoints
     nbInitialKeypoints = selected_keypoints.size();
@@ -261,8 +275,8 @@ T median(std::vector<T> list)
     return val;
 }
 
-float findMinSymetric(const std::vector<std::vector<float> >& dist, const std::vector<bool>& used, int limit, int &i, int &j)
-{
+float findMinSymetric(const std::vector<std::vector<float> >& dist,
+                      const std::vector<bool>& used, int limit, int &i, int &j) {
     float min = dist[0][0];
     i = 0;
     j = 0;
@@ -282,8 +296,7 @@ float findMinSymetric(const std::vector<std::vector<float> >& dist, const std::v
     return min;
 }
 
-std::vector<Cluster> linkage(const std::vector<cv::Point2f>& list)
-{
+std::vector<Cluster> linkage(const std::vector<cv::Point2f>& list) {
     float inf = 10000000.0;
     std::vector<bool> used;
     for(unsigned int i = 0; i < 2*list.size(); i++)
@@ -322,7 +335,8 @@ std::vector<Cluster> linkage(const std::vector<cv::Point2f>& list)
         cluster.first = x;
         cluster.second = y;
         cluster.dist = min;
-        cluster.num = (x < (int)list.size() ? 1 : clusters[x-list.size()].num) + (y < (int)list.size() ? 1 : clusters[y-list.size()].num);
+        cluster.num = (x < (int)list.size() ? 1 : clusters[x-list.size()].num) +
+            (y < (int)list.size() ? 1 : clusters[y-list.size()].num);
         used[x] = true;
         used[y] = true;
         int limit = list.size()+clusters.size();
@@ -336,11 +350,12 @@ std::vector<Cluster> linkage(const std::vector<cv::Point2f>& list)
     return clusters;
 }
 
-void fcluster_rec(std::vector<int>& data, const std::vector<Cluster>& clusters, float threshold, const Cluster& currentCluster, int& binId)
-{
+void fcluster_rec(std::vector<int>& data, const std::vector<Cluster>& clusters,
+                  float threshold, const Cluster& currentCluster, int& binId) {
     int startBin = binId;
     if(currentCluster.first >= (int)data.size())
-        fcluster_rec(data, clusters, threshold, clusters[currentCluster.first - data.size()], binId);
+        fcluster_rec(data, clusters, threshold, clusters[
+                         currentCluster.first - data.size()], binId);
     else data[currentCluster.first] = binId;
 
     if(startBin == binId && currentCluster.dist >= threshold)
@@ -348,7 +363,8 @@ void fcluster_rec(std::vector<int>& data, const std::vector<Cluster>& clusters, 
     startBin = binId;
 
     if(currentCluster.second >= (int)data.size())
-        fcluster_rec(data, clusters, threshold, clusters[currentCluster.second - data.size()], binId);
+        fcluster_rec(data, clusters, threshold, clusters[
+                         currentCluster.second - data.size()], binId);
     else data[currentCluster.second] = binId;
 
     if(startBin == binId && currentCluster.dist >= threshold)
@@ -540,7 +556,8 @@ void CMT::processFrame(cv::Mat im_gray)
     float scaleEstimate;
     float rotationEstimate;
     std::vector<std::pair<cv::KeyPoint, int> > trackedKeypoints2;
-    estimate(trackedKeypoints, center, scaleEstimate, rotationEstimate, trackedKeypoints2);
+    estimate(trackedKeypoints, center, scaleEstimate,
+             rotationEstimate, trackedKeypoints2);
     trackedKeypoints = trackedKeypoints2;
 
     //Detect keypoints, compute descriptors
@@ -549,6 +566,13 @@ void CMT::processFrame(cv::Mat im_gray)
     detector->detect(im_gray, keypoints);
     descriptorExtractor->compute(im_gray, keypoints, features);
 
+    /**
+     * CLASSIFIER CHECK
+     */
+    std::cout << "\033[32m INFO BEFORE: \033[0m" << features.size()  << "\n";
+    this->classifier_->filterProbableOutliers(im_gray, features, keypoints);
+    std::cout << "\033[33m INFO AFTER: \033[0m" << features.size()  << "\n";
+    
     //Create list of active keypoints
     activeKeypoints = std::vector<std::pair<cv::KeyPoint, int> >();
 
@@ -558,8 +582,15 @@ void CMT::processFrame(cv::Mat im_gray)
 
     //Get all matches for selected features
     if(!isnan(center.x) && !isnan(center.y))
-        descriptorMatcher->knnMatch(features, selectedFeatures, selectedMatchesAll, selectedFeatures.rows);
+        descriptorMatcher->knnMatch(features, selectedFeatures,
+                                    selectedMatchesAll, selectedFeatures.rows);
 
+
+
+    std::cout << matchesAll.size() << "\t" << selectedMatchesAll.size()  << "\n";
+    
+
+    
     std::vector<cv::Point2f> transformedSprings(springs.size());
     for(int i = 0; i < springs.size(); i++)
         transformedSprings[i] = scaleEstimate * rotate(springs[i], -rotationEstimate);

@@ -2,11 +2,15 @@
 #define CMT_H
 
 #include <opencv2/opencv.hpp>
-#include <opencv2/ml/ml.hpp>
 #include <opencv2/features2d/features2d.hpp>
 
-class CMT
-{
+#include <ros_cmt_tracker/keypoint_classifier.h>
+
+class CMT {
+
+private:
+    boost::shared_ptr<KeyPointClassifier> classifier_;
+    
 public:
     std::string detectorType;
     std::string descriptorType;
