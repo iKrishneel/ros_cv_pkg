@@ -26,14 +26,15 @@ void inout_rect(const std::vector<cv::KeyPoint>& keypoints, cv::Point2f topleft,
 {
     for(unsigned int i = 0; i < keypoints.size(); i++)
     {
-        if(keypoints[i].pt.x > topleft.x && keypoints[i].pt.y > topleft.y && keypoints[i].pt.x < bottomright.x && keypoints[i].pt.y < bottomright.y)
+        if(keypoints[i].pt.x > topleft.x && keypoints[i].pt.y > topleft.y &&
+           keypoints[i].pt.x < bottomright.x && keypoints[i].pt.y < bottomright.y)
             in.push_back(keypoints[i]);
         else out.push_back(keypoints[i]);
     }
 }
 
 
-void track(cv::Mat im_prev, cv::Mat im_gray,
+void CMT::track(cv::Mat im_prev, cv::Mat im_gray,
            const std::vector<std::pair<cv::KeyPoint, int> >& keypointsIN,
            std::vector<std::pair<cv::KeyPoint, int> >& keypointsTracked,
            std::vector<unsigned char>& status, int THR_FB)
@@ -78,7 +79,14 @@ void track(cv::Mat im_prev, cv::Mat im_gray,
             if(status[i])
             {
                 p.first.pt = nextPts[i];
-                keypointsTracked.push_back(p);
+
+                // filter out points on uav
+                std::vector<cv::KeyPoint> test_key;
+                test_key.push_back(p.first);
+                this->maskUAVKeyPoints(test_key, this->mask_image_filename_);
+                if (test_key.size() != 0) {
+                    keypointsTracked.push_back(p);
+                }
             }
         }
     }
@@ -96,7 +104,7 @@ cv::Point2f rotate(cv::Point2f p, float rad)
 
 CMT::CMT()
 {
-    detectorType = "Feature2D.BRISK";
+    detectorType = "Feature2D.STAR";
     descriptorType = "Feature2D.BRISK";
     matcherType = "BruteForce-Hamming";
     thrOutlier = 30;
@@ -107,14 +115,119 @@ CMT::CMT()
     estimateRotation = true;
     nbInitialKeypoints = 0;
 
+    this->mask_image_filename_ = "/home/krishneel/.ros/uav_self_filter_mask.jpg";
     this->classifier_ = boost::shared_ptr<KeyPointClassifier>(
         new KeyPointClassifier());
     
 }
 
+
+void CMT::pyramidKeypoints(std::vector<cv::KeyPoint> &selected_keypoints,
+                           std::vector<cv::KeyPoint> &background_keypoints,
+                           const cv::Mat &image, const float scale, const int level,
+                           const cv::Point2f topleft, const cv::Point2f bottomright) {
+    if (image.empty() || level == 0 || scale == 0.0f) {
+        return;
+    }
+    float width = static_cast<float>(image.cols);
+    float height = static_cast<float>(image.rows);
+    cv::Size d_sz = cv::Size(width, height);
+    cv::Size u_sz = cv::Size(width, height);
+    
+    cv::Point2f d_t_left = topleft;
+    cv::Point2f d_b_right = bottomright;
+    cv::Point2f u_t_left = topleft;
+    cv::Point2f u_b_right = bottomright;
+
+    cv::Mat d_img = image.clone();
+    cv::Mat u_img = image.clone();
+    
+    std::vector<cv::KeyPoint> keypoints;
+    detector->detect(image, keypoints);
+    inout_rect(keypoints, topleft, bottomright,
+               selected_keypoints, background_keypoints);
+    
+    int icounter = 1;
+    do {
+        // scale down 
+        d_t_left.x = std::floor(d_t_left.x * scale);
+        d_t_left.y = std::floor(d_t_left.y * scale);
+        d_b_right.x = std::floor(d_b_right.x * scale);
+        d_b_right.y = std::floor(d_b_right.y * scale);
+        d_sz = cv::Size((d_sz.width * scale), (d_sz.height * scale));
+        cv::resize(d_img, d_img, d_sz);
+        
+        keypoints.clear();
+        detector->detect(d_img, keypoints);
+        this->maskUAVKeyPoints(keypoints, this->mask_image_filename_);
+        
+        for (int i = 0; i < keypoints.size(); i++) {
+            cv::Point2f pt = keypoints[i].pt;
+            pt.x = std::floor(pt.x / scale);
+            pt.y = std::floor(pt.y / scale);
+            keypoints[i].pt = pt;
+        }
+        
+        inout_rect(keypoints, d_t_left, d_b_right,
+                   selected_keypoints, background_keypoints);
+                   
+        // scale up
+        u_t_left.x = std::floor(u_t_left.x * (scale + 1.0f));
+        u_t_left.y = std::floor(u_t_left.y * (scale + 1.0f));
+        u_b_right.x = std::floor(u_b_right.x * (scale + 1.0f));
+        u_b_right.y = std::floor(u_b_right.y * (scale + 1.0f));
+        u_sz = cv::Size(u_sz.width * (scale + 1.0f), u_sz.height * (scale + 1.0f));
+        cv::resize(u_img, u_img, u_sz);
+
+        keypoints.clear();
+        detector->detect(u_img, keypoints);
+        for (int i = 0; i < keypoints.size(); i++) {
+            cv::Point2f pt = keypoints[i].pt;
+            pt.x = std::floor(pt.x / (scale + 1.0f));
+            pt.y = std::floor(pt.y / (scale + 1.0f));
+            keypoints[i].pt = pt;
+        }
+        inout_rect(keypoints, u_t_left, u_b_right,
+                   selected_keypoints, background_keypoints);
+    } while(icounter++ < level);
+}
+
+void CMT::maskUAVKeyPoints(std::vector<cv::KeyPoint> &keypoints,
+                           const std::string filename) {
+    cv::Mat uav_mask_img = cv::imread(filename, 0);
+    if (uav_mask_img.empty()) {
+        std::cout << "UAV MASK IMAGE NOT FOUND !!!"  << "\n";
+        return;
+    }
+    const int lenght = 8;
+    std::vector<cv::KeyPoint> filtered_keys;
+    for (int i = 0; i < keypoints.size(); i++) {
+        cv::Point2f pt = keypoints[i].pt;
+        cv::Rect_<int> rect = cv::Rect_<int>(pt.x - (lenght/2),
+                                             pt.y - (lenght/2), lenght, lenght);
+        if (rect.x >= 0 && (rect.x + rect.width < uav_mask_img.cols) &&
+            rect.y >= 0 && (rect.y + rect.height < uav_mask_img.rows)) {
+            int icounter = 0;
+            for (int j = rect.y; j < rect.y + rect.height; j++) {
+                for (int i = rect.x; i < rect.x + rect.width; i++) {
+                    int pixel = static_cast<int>(uav_mask_img.at<uchar>(j, i));
+                    if (pixel == 0) {
+                        icounter++;
+                    }
+                }
+            }
+            if (icounter < (0.125 * lenght * lenght)) {
+                filtered_keys.push_back(keypoints.at(i));
+            }
+        }
+    }
+    keypoints.clear();
+    keypoints = filtered_keys;
+}
+
+
 void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft, cv::Point2f bottomright)
 {
-
     //Initialise detector, descriptor, matcher
 #if CV_MAJOR_VERSION < 3
     detector = cv::Algorithm::create<cv::FeatureDetector>(detectorType.c_str());
@@ -122,20 +235,28 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft, cv::Point2f bottomri
     std::vector<std::string> list;
     cv::Algorithm::getList(list);
 #elif CV_MAJOR_VERSION >= 3
-    detector = cv::BRISK::create(thrOutlier, 3, 1.0f);
+    detector = cv::BRISK::create(thrOutlier, 5, 0.50f);
     descriptorExtractor = cv::BRISK::create();
 #endif
     descriptorMatcher = cv::DescriptorMatcher::create(matcherType.c_str());
 
     //Get initial keypoints in whole image
+    /*
     std::vector<cv::KeyPoint> keypoints;
     detector->detect(im_gray0, keypoints);
-
+        
     //Remember keypoints that are in the rectangle as selected keypoints
     std::vector<cv::KeyPoint> selected_keypoints;
     std::vector<cv::KeyPoint> background_keypoints;
     inout_rect(keypoints, topleft, bottomright,
                selected_keypoints, background_keypoints);
+    */
+
+    std::vector<cv::KeyPoint> selected_keypoints;
+    std::vector<cv::KeyPoint> background_keypoints;
+    this->pyramidKeypoints(selected_keypoints, background_keypoints,
+                           im_gray0, 0.5f, 1, topleft, bottomright);
+    
     descriptorExtractor->compute(im_gray0, selected_keypoints, selectedFeatures);
     
     if(selected_keypoints.size() == 0)
@@ -564,6 +685,7 @@ void CMT::processFrame(cv::Mat im_gray)
     std::vector<cv::KeyPoint> keypoints;
     cv::Mat features;
     detector->detect(im_gray, keypoints);
+    this->maskUAVKeyPoints(keypoints, this->mask_image_filename_);
     descriptorExtractor->compute(im_gray, keypoints, features);
 
     /**
@@ -584,12 +706,6 @@ void CMT::processFrame(cv::Mat im_gray)
     if(!isnan(center.x) && !isnan(center.y))
         descriptorMatcher->knnMatch(features, selectedFeatures,
                                     selectedMatchesAll, selectedFeatures.rows);
-
-
-
-    std::cout << matchesAll.size() << "\t" << selectedMatchesAll.size()  << "\n";
-    
-
     
     std::vector<cv::Point2f> transformedSprings(springs.size());
     for(int i = 0; i < springs.size(); i++)

@@ -10,6 +10,7 @@ class CMT {
 
 private:
     boost::shared_ptr<KeyPointClassifier> classifier_;
+    std::string mask_image_filename_;
     
 public:
     std::string detectorType;
@@ -69,6 +70,17 @@ public:
     void initialise(cv::Mat im_gray0, cv::Point2f topleft, cv::Point2f bottomright);
     void estimate(const std::vector<std::pair<cv::KeyPoint, int> >& keypointsIN, cv::Point2f& center, float& scaleEstimate, float& medRot, std::vector<std::pair<cv::KeyPoint, int> >& keypoints);
     void processFrame(cv::Mat im_gray);
+
+    void track(cv::Mat im_prev, cv::Mat im_gray,
+               const std::vector<std::pair<cv::KeyPoint, int> >& keypointsIN,
+               std::vector<std::pair<cv::KeyPoint, int> >& keypointsTracked,
+               std::vector<unsigned char>& status, int THR_FB = 20);
+    
+    void pyramidKeypoints(std::vector<cv::KeyPoint> &,
+                          std::vector<cv::KeyPoint> &,
+                          const cv::Mat &image, const float scale, const int level,
+                          const cv::Point2f topleft, const cv::Point2f bottomright);
+    void maskUAVKeyPoints(std::vector<cv::KeyPoint> &, const std::string);
 };
 
 class Cluster
@@ -80,6 +92,6 @@ public:
 };
 
 void inout_rect(const std::vector<cv::KeyPoint>& keypoints, cv::Point2f topleft, cv::Point2f bottomright, std::vector<cv::KeyPoint>& in, std::vector<cv::KeyPoint>& out);
-void track(cv::Mat im_prev, cv::Mat im_gray, const std::vector<std::pair<cv::KeyPoint, int> >& keypointsIN, std::vector<std::pair<cv::KeyPoint, int> >& keypointsTracked, std::vector<unsigned char>& status, int THR_FB = 20);
+// void track(cv::Mat im_prev, cv::Mat im_gray, const std::vector<std::pair<cv::KeyPoint, int> >& keypointsIN, std::vector<std::pair<cv::KeyPoint, int> >& keypointsTracked, std::vector<unsigned char>& status, int THR_FB = 20);
 cv::Point2f rotate(cv::Point2f p, float rad);
 #endif // CMT_H
