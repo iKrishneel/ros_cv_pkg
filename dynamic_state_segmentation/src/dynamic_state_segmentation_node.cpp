@@ -126,7 +126,7 @@ void DynamicStateSegmentation::seedCorrespondingRegion(
         Eigen::Vector4f child_norm = normals->points[index].getNormalVector4fMap();
 
         if (this->localVoxelConvexityCriteria(parent_pt, parent_norm,
-                                              child_pt, child_norm, -0.01) == 1) {
+                                              child_pt, child_norm, -0.01f) == 1) {
           merge_list[i] = index;
           labels[index] = 1;
         } else {
@@ -179,9 +179,8 @@ int DynamicStateSegmentation::localVoxelConvexityCriteria(
     }
     float norm_similarity = (M_PI - std::acos(c_normal.dot(n_normal))) / M_PI;
     
-    if (seed2pt_relation > thresh && pt2seed_relation > thresh && norm_similarity > 0.75f) {
+    if (seed2pt_relation > thresh && pt2seed_relation > thresh && norm_similarity > 0.50f) {
       // if (im_relation > thresh && pt2seed_relation > thresh && norm_similarity > 0.75f) {
-      std::cout << pt2seed_relation << "\t" << seed2pt_relation  << "\n";
       return 1;
     } else {
       return -1;
