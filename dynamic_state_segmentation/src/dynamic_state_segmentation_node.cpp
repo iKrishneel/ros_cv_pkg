@@ -3,6 +3,7 @@
 
 DynamicStateSegmentation::DynamicStateSegmentation() :
     num_threads_(16), neigbor_size_(50) {
+    this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
     this->onInit();
 }
 
@@ -81,7 +82,7 @@ void DynamicStateSegmentation::cloudCB(
     this->seed_point_ = cloud->points[idx];
     this->seed_normal_ = normals->points[idx];
 
-    kdtree_.setInputCloud(cloud);
+    kdtree_->setInputCloud(cloud);
 
     ROS_INFO("GROWING SEED");
     this->seedCorrespondingRegion(labels, cloud, normals, this->seed_index_);
@@ -140,7 +141,7 @@ void DynamicStateSegmentation::seedCorrespondingRegion(
     }
     
 #ifdef _OPENMP
-#pragma omp parallel for num_threads(this->num_threads_)
+#pragma omp parallel for num_threads(this->num_threads_) schedule(guided, 1)
 #endif
     for (int i = 0; i < merge_list.size(); i++) {
         int index = merge_list[i];
@@ -160,9 +161,9 @@ void DynamicStateSegmentation::getPointNeigbour(
     }
     neigbor_indices.clear();
     std::vector<float> point_squared_distance;
-    int search_out = kdtree_.nearestKSearch(
+    int search_out = kdtree_->nearestKSearch(
         seed_point, K, neigbor_indices, point_squared_distance);
-    // int search_out = kdtree_.radiusSearch(
+    // int search_out = kdtree_->radiusSearch(
     //     seed_point, 0.01f, neigbor_indices, point_squared_distance);
 }
 
@@ -221,11 +222,27 @@ void DynamicStateSegmentation::computeFeatures(
     
 }
 
+void DynamicStateSegmentation::pointColorContrast(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<PointT>::Ptr region, const int scale) {
+    if (cloud->empty() || region->empty() || scale == 0) {
+        ROS_ERROR("ERROR COMPUTING COLOR CONSTRAST");
+        return;
+    }
+    cv::Mat roi_color = cv::Mat::zeros(
+        static_cast<int>(region->size()), sizeof(char), CV_8UC3);
+    for (int i = 0; i < region->size(); i++) {
+        PointT pt = region->points[i];
+        roi_color.at<cv::Vec3b>(i, 0)[0] = pt.b;
+        roi_color.at<cv::Vec3b>(i, 0)[1] = pt.g;
+        roi_color.at<cv::Vec3b>(i, 0)[2] = pt.r;
+    }
+
+}
+
 int main(int argc, char *argv[]) {
     ros::init(argc, argv, "dynamic_state_segmentation");
     DynamicStateSegmentation dss;
     ros::spin();
     return 0;
 }
-
-

@@ -57,7 +57,7 @@ private:
     int num_threads_;
     int neigbor_size_;
   
-    pcl::KdTreeFLANN<PointT> kdtree_;
+    pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
   
 protected:
     void onInit();
@@ -83,8 +83,13 @@ public:
                          pcl::PointCloud<NormalT>::Ptr,
                          T = 0.05f, bool = false) const;  
 
+    /**
+     * functions for CRF
+     */
     void computeFeatures(cv::Mat &, const pcl::PointCloud<PointT>::Ptr,
                          const pcl::PointCloud<NormalT>::Ptr, const int);
+    void pointColorContrast(const pcl::PointCloud<PointT>::Ptr,
+                            const pcl::PointCloud<PointT>::Ptr, const int);
 
 };
 #endif  // _DYNAMIC_STATE_SEGMENTATION_H_
