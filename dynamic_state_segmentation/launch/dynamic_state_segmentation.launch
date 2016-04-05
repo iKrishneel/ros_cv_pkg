@@ -1,0 +1,20 @@
+<launch>
+  <arg name="points" default="/camera/depth_registered/points" />
+  <arg name="image" default="/camera/rgb/image_rect_color" />
+
+  <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch">
+    <arg name="cloud" value="$(arg points)"/>
+  </include>
+  
+  <node pkg="dynamic_state_segmentation" type="dynamic_state_segmentation_node"
+	name="dynamic_state_segmentation" output="screen" >
+    <remap from="input_cloud" to="/pcl_filter_utils/output/cloud" />
+    <remap from="input_point" to="$(arg image)/screenpoint" />
+  </node>
+  
+  <node pkg="image_view2" type="image_view2"
+	name="image_view2" output="screen">
+    <remap from="image" to="$(arg image)" />
+  </node>
+  
+</launch>
