@@ -36,7 +36,7 @@ void DynamicStateSegmentation::cloudCB(
     std::cout << "INPUT SIZE: " << cloud->size()  << "\n";
     
     if (cloud->empty()) {
-      return;
+        return;
     }
 
     this->seed_index_ = screen_msg->point.x + (640 * screen_msg->point.y);
@@ -44,8 +44,8 @@ void DynamicStateSegmentation::cloudCB(
 
     if (isnan(this->seed_point_.x) || isnan(this->seed_point_.x) ||
         isnan(this->seed_point_.x)) {
-      ROS_ERROR("SELETED POINT IS NAN");
-      return;
+        ROS_ERROR("SELETED POINT IS NAN");
+        return;
     }
 
     std::vector<int> nan_indices;
@@ -57,22 +57,22 @@ void DynamicStateSegmentation::cloudCB(
     double dist = DBL_MAX;
     int idx = -1;
     for (int i = 0; i < cloud->size(); i++) {
-      double d = pcl::distances::l2(cloud->points[i].getVector4fMap(),
-                                    seed_point_.getVector4fMap());
-      if (d < dist) {
-        dist = d;
-        idx = i;
-      }
+        double d = pcl::distances::l2(cloud->points[i].getVector4fMap(),
+                                      seed_point_.getVector4fMap());
+        if (d < dist) {
+            dist = d;
+            idx = i;
+        }
     }
     
     ROS_INFO("PROCESSING");
     
     std::vector<int> labels(static_cast<int>(cloud->size()));
     for (int i = 0; i < cloud->size(); i++) {
-      if (i == this->seed_index_) {
-        labels[i] = 1;
-      }
-      labels[i] = -1;
+        if (i == this->seed_index_) {
+            labels[i] = 1;
+        }
+        labels[i] = -1;
     }
 
     pcl::PointCloud<NormalT>::Ptr normals(new pcl::PointCloud<NormalT>);
@@ -88,10 +88,10 @@ void DynamicStateSegmentation::cloudCB(
 
     pcl::PointCloud<PointT>::Ptr seed_region(new pcl::PointCloud<PointT>);
     for (int i = 0; i < labels.size(); i++) {
-      if (labels[i] != -1) {
-        PointT pt = cloud->points[i];
-        seed_region->push_back(pt);
-      }
+        if (labels[i] != -1) {
+            PointT pt = cloud->points[i];
+            seed_region->push_back(pt);
+        }
     }
     
     ROS_INFO("DONE.");
@@ -118,33 +118,35 @@ void DynamicStateSegmentation::seedCorrespondingRegion(
 #pragma omp parallel for num_threads(this->num_threads_) shared(merge_list, labels)
 #endif
     for (int i = 1; i < neigbor_indices.size(); i++) {
-      int index = neigbor_indices[i];
-      if (index != parent_index && labels[index] == -1) {
-        Eigen::Vector4f parent_pt = cloud->points[parent_index].getVector4fMap();
-        Eigen::Vector4f parent_norm = normals->points[parent_index].getNormalVector4fMap();
-        Eigen::Vector4f child_pt = cloud->points[index].getVector4fMap();
-        Eigen::Vector4f child_norm = normals->points[index].getNormalVector4fMap();
-
-        if (this->localVoxelConvexityCriteria(parent_pt, parent_norm,
-                                              child_pt, child_norm, -0.01f) == 1) {
-          merge_list[i] = index;
-          labels[index] = 1;
+        int index = neigbor_indices[i];
+        if (index != parent_index && labels[index] == -1) {
+            Eigen::Vector4f parent_pt = cloud->points[
+                parent_index].getVector4fMap();
+            Eigen::Vector4f parent_norm = normals->points[
+                parent_index].getNormalVector4fMap();
+            Eigen::Vector4f child_pt = cloud->points[index].getVector4fMap();
+            Eigen::Vector4f child_norm = normals->points[
+                index].getNormalVector4fMap();
+            if (this->localVoxelConvexityCriteria(
+                    parent_pt, parent_norm, child_pt, child_norm, -0.01f) == 1) {
+                merge_list[i] = index;
+                labels[index] = 1;
+            } else {
+                merge_list[i] = -1;
+            }
         } else {
-          merge_list[i] = -1;
+            merge_list[i] = -1;
         }
-      } else {
-        merge_list[i] = -1;
-      }
     }
     
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(this->num_threads_)
 #endif
     for (int i = 0; i < merge_list.size(); i++) {
-      int index = merge_list[i];
-      if (index != -1) {
-        seedCorrespondingRegion(labels, cloud, normals, index);
-      }
+        int index = merge_list[i];
+        if (index != -1) {
+            seedCorrespondingRegion(labels, cloud, normals, index);
+        }
     }
 }
 
@@ -152,9 +154,9 @@ void DynamicStateSegmentation::getPointNeigbour(
     std::vector<int> &neigbor_indices, const pcl::PointCloud<PointT>::Ptr cloud,
     const PointT seed_point, const int K) {
     if (cloud->empty() || isnan(seed_point.x) ||
-      isnan(seed_point.y) || isnan(seed_point.z)) {
-      ROS_ERROR("THE CLOUD IS EMPTY. RETURING VOID IN GET NEIGBOUR");
-      return;
+        isnan(seed_point.y) || isnan(seed_point.z)) {
+        ROS_ERROR("THE CLOUD IS EMPTY. RETURING VOID IN GET NEIGBOUR");
+        return;
     }
     neigbor_indices.clear();
     std::vector<float> point_squared_distance;
@@ -171,19 +173,19 @@ int DynamicStateSegmentation::localVoxelConvexityCriteria(
     float im_relation = (n_centroid - c_centroid).dot(n_normal);
     float pt2seed_relation = FLT_MAX;
     float seed2pt_relation = FLT_MAX;
-
     if (is_seed) {
-      pt2seed_relation = (n_centroid - this->seed_point_.getVector4fMap()).dot(n_normal);
-      seed2pt_relation = (this->seed_point_.getVector4fMap() - n_centroid).dot(
-          this->seed_normal_.getNormalVector4fMap());
+        pt2seed_relation = (n_centroid -
+                            this->seed_point_.getVector4fMap()).dot(n_normal);
+        seed2pt_relation = (this->seed_point_.getVector4fMap() - n_centroid).dot(
+            this->seed_normal_.getNormalVector4fMap());
     }
     float norm_similarity = (M_PI - std::acos(c_normal.dot(n_normal))) / M_PI;
     
-    if (seed2pt_relation > thresh && pt2seed_relation > thresh && norm_similarity > 0.50f) {
-      // if (im_relation > thresh && pt2seed_relation > thresh && norm_similarity > 0.75f) {
-      return 1;
+    if (seed2pt_relation > thresh &&
+        pt2seed_relation > thresh && norm_similarity > 0.50f) {
+        return 1;
     } else {
-      return -1;
+        return -1;
     }
 }
 
@@ -192,8 +194,8 @@ void DynamicStateSegmentation::estimateNormals(
     const pcl::PointCloud<PointT>::Ptr cloud, pcl::PointCloud<NormalT>::Ptr normals,
     const T k, bool use_knn) const {
     if (cloud->empty()) {
-      ROS_ERROR("ERROR: The Input cloud is Empty.....");
-      return; 
+        ROS_ERROR("ERROR: The Input cloud is Empty.....");
+        return; 
     }
     pcl::NormalEstimationOMP<PointT, NormalT> ne;
     ne.setInputCloud(cloud);
@@ -201,9 +203,9 @@ void DynamicStateSegmentation::estimateNormals(
     pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT> ());
     ne.setSearchMethod(tree);
     if (use_knn) {
-      ne.setKSearch(k);
+        ne.setKSearch(k);
     } else {
-      ne.setRadiusSearch(k);
+        ne.setRadiusSearch(k);
     }
     ne.compute(*normals);
 }
@@ -212,18 +214,18 @@ void DynamicStateSegmentation::computeFeatures(
     cv::Mat &histogram, const pcl::PointCloud<PointT>::Ptr cloud,
     const pcl::PointCloud<NormalT>::Ptr normals, const int index) {
     if (cloud->empty() || normals->empty() || cloud->size() != normals->size()) {
-      ROS_ERROR("THE CLOUD IS EMPTY. RETURING VOID IN FEATURES");
-      return;
+        ROS_ERROR("THE CLOUD IS EMPTY. RETURING VOID IN FEATURES");
+        return;
     }
     // TODO: COMPUTE FEATURES IF REQUIRED
     
 }
 
 int main(int argc, char *argv[]) {
-  ros::init(argc, argv, "dynamic_state_segmentation");
-  DynamicStateSegmentation dss;
-  ros::spin();
-  return 0;
+    ros::init(argc, argv, "dynamic_state_segmentation");
+    DynamicStateSegmentation dss;
+    ros::spin();
+    return 0;
 }
 
 
