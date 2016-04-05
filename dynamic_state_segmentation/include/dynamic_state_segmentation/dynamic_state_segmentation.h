@@ -82,7 +82,9 @@ class DynamicStateSegmentation {
                        pcl::PointCloud<NormalT>::Ptr,
                        T = 0.05f, bool = false) const;  
 
-  void computeFeatures(const PointT, const NormalT);
+  void computeFeatures(cv::Mat &, const pcl::PointCloud<PointT>::Ptr,
+                       const pcl::PointCloud<NormalT>::Ptr, const int);
+
 };
 
 

@@ -125,31 +125,8 @@ void DynamicStateSegmentation::seedCorrespondingRegion(
         Eigen::Vector4f child_pt = cloud->points[index].getVector4fMap();
         Eigen::Vector4f child_norm = normals->points[index].getNormalVector4fMap();
 
-        // child mean norm
-        std::vector<int> temp_neigh;
-        this->getPointNeigbour(temp_neigh, cloud, cloud->points[index], 4);
-
-        NormalT temp_norm;
-        temp_norm.normal_x = 0.0;
-        temp_norm.normal_y = 0.0;
-        temp_norm.normal_z = 0.0;
-        int icounter = 0;
-        for (int j = 1; j < temp_neigh.size(); j++) {
-          if (j != parent_index) {
-            temp_norm.normal_x += normals->points[temp_neigh[j]].normal_x;
-            temp_norm.normal_y += normals->points[temp_neigh[j]].normal_y;
-            temp_norm.normal_z += normals->points[temp_neigh[j]].normal_z;
-            icounter++;
-          }
-        }
-        temp_norm.normal_x /= static_cast<float>(icounter);
-        temp_norm.normal_y /= static_cast<float>(icounter);
-        temp_norm.normal_z /= static_cast<float>(icounter);
-        child_norm = temp_norm.getNormalVector4fMap();
-        // ^^
-        
         if (this->localVoxelConvexityCriteria(parent_pt, parent_norm,
-                                              child_pt, child_norm, -0.050) == 1) {
+                                              child_pt, child_norm, -0.01) == 1) {
           merge_list[i] = index;
           labels[index] = 1;
         } else {
@@ -181,10 +158,10 @@ void DynamicStateSegmentation::getPointNeigbour(
     }
     neigbor_indices.clear();
     std::vector<float> point_squared_distance;
-    //int search_out = kdtree_.nearestKSearch(
-    // seed_point, K, neigbor_indices, point_squared_distance);
-    int search_out = kdtree_.radiusSearch(
-        seed_point, 0.01f, neigbor_indices, point_squared_distance);
+    int search_out = kdtree_.nearestKSearch(
+        seed_point, K, neigbor_indices, point_squared_distance);
+    // int search_out = kdtree_.radiusSearch(
+    //     seed_point, 0.01f, neigbor_indices, point_squared_distance);
 }
 
 int DynamicStateSegmentation::localVoxelConvexityCriteria(
@@ -192,13 +169,19 @@ int DynamicStateSegmentation::localVoxelConvexityCriteria(
     Eigen::Vector4f n_centroid, Eigen::Vector4f n_normal,
     const float thresh, bool is_seed) {
     float im_relation = (n_centroid - c_centroid).dot(n_normal);
-    float seed_relation = FLT_MAX;
+    float pt2seed_relation = FLT_MAX;
+    float seed2pt_relation = FLT_MAX;
+
     if (is_seed) {
-      seed_relation = (n_centroid - this->seed_point_.getVector4fMap()).dot(n_normal);
+      pt2seed_relation = (n_centroid - this->seed_point_.getVector4fMap()).dot(n_normal);
+      seed2pt_relation = (this->seed_point_.getVector4fMap() - n_centroid).dot(
+          this->seed_normal_.getNormalVector4fMap());
     }
     float norm_similarity = (M_PI - std::acos(c_normal.dot(n_normal))) / M_PI;
     
-    if (im_relation > thresh && seed_relation > thresh && norm_similarity > 0.5f) {
+    if (seed2pt_relation > thresh && pt2seed_relation > thresh && norm_similarity > 0.75f) {
+      // if (im_relation > thresh && pt2seed_relation > thresh && norm_similarity > 0.75f) {
+      std::cout << pt2seed_relation << "\t" << seed2pt_relation  << "\n";
       return 1;
     } else {
       return -1;
@@ -227,12 +210,14 @@ void DynamicStateSegmentation::estimateNormals(
 }
 
 void DynamicStateSegmentation::computeFeatures(
-    const PointT point, const NormalT normal) {
-    if (isnan(point.x) || isnan(point.y) || isnan(point.z)) {
+    cv::Mat &histogram, const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<NormalT>::Ptr normals, const int index) {
+    if (cloud->empty() || normals->empty() || cloud->size() != normals->size()) {
       ROS_ERROR("THE CLOUD IS EMPTY. RETURING VOID IN FEATURES");
       return;
     }
     // TODO: COMPUTE FEATURES IF REQUIRED
+    
 }
 
 int main(int argc, char *argv[]) {
