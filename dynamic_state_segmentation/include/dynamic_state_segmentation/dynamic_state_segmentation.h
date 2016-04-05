@@ -55,7 +55,8 @@ class DynamicStateSegmentation {
   int seed_index_;
 
   int num_threads_;
-  int icount_;
+  int neigbor_size_;
+  
   pcl::KdTreeFLANN<PointT> kdtree_;
   
  protected:
@@ -75,7 +76,7 @@ class DynamicStateSegmentation {
   void getPointNeigbour(std::vector<int> &, const pcl::PointCloud<PointT>::Ptr,
                         const PointT, const int = 8);
   int localVoxelConvexityCriteria(Eigen::Vector4f, Eigen::Vector4f, Eigen::Vector4f,
-                                  const float = 0.0f, bool = true);
+                                  Eigen::Vector4f, const float = 0.0f, bool = true);
   template<class T>
   void estimateNormals(const pcl::PointCloud<PointT>::Ptr,
                        pcl::PointCloud<NormalT>::Ptr,

@@ -2,8 +2,7 @@
 #include <dynamic_state_segmentation/dynamic_state_segmentation.h>
 
 DynamicStateSegmentation::DynamicStateSegmentation() :
-    num_threads_(16) {
-    icount_ = 0;
+    num_threads_(16), neigbor_size_(50) {
     this->onInit();
 }
 
@@ -65,8 +64,6 @@ void DynamicStateSegmentation::cloudCB(
         idx = i;
       }
     }
-    this->seed_index_ = idx;
-    this->seed_point_ = cloud->points[idx];
     
     ROS_INFO("PROCESSING");
     
@@ -79,7 +76,11 @@ void DynamicStateSegmentation::cloudCB(
     }
 
     pcl::PointCloud<NormalT>::Ptr normals(new pcl::PointCloud<NormalT>);
-    this->estimateNormals<float>(cloud, normals, 0.03f);
+    this->estimateNormals<int>(cloud, normals, this->neigbor_size_, true);
+    this->seed_index_ = idx;
+    this->seed_point_ = cloud->points[idx];
+    this->seed_normal_ = normals->points[idx];
+
     kdtree_.setInputCloud(cloud);
 
     ROS_INFO("GROWING SEED");
@@ -105,23 +106,50 @@ void DynamicStateSegmentation::seedCorrespondingRegion(
     std::vector<int> &labels, const pcl::PointCloud<PointT>::Ptr cloud,
     const pcl::PointCloud<NormalT>::Ptr normals, const int parent_index) {
     std::vector<int> neigbor_indices;
-    this->getPointNeigbour(neigbor_indices, cloud, cloud->points[parent_index], 50);
+    this->getPointNeigbour(neigbor_indices, cloud,
+                           cloud->points[parent_index],
+                           this->neigbor_size_);
 
     int neigb_lenght = static_cast<int>(neigbor_indices.size());
     std::vector<int> merge_list(neigb_lenght);
     merge_list[0] = -1;
-
+    
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(this->num_threads_) shared(merge_list, labels)
-#endif   
+#endif
     for (int i = 1; i < neigbor_indices.size(); i++) {
       int index = neigbor_indices[i];
       if (index != parent_index && labels[index] == -1) {
         Eigen::Vector4f parent_pt = cloud->points[parent_index].getVector4fMap();
+        Eigen::Vector4f parent_norm = normals->points[parent_index].getNormalVector4fMap();
         Eigen::Vector4f child_pt = cloud->points[index].getVector4fMap();
         Eigen::Vector4f child_norm = normals->points[index].getNormalVector4fMap();
-        if (this->localVoxelConvexityCriteria(parent_pt, child_pt, child_norm, -0.005) == 1) {
-          // merge_list.push_back(index);
+
+        // child mean norm
+        std::vector<int> temp_neigh;
+        this->getPointNeigbour(temp_neigh, cloud, cloud->points[index], 4);
+
+        NormalT temp_norm;
+        temp_norm.normal_x = 0.0;
+        temp_norm.normal_y = 0.0;
+        temp_norm.normal_z = 0.0;
+        int icounter = 0;
+        for (int j = 1; j < temp_neigh.size(); j++) {
+          if (j != parent_index) {
+            temp_norm.normal_x += normals->points[temp_neigh[j]].normal_x;
+            temp_norm.normal_y += normals->points[temp_neigh[j]].normal_y;
+            temp_norm.normal_z += normals->points[temp_neigh[j]].normal_z;
+            icounter++;
+          }
+        }
+        temp_norm.normal_x /= static_cast<float>(icounter);
+        temp_norm.normal_y /= static_cast<float>(icounter);
+        temp_norm.normal_z /= static_cast<float>(icounter);
+        child_norm = temp_norm.getNormalVector4fMap();
+        // ^^
+        
+        if (this->localVoxelConvexityCriteria(parent_pt, parent_norm,
+                                              child_pt, child_norm, -0.050) == 1) {
           merge_list[i] = index;
           labels[index] = 1;
         } else {
@@ -134,7 +162,7 @@ void DynamicStateSegmentation::seedCorrespondingRegion(
     
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(this->num_threads_)
-#endif   
+#endif
     for (int i = 0; i < merge_list.size(); i++) {
       int index = merge_list[i];
       if (index != -1) {
@@ -160,14 +188,17 @@ void DynamicStateSegmentation::getPointNeigbour(
 }
 
 int DynamicStateSegmentation::localVoxelConvexityCriteria(
-    Eigen::Vector4f c_centroid, Eigen::Vector4f n_centroid,
-    Eigen::Vector4f n_normal, const float thresh, bool is_seed) {
+    Eigen::Vector4f c_centroid, Eigen::Vector4f c_normal,
+    Eigen::Vector4f n_centroid, Eigen::Vector4f n_normal,
+    const float thresh, bool is_seed) {
     float im_relation = (n_centroid - c_centroid).dot(n_normal);
     float seed_relation = FLT_MAX;
     if (is_seed) {
       seed_relation = (n_centroid - this->seed_point_.getVector4fMap()).dot(n_normal);
     }
-    if (im_relation > thresh && seed_relation > thresh) {
+    float norm_similarity = (M_PI - std::acos(c_normal.dot(n_normal))) / M_PI;
+    
+    if (im_relation > thresh && seed_relation > thresh && norm_similarity > 0.5f) {
       return 1;
     } else {
       return -1;
