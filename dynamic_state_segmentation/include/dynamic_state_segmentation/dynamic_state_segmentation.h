@@ -73,8 +73,9 @@ public:
     void seedCorrespondingRegion(std::vector<int> &,
                                  const pcl::PointCloud<PointT>::Ptr,
                                  const pcl::PointCloud<NormalT>::Ptr, const int);
+    template<class T>
     void getPointNeigbour(std::vector<int> &, const pcl::PointCloud<PointT>::Ptr,
-                          const PointT, const int = 8);
+                          const PointT, const T = 8, bool = true);
     int localVoxelConvexityCriteria(Eigen::Vector4f, Eigen::Vector4f,
                                     Eigen::Vector4f, Eigen::Vector4f,
                                     const float = 0.0f, bool = true);
@@ -88,8 +89,10 @@ public:
      */
     void computeFeatures(cv::Mat &, const pcl::PointCloud<PointT>::Ptr,
                          const pcl::PointCloud<NormalT>::Ptr, const int);
-    void pointColorContrast(const pcl::PointCloud<PointT>::Ptr,
+    void pointColorContrast(pcl::PointCloud<PointT>::Ptr,
                             const pcl::PointCloud<PointT>::Ptr, const int);
+    template<class T>
+    T intensitySimilarityMetric(const PointT, const PointT);
 
 };
 #endif  // _DYNAMIC_STATE_SEGMENTATION_H_

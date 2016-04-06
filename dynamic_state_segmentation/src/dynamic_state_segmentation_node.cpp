@@ -101,15 +101,27 @@ void DynamicStateSegmentation::cloudCB(
     pcl::toROSMsg(*seed_region, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
+
+
+
+    /**
+     * TEST
+     */
+
+    this->pointColorContrast(seed_region, cloud, 3);
+    
+    pcl::toROSMsg(*seed_region, ros_cloud);
+    ros_cloud.header = cloud_msg->header;
+    this->pub_cloud_.publish(ros_cloud);
 }
 
 void DynamicStateSegmentation::seedCorrespondingRegion(
     std::vector<int> &labels, const pcl::PointCloud<PointT>::Ptr cloud,
     const pcl::PointCloud<NormalT>::Ptr normals, const int parent_index) {
     std::vector<int> neigbor_indices;
-    this->getPointNeigbour(neigbor_indices, cloud,
-                           cloud->points[parent_index],
-                           this->neigbor_size_);
+    this->getPointNeigbour<int>(neigbor_indices, cloud,
+                                cloud->points[parent_index],
+                                this->neigbor_size_);
 
     int neigb_lenght = static_cast<int>(neigbor_indices.size());
     std::vector<int> merge_list(neigb_lenght);
@@ -151,9 +163,10 @@ void DynamicStateSegmentation::seedCorrespondingRegion(
     }
 }
 
+template<class T>
 void DynamicStateSegmentation::getPointNeigbour(
     std::vector<int> &neigbor_indices, const pcl::PointCloud<PointT>::Ptr cloud,
-    const PointT seed_point, const int K) {
+    const PointT seed_point, const T K, bool is_knn) {
     if (cloud->empty() || isnan(seed_point.x) ||
         isnan(seed_point.y) || isnan(seed_point.z)) {
         ROS_ERROR("THE CLOUD IS EMPTY. RETURING VOID IN GET NEIGBOUR");
@@ -161,10 +174,13 @@ void DynamicStateSegmentation::getPointNeigbour(
     }
     neigbor_indices.clear();
     std::vector<float> point_squared_distance;
-    int search_out = kdtree_->nearestKSearch(
-        seed_point, K, neigbor_indices, point_squared_distance);
-    // int search_out = kdtree_->radiusSearch(
-    //     seed_point, 0.01f, neigbor_indices, point_squared_distance);
+    if (is_knn) {
+        int search_out = kdtree_->nearestKSearch(
+            seed_point, K, neigbor_indices, point_squared_distance);
+    } else {
+        int search_out = kdtree_->radiusSearch(
+            seed_point, K, neigbor_indices, point_squared_distance);
+    }
 }
 
 int DynamicStateSegmentation::localVoxelConvexityCriteria(
@@ -223,21 +239,58 @@ void DynamicStateSegmentation::computeFeatures(
 }
 
 void DynamicStateSegmentation::pointColorContrast(
-    const pcl::PointCloud<PointT>::Ptr cloud,
-    const pcl::PointCloud<PointT>::Ptr region, const int scale) {
+    pcl::PointCloud<PointT>::Ptr region,
+    const pcl::PointCloud<PointT>::Ptr cloud, const int scale) {
     if (cloud->empty() || region->empty() || scale == 0) {
         ROS_ERROR("ERROR COMPUTING COLOR CONSTRAST");
         return;
     }
-    cv::Mat roi_color = cv::Mat::zeros(
-        static_cast<int>(region->size()), sizeof(char), CV_8UC3);
-    for (int i = 0; i < region->size(); i++) {
-        PointT pt = region->points[i];
-        roi_color.at<cv::Vec3b>(i, 0)[0] = pt.b;
-        roi_color.at<cv::Vec3b>(i, 0)[1] = pt.g;
-        roi_color.at<cv::Vec3b>(i, 0)[2] = pt.r;
-    }
 
+    // TODO: instead of cloud use indices from region
+    float color_dist[static_cast<int>(region->size())];
+    for (int i = 0; i < region->size(); i++) {
+        color_dist[i] = 0.0f;
+    }
+    float radius = 0.005f;
+    float change_incf = 0.005f;
+    int icount = 0;
+
+    float max_val = 0.0f;
+    do {
+        for (int i = 0; i < region->size(); i++) {
+            PointT pt = region->points[i];
+            std::vector<int> neigbor_indices;
+            this->getPointNeigbour<float>(neigbor_indices, cloud, pt,
+                                          radius, false);
+
+            float dist = 0.0f;
+            for (int j = 1; j < neigbor_indices.size(); j++) {
+                PointT n_pt = cloud->points[neigbor_indices[j]];
+                dist += this->intensitySimilarityMetric<float>(pt, n_pt);
+            }
+            color_dist[i] += dist;
+
+            if (color_dist[i] > max_val) {
+                max_val = color_dist[i];
+            }
+        }
+        radius += change_incf;
+    } while(icount++ < scale);
+
+    for (int i = 0; i < region->size(); i++) {
+        region->points[i].r = (color_dist[i] / max_val) * 255.0f;
+        region->points[i].b = (color_dist[i] / max_val) * 255.0f;
+        region->points[i].g = (color_dist[i] / max_val) * 255.0f;
+    }
+}
+
+template<class T>
+T DynamicStateSegmentation::intensitySimilarityMetric(
+    const PointT pt, const PointT n_pt) {
+    T r = std::pow((255.0 - pt.r - n_pt.r) / 255.0, 2);
+    T g = std::pow((255.0 - pt.g - n_pt.g) / 255.0, 2);
+    T b = std::pow((255.0 - pt.b - n_pt.b) / 255.0, 2);
+    return std::sqrt(r + g + b);
 }
 
 int main(int argc, char *argv[]) {
