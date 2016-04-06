@@ -26,6 +26,8 @@
 #include <pcl/filters/extract_indices.h>
 #include <pcl/features/normal_3d_omp.h>
 #include <pcl/registration/distances.h>
+#include <pcl/features/don.h>
+#include <pcl/filters/conditional_removal.h>
 
 #include <geometry_msgs/PointStamped.h>
 #include <sensor_msgs/Image.h>
@@ -93,6 +95,7 @@ public:
                             const pcl::PointCloud<PointT>::Ptr, const int);
     template<class T>
     T intensitySimilarityMetric(const PointT, const PointT);
+    void normalEdge(pcl::PointCloud<PointT>::Ptr, const float) const;
 
 };
 #endif  // _DYNAMIC_STATE_SEGMENTATION_H_

@@ -100,7 +100,7 @@ void DynamicStateSegmentation::cloudCB(
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*seed_region, ros_cloud);
     ros_cloud.header = cloud_msg->header;
-    this->pub_cloud_.publish(ros_cloud);
+    // this->pub_cloud_.publish(ros_cloud);
 
 
 
@@ -108,7 +108,8 @@ void DynamicStateSegmentation::cloudCB(
      * TEST
      */
 
-    this->pointColorContrast(seed_region, cloud, 3);
+    // this->pointColorContrast(seed_region, cloud, 3);
+    this->normalEdge(seed_region, 3);
     
     pcl::toROSMsg(*seed_region, ros_cloud);
     ros_cloud.header = cloud_msg->header;
@@ -238,6 +239,11 @@ void DynamicStateSegmentation::computeFeatures(
     
 }
 
+
+/**
+ * DESCRIPTORS
+ */
+
 void DynamicStateSegmentation::pointColorContrast(
     pcl::PointCloud<PointT>::Ptr region,
     const pcl::PointCloud<PointT>::Ptr cloud, const int scale) {
@@ -291,6 +297,65 @@ T DynamicStateSegmentation::intensitySimilarityMetric(
     T g = std::pow((255.0 - pt.g - n_pt.g) / 255.0, 2);
     T b = std::pow((255.0 - pt.b - n_pt.b) / 255.0, 2);
     return std::sqrt(r + g + b);
+}
+
+void DynamicStateSegmentation::normalEdge(
+    pcl::PointCloud<PointT>::Ptr cloud, const float radi2) const {
+    if (cloud->empty() && radi2 != 0.0f) {
+	ROS_ERROR("INCORRECT DIM FOR EDGE DETECTION");
+	return;
+    }
+    pcl::search::Search<PointT>::Ptr tree;
+    pcl::NormalEstimationOMP<PointT, pcl::PointNormal> ne;
+    ne.setInputCloud(cloud);
+    ne.setSearchMethod(tree);
+    ne.setViewPoint(std::numeric_limits<float>::max(),
+		    std::numeric_limits<float>::max(),
+		    std::numeric_limits<float>::max());
+    const float scale1 = 0.02f;
+    ne.setRadiusSearch(scale1);
+    pcl::PointCloud<pcl::PointNormal>::Ptr normals1(new pcl::PointCloud<pcl::PointNormal>);
+    ne.compute(*normals1);
+
+    const float scale2 = 0.04f;
+    ne.setRadiusSearch(scale2);
+    pcl::PointCloud<pcl::PointNormal>::Ptr normals2(new pcl::PointCloud<pcl::PointNormal>);
+    ne.compute(*normals2);    
+
+    pcl::DifferenceOfNormalsEstimation<PointT, pcl::PointNormal, pcl::PointNormal> don;
+    don.setInputCloud(cloud);
+    don.setNormalScaleLarge(normals2);
+    don.setNormalScaleSmall(normals1);
+
+    pcl::PointCloud<pcl::PointNormal>::Ptr don_cloud(new pcl::PointCloud<pcl::PointNormal>);
+    pcl::copyPointCloud<PointT, pcl::PointNormal>(*cloud, *don_cloud);
+    don.computeFeature(*don_cloud);
+
+
+    float threshold = 0.15f;
+    
+    pcl::ConditionOr<pcl::PointNormal>::Ptr range_cond (
+	new pcl::ConditionOr<pcl::PointNormal> ());
+    range_cond->addComparison(pcl::FieldComparison<pcl::PointNormal>::ConstPtr(
+				  new pcl::FieldComparison<pcl::PointNormal>(
+				      "curvature", pcl::ComparisonOps::GT, threshold)));
+    pcl::ConditionalRemoval<pcl::PointNormal> condrem(range_cond);
+    condrem.setInputCloud(don_cloud);
+    pcl::PointCloud<pcl::PointNormal>::Ptr doncloud_filtered(new pcl::PointCloud<pcl::PointNormal>);
+    condrem.filter(*doncloud_filtered);
+    don_cloud->clear();
+    don_cloud = doncloud_filtered;
+    
+    std::cout << "Size: " << don_cloud->size()  << "\n";
+    cloud->clear();
+    for (int i = 0; i < don_cloud->size(); i++) {
+	PointT pt;
+	pt.x = don_cloud->points[i].x;
+	pt.y = don_cloud->points[i].y;	
+	pt.z = don_cloud->points[i].z;
+	pt.r = 255;
+	cloud->push_back(pt);
+    }
 }
 
 int main(int argc, char *argv[]) {
