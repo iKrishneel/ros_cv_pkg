@@ -237,17 +237,82 @@ void DynamicStateSegmentation::computeFeatures(
         ROS_ERROR("THE CLOUD IS EMPTY. RETURING VOID IN FEATURES");
         return;
     }
-    
+    this->kdtree_->setInputCloud(cloud);
     // compute normal
     pcl::PointCloud<NormalT>::Ptr seed_normals(new pcl::PointCloud<NormalT>);
-    this->estimateNormals<float>(cloud, seed_normals, 0.05f, false);
+    // this->estimateNormals<float>(cloud, seed_normals, 0.05f, false);
+    
+    /**
+     * NORMAL
+     */
+    int level = 0;
+    int levels = 4;
+    float search_radius = 0.04f;
+    int search_k = 8;
+    
+    float max_sum = 0;
+    
+    do{
+	for (int i = 0; i < cloud->size(); i++) {
+	    std::vector<int> neigbor_indices;
+
+	    this->getPointNeigbour<float>(neigbor_indices, cloud, cloud->points[i],
+	     				  search_radius, false);
+	    // this->getPointNeigbour<int>(neigbor_indices, cloud, cloud->points[i],
+	    // 				  search_k, true);
+	    
+	
+	    float sum = 0.0f;
+	    Eigen::Vector3f c_pt = normals->points[i].getNormalVector3fMap();
+	    Eigen::Vector3f n_pt;
+	    for (int j = 1; j < neigbor_indices.size(); j++) {
+		int index = neigbor_indices[j];
+		n_pt = normals->points[index].getNormalVector3fMap();
+		sum += (c_pt.dot(n_pt));
+	    }
+	    // sum /= static_cast<float>(neigbor_indices.size() - 1);
+
+	    if (sum > max_sum) {
+		max_sum = sum;
+	    }
+	    
+	    if (level == 0) {
+		cloud->points[i].r = sum;
+		cloud->points[i].b = sum;
+		cloud->points[i].g = sum;
+	    } else {
+		cloud->points[i].r += sum;
+		cloud->points[i].b += sum;
+		cloud->points[i].g += sum;
+	    }
+	    
+	    if (level + 1 == levels) {
+		max_sum = 1;
+		cloud->points[i].r = (cloud->points[i].r/ max_sum)  * 255.0f;
+		cloud->points[i].b = (cloud->points[i].b/ max_sum)  * 255.0f;
+		cloud->points[i].g = (cloud->points[i].g/ max_sum)  * 255.0f;
+	    }
+	}
+	search_radius /= 2.0f;
+	search_k *= 2;
+
+	std::cout << search_k << "\n";
+	
+    } while (level++ < levels);
+
+    
+    return;
+
+    /**
+     * FPFH
+     */
     
     // save the compute neigbour
     std::vector<std::vector<int> > cache_neigbour(static_cast<int>(cloud->size()));
     const int knn = 8;
     
     pcl::PointCloud<FPFH>::Ptr fpfhs (new pcl::PointCloud<FPFH>());
-    this->computeFPFH(fpfhs, cloud, seed_normals, 0.03f);
+    this->computeFPFH(fpfhs, cloud, normals, 0.03f);
 
     // FPFH weight
     std::vector<float> fpfh_weight(static_cast<int>(cloud->size()));
@@ -265,8 +330,8 @@ void DynamicStateSegmentation::computeFeatures(
 
 	// std::cout << inter_dist  << "\n";
 	
-	// fpfh_weight[i] = inter_dist/static_cast<float>(icount);
-	fpfh_weight[i] = inter_dist;
+	fpfh_weight[i] = inter_dist/static_cast<float>(icount);
+	// fpfh_weight[i] = inter_dist;
 	if (fpfh_weight[i] > max_hist_dist) {
 	    max_hist_dist = fpfh_weight[i];
 	}
@@ -278,9 +343,9 @@ void DynamicStateSegmentation::computeFeatures(
     
     for (int i = 0; i < fpfh_weight.size(); i++) {
 	PointT pt = cloud->points[i];
-	pt.r = (fpfh_weight[i] / max_hist_dist) * 255;
-	pt.b = (fpfh_weight[i] / max_hist_dist) * 255;
-	pt.g = (fpfh_weight[i] / max_hist_dist) * 255;
+	pt.r = (fpfh_weight[i] / max_hist_dist) * 255.0;
+	pt.b = (fpfh_weight[i] / max_hist_dist) * 255.0;
+	pt.g = (fpfh_weight[i] / max_hist_dist) * 255.0;
 	cloud->points[i] = pt;
     }
 
@@ -299,14 +364,14 @@ T DynamicStateSegmentation::histogramKernel(
     }
     return (0.5 * sum);
     */
-
+    
     FPFH ha = histA;
     FPFH hb = histB;
     cv::Mat a = cv::Mat(1, 33, CV_32FC1, ha.histogram);
     cv::Mat b = cv::Mat(1, 33, CV_32FC1, hb.histogram);
-    T dist = static_cast<T>(cv::compareHist(a, b, CV_COMP_BHATTACHARYYA));
+    T dist = static_cast<T>(cv::compareHist(a, b, CV_COMP_INTERSECT));
     
-    return dist;
+    return (dist);
     
 }
 
