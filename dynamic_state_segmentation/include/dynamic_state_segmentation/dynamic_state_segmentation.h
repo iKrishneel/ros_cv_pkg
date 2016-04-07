@@ -26,8 +26,7 @@
 #include <pcl/filters/extract_indices.h>
 #include <pcl/features/normal_3d_omp.h>
 #include <pcl/registration/distances.h>
-#include <pcl/features/don.h>
-#include <pcl/filters/conditional_removal.h>
+#include <pcl/features/fpfh_omp.h>
 
 #include <geometry_msgs/PointStamped.h>
 #include <sensor_msgs/Image.h>
@@ -40,7 +39,8 @@ class DynamicStateSegmentation {
 
     typedef pcl::PointXYZRGB PointT;
     typedef pcl::Normal NormalT;
-  
+    typedef pcl::FPFHSignature33 FPFH;
+    
 private:
     boost::mutex mutex_;
     ros::NodeHandle pnh_;
@@ -89,13 +89,18 @@ public:
     /**
      * functions for CRF
      */
-    void computeFeatures(cv::Mat &, const pcl::PointCloud<PointT>::Ptr,
+    void computeFeatures(pcl::PointCloud<PointT>::Ptr,
                          const pcl::PointCloud<NormalT>::Ptr, const int);
+    
+    void computeFPFH(pcl::PointCloud<FPFH>::Ptr, const pcl::PointCloud<PointT>::Ptr,
+		     const pcl::PointCloud<pcl::Normal>::Ptr, const float = 0.05f) const;
+    template<class T>
+    T histogramKernel(const FPFH, const FPFH, const int);
+    
+    
     void pointColorContrast(pcl::PointCloud<PointT>::Ptr,
                             const pcl::PointCloud<PointT>::Ptr, const int);
     template<class T>
     T intensitySimilarityMetric(const PointT, const PointT);
-    void normalEdge(pcl::PointCloud<PointT>::Ptr, const float) const;
-
 };
 #endif  // _DYNAMIC_STATE_SEGMENTATION_H_

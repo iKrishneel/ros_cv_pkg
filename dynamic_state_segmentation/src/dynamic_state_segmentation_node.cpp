@@ -87,20 +87,22 @@ void DynamicStateSegmentation::cloudCB(
     ROS_INFO("GROWING SEED");
     this->seedCorrespondingRegion(labels, cloud, normals, this->seed_index_);
 
-    pcl::PointCloud<PointT>::Ptr seed_region(new pcl::PointCloud<PointT>);
+    pcl::PointCloud<PointT>::Ptr seed_cloud(new pcl::PointCloud<PointT>);
+    pcl::PointCloud<NormalT>::Ptr seed_normals(new pcl::PointCloud<NormalT>);
     for (int i = 0; i < labels.size(); i++) {
         if (labels[i] != -1) {
             PointT pt = cloud->points[i];
-            seed_region->push_back(pt);
+            seed_cloud->push_back(pt);
+	    seed_normals->push_back(normals->points[i]);
         }
     }
     
     ROS_INFO("DONE.");
     
     sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*seed_region, ros_cloud);
+    pcl::toROSMsg(*seed_cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
-    // this->pub_cloud_.publish(ros_cloud);
+    this->pub_cloud_.publish(ros_cloud);
 
 
 
@@ -108,10 +110,10 @@ void DynamicStateSegmentation::cloudCB(
      * TEST
      */
 
-    // this->pointColorContrast(seed_region, cloud, 3);
-    this->normalEdge(seed_region, 3);
+    // this->pointColorContrast(seed_cloud, cloud, 3);
+    this->computeFeatures(seed_cloud, seed_normals, 1);
     
-    pcl::toROSMsg(*seed_region, ros_cloud);
+    pcl::toROSMsg(*seed_cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
 }
@@ -229,20 +231,104 @@ void DynamicStateSegmentation::estimateNormals(
 }
 
 void DynamicStateSegmentation::computeFeatures(
-    cv::Mat &histogram, const pcl::PointCloud<PointT>::Ptr cloud,
-    const pcl::PointCloud<NormalT>::Ptr normals, const int index) {
+    pcl::PointCloud<PointT>::Ptr cloud, const pcl::PointCloud<NormalT>::Ptr normals,
+    const int index1) {
     if (cloud->empty() || normals->empty() || cloud->size() != normals->size()) {
         ROS_ERROR("THE CLOUD IS EMPTY. RETURING VOID IN FEATURES");
         return;
     }
-    // TODO: COMPUTE FEATURES IF REQUIRED
     
+    // compute normal
+    pcl::PointCloud<NormalT>::Ptr seed_normals(new pcl::PointCloud<NormalT>);
+    this->estimateNormals<float>(cloud, seed_normals, 0.05f, false);
+    
+    // save the compute neigbour
+    std::vector<std::vector<int> > cache_neigbour(static_cast<int>(cloud->size()));
+    const int knn = 8;
+    
+    pcl::PointCloud<FPFH>::Ptr fpfhs (new pcl::PointCloud<FPFH>());
+    this->computeFPFH(fpfhs, cloud, seed_normals, 0.03f);
+
+    // FPFH weight
+    std::vector<float> fpfh_weight(static_cast<int>(cloud->size()));
+    float max_hist_dist = 0.0f;
+    for (int i = 0; i < fpfhs->size(); i++) {
+	this->getPointNeigbour<int>(cache_neigbour[i], cloud, cloud->points[i], knn);
+	float inter_dist = 0.0f;
+	int icount = 0;
+	for (int k = 1; k < cache_neigbour[i].size(); k++) {
+	    int index = cache_neigbour[i][k];
+	    inter_dist += this->histogramKernel<float>(fpfhs->points[i],
+						       fpfhs->points[index], 33);
+	    icount++;
+	}
+
+	// std::cout << inter_dist  << "\n";
+	
+	// fpfh_weight[i] = inter_dist/static_cast<float>(icount);
+	fpfh_weight[i] = inter_dist;
+	if (fpfh_weight[i] > max_hist_dist) {
+	    max_hist_dist = fpfh_weight[i];
+	}
+    }
+
+    std::cout << "MAX DIST:  " << max_hist_dist  << "\n";
+
+    max_hist_dist = 1;
+    
+    for (int i = 0; i < fpfh_weight.size(); i++) {
+	PointT pt = cloud->points[i];
+	pt.r = (fpfh_weight[i] / max_hist_dist) * 255;
+	pt.b = (fpfh_weight[i] / max_hist_dist) * 255;
+	pt.g = (fpfh_weight[i] / max_hist_dist) * 255;
+	cloud->points[i] = pt;
+    }
+
 }
 
+template<class T>
+T DynamicStateSegmentation::histogramKernel(
+    const FPFH histA, const FPFH histB, const int bin_size) {
+    /*
+    T sum = 0.0;
+    for (int i = 0; i < bin_size; i++) {
+	float a = isnan(histA.histogram[i]) ? 0.0 : histA.histogram[i];
+	float b = isnan(histB.histogram[i]) ? 0.0 : histB.histogram[i];
+	sum += (a + b - std::abs(a - b));
+	// sum += (std::min(a, b));
+    }
+    return (0.5 * sum);
+    */
+
+    FPFH ha = histA;
+    FPFH hb = histB;
+    cv::Mat a = cv::Mat(1, 33, CV_32FC1, ha.histogram);
+    cv::Mat b = cv::Mat(1, 33, CV_32FC1, hb.histogram);
+    T dist = static_cast<T>(cv::compareHist(a, b, CV_COMP_BHATTACHARYYA));
+    
+    return dist;
+    
+}
 
 /**
  * DESCRIPTORS
  */
+
+void DynamicStateSegmentation::computeFPFH(
+    pcl::PointCloud<FPFH>::Ptr fpfhs, const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<pcl::Normal>::Ptr normals, const float radius) const {
+    if (cloud->empty() || normals->empty() || cloud->size() != normals->size()) {
+	ROS_ERROR("ERROR: CANNOT COMPUTE FPFH");
+	return;
+    }
+    pcl::FPFHEstimationOMP<PointT, NormalT, FPFH> fpfh;
+    fpfh.setInputCloud(cloud);
+    fpfh.setInputNormals(normals);
+    pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);
+    fpfh.setSearchMethod(tree);
+    fpfh.setRadiusSearch(radius);
+    fpfh.compute(*fpfhs);
+}
 
 void DynamicStateSegmentation::pointColorContrast(
     pcl::PointCloud<PointT>::Ptr region,
@@ -297,65 +383,6 @@ T DynamicStateSegmentation::intensitySimilarityMetric(
     T g = std::pow((255.0 - pt.g - n_pt.g) / 255.0, 2);
     T b = std::pow((255.0 - pt.b - n_pt.b) / 255.0, 2);
     return std::sqrt(r + g + b);
-}
-
-void DynamicStateSegmentation::normalEdge(
-    pcl::PointCloud<PointT>::Ptr cloud, const float radi2) const {
-    if (cloud->empty() && radi2 != 0.0f) {
-	ROS_ERROR("INCORRECT DIM FOR EDGE DETECTION");
-	return;
-    }
-    pcl::search::Search<PointT>::Ptr tree;
-    pcl::NormalEstimationOMP<PointT, pcl::PointNormal> ne;
-    ne.setInputCloud(cloud);
-    ne.setSearchMethod(tree);
-    ne.setViewPoint(std::numeric_limits<float>::max(),
-		    std::numeric_limits<float>::max(),
-		    std::numeric_limits<float>::max());
-    const float scale1 = 0.02f;
-    ne.setRadiusSearch(scale1);
-    pcl::PointCloud<pcl::PointNormal>::Ptr normals1(new pcl::PointCloud<pcl::PointNormal>);
-    ne.compute(*normals1);
-
-    const float scale2 = 0.04f;
-    ne.setRadiusSearch(scale2);
-    pcl::PointCloud<pcl::PointNormal>::Ptr normals2(new pcl::PointCloud<pcl::PointNormal>);
-    ne.compute(*normals2);    
-
-    pcl::DifferenceOfNormalsEstimation<PointT, pcl::PointNormal, pcl::PointNormal> don;
-    don.setInputCloud(cloud);
-    don.setNormalScaleLarge(normals2);
-    don.setNormalScaleSmall(normals1);
-
-    pcl::PointCloud<pcl::PointNormal>::Ptr don_cloud(new pcl::PointCloud<pcl::PointNormal>);
-    pcl::copyPointCloud<PointT, pcl::PointNormal>(*cloud, *don_cloud);
-    don.computeFeature(*don_cloud);
-
-
-    float threshold = 0.15f;
-    
-    pcl::ConditionOr<pcl::PointNormal>::Ptr range_cond (
-	new pcl::ConditionOr<pcl::PointNormal> ());
-    range_cond->addComparison(pcl::FieldComparison<pcl::PointNormal>::ConstPtr(
-				  new pcl::FieldComparison<pcl::PointNormal>(
-				      "curvature", pcl::ComparisonOps::GT, threshold)));
-    pcl::ConditionalRemoval<pcl::PointNormal> condrem(range_cond);
-    condrem.setInputCloud(don_cloud);
-    pcl::PointCloud<pcl::PointNormal>::Ptr doncloud_filtered(new pcl::PointCloud<pcl::PointNormal>);
-    condrem.filter(*doncloud_filtered);
-    don_cloud->clear();
-    don_cloud = doncloud_filtered;
-    
-    std::cout << "Size: " << don_cloud->size()  << "\n";
-    cloud->clear();
-    for (int i = 0; i < don_cloud->size(); i++) {
-	PointT pt;
-	pt.x = don_cloud->points[i].x;
-	pt.y = don_cloud->points[i].y;	
-	pt.z = don_cloud->points[i].z;
-	pt.r = 255;
-	cloud->push_back(pt);
-    }
 }
 
 int main(int argc, char *argv[]) {
