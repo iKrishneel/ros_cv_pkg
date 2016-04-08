@@ -8,10 +8,13 @@ DynamicStateSegmentation::DynamicStateSegmentation() :
 }
 
 void DynamicStateSegmentation::onInit() {
+    this->srv_client_ = this->pnh_.serviceClient<
+	dynamic_state_segmentation::Feature3DClustering>("feature3d_clustering_srv");
     this->subscribe();
-
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
         "target", 1);
+     this->pub_indices_ = this->pnh_.advertise<
+	 jsk_recognition_msgs::ClusterPointIndices>("indices", 1);
 }
 
 void DynamicStateSegmentation::subscribe() {
@@ -100,18 +103,25 @@ void DynamicStateSegmentation::cloudCB(
     ROS_INFO("DONE.");
     
     sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*seed_cloud, ros_cloud);
-    ros_cloud.header = cloud_msg->header;
-    this->pub_cloud_.publish(ros_cloud);
-
-
+    // pcl::toROSMsg(*seed_cloud, ros_cloud);
+    // ros_cloud.header = cloud_msg->header;
+    // this->pub_cloud_.publish(ros_cloud);
 
     /**
      * TEST
      */
 
     // this->pointColorContrast(seed_cloud, cloud, 3);
-    this->computeFeatures(seed_cloud, seed_normals, 1);
+    // this->computeFeatures(seed_cloud, seed_normals, 1);
+
+    std::vector<pcl::PointIndices> all_indices;
+    this->clusterFeatures(all_indices, seed_cloud, seed_normals, 50, 0.05);
+
+    jsk_recognition_msgs::ClusterPointIndices ros_indices;
+    ros_indices.cluster_indices = pcl_conversions::convertToROSPointIndices(
+	all_indices, cloud_msg->header);
+    ros_indices.header = cloud_msg->header;
+    this->pub_indices_.publish(ros_indices);
     
     pcl::toROSMsg(*seed_cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
@@ -230,6 +240,55 @@ void DynamicStateSegmentation::estimateNormals(
     ne.compute(*normals);
 }
 
+void DynamicStateSegmentation::clusterFeatures(
+    std::vector<pcl::PointIndices> &all_indices,
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<NormalT>::Ptr descriptors,
+    const int min_size, const float max_distance) {
+    if (descriptors->empty() || descriptors->size() != cloud->size()) {
+	ROS_ERROR("ERROR: EMPTY FEATURES.. SKIPPING CLUSTER SRV");
+	return;
+    }
+    dynamic_state_segmentation::Feature3DClustering srv;
+    for (int i = 0; i < descriptors->size(); i++) {
+	jsk_recognition_msgs::Histogram hist;
+	hist.histogram.push_back(cloud->points[i].x);
+	hist.histogram.push_back(cloud->points[i].y);
+	hist.histogram.push_back(cloud->points[i].z);
+	hist.histogram.push_back(descriptors->points[i].normal_x);
+	hist.histogram.push_back(descriptors->points[i].normal_y);
+	hist.histogram.push_back(descriptors->points[i].normal_z);
+	srv.request.features.push_back(hist);
+    }
+    srv.request.min_samples = min_size;
+    srv.request.max_distance = max_distance;
+    if (this->srv_client_.call(srv)) {
+	int max_label = srv.response.argmax_label;
+	if (max_label == -1) {
+	    return;
+	}
+	all_indices.clear();
+	all_indices.resize(max_label + 1);
+	for (int i = 0; i < srv.response.labels.size(); i++) {
+	    int index = srv.response.labels[i];
+	    if (index > -1) {
+		all_indices[index].indices.push_back(i);
+	    }
+	}
+    } else {
+	ROS_ERROR("SRV CLIENT CALL FAILED");
+	return;
+    }
+}
+
+
+
+
+
+
+/**
+ * --------------------------------------------------------------------------------
+ */
 void DynamicStateSegmentation::computeFeatures(
     pcl::PointCloud<PointT>::Ptr cloud, const pcl::PointCloud<NormalT>::Ptr normals,
     const int index1) {

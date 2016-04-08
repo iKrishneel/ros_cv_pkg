@@ -35,6 +35,15 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <cv_bridge/cv_bridge.h>
 
+#include <jsk_recognition_msgs/ClusterPointIndices.h>
+#include <jsk_recognition_msgs/BoundingBoxArray.h>
+#include <jsk_recognition_utils/geo/polygon.h>
+#include <jsk_recognition_msgs/PolygonArray.h>
+#include <jsk_recognition_utils/pcl_conversion_util.h>
+#include <dynamic_state_segmentation/Feature3DClustering.h>
+
+#include <omp.h>
+
 class DynamicStateSegmentation {
 
     typedef pcl::PointXYZRGB PointT;
@@ -67,6 +76,8 @@ protected:
     void unsubscribe();
 
     ros::Publisher pub_cloud_;
+    ros::Publisher pub_indices_;
+    ros::ServiceClient srv_client_;
   
 public:
     DynamicStateSegmentation();
@@ -89,6 +100,9 @@ public:
     /**
      * functions for CRF
      */
+    void clusterFeatures(std::vector<pcl::PointIndices> &, const pcl::PointCloud<PointT>::Ptr,
+			 const pcl::PointCloud<NormalT>::Ptr, const int, const float);
+    
     void computeFeatures(pcl::PointCloud<PointT>::Ptr,
                          const pcl::PointCloud<NormalT>::Ptr, const int);
     

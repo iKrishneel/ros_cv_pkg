@@ -62,13 +62,12 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}
 # )
 
 ## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
-#   Service2.srv
-# )
+add_service_files(
+  FILES
+  Feature3DClustering.srv
+  )
 
-## Generate actions in the 'action' folder
+## Generate actions in thFeature3DClustering.srve 'action' folder
 # add_action_files(
 #   FILES
 #   Action1.action
@@ -76,10 +75,12 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   std_msgs  # Or other packages containing msgs
-# )
+generate_messages(
+  DEPENDENCIES
+  std_msgs  # Or other packages containing msgs
+  sensor_msgs
+  jsk_recognition_msgs
+  )
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -136,7 +137,7 @@ include_directories(
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
-# add_dependencies(dynamic_state_segmentation ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+#add_dependencies(dynamic_state_segmentation_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
 add_executable(dynamic_state_segmentation_node
@@ -145,6 +146,7 @@ add_executable(dynamic_state_segmentation_node
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 # add_dependencies(dynamic_state_segmentation_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(dynamic_state_segmentation_node ${PROJECT_NAME}_gencfg)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(dynamic_state_segmentation_node
