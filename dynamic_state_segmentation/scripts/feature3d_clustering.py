@@ -9,6 +9,7 @@ import numpy as numpy
 import numpy as np
 from sklearn.cluster import DBSCAN
 from sklearn.cluster import AgglomerativeClustering
+from sklearn.cluster import MeanShift, estimate_bandwidth
 from sklearn import metrics
 
 def convert_pose_to_array(centroids):
@@ -20,9 +21,20 @@ def convert_pose_to_array(centroids):
         datapoints.append(pos)
     return np.array(datapoints)
 
+def unity_normalization(histogram):
+    min_val = min(histogram)
+    max_val = max(histogram)
+    hist = []
+    for h in histogram:
+        val = (h - min_val) / (max_val - min_val)
+        hist.append(val)
+    return hist
+        
 def convert_histogram_to_array(histograms):
     hist = []
     for histogram in histograms:
+        #h = unity_normalization(histogram.histogram)
+        #hist.append(h)
         hist.append(histogram.histogram)
     return np.array(hist)
 
@@ -38,19 +50,30 @@ def agglomerative_clustering(centroids, min_samples):
     return (labels, indices, count)
 
 
-
 def dbscan_clustering(in_features, max_distance, min_sample):
     
-    max_distance = 0.04
-    min_sample = 50
-    # print in_features[0].histogram
-    # print in_features[1].histogram
-    # print "\n"
+    max_distance = 0.05
+    min_sample = 20
+
+    s = in_features[0].histogram
+    t = in_features[300].histogram
+    s = np.array(s)
+    t = np.array(t)
+
+    print np.linalg.norm(s-t)
+    
+    print "\n"
     
     features = convert_histogram_to_array(in_features)
     print "INPUT: ", features.shape
     
-    db = DBSCAN(eps=max_distance, min_samples=min_sample, algorithm='auto').fit(features)
+    #db = DBSCAN(eps=max_distance, min_samples=min_sample, algorithm='kd_tree', leaf_size=40 ).fit(features)
+
+    #######
+    bandwidth = estimate_bandwidth(features, quantile=0.1, n_samples=features.shape[0])
+    db = MeanShift(bandwidth=bandwidth, bin_seeding=True).fit(features)
+    
+    #######
     labels = db.labels_
     label, indices, counts = np.unique(
         labels, return_inverse=True, return_counts=True)

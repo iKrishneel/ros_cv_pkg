@@ -141,7 +141,8 @@ include_directories(
 
 ## Declare a C++ executable
 add_executable(dynamic_state_segmentation_node
-  src/dynamic_state_segmentation_node.cpp)
+  src/dynamic_state_segmentation_node.cpp
+  )
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
