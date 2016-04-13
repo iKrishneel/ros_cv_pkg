@@ -49,6 +49,12 @@ class DynamicStateSegmentation {
     typedef pcl::PointXYZRGB PointT;
     typedef pcl::Normal NormalT;
     typedef pcl::FPFHSignature33 FPFH;
+
+    struct SortVector {
+	bool operator() (int i,int j) {
+	    return (i < j);
+	}
+    } sortVector;
     
 private:
     boost::mutex mutex_;
@@ -69,13 +75,14 @@ private:
     int neigbor_size_;
   
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
-  
+
 protected:
     void onInit();
     void subscribe();
     void unsubscribe();
 
     ros::Publisher pub_cloud_;
+    ros::Publisher pub_edge_;
     ros::Publisher pub_indices_;
     ros::ServiceClient srv_client_;
   
@@ -100,8 +107,13 @@ public:
     /**
      * functions for CRF
      */
-    void clusterFeatures(std::vector<pcl::PointIndices> &, const pcl::PointCloud<PointT>::Ptr,
+    void clusterFeatures(std::vector<pcl::PointIndices> &, pcl::PointCloud<PointT>::Ptr,
 			 const pcl::PointCloud<NormalT>::Ptr, const int, const float);
+    void mergeVoxelClusters(// std::vector<pcl::PointIndices> &,
+	const dynamic_state_segmentation::Feature3DClustering srv,
+			    pcl::PointCloud<PointT>::Ptr,
+			    pcl::PointCloud<NormalT>::Ptr,
+			    const std::vector<std::vector<int> >);
     
     void computeFeatures(pcl::PointCloud<PointT>::Ptr,
                          const pcl::PointCloud<NormalT>::Ptr, const int);

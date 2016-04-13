@@ -13,6 +13,8 @@ void DynamicStateSegmentation::onInit() {
     this->subscribe();
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
         "target", 1);
+    this->pub_edge_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+        "edge", 1);
      this->pub_indices_ = this->pnh_.advertise<
 	 jsk_recognition_msgs::ClusterPointIndices>("indices", 1);
 }
@@ -92,6 +94,8 @@ void DynamicStateSegmentation::cloudCB(
 
     pcl::PointCloud<PointT>::Ptr seed_cloud(new pcl::PointCloud<PointT>);
     pcl::PointCloud<NormalT>::Ptr seed_normals(new pcl::PointCloud<NormalT>);
+
+    // BUILD FEATURE VECTOR HERE
     for (int i = 0; i < labels.size(); i++) {
         if (labels[i] != -1) {
             PointT pt = cloud->points[i];
@@ -99,7 +103,6 @@ void DynamicStateSegmentation::cloudCB(
 	    seed_normals->push_back(normals->points[i]);
         }
     }
-    
     ROS_INFO("DONE.");
     
     sensor_msgs::PointCloud2 ros_cloud;
@@ -114,23 +117,17 @@ void DynamicStateSegmentation::cloudCB(
     // this->pointColorContrast(seed_cloud, cloud, 3);
     // this->computeFeatures(seed_cloud, seed_normals, 1);
 
+    cloud->empty();
+    pcl::copyPointCloud<PointT, PointT>(*seed_cloud, *cloud);
+    
+    this->kdtree_->setInputCloud(seed_cloud);
     std::vector<pcl::PointIndices> all_indices;
     this->clusterFeatures(all_indices, seed_cloud, seed_normals, 20, 0.05);
 
     // process cluster
     /*
-    for (int i = 0; i < all_indices.size(); i++) {
-	pcl::PointIndices indices = all_indices[i];
-	pcl::PointCloud<PointT>::Ptr cluster_points(new pcl::PointCloud<PointT>);
-	cluster_indices->points.resize(static_cast<int>(indices.indices.size()));
-	for (int j = 0; j < indices.indices.size(); j++) {
-	    int idx = indices.indices[j];
-	    cluster_indices->points[j] = seed_cloud->points[idx];
-	}
-	
-    }
+
     */
-    
 
     
     jsk_recognition_msgs::ClusterPointIndices ros_indices;
@@ -139,9 +136,14 @@ void DynamicStateSegmentation::cloudCB(
     ros_indices.header = cloud_msg->header;
     this->pub_indices_.publish(ros_indices);
     
-    pcl::toROSMsg(*seed_cloud, ros_cloud);
+    pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
+
+    sensor_msgs::PointCloud2 ros_edge;
+    pcl::toROSMsg(*seed_cloud, ros_edge);
+    ros_edge.header = cloud_msg->header;
+    this->pub_edge_.publish(ros_edge);
 }
 
 void DynamicStateSegmentation::seedCorrespondingRegion(
@@ -225,10 +227,11 @@ int DynamicStateSegmentation::localVoxelConvexityCriteria(
         seed2pt_relation = (this->seed_point_.getVector4fMap() - n_centroid).dot(
             this->seed_normal_.getNormalVector4fMap());
     }
-    float norm_similarity = (M_PI - std::acos(c_normal.dot(n_normal))) / M_PI;
-    
+    float norm_similarity = (M_PI - std::acos(c_normal.dot(n_normal) /
+					      (c_normal.norm() * n_normal.norm()))) / M_PI;
+
     if (seed2pt_relation > thresh &&
-        pt2seed_relation > thresh && norm_similarity > 0.50f) {
+        pt2seed_relation > thresh && norm_similarity > 0.90f) {
         return 1;
     } else {
         return -1;
@@ -260,30 +263,29 @@ void DynamicStateSegmentation::estimateNormals(
 
 void DynamicStateSegmentation::clusterFeatures(
     std::vector<pcl::PointIndices> &all_indices,
-    const pcl::PointCloud<PointT>::Ptr cloud,
+    pcl::PointCloud<PointT>::Ptr cloud,
     const pcl::PointCloud<NormalT>::Ptr descriptors,
     const int min_size, const float max_distance) {
     if (descriptors->empty() || descriptors->size() != cloud->size()) {
 	ROS_ERROR("ERROR: EMPTY FEATURES.. SKIPPING CLUSTER SRV");
 	return;
     }
-    this->kdtree_->setInputCloud(cloud);
     dynamic_state_segmentation::Feature3DClustering srv;
-
-// #ifdef _OPENMP
-// #pragma omp parallel for num_threads(this->num_threads_) shared(srv)
-// #endif 
+    std::vector<std::vector<int> > neigbor_cache(static_cast<int>(descriptors->size()));
     for (int i = 0; i < descriptors->size(); i++) {
 	jsk_recognition_msgs::Histogram hist;
 	hist.histogram.push_back(cloud->points[i].x);
 	hist.histogram.push_back(cloud->points[i].y);
 	hist.histogram.push_back(cloud->points[i].z);
+	
 	// hist.histogram.push_back(descriptors->points[i].normal_x);
 	// hist.histogram.push_back(descriptors->points[i].normal_y);
 	// hist.histogram.push_back(descriptors->points[i].normal_z);
 
 	std::vector<int> neigbor_indices;
 	this->getPointNeigbour<int>(neigbor_indices, cloud, cloud->points[i], 8);
+	neigbor_cache[i] = neigbor_indices;
+	
 	float sum = 0.0f;
 	Eigen::Vector4f c_n = descriptors->points[i].getNormalVector4fMap();
 
@@ -291,19 +293,17 @@ void DynamicStateSegmentation::clusterFeatures(
 	Eigen::Vector4f c_pt = cloud->points[i].getVector4fMap();
 	float coplanar = 0.0f;
 	float curvature = 0.0f;
+
 	for (int j = 0; j < neigbor_indices.size(); j++) {
 	    int idx = neigbor_indices[j];
 	    Eigen::Vector4f n_n = descriptors->points[idx].getNormalVector4fMap();
 	    sum += (c_n.dot(n_n));
-
 	    Eigen::Vector4f n_pt = cloud->points[idx].getVector4fMap();
 	    coplanar += ((n_pt - c_pt).dot(n_n));
-
 	    curvature += descriptors->points[idx].curvature;
 	}
 	hist.histogram.push_back(sum/static_cast<float>(neigbor_indices.size()));
-	hist.histogram.push_back(coplanar/static_cast<float>(neigbor_indices.size()));
-
+	// hist.histogram.push_back(coplanar/static_cast<float>(neigbor_indices.size()));
 	hist.histogram.push_back(curvature/static_cast<float>(neigbor_indices.size()));
 	
 	srv.request.features.push_back(hist);
@@ -323,10 +323,73 @@ void DynamicStateSegmentation::clusterFeatures(
 		all_indices[index].indices.push_back(i);
 	    }
 	}
+
+
+	this->mergeVoxelClusters(srv, cloud, descriptors, neigbor_cache);
+	
+	
     } else {
 	ROS_ERROR("SRV CLIENT CALL FAILED");
 	return;
     }
+
+    ROS_WARN("CLUSTERED.");
+}
+
+
+void DynamicStateSegmentation::mergeVoxelClusters(
+    // std::vector<pcl::PointIndices> &all_indices,
+    const dynamic_state_segmentation::Feature3DClustering srv,
+    pcl::PointCloud<PointT>::Ptr cloud,
+    pcl::PointCloud<NormalT>::Ptr normals, const std::vector<std::vector<int> > neigbor_cache) {
+    pcl::PointCloud<PointT>::Ptr cluster_points(new pcl::PointCloud<PointT>);
+
+    std::vector<int> boundary_indices;
+    std::vector<std::vector<int> > boundary_adj(20);
+    for (int i = 0; i < srv.response.labels.size(); i++) {
+	int label = srv.response.labels[i];
+	if (srv.response.labels[i] != -1) {
+	    int idx = neigbor_cache[i][0];
+	    int lab = srv.response.labels[idx];
+	    bool is_neigb = false;
+	    for (int j = 1; j < neigbor_cache[i].size(); j++) {
+		idx = neigbor_cache[i][j];
+		if (srv.response.labels[idx] != -1) {
+		    if (lab != srv.response.labels[idx]) {	
+			is_neigb = true;
+			cluster_points->push_back(cloud->points[i]);
+
+			boundary_indices.push_back(i);
+			boundary_adj[label].push_back(srv.response.labels[idx]);
+		    }
+		}
+		if (is_neigb) {
+		    j += FLT_MAX;
+		}
+	    }
+	}
+    }
+
+    for (int i = 0; i < boundary_adj.size(); i++) {
+	std::vector<int> neigbour_labels = boundary_adj[i];
+	if (!neigbour_labels.empty()) {
+	    std::sort(neigbour_labels.begin(), neigbour_labels.end(), sortVector);
+	}
+	std::cout << "\n MAIN: " << i  << "\n";
+
+	// find tthe closes point on this cluster
+	
+	for (int j = 0; j < neigbour_labels.size(); j++) {
+	    
+	    std::cout << neigbour_labels[j]  << ", ";
+	}
+	std::cout << "\n";
+    }
+
+
+    
+    cloud->clear();
+    *cloud = *cluster_points;
 }
 
 
