@@ -5,10 +5,11 @@ from geometry_msgs.msg import Pose
 from jsk_recognition_msgs.msg import Histogram
 import rospy
 
-import numpy as numpy
+
 import numpy as np
 from sklearn.cluster import DBSCAN
 from sklearn.cluster import AgglomerativeClustering
+from sklearn.cluster import KMeans
 from sklearn.cluster import MeanShift, estimate_bandwidth
 from sklearn import metrics
 
@@ -49,21 +50,33 @@ def agglomerative_clustering(centroids, min_samples):
     count = np.argmax(counts)
     return (labels, indices, count)
 
+def get_clusters(features, labels):
+    label, indices, counts = np.unique(
+        labels, return_inverse=True, return_counts=True)
 
+    print "\n Initial", label
+    
+    clusters = []
+    for l in label:
+        cluster = []
+        index = 0
+        for i in indices:
+            if l == i:
+                cluster.append(features[index])
+            index = index + 1
+        if (len(cluster) > 20): # min cluster size
+            clusters.append(cluster)
+    return np.array(clusters)
+
+def intra_clustering(feature, k):
+    km = KMeans(n_clusters=k, init="k-means++").fit(feature)
+    return (km.cluster_centers_, km.labels_)
+    
 def dbscan_clustering(in_features, max_distance, min_sample):
     
     max_distance = 0.05
     min_sample = 20
 
-    s = in_features[0].histogram
-    t = in_features[300].histogram
-    s = np.array(s)
-    t = np.array(t)
-
-    print np.linalg.norm(s-t)
-    
-    print "\n"
-    
     features = convert_histogram_to_array(in_features)
     print "INPUT: ", features.shape
     
@@ -75,8 +88,38 @@ def dbscan_clustering(in_features, max_distance, min_sample):
     
     #######
     labels = db.labels_
+
+    ## Break the clusters further
+    """"
+    clusters = get_clusters(features, labels)
+
+    voxel_cluster = []
+    label_value = 0
+    for cluster in clusters:
+        c_center, c_label = intra_clustering(cluster, 2)
+        for l in c_label:
+            #new_label.append(l + label_value)
+
+            new_l = l + label_value
+            voxel_cluster.append(new_l)
+        label_value = label_value + 2
+        print label_value
+        
+    print "DONE CLUSTERING"
+
+    new_label = np.array(voxel_cluster)
+    # label, indices, counts = np.unique(
+    #     new_label, return_inverse=True, return_counts=True)
+    """
     label, indices, counts = np.unique(
         labels, return_inverse=True, return_counts=True)
+
+    
+    print label
+    print "\n------\n"
+    print indices
+
+    
     count = 0
     for k in range(len(counts)):
         if label[k] != -1:
@@ -84,6 +127,8 @@ def dbscan_clustering(in_features, max_distance, min_sample):
                 count = k
     if len(counts) == 1 and label[0] == -1:
         count = -1
+    
+        
     return (labels, indices, count)
 
 def feature3d_clustering_handler(req):
@@ -92,7 +137,7 @@ def feature3d_clustering_handler(req):
 
     print "OUTPUT: ", labels.shape
     
-    print labels, "\t", indices, "\t", elements
+    #print labels, "\t", indices, "\t", elements
     return Feature3DClusteringResponse(labels, indices, elements)
 
 def feature3d_clustering_server():

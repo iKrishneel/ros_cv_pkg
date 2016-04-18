@@ -96,16 +96,21 @@ void DynamicStateSegmentation::cloudCB(
     pcl::PointCloud<NormalT>::Ptr seed_normals(new pcl::PointCloud<NormalT>);
 
     // BUILD FEATURE VECTOR HERE
+    pcl::PointIndices a_indices;
     for (int i = 0; i < labels.size(); i++) {
         if (labels[i] != -1) {
             PointT pt = cloud->points[i];
             seed_cloud->push_back(pt);
 	    seed_normals->push_back(normals->points[i]);
+	    a_indices.indices.push_back(i);
         }
     }
+    std::vector<pcl::PointIndices> all_indices;
+    all_indices.push_back(a_indices);
+    
     ROS_INFO("DONE.");
     
-    sensor_msgs::PointCloud2 ros_cloud;
+
     // pcl::toROSMsg(*seed_cloud, ros_cloud);
     // ros_cloud.header = cloud_msg->header;
     // this->pub_cloud_.publish(ros_cloud);
@@ -117,26 +122,22 @@ void DynamicStateSegmentation::cloudCB(
     // this->pointColorContrast(seed_cloud, cloud, 3);
     // this->computeFeatures(seed_cloud, seed_normals, 1);
 
+    /*
     cloud->empty();
     pcl::copyPointCloud<PointT, PointT>(*seed_cloud, *cloud);
-    
     this->kdtree_->setInputCloud(seed_cloud);
     std::vector<pcl::PointIndices> all_indices;
     this->clusterFeatures(all_indices, seed_cloud, seed_normals, 20, 0.05);
-
-    // process cluster
-    /*
-
     */
-
     
     jsk_recognition_msgs::ClusterPointIndices ros_indices;
     ros_indices.cluster_indices = pcl_conversions::convertToROSPointIndices(
 	all_indices, cloud_msg->header);
     ros_indices.header = cloud_msg->header;
     this->pub_indices_.publish(ros_indices);
-    
-    pcl::toROSMsg(*cloud, ros_cloud);
+
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*seed_cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
 
@@ -231,7 +232,7 @@ int DynamicStateSegmentation::localVoxelConvexityCriteria(
 					      (c_normal.norm() * n_normal.norm()))) / M_PI;
 
     if (seed2pt_relation > thresh &&
-        pt2seed_relation > thresh && norm_similarity > 0.90f) {
+        pt2seed_relation > thresh && norm_similarity > 0.50f) {
         return 1;
     } else {
         return -1;
