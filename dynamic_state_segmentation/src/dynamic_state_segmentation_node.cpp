@@ -129,6 +129,11 @@ void DynamicStateSegmentation::cloudCB(
     std::vector<pcl::PointIndices> all_indices;
     this->clusterFeatures(all_indices, seed_cloud, seed_normals, 20, 0.05);
     */
+
+    pcl::PointCloud<PointT>::Ptr appearance_weights(new pcl::PointCloud<PointT>);
+    this->appearanceKernel(appearance_weights, seed_cloud, seed_normals);
+    seed_cloud->clear();
+    *seed_cloud = *appearance_weights;
     
     jsk_recognition_msgs::ClusterPointIndices ros_indices;
     ros_indices.cluster_indices = pcl_conversions::convertToROSPointIndices(
@@ -261,6 +266,76 @@ void DynamicStateSegmentation::estimateNormals(
 }
 
 
+/**
+ * smoothness term
+ */
+template<class T>
+T DynamicStateSegmentation::distancel2(
+    const Eigen::Vector3f point1, const Eigen::Vector3f point2, bool is_root) {
+    T distance = std::pow(point1(0) - point2(0), 2) +
+	std::pow(point1(1) - point2(1), 2) + std::pow(point1(2) - point2(2), 2);
+    if (is_root) {
+	distance = std::sqrt(distance);
+    }
+    return distance;
+}
+
+void DynamicStateSegmentation::appearanceKernel(
+    pcl::PointCloud<PointT>::Ptr weights,
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<NormalT>::Ptr normals) {
+    if (cloud->empty() || cloud->size() != normals->size()) {
+	ROS_ERROR("INAPPOPRIATE SIZE");
+	return;
+    }
+    pcl::copyPointCloud<PointT, PointT>(*cloud, *weights);
+    const float weight_param = 1.0f;
+    const float position_param = 0.70f;
+    const float color_param = 0.90f;
+    for (int i = 0; i < cloud->size(); i++) {
+	std::vector<int> neigbor_indices;
+	this->getPointNeigbour<int>(neigbor_indices, cloud, cloud->points[i], 8);
+	float sum = 0.0f;
+	Eigen::Vector3f center_pt = cloud->points[i].getVector3fMap();
+	for (int j = 0; j < neigbor_indices.size(); j++) {
+	    float pos_dif = this->distancel2<float>(cloud->points[j].getVector3fMap(),
+						    center_pt, true);
+	    float position = (pos_dif * pos_dif) / (2.0f * position_param * position_param);
+
+	    // float col_dif = this->intensitySimilarityMetric<float>(cloud->points[i],
+	    //   							   cloud->points[j], true);
+	    float norm_dif = normals->points[i].getNormalVector4fMap().dot(
+		normals->points[j].getNormalVector4fMap()) / (
+		    normals->points[i].getNormalVector4fMap().norm() *
+		    normals->points[j].getNormalVector4fMap().norm());
+	    norm_dif = std::acos(norm_dif);
+	    float col_dif = norm_dif;
+	    
+	    float intensity = (col_dif * col_dif) / (2.0f * color_param * color_param);
+	    float app_kernel = std::exp(-position - intensity) * 0.5f;
+	    
+	    // smoothness
+	    float smoothness = weight_param * std::exp(-position);
+	    
+	    sum += (app_kernel + smoothness);
+	}
+
+	
+	// float avg = sum / static_cast<float>(neigbor_indices.size());
+	float avg = sum;
+	
+	std::cout << sum  << "\n";
+	
+	weights->points[i].r = (avg * 255);
+	weights->points[i].g = (avg * 255);	
+	weights->points[i].b = (avg * 255);
+    }
+}
+
+
+/**
+ * 
+ */
 
 void DynamicStateSegmentation::clusterFeatures(
     std::vector<pcl::PointIndices> &all_indices,
@@ -610,10 +685,13 @@ void DynamicStateSegmentation::pointColorContrast(
 
 template<class T>
 T DynamicStateSegmentation::intensitySimilarityMetric(
-    const PointT pt, const PointT n_pt) {
+    const PointT pt, const PointT n_pt, bool is_root) {
     T r = std::pow((255.0 - pt.r - n_pt.r) / 255.0, 2);
     T g = std::pow((255.0 - pt.g - n_pt.g) / 255.0, 2);
     T b = std::pow((255.0 - pt.b - n_pt.b) / 255.0, 2);
+    if (!is_root) {
+	return (r + g + b);
+    }
     return std::sqrt(r + g + b);
 }
 

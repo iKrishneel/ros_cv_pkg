@@ -107,6 +107,10 @@ public:
     /**
      * functions for CRF
      */
+    void appearanceKernel(pcl::PointCloud<PointT>::Ptr, const pcl::PointCloud<PointT>::Ptr,
+			  const pcl::PointCloud<NormalT>::Ptr);
+
+	
     void clusterFeatures(std::vector<pcl::PointIndices> &, pcl::PointCloud<PointT>::Ptr,
 			 const pcl::PointCloud<NormalT>::Ptr, const int, const float);
     void mergeVoxelClusters(// std::vector<pcl::PointIndices> &,
@@ -126,7 +130,11 @@ public:
     
     void pointColorContrast(pcl::PointCloud<PointT>::Ptr,
                             const pcl::PointCloud<PointT>::Ptr, const int);
+
+    // distances
     template<class T>
-    T intensitySimilarityMetric(const PointT, const PointT);
+    T intensitySimilarityMetric(const PointT, const PointT, const bool = false);
+    template<class T>
+    T distancel2(const Eigen::Vector3f, const Eigen::Vector3f, bool = false);
 };
 #endif  // _DYNAMIC_STATE_SEGMENTATION_H_
