@@ -266,6 +266,17 @@ void DynamicStateSegmentation::estimateNormals(
 }
 
 
+void regionOverSegmentation(pcl::PointCloud<PointT>::Ptr region,
+			    const pcl::PointCloud<PointT>::Ptr cloud) {
+    if (cloud->empty() || region->empty()) {
+	ROS_ERROR("EMPTY CLOUD FOR REGION OVERSEGMENTATION");
+	return;
+    }
+    Eigen::Vector4f center;
+    pcl::compute3DCentroid(region, center);
+    
+}
+
 /**
  * smoothness term
  */
@@ -290,26 +301,48 @@ void DynamicStateSegmentation::appearanceKernel(
     }
     pcl::copyPointCloud<PointT, PointT>(*cloud, *weights);
     const float weight_param = 1.0f;
-    const float position_param = 0.70f;
-    const float color_param = 0.90f;
+    const float position_param = 1.0f;
+    const float color_param = 1.0f;
     for (int i = 0; i < cloud->size(); i++) {
 	std::vector<int> neigbor_indices;
 	this->getPointNeigbour<int>(neigbor_indices, cloud, cloud->points[i], 8);
 	float sum = 0.0f;
 	Eigen::Vector3f center_pt = cloud->points[i].getVector3fMap();
 	for (int j = 0; j < neigbor_indices.size(); j++) {
-	    float pos_dif = this->distancel2<float>(cloud->points[j].getVector3fMap(),
-						    center_pt, true);
-	    float position = (pos_dif * pos_dif) / (2.0f * position_param * position_param);
 
-	    // float col_dif = this->intensitySimilarityMetric<float>(cloud->points[i],
-	    //   							   cloud->points[j], true);
+	    float convex_term = (cloud->points[j].getVector3fMap() - center_pt).dot(
+		normals->points[j].getNormalVector3fMap());
 	    float norm_dif = normals->points[i].getNormalVector4fMap().dot(
 		normals->points[j].getNormalVector4fMap()) / (
 		    normals->points[i].getNormalVector4fMap().norm() *
 		    normals->points[j].getNormalVector4fMap().norm());
+	    float v_term = 0.0f;
+	    if (convex_term > -0.02) {
+		v_term = std::exp(-norm_dif/(2 * M_PI));
+	    } else {
+		v_term = std::exp(-norm_dif/(M_PI/3));
+	    }
+
+	    float curvature1 = normals->points[i].curvature;
+	    float curvature2 = normals->points[j].curvature;
+	    
+	    // sum += v_term;
+	    // sum += (std::exp(-1 * (curvature1/curvature2)));
+	    float curvature = (((curvature1 / curvature2) * (curvature1 / curvature2)) / (2.0f * 1.0));
+	    sum += (1 * std::exp(- curvature) + (1 * v_term));
+
+
+
+	    
+	    float pos_dif = this->distancel2<float>(cloud->points[j].getVector3fMap(),
+						    center_pt, true);
+	    float position = (pos_dif * pos_dif) / (2.0f * position_param * position_param);
+
+	    float col_dif = this->intensitySimilarityMetric<float>(cloud->points[i],
+	       							   cloud->points[j], true);
+	    
 	    norm_dif = std::acos(norm_dif);
-	    float col_dif = norm_dif;
+	    // float col_dif = norm_dif;
 	    
 	    float intensity = (col_dif * col_dif) / (2.0f * color_param * color_param);
 	    float app_kernel = std::exp(-position - intensity) * 0.5f;
@@ -317,14 +350,14 @@ void DynamicStateSegmentation::appearanceKernel(
 	    // smoothness
 	    float smoothness = weight_param * std::exp(-position);
 	    
-	    sum += (app_kernel + smoothness);
+	    // sum += (app_kernel + smoothness);
 	}
 
+	// std::cout << sum  << "\t" << static_cast<float>(neigbor_indices.size())  << "\n";
+	float avg = sum / static_cast<float>(neigbor_indices.size());
+	// float avg = sum;
 	
-	// float avg = sum / static_cast<float>(neigbor_indices.size());
-	float avg = sum;
-	
-	std::cout << sum  << "\n";
+	// std::cout << avg  << "\t" << static_cast<float>(neigbor_indices.size())  << "\n";
 	
 	weights->points[i].r = (avg * 255);
 	weights->points[i].g = (avg * 255);	
