@@ -101,7 +101,7 @@ void DynamicStateSegmentation::cloudCB(
         if (labels[i] != -1) {
             PointT pt = cloud->points[i];
             seed_cloud->push_back(pt);
-	    seed_normals->push_back(normals->points[i]);
+	    seed_normals->push_back(normals->points[i]);	  
 	    a_indices.indices.push_back(i);
         }
     }
@@ -109,31 +109,19 @@ void DynamicStateSegmentation::cloudCB(
     all_indices.push_back(a_indices);
     
     ROS_INFO("DONE.");
-    
 
-    // pcl::toROSMsg(*seed_cloud, ros_cloud);
-    // ros_cloud.header = cloud_msg->header;
-    // this->pub_cloud_.publish(ros_cloud);
-
-    /**
-     * TEST
-     */
-
-    // this->pointColorContrast(seed_cloud, cloud, 3);
-    // this->computeFeatures(seed_cloud, seed_normals, 1);
-
-    /*
-    cloud->empty();
-    pcl::copyPointCloud<PointT, PointT>(*seed_cloud, *cloud);
+    this->regionOverSegmentation(seed_cloud, seed_normals, cloud, normals);
     this->kdtree_->setInputCloud(seed_cloud);
-    std::vector<pcl::PointIndices> all_indices;
-    this->clusterFeatures(all_indices, seed_cloud, seed_normals, 20, 0.05);
-    */
-
+    this->dynamicSegmentation(cloud, seed_cloud, seed_normals);
+    /*
+    std::vector<std::vector<int> > neigbor_indices;
     pcl::PointCloud<PointT>::Ptr appearance_weights(new pcl::PointCloud<PointT>);
-    this->appearanceKernel(appearance_weights, seed_cloud, seed_normals);
+    this->potentialFunctionKernel(neigbor_indices, appearance_weights,
+				  seed_cloud, seed_normals);
     seed_cloud->clear();
     *seed_cloud = *appearance_weights;
+    */
+    
     
     jsk_recognition_msgs::ClusterPointIndices ros_indices;
     ros_indices.cluster_indices = pcl_conversions::convertToROSPointIndices(
@@ -142,7 +130,7 @@ void DynamicStateSegmentation::cloudCB(
     this->pub_indices_.publish(ros_indices);
 
     sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*seed_cloud, ros_cloud);
+    pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
 
@@ -266,15 +254,30 @@ void DynamicStateSegmentation::estimateNormals(
 }
 
 
-void regionOverSegmentation(pcl::PointCloud<PointT>::Ptr region,
-			    const pcl::PointCloud<PointT>::Ptr cloud) {
-    if (cloud->empty() || region->empty()) {
+void DynamicStateSegmentation::regionOverSegmentation(
+    pcl::PointCloud<PointT>::Ptr region, pcl::PointCloud<NormalT>::Ptr normal,
+    const pcl::PointCloud<PointT>::Ptr cloud, const pcl::PointCloud<NormalT>::Ptr normals) {
+    if (cloud->empty() || region->empty() || normals->empty()) {
 	ROS_ERROR("EMPTY CLOUD FOR REGION OVERSEGMENTATION");
 	return;
     }
     Eigen::Vector4f center;
-    pcl::compute3DCentroid(region, center);
-    
+    pcl::compute3DCentroid<PointT, float>(*region, center);
+    double distance = 0.0;  // compute this as max distace from center
+    for (int i = 0; i < region->size(); i++) {
+	double d = pcl::distances::l2(region->points[i].getVector4fMap(), center);
+	if (d > distance) {
+	    distance = d;
+	}
+    }
+    region->clear();
+    normal->clear();
+    for (int i = 0; i < cloud->size(); i++) {
+	if (pcl::distances::l2(cloud->points[i].getVector4fMap(), center) < distance) {
+	    region->push_back(cloud->points[i]);
+	    normal->push_back(normals->points[i]);
+	}
+    }
 }
 
 /**
@@ -291,7 +294,8 @@ T DynamicStateSegmentation::distancel2(
     return distance;
 }
 
-void DynamicStateSegmentation::appearanceKernel(
+void DynamicStateSegmentation::potentialFunctionKernel(
+    std::vector<std::vector<int> > &neigbor_cache,
     pcl::PointCloud<PointT>::Ptr weights,
     const pcl::PointCloud<PointT>::Ptr cloud,
     const pcl::PointCloud<NormalT>::Ptr normals) {
@@ -299,6 +303,10 @@ void DynamicStateSegmentation::appearanceKernel(
 	ROS_ERROR("INAPPOPRIATE SIZE");
 	return;
     }
+
+    neigbor_cache.clear();
+    neigbor_cache.resize(static_cast<int>(cloud->size()));
+    
     pcl::copyPointCloud<PointT, PointT>(*cloud, *weights);
     const float weight_param = 1.0f;
     const float position_param = 1.0f;
@@ -306,18 +314,29 @@ void DynamicStateSegmentation::appearanceKernel(
     for (int i = 0; i < cloud->size(); i++) {
 	std::vector<int> neigbor_indices;
 	this->getPointNeigbour<int>(neigbor_indices, cloud, cloud->points[i], 8);
+	neigbor_cache[i] = neigbor_indices;
+	
 	float sum = 0.0f;
 	Eigen::Vector3f center_pt = cloud->points[i].getVector3fMap();
 	for (int j = 0; j < neigbor_indices.size(); j++) {
 
 	    float convex_term = (cloud->points[j].getVector3fMap() - center_pt).dot(
-		normals->points[j].getNormalVector3fMap());
+	     	normals->points[j].getNormalVector3fMap());
+
+	    /*
+	    int convex_term = this->localVoxelConvexityCriteria(
+		cloud->points[i].getVector4fMap(),
+		normals->points[i].getNormalVector4fMap(),
+		cloud->points[j].getVector4fMap(),
+		normals->points[j].getNormalVector4fMap(),
+		-0.02f);
+	    */
 	    float norm_dif = normals->points[i].getNormalVector4fMap().dot(
 		normals->points[j].getNormalVector4fMap()) / (
 		    normals->points[i].getNormalVector4fMap().norm() *
 		    normals->points[j].getNormalVector4fMap().norm());
 	    float v_term = 0.0f;
-	    if (convex_term > -0.02) {
+	    if (convex_term > 0.0) {
 		v_term = std::exp(-norm_dif/(2 * M_PI));
 	    } else {
 		v_term = std::exp(-norm_dif/(M_PI/3));
@@ -328,10 +347,8 @@ void DynamicStateSegmentation::appearanceKernel(
 	    
 	    // sum += v_term;
 	    // sum += (std::exp(-1 * (curvature1/curvature2)));
-	    float curvature = (((curvature1 / curvature2) * (curvature1 / curvature2)) / (2.0f * 1.0));
-	    sum += (1 * std::exp(- curvature) + (1 * v_term));
-
-
+	    float curvature = (((curvature1 - curvature2) * (curvature1 - curvature2)) / (2.0f * 1.0));
+	    sum += (0.70 * std::exp(- curvature) + (1.0f * v_term));
 
 	    
 	    float pos_dif = this->distancel2<float>(cloud->points[j].getVector3fMap(),
@@ -354,15 +371,93 @@ void DynamicStateSegmentation::appearanceKernel(
 	}
 
 	// std::cout << sum  << "\t" << static_cast<float>(neigbor_indices.size())  << "\n";
-	float avg = sum / static_cast<float>(neigbor_indices.size());
-	// float avg = sum;
+	// float avg = sum / static_cast<float>(neigbor_indices.size());
+	float avg = sum;
 	
-	// std::cout << avg  << "\t" << static_cast<float>(neigbor_indices.size())  << "\n";
-	
-	weights->points[i].r = (avg * 255);
-	weights->points[i].g = (avg * 255);	
-	weights->points[i].b = (avg * 255);
+
+	// ------------------------------------
+
+	float pixel = 1.0f;
+	weights->points[i].r = (avg * pixel);
+	weights->points[i].g = (avg * pixel);	
+	weights->points[i].b = (avg * pixel);
+
     }
+}
+
+
+/**
+ * energy function
+ */
+void DynamicStateSegmentation::dynamicSegmentation(
+    pcl::PointCloud<PointT>::Ptr region, pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<NormalT>::Ptr normals) {
+    if (cloud->size() != normals->size() || cloud->empty()) {
+	ROS_ERROR("INCORRECT SIZE FOR DYNAMIC STATE");
+	return;
+    }
+    
+    ROS_INFO("\033[34m GRAPH CUT \033[0m");
+    
+    const int node_num = cloud->size();
+    const int edge_num = 8;
+    boost::shared_ptr<GraphType> graph(new GraphType(node_num, edge_num * node_num));
+    
+    for (int i = 0; i < node_num; i++) {
+	graph->add_node();
+    }
+
+    ROS_INFO("\033[34m GRAPH INIT %d \033[0m", node_num);
+    
+    pcl::PointCloud<PointT>::Ptr weight_map(new pcl::PointCloud<PointT>);
+    std::vector<std::vector<int> > neigbor_indices;
+    this->potentialFunctionKernel(neigbor_indices, weight_map, cloud, normals);
+
+    ROS_INFO("\033[34m POTENTIAL COMPUTED \033[0m");
+    // TODO:  get potential terms
+    
+    for (int i = 0; i < weight_map->size(); i++) {	
+	float weight = weight_map->points[i].r;
+	float obj_thresh = 240;
+	float bkgd_thresh = 5;
+	if (weight > obj_thresh) {
+	    graph->add_tweights(i, HARD_THRESH, 0);
+	} else if (weight < bkgd_thresh) {
+	    graph->add_tweights(i, 0, HARD_THRESH);
+	} else {
+	    graph->add_tweights(i, -std::log(weight/1.0), -std::log(weight/1.0));
+	}
+	
+	for (int j = 0; j < neigbor_indices[i].size(); j++) {
+	    int indx = neigbor_indices[i][j];
+	    if (indx != i) {
+		float w = std::pow(weight - weight_map->points[indx].r, 2);
+		// w = std::sqrt(w);
+		// std::cout << w  << ", " << weight << "---";
+		graph->add_edge(i, indx, (w), (w));
+	    }
+	}
+    }
+    
+    
+    ROS_INFO("\033[34m COMPUTING FLOW \033[0m");
+    
+    float flow = graph->maxflow();
+
+    ROS_INFO("\033[34m FLOW: %3.2f \033[0m", flow);
+    // plot
+    region->clear();
+    for (int i = 0; i < node_num; i++) {
+	if (graph->what_segment(i) == GraphType::SOURCE) {
+	    region->push_back(cloud->points[i]);
+	} else {
+	    continue;
+	}
+    }
+    ROS_INFO("\033[34m DONE: %d \033[0m", region->size());
+
+    cloud->clear();
+    *cloud = *weight_map;
 }
 
 
@@ -629,7 +724,6 @@ void DynamicStateSegmentation::computeFeatures(
 template<class T>
 T DynamicStateSegmentation::histogramKernel(
     const FPFH histA, const FPFH histB, const int bin_size) {
-    /*
     T sum = 0.0;
     for (int i = 0; i < bin_size; i++) {
 	float a = isnan(histA.histogram[i]) ? 0.0 : histA.histogram[i];
@@ -638,16 +732,6 @@ T DynamicStateSegmentation::histogramKernel(
 	// sum += (std::min(a, b));
     }
     return (0.5 * sum);
-    */
-    
-    FPFH ha = histA;
-    FPFH hb = histB;
-    cv::Mat a = cv::Mat(1, 33, CV_32FC1, ha.histogram);
-    cv::Mat b = cv::Mat(1, 33, CV_32FC1, hb.histogram);
-    T dist = static_cast<T>(cv::compareHist(a, b, CV_COMP_INTERSECT));
-    
-    return (dist);
-    
 }
 
 /**

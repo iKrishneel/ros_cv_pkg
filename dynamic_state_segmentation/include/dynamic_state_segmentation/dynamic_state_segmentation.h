@@ -27,6 +27,7 @@
 #include <pcl/features/normal_3d_omp.h>
 #include <pcl/registration/distances.h>
 #include <pcl/features/fpfh_omp.h>
+#include <pcl/common/centroid.h>
 
 #include <geometry_msgs/PointStamped.h>
 #include <sensor_msgs/Image.h>
@@ -40,8 +41,9 @@
 #include <jsk_recognition_utils/geo/polygon.h>
 #include <jsk_recognition_msgs/PolygonArray.h>
 #include <jsk_recognition_utils/pcl_conversion_util.h>
-#include <dynamic_state_segmentation/Feature3DClustering.h>
 
+#include <dynamic_state_segmentation/Feature3DClustering.h>
+#include <dynamic_state_segmentation/maxflow/graph.h>
 #include <omp.h>
 
 class DynamicStateSegmentation {
@@ -49,12 +51,15 @@ class DynamicStateSegmentation {
     typedef pcl::PointXYZRGB PointT;
     typedef pcl::Normal NormalT;
     typedef pcl::FPFHSignature33 FPFH;
-
+    typedef Graph<float,float,float> GraphType;
+    
     struct SortVector {
 	bool operator() (int i,int j) {
 	    return (i < j);
 	}
     } sortVector;
+
+#define HARD_THRESH 10
     
 private:
     boost::mutex mutex_;
@@ -85,7 +90,7 @@ protected:
     ros::Publisher pub_edge_;
     ros::Publisher pub_indices_;
     ros::ServiceClient srv_client_;
-  
+    
 public:
     DynamicStateSegmentation();
     virtual void cloudCB(const sensor_msgs::PointCloud2::ConstPtr &,
@@ -107,8 +112,17 @@ public:
     /**
      * functions for CRF
      */
-    void appearanceKernel(pcl::PointCloud<PointT>::Ptr, const pcl::PointCloud<PointT>::Ptr,
-			  const pcl::PointCloud<NormalT>::Ptr);
+    void dynamicSegmentation(pcl::PointCloud<PointT>::Ptr,
+			     pcl::PointCloud<PointT>::Ptr,
+			     const pcl::PointCloud<NormalT>::Ptr);
+    void regionOverSegmentation(pcl::PointCloud<PointT>::Ptr,
+				pcl::PointCloud<NormalT>::Ptr,
+				const pcl::PointCloud<PointT>::Ptr,
+				const pcl::PointCloud<NormalT>::Ptr);
+    void potentialFunctionKernel(std::vector<std::vector<int> > &,
+				 pcl::PointCloud<PointT>::Ptr,
+				 const pcl::PointCloud<PointT>::Ptr,
+				 const pcl::PointCloud<NormalT>::Ptr);
 
 	
     void clusterFeatures(std::vector<pcl::PointIndices> &, pcl::PointCloud<PointT>::Ptr,
