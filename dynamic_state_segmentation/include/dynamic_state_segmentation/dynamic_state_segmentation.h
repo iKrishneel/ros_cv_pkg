@@ -9,10 +9,6 @@
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 
-#include <opencv2/core/core.hpp>
-#include <opencv2/opencv.hpp>
-#include <boost/thread/mutex.hpp>
-
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -21,7 +17,7 @@
 #include <pcl/recognition/cg/hough_3d.h>
 #include <pcl/recognition/cg/geometric_consistency.h>
 #include <pcl/kdtree/kdtree_flann.h>
-#include <pcl/kdtree/impl/kdtree_flann.hpp>
+
 #include <pcl/common/transforms.h>
 #include <pcl/filters/extract_indices.h>
 #include <pcl/features/normal_3d_omp.h>
@@ -46,22 +42,26 @@
 #include <dynamic_state_segmentation/maxflow/graph.h>
 #include <omp.h>
 
+#include <opencv2/core/core.hpp>
+#include <opencv2/opencv.hpp>
+#include <boost/thread/mutex.hpp>
+
 class DynamicStateSegmentation {
 
     typedef pcl::PointXYZRGB PointT;
     typedef pcl::Normal NormalT;
     typedef pcl::FPFHSignature33 FPFH;
-    typedef Graph<float,float,float> GraphType;
+    typedef Graph<float, float, float> GraphType;
     
     struct SortVector {
-	bool operator() (int i,int j) {
-	    return (i < j);
-	}
+       bool operator() (int i, int j) {
+          return (i < j);
+       }
     } sortVector;
 
 #define HARD_THRESH 10
     
-private:
+ private:
     boost::mutex mutex_;
     ros::NodeHandle pnh_;
   
@@ -81,7 +81,7 @@ private:
   
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
 
-protected:
+ protected:
     void onInit();
     void subscribe();
     void unsubscribe();
@@ -91,15 +91,17 @@ protected:
     ros::Publisher pub_indices_;
     ros::ServiceClient srv_client_;
     
-public:
+ public:
     DynamicStateSegmentation();
     virtual void cloudCB(const sensor_msgs::PointCloud2::ConstPtr &,
                          const geometry_msgs::PointStamped::ConstPtr &);
     void seedCorrespondingRegion(std::vector<int> &,
                                  const pcl::PointCloud<PointT>::Ptr,
-                                 const pcl::PointCloud<NormalT>::Ptr, const int);
+                                 const pcl::PointCloud<NormalT>::Ptr,
+                                 const int);
     template<class T>
-    void getPointNeigbour(std::vector<int> &, const pcl::PointCloud<PointT>::Ptr,
+    void getPointNeigbour(std::vector<int> &,
+                          const pcl::PointCloud<PointT>::Ptr,
                           const PointT, const T = 8, bool = true);
     int localVoxelConvexityCriteria(Eigen::Vector4f, Eigen::Vector4f,
                                     Eigen::Vector4f, Eigen::Vector4f,
@@ -107,37 +109,41 @@ public:
     template<class T>
     void estimateNormals(const pcl::PointCloud<PointT>::Ptr,
                          pcl::PointCloud<NormalT>::Ptr,
-                         T = 0.05f, bool = false) const;  
+                         T = 0.05f, bool = false) const;
 
     /**
      * functions for CRF
      */
     void dynamicSegmentation(pcl::PointCloud<PointT>::Ptr,
-			     pcl::PointCloud<PointT>::Ptr,
-			     const pcl::PointCloud<NormalT>::Ptr);
+                             pcl::PointCloud<PointT>::Ptr,
+                             const pcl::PointCloud<NormalT>::Ptr);
     void regionOverSegmentation(pcl::PointCloud<PointT>::Ptr,
-				pcl::PointCloud<NormalT>::Ptr,
-				const pcl::PointCloud<PointT>::Ptr,
-				const pcl::PointCloud<NormalT>::Ptr);
+                                pcl::PointCloud<NormalT>::Ptr,
+                                const pcl::PointCloud<PointT>::Ptr,
+                                const pcl::PointCloud<NormalT>::Ptr);
     void potentialFunctionKernel(std::vector<std::vector<int> > &,
-				 pcl::PointCloud<PointT>::Ptr,
-				 const pcl::PointCloud<PointT>::Ptr,
-				 const pcl::PointCloud<NormalT>::Ptr);
+                                 pcl::PointCloud<PointT>::Ptr,
+                                 const pcl::PointCloud<PointT>::Ptr,
+                                 const pcl::PointCloud<NormalT>::Ptr);
 
 	
-    void clusterFeatures(std::vector<pcl::PointIndices> &, pcl::PointCloud<PointT>::Ptr,
-			 const pcl::PointCloud<NormalT>::Ptr, const int, const float);
-    void mergeVoxelClusters(// std::vector<pcl::PointIndices> &,
-	const dynamic_state_segmentation::Feature3DClustering srv,
-			    pcl::PointCloud<PointT>::Ptr,
-			    pcl::PointCloud<NormalT>::Ptr,
-			    const std::vector<std::vector<int> >);
-    
+    void clusterFeatures(std::vector<pcl::PointIndices> &,
+                         pcl::PointCloud<PointT>::Ptr,
+                         const pcl::PointCloud<NormalT>::Ptr,
+                         const int, const float);
+    void mergeVoxelClusters(
+       const dynamic_state_segmentation::Feature3DClustering,
+       pcl::PointCloud<PointT>::Ptr,
+       pcl::PointCloud<NormalT>::Ptr,
+       const std::vector<std::vector<int> >);
+   
     void computeFeatures(pcl::PointCloud<PointT>::Ptr,
                          const pcl::PointCloud<NormalT>::Ptr, const int);
     
-    void computeFPFH(pcl::PointCloud<FPFH>::Ptr, const pcl::PointCloud<PointT>::Ptr,
-		     const pcl::PointCloud<pcl::Normal>::Ptr, const float = 0.05f) const;
+    void computeFPFH(pcl::PointCloud<FPFH>::Ptr,
+                     const pcl::PointCloud<PointT>::Ptr,
+                     const pcl::PointCloud<pcl::Normal>::Ptr,
+                     const float = 0.05f) const;
     template<class T>
     T histogramKernel(const FPFH, const FPFH, const int);
     
