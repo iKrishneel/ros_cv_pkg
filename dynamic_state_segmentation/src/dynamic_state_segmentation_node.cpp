@@ -95,8 +95,6 @@ void DynamicStateSegmentation::cloudCB(
 
     pcl::PointCloud<PointT>::Ptr seed_cloud(new pcl::PointCloud<PointT>);
     pcl::PointCloud<NormalT>::Ptr seed_normals(new pcl::PointCloud<NormalT>);
-
-    // BUILD FEATURE VECTOR HERE
     pcl::PointIndices a_indices;
     for (int i = 0; i < labels.size(); i++) {
         if (labels[i] != -1) {
@@ -111,9 +109,21 @@ void DynamicStateSegmentation::cloudCB(
     
     ROS_INFO("DONE.");
 
+    // process estimated cloud
     this->regionOverSegmentation(seed_cloud, seed_normals, cloud, normals);
+    /*
     this->kdtree_->setInputCloud(seed_cloud);
     this->dynamicSegmentation(cloud, seed_cloud, seed_normals);
+    */
+
+    pcl::PointCloud<PointT>::Ptr convex(new pcl::PointCloud<PointT>);
+    pcl::PointCloud<PointT>::Ptr concave(new pcl::PointCloud<PointT>);
+    this->normalEdge(convex, concave, seed_cloud, seed_normals);
+    cloud->clear();
+    seed_cloud->clear();
+    *cloud = *convex;
+    *seed_cloud = *concave;
+    
     /*
     std::vector<std::vector<int> > neigbor_indices;
     pcl::PointCloud<PointT>::Ptr appearance_weights(new pcl::PointCloud<PointT>);
@@ -122,7 +132,6 @@ void DynamicStateSegmentation::cloudCB(
     seed_cloud->clear();
     *seed_cloud = *appearance_weights;
     */
-    
     
     jsk_recognition_msgs::ClusterPointIndices ros_indices;
     ros_indices.cluster_indices = pcl_conversions::convertToROSPointIndices(
@@ -167,7 +176,7 @@ void DynamicStateSegmentation::seedCorrespondingRegion(
             Eigen::Vector4f child_pt = cloud->points[index].getVector4fMap();
             Eigen::Vector4f child_norm = normals->points[
                 index].getNormalVector4fMap();
-            if (this->localVoxelConvexityCriteria(
+            if (this->seedVoxelConvexityCriteria(
                    parent_pt, parent_norm, child_pt, child_norm, -0.01f) == 1) {
                 merge_list[i] = index;
                 labels[index] = 1;
@@ -210,7 +219,7 @@ void DynamicStateSegmentation::getPointNeigbour(
     }
 }
 
-int DynamicStateSegmentation::localVoxelConvexityCriteria(
+int DynamicStateSegmentation::seedVoxelConvexityCriteria(
     Eigen::Vector4f c_centroid, Eigen::Vector4f c_normal,
     Eigen::Vector4f n_centroid, Eigen::Vector4f n_normal,
     const float thresh, bool is_seed) {
@@ -289,6 +298,96 @@ void DynamicStateSegmentation::regionOverSegmentation(
 /**
  * smoothness term
  */
+
+int DynamicStateSegmentation::localVoxelConvexityCriteria(
+    Eigen::Vector4f c_centroid, Eigen::Vector4f n_centroid,
+    Eigen::Vector4f n_normal, const float threshold) {
+    if ((n_centroid - c_centroid).dot(n_normal) > 0) {
+       return 1;
+    } else {
+       return -1;
+    }
+}
+
+void DynamicStateSegmentation::normalEdge(
+    pcl::PointCloud<PointT>::Ptr convex_edge_pts,
+    pcl::PointCloud<PointT>::Ptr concave_edge_pts,
+    const pcl::PointCloud<PointT>::Ptr in_cloud,
+    const pcl::PointCloud<NormalT>::Ptr in_normals) {
+    if (in_cloud->empty() || in_cloud->size() != in_normals->size()) {
+       ROS_ERROR("INCORRECT POINT SIZE FOR EDGE FUNCTION");
+       return;
+    }
+    convex_edge_pts->resize(static_cast<int>(in_cloud->size()));
+    concave_edge_pts->resize(static_cast<int>(in_cloud->size()));
+    ROS_INFO("COMPUTING EDGE");
+    
+    pcl::KdTreeFLANN<PointT>::Ptr kdtree(new pcl::KdTreeFLANN<PointT>());
+    kdtree->setInputCloud(in_cloud);
+    const float radius_thresh = 0.01f;
+    const float concave_thresh = 0.20f;
+    std::vector<int> point_idx_search;
+    std::vector<float> point_squared_distance;
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(this->num_threads_) shared(kdtree) \
+    private(point_idx_search, point_squared_distance)
+#endif
+    for (int i = 0; i < in_cloud->size(); i++) {
+       PointT centroid_pt = in_cloud->points[i];
+       if (!isnan(centroid_pt.x) || !isnan(centroid_pt.y) ||
+           !isnan(centroid_pt.z)) {
+          point_idx_search.clear();
+          point_squared_distance.clear();
+          int search_out = kdtree->radiusSearch(
+             centroid_pt, radius_thresh, point_idx_search,
+             point_squared_distance);
+          Eigen::Vector4f seed_vector = in_normals->points[
+             i].getNormalVector4fMap();
+          float max_diff = 0.0f;
+          float min_diff = FLT_MAX;
+
+          int concave_sum = 0;
+          for (int j = 1; j < point_idx_search.size(); j++) {
+             int index = point_idx_search[j];
+             Eigen::Vector4f neigh_norm = in_normals->points[
+                index].getNormalVector4fMap();
+             float dot_prod = neigh_norm.dot(seed_vector) / (
+                neigh_norm.norm() * seed_vector.norm());
+             
+             if (dot_prod > max_diff) {
+                max_diff = dot_prod;
+             }
+             if (dot_prod < min_diff) {
+                min_diff = dot_prod;
+             }
+
+             concave_sum += this->localVoxelConvexityCriteria(
+                centroid_pt.getVector4fMap(), in_cloud->points[
+                   index].getVector4fMap(), neigh_norm);
+          }
+          float variance = max_diff - min_diff;
+
+          if (variance > concave_thresh && concave_sum <= 0) {
+             centroid_pt.r = 255 * variance;
+             centroid_pt.b = 0;
+             centroid_pt.g = 0;
+             concave_edge_pts->points[i] = centroid_pt;
+          }
+          if (variance > 0.20f && concave_sum > 0) {
+             centroid_pt.g = 255 * variance;
+             centroid_pt.b = 0;
+             centroid_pt.r = 0;
+             convex_edge_pts->points[i] = centroid_pt;
+          }
+       }
+    }
+    std::vector<int>(point_idx_search).swap(point_idx_search);
+    std::vector<float>(point_squared_distance).swap(point_squared_distance);
+    
+    ROS_INFO("EDGE COMPUTED");
+}
+
+
 template<class T>
 T DynamicStateSegmentation::distancel2(
     const Eigen::Vector3f point1, const Eigen::Vector3f point2, bool is_root) {
@@ -325,13 +424,12 @@ void DynamicStateSegmentation::potentialFunctionKernel(
        float sum = 0.0f;
        Eigen::Vector3f center_pt = cloud->points[i].getVector3fMap();
        for (int j = 0; j < neigbor_indices.size(); j++) {
-
           float convex_term = (cloud->points[j].getVector3fMap() -
                                center_pt).dot(normals->points[
                                                  j].getNormalVector3fMap());
-
+          
           /*
-	    int convex_term = this->localVoxelConvexityCriteria(
+	    int convex_term = this->seedVoxelConvexityCriteria(
             cloud->points[i].getVector4fMap(),
             normals->points[i].getNormalVector4fMap(),
             cloud->points[j].getVector4fMap(),
@@ -379,18 +477,13 @@ void DynamicStateSegmentation::potentialFunctionKernel(
           // sum += (app_kernel + smoothness);
        }
 
-       // std::cout << sum  << "\t" << static_cast<float>(neigbor_indices.size())  << "\n";
        // float avg = sum / static_cast<float>(neigbor_indices.size());
        float avg = sum;
-	
-
-       // ------------------------------------
 
        float pixel = 1.0f;
        weights->points[i].r = (avg * pixel);
        weights->points[i].g = (avg * pixel);
        weights->points[i].b = (avg * pixel);
-
     }
 }
 
@@ -424,7 +517,7 @@ void DynamicStateSegmentation::dynamicSegmentation(
     this->potentialFunctionKernel(neigbor_indices, weight_map, cloud, normals);
 
     ROS_INFO("\033[34m POTENTIAL COMPUTED \033[0m");
-    // TODO:  get potential terms
+
     
     for (int i = 0; i < weight_map->size(); i++) {
        float weight = weight_map->points[i].r;
@@ -504,7 +597,7 @@ void DynamicStateSegmentation::clusterFeatures(
        float sum = 0.0f;
        Eigen::Vector4f c_n = descriptors->points[i].getNormalVector4fMap();
 
-	// planner
+       // planner
        Eigen::Vector4f c_pt = cloud->points[i].getVector4fMap();
        float coplanar = 0.0f;
        float curvature = 0.0f;
@@ -518,7 +611,8 @@ void DynamicStateSegmentation::clusterFeatures(
           curvature += descriptors->points[idx].curvature;
        }
        hist.histogram.push_back(sum/static_cast<float>(neigbor_indices.size()));
-       // hist.histogram.push_back(coplanar/static_cast<float>(neigbor_indices.size()));
+       // hist.histogram.push_back(coplanar /
+       //                          static_cast<float>(neigbor_indices.size()));
 
        hist.histogram.push_back(curvature/static_cast<float>(
                                    neigbor_indices.size()));

@@ -95,6 +95,10 @@ class DynamicStateSegmentation {
     DynamicStateSegmentation();
     virtual void cloudCB(const sensor_msgs::PointCloud2::ConstPtr &,
                          const geometry_msgs::PointStamped::ConstPtr &);
+
+   /**
+    * seeded region growing
+    */
     void seedCorrespondingRegion(std::vector<int> &,
                                  const pcl::PointCloud<PointT>::Ptr,
                                  const pcl::PointCloud<NormalT>::Ptr,
@@ -103,7 +107,7 @@ class DynamicStateSegmentation {
     void getPointNeigbour(std::vector<int> &,
                           const pcl::PointCloud<PointT>::Ptr,
                           const PointT, const T = 8, bool = true);
-    int localVoxelConvexityCriteria(Eigen::Vector4f, Eigen::Vector4f,
+    int seedVoxelConvexityCriteria(Eigen::Vector4f, Eigen::Vector4f,
                                     Eigen::Vector4f, Eigen::Vector4f,
                                     const float = 0.0f, bool = true);
     template<class T>
@@ -125,8 +129,15 @@ class DynamicStateSegmentation {
                                  pcl::PointCloud<PointT>::Ptr,
                                  const pcl::PointCloud<PointT>::Ptr,
                                  const pcl::PointCloud<NormalT>::Ptr);
-
-	
+    void normalEdge(pcl::PointCloud<PointT>::Ptr,
+                    pcl::PointCloud<PointT>::Ptr,
+                    const pcl::PointCloud<PointT>::Ptr,
+                    const pcl::PointCloud<NormalT>::Ptr);
+    int localVoxelConvexityCriteria(Eigen::Vector4f, Eigen::Vector4f,
+                                    Eigen::Vector4f, const float = 0.0f);
+   /**
+    * function for saliency term
+    */
     void clusterFeatures(std::vector<pcl::PointIndices> &,
                          pcl::PointCloud<PointT>::Ptr,
                          const pcl::PointCloud<NormalT>::Ptr,
