@@ -4,8 +4,7 @@
 #include <particle_filter_tracking/particle_filter_tracking.h>
 
 ParticleFilterTracking::ParticleFilterTracking():
-    block_size_(8), hbins(10), sbins(12), downsize_(1),
-    tracker_init_(false), threads_(8) {
+    block_size_(8), downsize_(1), tracker_init_(false), threads_(8) {
 
     this->hog_ = boost::shared_ptr<HOGFeatureDescriptor>(
        new HOGFeatureDescriptor());
@@ -119,7 +118,6 @@ bool ParticleFilterTracking::createParticlesFeature(
      cv::cvtColor(img, image, CV_BGR2HSV);
      const int bin_size = 16;
 
-     // cv::Mat histogram = cv::Mat(LENGHT, bin_size * 6, CV_32F);
      cv::Mat histogram[LENGHT];
      cv::Mat hog_descriptors;
      cv::Rect_<int> tmp_rect[LENGHT];
@@ -221,8 +219,6 @@ void ParticleFilterTracking::getHistogram(
             pixel = static_cast<float>(image.at<cv::Vec3b>(j, i)[2]);
             bin_number = static_cast<int>(std::floor(pixel/bin_range));
             histogram.at<float>(0, bin_number + bins + bins)++;
-
-            // std::cout << bin_number << ", " << i << " "<< j  << "\n";
         }
     }
     if (is_norm) {
@@ -240,24 +236,11 @@ void ParticleFilterTracking::runObjectTracker(
     }
     std::vector<Particle> x_particle = this->transition(
        this->particles_, this->dynamics, this->random_num_);
-    /*
-    this->printParticles(image, x_particle);
-    cv::namedWindow("Tracking", cv::WINDOW_NORMAL);
-    cv::imshow("Tracking", image);
-    return;
-    */
-    
-    std::clock_t start;
-    start = std::clock();
 
     PFFeatures features;
     this->createParticlesFeature(features, image, x_particle);
     std::vector<double> color_probability = this->featureHistogramLikelihood(
        x_particle, image, features, this->reference_features_);
-
-    double duration = (std::clock() - start) /
-       static_cast<double>(CLOCKS_PER_SEC);
-    std::cout << "Likelihood: "<< duration <<'\n';
     
     std::vector<double> wN;
     for (int i = 0; i < NUM_PARTICLES; i++) {
@@ -267,7 +250,6 @@ void ParticleFilterTracking::runObjectTracker(
     }
     std::vector<double> nWeights = this->normalizeWeight(wN);
     this->reSampling(this->particles_, x_particle, nWeights);
-
     
     this->printParticles(image, particles_);
     Particle x_e = this->meanArr(this->particles_);
@@ -278,7 +260,7 @@ void ParticleFilterTracking::runObjectTracker(
     cv::circle(image, cv::Point2f(x_e.x, x_e.y), 3,
                cv::Scalar(255, 0, 0), CV_FILLED);
     
-    // cv::rectangle(image, b_rect, cv::Scalar(255, 0, 255), 2);
+    cv::rectangle(image, b_rect, cv::Scalar(255, 0, 255), 3);
     rect = b_rect;
     cv::resize(image, image, cv::Size(
                   image.cols * downsize_, image.rows * downsize_));
@@ -304,12 +286,6 @@ std::vector<double> ParticleFilterTracking::featureHistogramLikelihood(
         particles.empty()) {
         return std::vector<double>();
     }
-
-    // cv::Mat results;
-    // this->intensityCorrelation(results, image, this->prev_frame_);
-    // cv::imshow("results", results);
-    
-    
     std::vector<double> probability(static_cast<int>(
                                        features.color_hist.rows));
     double *p = &probability[0];
@@ -324,14 +300,6 @@ std::vector<double> ParticleFilterTracking::featureHistogramLikelihood(
         int match_idx = -1;
         
         for (int j = 0; j < prev_features.color_hist.rows; j++) {
-            // cv::Mat chist = prev_features.color_hist.row(j);
-            // double d_color = cv::compareHist(
-            //     chist, p_color, CV_COMP_BHATTACHARYYA);
-            // if (d_color < c_dist) {
-            //     c_dist = d_color;
-            //     match_idx = j;
-            // }
-            
             cv::Mat hhist = prev_features.hog_hist.row(j);
             double d_hog = cv::compareHist(hhist, p_hog, CV_COMP_BHATTACHARYYA);
             double pt_dist = this->EuclideanDistance<double>(
@@ -351,8 +319,6 @@ std::vector<double> ParticleFilterTracking::featureHistogramLikelihood(
             double c_prob = 1 * exp(-0.70 * c_dist);
             double h_prob = 1 * exp(-0.70 * h_dist);
             prob = c_prob * h_prob;
-
-            // std::cout << prob  << "\n";
             
             double val = 0.0;
             if (prob < 0.7) {
@@ -382,8 +348,6 @@ std::vector<double> ParticleFilterTracking::featureHistogramLikelihood(
                 this->reference_features_.color_hist.row(match_idx) = color_ref;
                 this->reference_features_.hog_hist.row(match_idx) = hog_ref;
             }
-            // std::cout << "Prob: " << p[i] << " " << val << " " << p[i]
-            // * val  << "\n";
         }
         p[i] = prob;
     }
@@ -397,19 +361,15 @@ void ParticleFilterTracking::roiCondition(
     cv::Rect &rect, cv::Size imageSize) {
     if (rect.x < 0) {
         rect.x = 0;
-        // rect.width = block_size_;
     }
     if (rect.y < 0) {
         rect.y = 0;
-        // rect.height = block_size_;
     }
     if ((rect.height + rect.y) > imageSize.height) {
         rect.y -= ((rect.height + rect.y) - imageSize.height);
-        // rect.height = block_size_;
     }
     if ((rect.width + rect.x) > imageSize.width) {
         rect.x -= ((rect.width + rect.x) - imageSize.width);
-        // rect.width = block_size_;
     }
 }
 

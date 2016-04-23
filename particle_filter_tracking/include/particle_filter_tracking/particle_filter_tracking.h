@@ -5,17 +5,11 @@
 #include <ros/ros.h>
 #include <ros/console.h>
 
-#include <message_filters/subscriber.h>
-#include <message_filters/synchronizer.h>
-#include <message_filters/sync_policies/approximate_time.h>
 #include <cv_bridge/cv_bridge.h>
-
 #include <image_geometry/pinhole_camera_model.h>
 #include <geometry_msgs/PolygonStamped.h>
 #include <jsk_recognition_msgs/Rect.h>
 #include <sensor_msgs/Image.h>
-#include <sensor_msgs/image_encodings.h>
-#include <sensor_msgs/PointCloud2.h>
 
 #include <particle_filter_tracking/particle_filter.h>
 #include <particle_filter_tracking/histogram_of_oriented_gradients.h>
@@ -24,10 +18,8 @@
 #include <cmath>
 
 #include <opencv2/opencv.hpp>
-#include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <boost/thread/mutex.hpp>
-
 
 class ParticleFilterTracking: public ParticleFilter {
 
@@ -37,8 +29,6 @@ class ParticleFilterTracking: public ParticleFilter {
     };
     
  private:
-    std::vector<cv::Mat> reference_object_histogram_;
-    std::vector<cv::Mat> reference_background_histogram_;
 
     cv::Mat reference_histogram_;
     
@@ -49,16 +39,10 @@ class ParticleFilterTracking: public ParticleFilter {
     int block_size_;
     int downsize_;
 
-    int hbins;
-    int sbins;
-
     cv::Mat dynamics;
     std::vector<Particle> particles_;
     cv::RNG random_num_;
-    std::vector<cv::Point2f> particle_prev_position;
     cv::Mat prev_frame_;
-
-    bool gpu_init_;
 
     boost::shared_ptr<HOGFeatureDescriptor> hog_;
     PFFeatures reference_features_;
