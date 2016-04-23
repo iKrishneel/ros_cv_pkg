@@ -4,8 +4,8 @@
 #ifndef _PARTICLE_FILTER_H_
 #define _PARTICLE_FILTER_H_
 
-#include <opencv2/opencv.hpp>
 #include <omp.h>
+#include <opencv2/opencv.hpp>
 
 struct Particle{
     double x;
@@ -22,7 +22,7 @@ class ParticleFilter {
 #define NUM_STATE 4
    
  public:
-   ParticleFilter();
+    ParticleFilter();
     cv::Mat state_transition();
     std::vector<Particle> initialize_particles(
       cv::RNG &, double, double, double, double);

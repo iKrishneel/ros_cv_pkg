@@ -3,7 +3,7 @@
   <node pkg="particle_filter_tracking" type="particle_filter_tracking_node"
 	name="particle_filter_tracking" output="screen" >
     <remap from="input_screen" to="$(arg image)/screenrectangle"/>
-    <remap from="input" to="$(arg image)"/>
+    <remap from="image" to="$(arg image)"/>
     <remap from="target" to="/particle_filter_tracking/output/image"/>
   </node>
   <node pkg="image_view2" type="image_view2"

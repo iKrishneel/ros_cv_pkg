@@ -1,89 +1,99 @@
-// Copyright (C) 2015 by Krishneel Chaudhary,
-// JSK Lab, The University of Tokyo
 
-#ifndef _PARTICLE_FILTER_TRACKING_H_
-#define _PARTICLE_FILTER_TRACKING_H_
-
-#include <particle_filter_tracking/particle_filter.h>
-#include <particle_filter_tracking/color_histogram.h>
-#include <particle_filter_tracking/histogram_of_oriented_gradients.h>
+#ifndef _GPU_PARTICLE_FILTER_H_
+#define _GPU_PARTICLE_FILTER_H_
 
 #include <ros/ros.h>
 #include <ros/console.h>
 
+#include <message_filters/subscriber.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <cv_bridge/cv_bridge.h>
+
+#include <image_geometry/pinhole_camera_model.h>
+#include <geometry_msgs/PolygonStamped.h>
+#include <jsk_recognition_msgs/Rect.h>
 #include <sensor_msgs/Image.h>
 #include <sensor_msgs/image_encodings.h>
 #include <sensor_msgs/PointCloud2.h>
-#include <cv_bridge/cv_bridge.h>
 
-#include <geometry_msgs/PolygonStamped.h>
+#include <particle_filter_tracking/particle_filter.h>
+#include <particle_filter_tracking/histogram_of_oriented_gradients.h>
+
+#include <omp.h>
+#include <cmath>
 
 #include <opencv2/opencv.hpp>
+#include <opencv2/core/core.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <boost/thread/mutex.hpp>
 
-class ParticleFilterTracking: public ParticleFilter,
-                              public HOGFeatureDescriptor,
-                              public ColorHistogram {
 
-    struct Features {
-       std::vector<cv::Mat> color;
-       std::vector<cv::Mat> hog;
+class ParticleFilterTracking: public ParticleFilter {
+
+    struct PFFeatures {
+        cv::Mat color_hist;
+        cv::Mat hog_hist;
     };
-  
+    
  private:
-    virtual void onInit();
-    virtual void subscribe();
-    virtual void unsubscribe();
-
-    cv::Rect_<int> screen_rect_;
-
     std::vector<cv::Mat> reference_object_histogram_;
     std::vector<cv::Mat> reference_background_histogram_;
 
+    cv::Mat reference_histogram_;
+    
+    cv::Rect_<int> screen_rect_;
+    bool tracker_init_;
     int width_;
     int height_;
     int block_size_;
     int downsize_;
-   
+
     int hbins;
     int sbins;
-   
+
     cv::Mat dynamics;
-    std::vector<Particle> particles;
-    cv::RNG randomNum;
+    std::vector<Particle> particles_;
+    cv::RNG random_num_;
     std::vector<cv::Point2f> particle_prev_position;
-    cv::Mat prevFrame;
+    cv::Mat prev_frame_;
 
-    bool tracker_init_;
-   
- public:
-    ParticleFilterTracking();
-    virtual void imageCallback(
-       const sensor_msgs::Image::ConstPtr &);
-    virtual void screenPointCallback(
-       const geometry_msgs::PolygonStamped &);
+    bool gpu_init_;
 
-    void initializeTracker(
-       const cv::Mat &, cv::Rect &);
-    void runObjectTracker(
-       cv::Mat *image, cv::Rect &rect);
-   
-    std::vector<cv::Mat> imagePatchHistogram(
-       cv::Mat &);
-    std::vector<cv::Mat> particleHistogram(
-      cv::Mat &, std::vector<Particle> &);
-    std::vector<double> colorHistogramLikelihood(
-       std::vector<cv::Mat> &);
-    void roiCondition(cv::Rect &, cv::Size);
-   
+    boost::shared_ptr<HOGFeatureDescriptor> hog_;
+    PFFeatures reference_features_;
+    
  protected:
+    virtual void onInit();
+    virtual void subscribe();
+    virtual void unsubscribe();
+
     boost::mutex lock_;
     ros::NodeHandle pnh_;
     ros::Subscriber sub_image_;
     ros::Subscriber sub_screen_pt_;
     ros::Publisher pub_image_;
     unsigned int threads_;
+   
+ public:
+    ParticleFilterTracking();
+    virtual void imageCB(
+        const sensor_msgs::Image::ConstPtr &);
+    virtual void screenPtCB(
+        const geometry_msgs::PolygonStamped &);
+
+    void initializeTracker(const cv::Mat &, cv::Rect &);
+    void runObjectTracker(cv::Mat *image, cv::Rect &rect);
+    void roiCondition(cv::Rect &, cv::Size);
+    bool createParticlesFeature(PFFeatures &, const cv::Mat &,
+                                const std::vector<Particle> &);
+    void getHistogram(cv::Mat &, const cv::Mat &,
+                      const int, const int, bool = true);
+    std::vector<double> featureHistogramLikelihood(
+       const std::vector<Particle> &, cv::Mat &,
+       const PFFeatures, const PFFeatures);
+    template<typename T>
+    T EuclideanDistance(Particle, Particle, bool = true);
 };
 
-#endif  // _PARTICLE_FILTER_TRACKING_H_
+#endif  // _GPU_PARTICLE_FILTER_H_
