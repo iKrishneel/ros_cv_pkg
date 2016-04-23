@@ -5,7 +5,7 @@
 #include <particle_filter_tracking/color_histogram.h>
 
 ColorHistogram::ColorHistogram() :
-    h_bins(8), s_bins(8) {
+    h_bins(10), s_bins(10) {
    
 }
 
@@ -28,18 +28,26 @@ void ColorHistogram::computeHistogram(
 double ColorHistogram::computeHistogramDistances(
     cv::Mat &hist, std::vector<cv::Mat> *hist_MD , cv::Mat *h_D ) {
     double sum = 0.0;
-    double argMaxDistance = 100.0;
+    double max_distance = FLT_MAX;
     if (h_D != NULL) {
-       sum = cv::compareHist(hist, *h_D, CV_COMP_BHATTACHARYYA);
+       sum = static_cast<double>(
+          cv::compareHist(hist, *h_D, CV_COMP_BHATTACHARYYA));
     } else if (hist_MD->size() > 0) {
-       for (int i = 0; i < hist_MD->size(); i++) {
-          double d__ = cv::compareHist(
-             hist, (*hist_MD)[i], CV_COMP_BHATTACHARYYA);
-          if (d__ < argMaxDistance) {
-             argMaxDistance = d__;
+       int i;
+#ifdef _OPENMP
+#pragma omp parallel for private(i) shared(sum, max_distance)
+#endif
+       for (i = 0; i < hist_MD->size(); i++) {
+          double d = static_cast<double>(
+             cv::compareHist(hist, (*hist_MD)[i], CV_COMP_BHATTACHARYYA));
+          if (d < max_distance) {
+#ifdef _OPENMP
+#pragma omp critical
+#endif
+             max_distance = static_cast<double>(d);
           }
        }
-       sum = argMaxDistance;
+       sum = static_cast<double>(max_distance);
     }
     return sum;
 }

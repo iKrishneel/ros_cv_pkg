@@ -6,7 +6,8 @@
 #include <particle_filter_tracking/motion_dynamics.h>
 
 MotionDynamics::MotionDynamics() : feature_size(300) {
-   }
+   
+}
 
 void MotionDynamics::buildImagePyramid(
     const cv::Mat &frame, std::vector<cv::Mat> &pyramid) {
