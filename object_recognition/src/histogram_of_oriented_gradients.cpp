@@ -1,7 +1,7 @@
 // Copyright (C) 2016 by Krishneel Chaudhary @ JSK Lab, The University
 // of Tokyo
 
-#include <object_recognition/histogram_of_oriented_gradients.h>
+#include <jsk_mbzirc_tasks/histogram_of_oriented_gradients.h>
 
 HOGFeatureDescriptor::HOGFeatureDescriptor(
     const int cell_size, const int block_per_cell,
