@@ -24,6 +24,7 @@
 #include <pcl/registration/distances.h>
 #include <pcl/features/fpfh_omp.h>
 #include <pcl/common/centroid.h>
+#include <pcl/filters/radius_outlier_removal.h>
 
 #include <geometry_msgs/PointStamped.h>
 #include <sensor_msgs/Image.h>
@@ -135,6 +136,9 @@ class DynamicStateSegmentation {
                     const pcl::PointCloud<NormalT>::Ptr);
     int localVoxelConvexityCriteria(Eigen::Vector4f, Eigen::Vector4f,
                                     Eigen::Vector4f, const float = 0.0f);
+    void edgeBoundaryOutlierFiltering(pcl::PointCloud<PointT>::Ptr,
+				      pcl::PointIndices::Ptr,
+				      const float = 0.01f, const int = 50);
    /**
     * function for saliency term
     */

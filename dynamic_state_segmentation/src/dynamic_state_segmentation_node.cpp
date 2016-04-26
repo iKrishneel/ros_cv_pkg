@@ -111,18 +111,22 @@ void DynamicStateSegmentation::cloudCB(
 
     // process estimated cloud
     this->regionOverSegmentation(seed_cloud, seed_normals, cloud, normals);
-    /*
-    this->kdtree_->setInputCloud(seed_cloud);
-    this->dynamicSegmentation(cloud, seed_cloud, seed_normals);
-    */
 
     pcl::PointCloud<PointT>::Ptr convex(new pcl::PointCloud<PointT>);
     pcl::PointCloud<PointT>::Ptr concave(new pcl::PointCloud<PointT>);
     this->normalEdge(convex, concave, seed_cloud, seed_normals);
+
     cloud->clear();
-    seed_cloud->clear();
-    *cloud = *convex;
-    *seed_cloud = *concave;
+    *cloud = *concave;
+    
+    this->kdtree_->setInputCloud(seed_cloud);
+    this->dynamicSegmentation(cloud, seed_cloud, seed_normals);
+
+    
+    // cloud->clear();
+    // seed_cloud->clear();
+    // *cloud = *convex;
+    // *seed_cloud = *concave;
     
     /*
     std::vector<std::vector<int> > neigbor_indices;
@@ -325,7 +329,7 @@ void DynamicStateSegmentation::normalEdge(
     pcl::KdTreeFLANN<PointT>::Ptr kdtree(new pcl::KdTreeFLANN<PointT>());
     kdtree->setInputCloud(in_cloud);
     const float radius_thresh = 0.01f;
-    const float concave_thresh = 0.20f;
+    const float concave_thresh = 0.25f;
     std::vector<int> point_idx_search;
     std::vector<float> point_squared_distance;
 #ifdef _OPENMP
@@ -381,12 +385,74 @@ void DynamicStateSegmentation::normalEdge(
           }
        }
     }
+    // filter the outliers
+#ifdef _OPENMP
+#pragma omp parallel sections
+#endif
+    {
+
+#ifdef _OPENMP
+#pragma omp section
+#endif
+	{
+	    // double ccof = this->outlier_concave_
+	    pcl::PointCloud<PointT>::Ptr temp_pt(new pcl::PointCloud<PointT>);
+	    pcl::copyPointCloud<PointT, PointT>(*concave_edge_pts, *temp_pt);
+	    double ccof = 0.015;
+	    pcl::PointIndices::Ptr cc_indices(new pcl::PointIndices);
+	    this->edgeBoundaryOutlierFiltering(temp_pt, cc_indices,
+					       static_cast<float>(ccof));
+	    for (int i = 0; i < cc_indices->indices.size(); i++) {
+		int index = cc_indices->indices[i];
+		concave_edge_pts->points[index].r = 0;
+	    }
+
+	}
+
+#ifdef _OPENMP
+#pragma omp section
+#endif
+	{
+	    // double cvof = this->outlier_convex_;
+	    pcl::PointCloud<PointT>::Ptr temp_pt(new pcl::PointCloud<PointT>);
+	    pcl::copyPointCloud<PointT, PointT>(*convex_edge_pts, *temp_pt);
+	    double cvof = 0.015;
+	    pcl::PointIndices::Ptr cv_indices(new pcl::PointIndices);
+	    this->edgeBoundaryOutlierFiltering(temp_pt, cv_indices,
+					       static_cast<float>(cvof));
+	    for (int i = 0; i < cv_indices->indices.size(); i++) {
+		int index = cv_indices->indices[i];
+		convex_edge_pts->points[index].g = 0;
+	    }
+	}
+    }
+
     std::vector<int>(point_idx_search).swap(point_idx_search);
     std::vector<float>(point_squared_distance).swap(point_squared_distance);
     
     ROS_INFO("EDGE COMPUTED");
 }
 
+void DynamicStateSegmentation::edgeBoundaryOutlierFiltering(
+    pcl::PointCloud<PointT>::Ptr cloud, pcl::PointIndices::Ptr removed_indices,
+    const float search_radius_thresh, const int min_neigbor_thresh) {
+    if (cloud->empty()) {
+	ROS_WARN("SKIPPING OUTLIER FILTERING");
+	return;
+    }
+    ROS_INFO("\033[32m FILTERING OUTLIER \033[0m");
+    pcl::PointCloud<PointT>::Ptr concave_edge_points(
+	new pcl::PointCloud<PointT>);
+    pcl::RadiusOutlierRemoval<PointT>::Ptr filter_ror(
+	new pcl::RadiusOutlierRemoval<PointT>(true));
+    filter_ror->setInputCloud(cloud);
+    filter_ror->setRadiusSearch(search_radius_thresh);
+    filter_ror->setMinNeighborsInRadius(min_neigbor_thresh);
+    filter_ror->filter(*concave_edge_points);
+    cloud->clear();
+    pcl::copyPointCloud<PointT, PointT>(*concave_edge_points, *cloud);
+    filter_ror->getRemovedIndices(*removed_indices);
+}
 
 template<class T>
 T DynamicStateSegmentation::distancel2(
@@ -480,7 +546,7 @@ void DynamicStateSegmentation::potentialFunctionKernel(
        // float avg = sum / static_cast<float>(neigbor_indices.size());
        float avg = sum;
 
-       float pixel = 1.0f;
+       float pixel = 255.0f;
        weights->points[i].r = (avg * pixel);
        weights->points[i].g = (avg * pixel);
        weights->points[i].b = (avg * pixel);
@@ -523,9 +589,12 @@ void DynamicStateSegmentation::dynamicSegmentation(
        float weight = weight_map->points[i].r;
        float obj_thresh = 240;
        float bkgd_thresh = 5;
+
+       float edge_weight = region->points[i].r;
+       
        if (weight > obj_thresh) {
-          graph->add_tweights(i, HARD_THRESH, 0);
-       } else if (weight < bkgd_thresh) {
+       	   graph->add_tweights(i, HARD_THRESH, 0);
+       } else if (/*weight < bkgd_thresh*/ edge_weight == 255) {
           graph->add_tweights(i, 0, HARD_THRESH);
        } else {
           graph->add_tweights(i, -std::log(weight/1.0), -std::log(weight/1.0));
@@ -535,8 +604,9 @@ void DynamicStateSegmentation::dynamicSegmentation(
           int indx = neigbor_indices[i][j];
           if (indx != i) {
              float w = std::pow(weight - weight_map->points[indx].r, 2);
-             // w = std::sqrt(w);
-             // std::cout << w  << ", " << weight << "---";
+	     w = std::sqrt(w);
+	     w = 1/w;
+             std::cout << w  << ", " << weight << "---";
              graph->add_edge(i, indx, (w), (w));
           }
        }
