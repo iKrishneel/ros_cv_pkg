@@ -615,8 +615,9 @@ void DynamicStateSegmentation::dynamicSegmentation(
     }
 
     for (int i = 0; i < seed_neigbors.size(); i++) {
-	graph->add_tweights(i, HARD_THRESH, 0);
-	label_cache[i] = true;
+	int index = seed_neigbors[i];
+	graph->add_tweights(index, HARD_THRESH, 0);
+	label_cache[index] = true;
     }
     
     for (int i = 0; i < weight_map->size(); i++) {
@@ -645,14 +646,19 @@ void DynamicStateSegmentation::dynamicSegmentation(
 	      float r = std::abs(cloud->points[indx].r - cloud->points[i].r);
 	      float g = std::abs(cloud->points[indx].g - cloud->points[i].g);
 	      float b = std::abs(cloud->points[indx].b - cloud->points[i].b);
-	      float w = (r + g + b) /255.0f;
-	      
-	      // w = std::sqrt(w);
-	      w = 1/w;
-	      if (isnan(w)) {
-		  w = FLT_MIN;
+	      float val = (r*r + g*g + b*b) /(255.0f * 255.0f);
+
+	      if (val < 0.00001f) {
+		  val = 0.00001f;
 	      }
-	      // std::cout << w  << ", ";
+	      float w = fabs(std::log(val));
+	      // if (w < 0.000000001) {
+	      // 	  w = 0.000000001;
+	      // }
+	      
+
+	      // w = std::sqrt(w);
+	      // std::cout << w << "\t" << val  << "\n ";
 	      graph->add_edge(i, indx, (w), (w));
           }
        }
