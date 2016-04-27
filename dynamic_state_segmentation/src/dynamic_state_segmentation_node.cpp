@@ -109,7 +109,7 @@ void DynamicStateSegmentation::cloudCB(
     
     ROS_INFO("DONE.");
 
-    // process estimated cloud
+    // process estimated cloud and update seed point info
     this->regionOverSegmentation(seed_cloud, seed_normals, cloud, normals);
 
     pcl::PointCloud<PointT>::Ptr convex(new pcl::PointCloud<PointT>);
@@ -290,12 +290,32 @@ void DynamicStateSegmentation::regionOverSegmentation(
     }
     region->clear();
     normal->clear();
+
+    double dist = DBL_MAX;
+    int idx = -1;
+    int icount = 0;
     for (int i = 0; i < cloud->size(); i++) {
        if (pcl::distances::l2(cloud->points[i].getVector4fMap(),
                               center) < distance) {
           region->push_back(cloud->points[i]);
           normal->push_back(normals->points[i]);
+
+	  // update the seed info
+	  double d = pcl::distances::l2(cloud->points[i].getVector4fMap(),
+					this->seed_point_.getVector4fMap());
+	  if (d < dist) {
+	      dist = d;
+	      idx = icount;
+	  }
+	  icount++;
        }
+    }
+    if (idx != -1 && icount == region->size()) {
+	this->seed_index_ = idx;
+	this->seed_point_ = region->points[idx];
+	this->seed_normal_ = normal->points[idx];
+    } else {
+	ROS_WARN("SEED POINT INFO NOT UPDATED");
     }
 }
 
@@ -584,30 +604,56 @@ void DynamicStateSegmentation::dynamicSegmentation(
 
     ROS_INFO("\033[34m POTENTIAL COMPUTED \033[0m");
 
+    // get seed_region neigbours for hard label
+    const float s_radius = 0.02f;
+    std::vector<int> seed_neigbors;
+    this->getPointNeigbour<float>(seed_neigbors, cloud, this->seed_point_, s_radius, false);
+
+    std::vector<bool> label_cache(static_cast<int>(cloud->size()));
+    for (int i = 0; i < cloud->size(); i++) {
+	label_cache[i] = false;
+    }
+
+    for (int i = 0; i < seed_neigbors.size(); i++) {
+	graph->add_tweights(i, HARD_THRESH, 0);
+	label_cache[i] = true;
+    }
     
     for (int i = 0; i < weight_map->size(); i++) {
        float weight = weight_map->points[i].r;
-       float obj_thresh = 240;
-       float bkgd_thresh = 5;
-
        float edge_weight = region->points[i].r;
-       
-       if (weight > obj_thresh) {
-       	   graph->add_tweights(i, HARD_THRESH, 0);
-       } else if (/*weight < bkgd_thresh*/ edge_weight == 255) {
-          graph->add_tweights(i, 0, HARD_THRESH);
-       } else {
-          graph->add_tweights(i, -std::log(weight/1.0), -std::log(weight/1.0));
+       // if (weight > obj_thresh) {
+       // 	   graph->add_tweights(i, HARD_THRESH, 0);
+       // } else
+       if (/*weight < bkgd_thresh*/ edge_weight > 0) {
+	   graph->add_tweights(i, 0, HARD_THRESH);
+       } else if (!label_cache[i]){
+	   float w = -std::log(weight/255.0) * 10;
+	   if (weight == 0) {
+	       w = -std::log(1e-9);
+	   }
+	   // if (isnan(w)) {
+	   // }
+	   // std::cout<< "\t" << w << "\t" << weight<< "\n";
+	   graph->add_tweights(i, w, w);
        }
 	
        for (int j = 0; j < neigbor_indices[i].size(); j++) {
           int indx = neigbor_indices[i][j];
           if (indx != i) {
-             float w = std::pow(weight - weight_map->points[indx].r, 2);
-	     w = std::sqrt(w);
-	     w = 1/w;
-             std::cout << w  << ", " << weight << "---";
-             graph->add_edge(i, indx, (w), (w));
+	      // float w = std::pow(weight - weight_map->points[indx].r, 2);
+	      float r = std::abs(cloud->points[indx].r - cloud->points[i].r);
+	      float g = std::abs(cloud->points[indx].g - cloud->points[i].g);
+	      float b = std::abs(cloud->points[indx].b - cloud->points[i].b);
+	      float w = (r + g + b) /255.0f;
+	      
+	      // w = std::sqrt(w);
+	      w = 1/w;
+	      if (isnan(w)) {
+		  w = FLT_MIN;
+	      }
+	      // std::cout << w  << ", ";
+	      graph->add_edge(i, indx, (w), (w));
           }
        }
     }

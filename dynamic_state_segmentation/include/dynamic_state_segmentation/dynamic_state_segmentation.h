@@ -60,7 +60,7 @@ class DynamicStateSegmentation {
        }
     } sortVector;
 
-#define HARD_THRESH 10
+#define HARD_THRESH 255
     
  private:
     boost::mutex mutex_;
