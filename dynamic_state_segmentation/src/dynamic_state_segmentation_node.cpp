@@ -112,6 +112,14 @@ void DynamicStateSegmentation::cloudCB(
     // process estimated cloud and update seed point info
     this->regionOverSegmentation(seed_cloud, seed_normals, cloud, normals);
 
+    /*
+    all_indices.clear();
+    kdtree_->setInputCloud(seed_cloud);
+    this->clusterFeatures(all_indices, seed_cloud, seed_normals, 20, 0.05);
+    cloud->clear();
+    *cloud = *seed_cloud;
+    */
+
     pcl::PointCloud<PointT>::Ptr convex(new pcl::PointCloud<PointT>);
     pcl::PointCloud<PointT>::Ptr concave(new pcl::PointCloud<PointT>);
     this->normalEdge(convex, concave, seed_cloud, seed_normals);
@@ -121,12 +129,11 @@ void DynamicStateSegmentation::cloudCB(
     
     this->kdtree_->setInputCloud(seed_cloud);
     this->dynamicSegmentation(cloud, seed_cloud, seed_normals);
-
     
     // cloud->clear();
-    // seed_cloud->clear();
+    seed_cloud->clear();
     // *cloud = *convex;
-    // *seed_cloud = *concave;
+    *seed_cloud = *concave;
     
     /*
     std::vector<std::vector<int> > neigbor_indices;
@@ -269,6 +276,48 @@ void DynamicStateSegmentation::estimateNormals(
     ne.compute(*normals);
 }
 
+std::vector<Eigen::Vector4f>
+DynamicStateSegmentation::doEuclideanClustering(
+    std::vector<pcl::PointIndices> &cluster_indices,
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointIndices::Ptr prob_indices, bool is_centroid,
+    const float tolerance_thresh, const int min_size_thresh,
+    const int max_size_thresh) {
+
+    cluster_indices.clear();
+    std::vector<Eigen::Vector4f> cluster_centroids;
+    if (cloud->empty()) {
+	return cluster_centroids;
+    }
+    pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
+    tree->setInputCloud(cloud);
+    pcl::EuclideanClusterExtraction<PointT> euclidean_clustering;
+    euclidean_clustering.setClusterTolerance(tolerance_thresh);
+    euclidean_clustering.setMinClusterSize(min_size_thresh);
+    euclidean_clustering.setMaxClusterSize(max_size_thresh);
+    euclidean_clustering.setSearchMethod(tree);
+    euclidean_clustering.setInputCloud(cloud);
+    if (!prob_indices->indices.empty()) {
+	euclidean_clustering.setIndices(prob_indices);
+    }
+    euclidean_clustering.extract(cluster_indices);
+    if (is_centroid) {
+	pcl::ExtractIndices<PointT>::Ptr eifilter(
+	    new pcl::ExtractIndices<PointT>);
+	eifilter->setInputCloud(cloud);
+	for (int i = 0; i < cluster_indices.size(); i++) {
+	    pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
+	    *region_indices = cluster_indices[i];
+	    eifilter->setIndices(region_indices);
+	    pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
+	    eifilter->filter(*tmp_cloud);
+	    Eigen::Vector4f center;
+	    pcl::compute3DCentroid<PointT, float>(*tmp_cloud, center);
+	    cluster_centroids.push_back(center);
+	}
+    }
+    return cluster_centroids;
+}
 
 void DynamicStateSegmentation::regionOverSegmentation(
     pcl::PointCloud<PointT>::Ptr region, pcl::PointCloud<NormalT>::Ptr normal,
@@ -297,17 +346,20 @@ void DynamicStateSegmentation::regionOverSegmentation(
     for (int i = 0; i < cloud->size(); i++) {
        if (pcl::distances::l2(cloud->points[i].getVector4fMap(),
                               center) < distance) {
-          region->push_back(cloud->points[i]);
-          normal->push_back(normals->points[i]);
+	   PointT pt = cloud->points[i];
+	   if (!isnan(pt.x) && !isnan(pt.y) && !isnan(pt.z)) {
+	       region->push_back(cloud->points[i]);
+	       normal->push_back(normals->points[i]);
 
-	  // update the seed info
-	  double d = pcl::distances::l2(cloud->points[i].getVector4fMap(),
-					this->seed_point_.getVector4fMap());
-	  if (d < dist) {
-	      dist = d;
-	      idx = icount;
-	  }
-	  icount++;
+	       // update the seed info
+	       double d = pcl::distances::l2(cloud->points[i].getVector4fMap(),
+					     this->seed_point_.getVector4fMap());
+	       if (d < dist) {
+		   dist = d;
+		   idx = icount;
+	       }
+	       icount++;
+	   }
        }
     }
     if (idx != -1 && icount == region->size()) {
@@ -318,6 +370,47 @@ void DynamicStateSegmentation::regionOverSegmentation(
 	ROS_WARN("SEED POINT INFO NOT UPDATED");
     }
 }
+
+
+bool DynamicStateSegmentation::extractSeededCloudCluster(
+    pcl::PointCloud<PointT>::Ptr cloud) {
+    if (cloud->empty()) {
+	return false;
+    }
+    pcl::PointIndices::Ptr indices(new pcl::PointIndices);
+    std::vector<pcl::PointIndices> cluster_indices;
+    std::vector<Eigen::Vector4f> centroids = this->doEuclideanClustering(
+	cluster_indices, cloud, indices, true, 0.01f, 100, 50000);
+    Eigen::Vector4f seed_pt = this->seed_point_.getVector4fMap();
+    int index = -1;
+    double distance = DBL_MAX;
+
+    double dist_thresh = 0.05;
+    for (int i = 0; i < cluster_indices.size(); i++) {
+	for (int j = 0; j < cluster_indices[i].indices.size(); j++) {
+	    int indx = cluster_indices[i].indices[j];
+	    Eigen::Vector4f pt = cloud->points[indx].getVector4fMap();
+	    double d = pcl::distances::l2(seed_pt, pt);
+	    if (d < dist_thresh && d < distance) {
+		index = i;
+		distance = d;
+	    }
+	}
+    }
+    if (index == -1) {
+	return false;
+    }
+    pcl::PointCloud<PointT>::Ptr temp(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*cloud, *temp);
+    cloud->clear();
+    for (int i = 0; i < cluster_indices[index].indices.size(); i++) {
+	int indx = cluster_indices[index].indices[i];
+	cloud->push_back(temp->points[indx]);
+    }
+    return true;
+}
+
+
 
 /**
  * smoothness term
@@ -418,7 +511,7 @@ void DynamicStateSegmentation::normalEdge(
 	    // double ccof = this->outlier_concave_
 	    pcl::PointCloud<PointT>::Ptr temp_pt(new pcl::PointCloud<PointT>);
 	    pcl::copyPointCloud<PointT, PointT>(*concave_edge_pts, *temp_pt);
-	    double ccof = 0.015;
+	    double ccof = 0.02;
 	    pcl::PointIndices::Ptr cc_indices(new pcl::PointIndices);
 	    this->edgeBoundaryOutlierFiltering(temp_pt, cc_indices,
 					       static_cast<float>(ccof));
@@ -616,7 +709,7 @@ void DynamicStateSegmentation::dynamicSegmentation(
 
     for (int i = 0; i < seed_neigbors.size(); i++) {
 	int index = seed_neigbors[i];
-	graph->add_tweights(index, HARD_THRESH, 0);
+	graph->add_tweights(index, HARD_SET_WEIGHT, 0);
 	label_cache[index] = true;
     }
     
@@ -624,18 +717,16 @@ void DynamicStateSegmentation::dynamicSegmentation(
        float weight = weight_map->points[i].r;
        float edge_weight = region->points[i].r;
        // if (weight > obj_thresh) {
-       // 	   graph->add_tweights(i, HARD_THRESH, 0);
+       // 	   graph->add_tweights(i, HARD_SET_WEIGHT, 0);
        // } else
        if (/*weight < bkgd_thresh*/ edge_weight > 0) {
-	   graph->add_tweights(i, 0, HARD_THRESH);
+	   graph->add_tweights(i, 0, HARD_SET_WEIGHT);
        } else if (!label_cache[i]){
 	   float w = -std::log(weight/255.0) * 10;
 	   if (weight == 0) {
 	       w = -std::log(1e-9);
 	   }
-	   // if (isnan(w)) {
-	   // }
-	   // std::cout<< "\t" << w << "\t" << weight<< "\n";
+	   w = 1.0f;
 	   graph->add_tweights(i, w, w);
        }
 	
@@ -643,11 +734,13 @@ void DynamicStateSegmentation::dynamicSegmentation(
           int indx = neigbor_indices[i][j];
           if (indx != i) {
 	      // float w = std::pow(weight - weight_map->points[indx].r, 2);
-	      float r = std::abs(cloud->points[indx].r - cloud->points[i].r);
-	      float g = std::abs(cloud->points[indx].g - cloud->points[i].g);
-	      float b = std::abs(cloud->points[indx].b - cloud->points[i].b);
-	      float val = (r*r + g*g + b*b) /(255.0f * 255.0f);
+	      // float r = std::abs(cloud->points[indx].r - cloud->points[i].r);
+	      // float g = std::abs(cloud->points[indx].g - cloud->points[i].g);
+	      // float b = std::abs(cloud->points[indx].b - cloud->points[i].b);
+	      // float val = (r*r + g*g + b*b) /(255.0f * 255.0f);
 
+	      float val = std::abs(weight - weight_map->points[indx].r) / 255.0f;
+	      
 	      if (val < 0.00001f) {
 		  val = 0.00001f;
 	      }
@@ -704,9 +797,9 @@ void DynamicStateSegmentation::clusterFeatures(
        static_cast<int>(descriptors->size()));
     for (int i = 0; i < descriptors->size(); i++) {
        jsk_recognition_msgs::Histogram hist;
-       hist.histogram.push_back(cloud->points[i].x);
-       hist.histogram.push_back(cloud->points[i].y);
-       hist.histogram.push_back(cloud->points[i].z);
+       // hist.histogram.push_back(cloud->points[i].x);
+       // hist.histogram.push_back(cloud->points[i].y);
+       // hist.histogram.push_back(cloud->points[i].z);
 	
 	// hist.histogram.push_back(descriptors->points[i].normal_x);
 	// hist.histogram.push_back(descriptors->points[i].normal_y);
@@ -736,8 +829,8 @@ void DynamicStateSegmentation::clusterFeatures(
        // hist.histogram.push_back(coplanar /
        //                          static_cast<float>(neigbor_indices.size()));
 
-       hist.histogram.push_back(curvature/static_cast<float>(
-                                   neigbor_indices.size()));
+       // hist.histogram.push_back(curvature/static_cast<float>(
+       //                             neigbor_indices.size()));
        srv.request.features.push_back(hist);
     }
     srv.request.min_samples = min_size;
@@ -747,17 +840,18 @@ void DynamicStateSegmentation::clusterFeatures(
        if (max_label == -1) {
           return;
        }
+       ROS_WARN("MAX SIZE: %d", max_label);
        all_indices.clear();
-       all_indices.resize(max_label + 20);
+       all_indices.resize(max_label + 200);
        for (int i = 0; i < srv.response.labels.size(); i++) {
-          int index = srv.response.labels[i];
+	   int index = srv.response.labels[i];
           if (index > -1) {
              all_indices[index].indices.push_back(i);
           }
        }
 
 
-       this->mergeVoxelClusters(srv, cloud, descriptors, neigbor_cache);
+       // this->mergeVoxelClusters(srv, cloud, descriptors, neigbor_cache);
 	
 	
     } else {

@@ -10,6 +10,7 @@
 #include <geometry_msgs/PolygonStamped.h>
 #include <jsk_recognition_msgs/Rect.h>
 #include <sensor_msgs/Image.h>
+#include <sensor_msgs/image_encodings.h>
 
 #include <particle_filter_tracking/particle_filter.h>
 #include <particle_filter_tracking/histogram_of_oriented_gradients.h>

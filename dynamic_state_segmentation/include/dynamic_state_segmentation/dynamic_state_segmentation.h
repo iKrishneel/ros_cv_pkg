@@ -25,6 +25,7 @@
 #include <pcl/features/fpfh_omp.h>
 #include <pcl/common/centroid.h>
 #include <pcl/filters/radius_outlier_removal.h>
+#include <pcl/segmentation/extract_clusters.h>
 
 #include <geometry_msgs/PointStamped.h>
 #include <sensor_msgs/Image.h>
@@ -60,7 +61,7 @@ class DynamicStateSegmentation {
        }
     } sortVector;
 
-#define HARD_THRESH 255
+#define HARD_SET_WEIGHT 255
     
  private:
     boost::mutex mutex_;
@@ -79,7 +80,8 @@ class DynamicStateSegmentation {
 
     int num_threads_;
     int neigbor_size_;
-  
+    int min_cluster_size_;
+    
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
 
  protected:
@@ -115,17 +117,22 @@ class DynamicStateSegmentation {
     void estimateNormals(const pcl::PointCloud<PointT>::Ptr,
                          pcl::PointCloud<NormalT>::Ptr,
                          T = 0.05f, bool = false) const;
-
+    void regionOverSegmentation(pcl::PointCloud<PointT>::Ptr,
+                                pcl::PointCloud<NormalT>::Ptr,
+                                const pcl::PointCloud<PointT>::Ptr,
+                                const pcl::PointCloud<NormalT>::Ptr);
+    std::vector<Eigen::Vector4f>
+    doEuclideanClustering(std::vector<pcl::PointIndices> &,
+			  const pcl::PointCloud<PointT>::Ptr,
+			  const pcl::PointIndices::Ptr, bool = false,
+			  const float = 0.02f,const int = 50, const int = 20000);
+    bool extractSeededCloudCluster(pcl::PointCloud<PointT>::Ptr);
     /**
      * functions for CRF
      */
     void dynamicSegmentation(pcl::PointCloud<PointT>::Ptr,
                              pcl::PointCloud<PointT>::Ptr,
                              const pcl::PointCloud<NormalT>::Ptr);
-    void regionOverSegmentation(pcl::PointCloud<PointT>::Ptr,
-                                pcl::PointCloud<NormalT>::Ptr,
-                                const pcl::PointCloud<PointT>::Ptr,
-                                const pcl::PointCloud<NormalT>::Ptr);
     void potentialFunctionKernel(std::vector<std::vector<int> > &,
                                  pcl::PointCloud<PointT>::Ptr,
                                  const pcl::PointCloud<PointT>::Ptr,
@@ -138,7 +145,7 @@ class DynamicStateSegmentation {
                                     Eigen::Vector4f, const float = 0.0f);
     void edgeBoundaryOutlierFiltering(pcl::PointCloud<PointT>::Ptr,
 				      pcl::PointIndices::Ptr,
-				      const float = 0.01f, const int = 50);
+				      const float = 0.01f, const int = 100);
    /**
     * function for saliency term
     */
