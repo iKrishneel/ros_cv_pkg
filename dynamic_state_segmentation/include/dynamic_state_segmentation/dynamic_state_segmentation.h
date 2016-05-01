@@ -123,9 +123,10 @@ class DynamicStateSegmentation {
                                 const pcl::PointCloud<NormalT>::Ptr);
     std::vector<Eigen::Vector4f>
     doEuclideanClustering(std::vector<pcl::PointIndices> &,
-			  const pcl::PointCloud<PointT>::Ptr,
-			  const pcl::PointIndices::Ptr, bool = false,
-			  const float = 0.02f,const int = 50, const int = 20000);
+                          const pcl::PointCloud<PointT>::Ptr,
+                          const pcl::PointIndices::Ptr, bool = false,
+                          const float = 0.02f, const int = 50,
+                          const int = 20000);
     bool extractSeededCloudCluster(pcl::PointCloud<PointT>::Ptr);
     /**
      * functions for CRF
@@ -144,8 +145,8 @@ class DynamicStateSegmentation {
     int localVoxelConvexityCriteria(Eigen::Vector4f, Eigen::Vector4f,
                                     Eigen::Vector4f, const float = 0.0f);
     void edgeBoundaryOutlierFiltering(pcl::PointCloud<PointT>::Ptr,
-				      pcl::PointIndices::Ptr,
-				      const float = 0.01f, const int = 100);
+                                      pcl::PointIndices::Ptr,
+                                      const float = 0.01f, const int = 100);
    /**
     * function for saliency term
     */

@@ -287,7 +287,7 @@ DynamicStateSegmentation::doEuclideanClustering(
     cluster_indices.clear();
     std::vector<Eigen::Vector4f> cluster_centroids;
     if (cloud->empty()) {
-	return cluster_centroids;
+       return cluster_centroids;
     }
     pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
     tree->setInputCloud(cloud);
@@ -298,23 +298,23 @@ DynamicStateSegmentation::doEuclideanClustering(
     euclidean_clustering.setSearchMethod(tree);
     euclidean_clustering.setInputCloud(cloud);
     if (!prob_indices->indices.empty()) {
-	euclidean_clustering.setIndices(prob_indices);
+       euclidean_clustering.setIndices(prob_indices);
     }
     euclidean_clustering.extract(cluster_indices);
     if (is_centroid) {
-	pcl::ExtractIndices<PointT>::Ptr eifilter(
-	    new pcl::ExtractIndices<PointT>);
-	eifilter->setInputCloud(cloud);
-	for (int i = 0; i < cluster_indices.size(); i++) {
-	    pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
-	    *region_indices = cluster_indices[i];
-	    eifilter->setIndices(region_indices);
-	    pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
-	    eifilter->filter(*tmp_cloud);
-	    Eigen::Vector4f center;
-	    pcl::compute3DCentroid<PointT, float>(*tmp_cloud, center);
-	    cluster_centroids.push_back(center);
-	}
+       pcl::ExtractIndices<PointT>::Ptr eifilter(
+          new pcl::ExtractIndices<PointT>);
+       eifilter->setInputCloud(cloud);
+       for (int i = 0; i < cluster_indices.size(); i++) {
+          pcl::PointIndices::Ptr region_indices(new pcl::PointIndices);
+          *region_indices = cluster_indices[i];
+          eifilter->setIndices(region_indices);
+          pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
+          eifilter->filter(*tmp_cloud);
+          Eigen::Vector4f center;
+          pcl::compute3DCentroid<PointT, float>(*tmp_cloud, center);
+          cluster_centroids.push_back(center);
+       }
     }
     return cluster_centroids;
 }
@@ -346,28 +346,28 @@ void DynamicStateSegmentation::regionOverSegmentation(
     for (int i = 0; i < cloud->size(); i++) {
        if (pcl::distances::l2(cloud->points[i].getVector4fMap(),
                               center) < distance) {
-	   PointT pt = cloud->points[i];
-	   if (!isnan(pt.x) && !isnan(pt.y) && !isnan(pt.z)) {
-	       region->push_back(cloud->points[i]);
-	       normal->push_back(normals->points[i]);
+          PointT pt = cloud->points[i];
+          if (!isnan(pt.x) && !isnan(pt.y) && !isnan(pt.z)) {
+             region->push_back(cloud->points[i]);
+             normal->push_back(normals->points[i]);
 
-	       // update the seed info
-	       double d = pcl::distances::l2(cloud->points[i].getVector4fMap(),
-					     this->seed_point_.getVector4fMap());
-	       if (d < dist) {
-		   dist = d;
-		   idx = icount;
-	       }
-	       icount++;
-	   }
+             // update the seed info
+             double d = pcl::distances::l2(cloud->points[i].getVector4fMap(),
+                                           this->seed_point_.getVector4fMap());
+             if (d < dist) {
+                dist = d;
+                idx = icount;
+             }
+             icount++;
+          }
        }
     }
     if (idx != -1 && icount == region->size()) {
-	this->seed_index_ = idx;
-	this->seed_point_ = region->points[idx];
-	this->seed_normal_ = normal->points[idx];
+       this->seed_index_ = idx;
+       this->seed_point_ = region->points[idx];
+       this->seed_normal_ = normal->points[idx];
     } else {
-	ROS_WARN("SEED POINT INFO NOT UPDATED");
+       ROS_WARN("SEED POINT INFO NOT UPDATED");
     }
 }
 
@@ -375,37 +375,37 @@ void DynamicStateSegmentation::regionOverSegmentation(
 bool DynamicStateSegmentation::extractSeededCloudCluster(
     pcl::PointCloud<PointT>::Ptr cloud) {
     if (cloud->empty()) {
-	return false;
+       return false;
     }
     pcl::PointIndices::Ptr indices(new pcl::PointIndices);
     std::vector<pcl::PointIndices> cluster_indices;
     std::vector<Eigen::Vector4f> centroids = this->doEuclideanClustering(
-	cluster_indices, cloud, indices, true, 0.01f, 100, 50000);
+       cluster_indices, cloud, indices, true, 0.01f, 100, 50000);
     Eigen::Vector4f seed_pt = this->seed_point_.getVector4fMap();
     int index = -1;
     double distance = DBL_MAX;
 
     double dist_thresh = 0.05;
     for (int i = 0; i < cluster_indices.size(); i++) {
-	for (int j = 0; j < cluster_indices[i].indices.size(); j++) {
-	    int indx = cluster_indices[i].indices[j];
-	    Eigen::Vector4f pt = cloud->points[indx].getVector4fMap();
-	    double d = pcl::distances::l2(seed_pt, pt);
-	    if (d < dist_thresh && d < distance) {
-		index = i;
-		distance = d;
-	    }
-	}
+       for (int j = 0; j < cluster_indices[i].indices.size(); j++) {
+          int indx = cluster_indices[i].indices[j];
+          Eigen::Vector4f pt = cloud->points[indx].getVector4fMap();
+          double d = pcl::distances::l2(seed_pt, pt);
+          if (d < dist_thresh && d < distance) {
+             index = i;
+             distance = d;
+          }
+       }
     }
     if (index == -1) {
-	return false;
+       return false;
     }
     pcl::PointCloud<PointT>::Ptr temp(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*cloud, *temp);
     cloud->clear();
     for (int i = 0; i < cluster_indices[index].indices.size(); i++) {
-	int indx = cluster_indices[index].indices[i];
-	cloud->push_back(temp->points[indx]);
+       int indx = cluster_indices[index].indices[i];
+       cloud->push_back(temp->points[indx]);
     }
     return true;
 }
@@ -507,37 +507,36 @@ void DynamicStateSegmentation::normalEdge(
 #ifdef _OPENMP
 #pragma omp section
 #endif
-	{
-	    // double ccof = this->outlier_concave_
-	    pcl::PointCloud<PointT>::Ptr temp_pt(new pcl::PointCloud<PointT>);
-	    pcl::copyPointCloud<PointT, PointT>(*concave_edge_pts, *temp_pt);
-	    double ccof = 0.02;
-	    pcl::PointIndices::Ptr cc_indices(new pcl::PointIndices);
-	    this->edgeBoundaryOutlierFiltering(temp_pt, cc_indices,
-					       static_cast<float>(ccof));
-	    for (int i = 0; i < cc_indices->indices.size(); i++) {
-		int index = cc_indices->indices[i];
-		concave_edge_pts->points[index].r = 0;
-	    }
-
-	}
-
+       {
+          // double ccof = this->outlier_concave_
+          pcl::PointCloud<PointT>::Ptr temp_pt(new pcl::PointCloud<PointT>);
+          pcl::copyPointCloud<PointT, PointT>(*concave_edge_pts, *temp_pt);
+          double ccof = 0.02;
+          pcl::PointIndices::Ptr cc_indices(new pcl::PointIndices);
+          this->edgeBoundaryOutlierFiltering(temp_pt, cc_indices,
+                                             static_cast<float>(ccof));
+          for (int i = 0; i < cc_indices->indices.size(); i++) {
+              int index = cc_indices->indices[i];
+              concave_edge_pts->points[index].r = 0;
+          }
+       }
+       
 #ifdef _OPENMP
 #pragma omp section
 #endif
-	{
-	    // double cvof = this->outlier_convex_;
-	    pcl::PointCloud<PointT>::Ptr temp_pt(new pcl::PointCloud<PointT>);
-	    pcl::copyPointCloud<PointT, PointT>(*convex_edge_pts, *temp_pt);
-	    double cvof = 0.015;
-	    pcl::PointIndices::Ptr cv_indices(new pcl::PointIndices);
-	    this->edgeBoundaryOutlierFiltering(temp_pt, cv_indices,
-					       static_cast<float>(cvof));
-	    for (int i = 0; i < cv_indices->indices.size(); i++) {
-		int index = cv_indices->indices[i];
-		convex_edge_pts->points[index].g = 0;
-	    }
-	}
+       {
+          // double cvof = this->outlier_convex_;
+          pcl::PointCloud<PointT>::Ptr temp_pt(new pcl::PointCloud<PointT>);
+          pcl::copyPointCloud<PointT, PointT>(*convex_edge_pts, *temp_pt);
+          double cvof = 0.015;
+          pcl::PointIndices::Ptr cv_indices(new pcl::PointIndices);
+          this->edgeBoundaryOutlierFiltering(temp_pt, cv_indices,
+                                             static_cast<float>(cvof));
+          for (int i = 0; i < cv_indices->indices.size(); i++) {
+             int index = cv_indices->indices[i];
+             convex_edge_pts->points[index].g = 0;
+          }
+       }
     }
 
     std::vector<int>(point_idx_search).swap(point_idx_search);
@@ -550,14 +549,14 @@ void DynamicStateSegmentation::edgeBoundaryOutlierFiltering(
     pcl::PointCloud<PointT>::Ptr cloud, pcl::PointIndices::Ptr removed_indices,
     const float search_radius_thresh, const int min_neigbor_thresh) {
     if (cloud->empty()) {
-	ROS_WARN("SKIPPING OUTLIER FILTERING");
-	return;
+       ROS_WARN("SKIPPING OUTLIER FILTERING");
+       return;
     }
     ROS_INFO("\033[32m FILTERING OUTLIER \033[0m");
     pcl::PointCloud<PointT>::Ptr concave_edge_points(
-	new pcl::PointCloud<PointT>);
+       new pcl::PointCloud<PointT>);
     pcl::RadiusOutlierRemoval<PointT>::Ptr filter_ror(
-	new pcl::RadiusOutlierRemoval<PointT>(true));
+       new pcl::RadiusOutlierRemoval<PointT>(true));
     filter_ror->setInputCloud(cloud);
     filter_ror->setRadiusSearch(search_radius_thresh);
     filter_ror->setMinNeighborsInRadius(min_neigbor_thresh);
@@ -700,17 +699,18 @@ void DynamicStateSegmentation::dynamicSegmentation(
     // get seed_region neigbours for hard label
     const float s_radius = 0.02f;
     std::vector<int> seed_neigbors;
-    this->getPointNeigbour<float>(seed_neigbors, cloud, this->seed_point_, s_radius, false);
+    this->getPointNeigbour<float>(seed_neigbors, cloud, this->seed_point_,
+                                  s_radius, false);
 
     std::vector<bool> label_cache(static_cast<int>(cloud->size()));
     for (int i = 0; i < cloud->size(); i++) {
-	label_cache[i] = false;
+       label_cache[i] = false;
     }
 
     for (int i = 0; i < seed_neigbors.size(); i++) {
-	int index = seed_neigbors[i];
-	graph->add_tweights(index, HARD_SET_WEIGHT, 0);
-	label_cache[index] = true;
+       int index = seed_neigbors[i];
+       graph->add_tweights(index, HARD_SET_WEIGHT, 0);
+       label_cache[index] = true;
     }
     
     for (int i = 0; i < weight_map->size(); i++) {
@@ -720,39 +720,39 @@ void DynamicStateSegmentation::dynamicSegmentation(
        // 	   graph->add_tweights(i, HARD_SET_WEIGHT, 0);
        // } else
        if (/*weight < bkgd_thresh*/ edge_weight > 0) {
-	   graph->add_tweights(i, 0, HARD_SET_WEIGHT);
-       } else if (!label_cache[i]){
-	   float w = -std::log(weight/255.0) * 10;
-	   if (weight == 0) {
-	       w = -std::log(1e-9);
-	   }
-	   w = 1.0f;
-	   graph->add_tweights(i, w, w);
+          graph->add_tweights(i, 0, HARD_SET_WEIGHT);
+       } else if (!label_cache[i]) {
+          float w = -std::log(weight/255.0) * 10;
+          if (weight == 0) {
+             w = -std::log(1e-9);
+          }
+          w = 1.0f;
+          graph->add_tweights(i, w, w);
        }
 	
        for (int j = 0; j < neigbor_indices[i].size(); j++) {
           int indx = neigbor_indices[i][j];
           if (indx != i) {
-	      // float w = std::pow(weight - weight_map->points[indx].r, 2);
-	      // float r = std::abs(cloud->points[indx].r - cloud->points[i].r);
-	      // float g = std::abs(cloud->points[indx].g - cloud->points[i].g);
-	      // float b = std::abs(cloud->points[indx].b - cloud->points[i].b);
-	      // float val = (r*r + g*g + b*b) /(255.0f * 255.0f);
+             // float w = std::pow(weight - weight_map->points[indx].r, 2);
+             // float r = std::abs(cloud->points[indx].r - cloud->points[i].r);
+             // float g = std::abs(cloud->points[indx].g - cloud->points[i].g);
+             // float b = std::abs(cloud->points[indx].b - cloud->points[i].b);
+             // float val = (r*r + g*g + b*b) /(255.0f * 255.0f);
+             
+             float val = std::abs(weight - weight_map->points[indx].r) / 255.0f;
+	     
+             if (val < 0.00001f) {
+                val = 0.00001f;
+             }
+             float w = fabs(std::log(val));
+             // if (w < 0.000000001) {
+             // 	  w = 0.000000001;
+             // }
+	     
 
-	      float val = std::abs(weight - weight_map->points[indx].r) / 255.0f;
-	      
-	      if (val < 0.00001f) {
-		  val = 0.00001f;
-	      }
-	      float w = fabs(std::log(val));
-	      // if (w < 0.000000001) {
-	      // 	  w = 0.000000001;
-	      // }
-	      
-
-	      // w = std::sqrt(w);
-	      // std::cout << w << "\t" << val  << "\n ";
-	      graph->add_edge(i, indx, (w), (w));
+             // w = std::sqrt(w);
+             // std::cout << w << "\t" << val  << "\n ";
+             graph->add_edge(i, indx, (w), (w));
           }
        }
     }
@@ -844,7 +844,7 @@ void DynamicStateSegmentation::clusterFeatures(
        all_indices.clear();
        all_indices.resize(max_label + 200);
        for (int i = 0; i < srv.response.labels.size(); i++) {
-	   int index = srv.response.labels[i];
+          int index = srv.response.labels[i];
           if (index > -1) {
              all_indices[index].indices.push_back(i);
           }
@@ -1000,7 +1000,8 @@ void DynamicStateSegmentation::computeFeatures(
      */
     
     // save the compute neigbour
-    std::vector<std::vector<int> > cache_neigbour(static_cast<int>(cloud->size()));
+    std::vector<std::vector<int> > cache_neigbour(
+       static_cast<int>(cloud->size()));
     const int knn = 8;
     
     pcl::PointCloud<FPFH>::Ptr fpfhs (new pcl::PointCloud<FPFH>());
