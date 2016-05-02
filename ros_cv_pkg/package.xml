@@ -62,6 +62,7 @@
   <run_depend>ros_cmt_tracker</run_depend>
   <run_depend>saliency_map_generator</run_depend>
   <run_depend>dynamic_state_segmentation</run_depend>
+  <run_depend>cuboid_bilateral_symmetric_segmentation</run_depend>
   <!-- The export tag contains other, unspecified, tags -->
   <export>
     <!-- Other tools can request additional information be placed here -->
