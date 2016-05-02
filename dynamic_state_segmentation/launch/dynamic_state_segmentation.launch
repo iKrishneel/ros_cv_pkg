@@ -21,11 +21,19 @@
   </node>
   
   <group if="$(arg cluster_points)">
+    <node pkg="jsk_pcl_ros" type="supervoxel_segmentation"
+	  name="supervoxel_segmentation" output="screen">
+      <remap from="~input" to="/target" />
+    </node>
+    
     <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer"
 	  name="dynamic_state_segmentation_decomposer" output="screen">
-      <remap from="~input" to="target" />
-      <remap from="~target" to="indices" />
+      <!-- <remap from="~input" to="/target" /> -->
+      <!-- <remap from="~target" to="/indices" /> -->
 
+      <remap from="~input" to="supervoxel_segmentation/output/cloud" />
+      <remap from="~target" to="supervoxel_segmentation/output/indices" />
+      
       <remap from="~align_planes" to="/multi_plane_estimate/output_refined_polygon" />
       <remap from="~align_planes_coefficients" to="/multi_plane_estimate/output_refined_coefficients" />
       <param name="align_boxes" value="true" />

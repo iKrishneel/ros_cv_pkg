@@ -110,16 +110,17 @@ void DynamicStateSegmentation::cloudCB(
     ROS_INFO("DONE.");
 
     // process estimated cloud and update seed point info
-    this->regionOverSegmentation(seed_cloud, seed_normals, cloud, normals);
+    // this->regionOverSegmentation(seed_cloud, seed_normals, cloud, normals);
 
-    /*
+
+    // routine for Mean-shift
     all_indices.clear();
     kdtree_->setInputCloud(seed_cloud);
     this->clusterFeatures(all_indices, seed_cloud, seed_normals, 20, 0.05);
     cloud->clear();
     *cloud = *seed_cloud;
-    */
-
+   
+    /* // uncomment this for graph-cuts
     pcl::PointCloud<PointT>::Ptr convex(new pcl::PointCloud<PointT>);
     pcl::PointCloud<PointT>::Ptr concave(new pcl::PointCloud<PointT>);
     this->normalEdge(convex, concave, seed_cloud, seed_normals);
@@ -797,14 +798,14 @@ void DynamicStateSegmentation::clusterFeatures(
        static_cast<int>(descriptors->size()));
     for (int i = 0; i < descriptors->size(); i++) {
        jsk_recognition_msgs::Histogram hist;
-       // hist.histogram.push_back(cloud->points[i].x);
-       // hist.histogram.push_back(cloud->points[i].y);
-       // hist.histogram.push_back(cloud->points[i].z);
+       hist.histogram.push_back(cloud->points[i].x);
+       hist.histogram.push_back(cloud->points[i].y);
+       hist.histogram.push_back(cloud->points[i].z);
 	
-	// hist.histogram.push_back(descriptors->points[i].normal_x);
-	// hist.histogram.push_back(descriptors->points[i].normal_y);
-	// hist.histogram.push_back(descriptors->points[i].normal_z);
-
+       // hist.histogram.push_back(descriptors->points[i].normal_x);
+       // hist.histogram.push_back(descriptors->points[i].normal_y);
+       // hist.histogram.push_back(descriptors->points[i].normal_z);
+       
        std::vector<int> neigbor_indices;
        this->getPointNeigbour<int>(neigbor_indices, cloud, cloud->points[i], 8);
        neigbor_cache[i] = neigbor_indices;
@@ -820,29 +821,32 @@ void DynamicStateSegmentation::clusterFeatures(
        for (int j = 0; j < neigbor_indices.size(); j++) {
           int idx = neigbor_indices[j];
           Eigen::Vector4f n_n = descriptors->points[idx].getNormalVector4fMap();
-          sum += (c_n.dot(n_n));
+          sum += (c_n.dot(n_n) / (c_n.norm() * n_n.norm()));
           Eigen::Vector4f n_pt = cloud->points[idx].getVector4fMap();
-          coplanar += ((n_pt - c_pt).dot(n_n));
+          // coplanar += ((n_pt - c_pt).dot(n_n));
+
+	  
+	  
           curvature += descriptors->points[idx].curvature;
        }
        hist.histogram.push_back(sum/static_cast<float>(neigbor_indices.size()));
        // hist.histogram.push_back(coplanar /
-       //                          static_cast<float>(neigbor_indices.size()));
+       // static_cast<float>(neigbor_indices.size()));
 
        // hist.histogram.push_back(curvature/static_cast<float>(
-       //                             neigbor_indices.size()));
+       // 				   neigbor_indices.size()));
        srv.request.features.push_back(hist);
     }
     srv.request.min_samples = min_size;
     srv.request.max_distance = max_distance;
     if (this->srv_client_.call(srv)) {
-       int max_label = srv.response.argmax_label;
+       int max_label = srv.response.argmax_label + 1;
        if (max_label == -1) {
           return;
        }
        ROS_WARN("MAX SIZE: %d", max_label);
        all_indices.clear();
-       all_indices.resize(max_label + 200);
+       all_indices.resize(max_label);
        for (int i = 0; i < srv.response.labels.size(); i++) {
           int index = srv.response.labels[i];
           if (index > -1) {
