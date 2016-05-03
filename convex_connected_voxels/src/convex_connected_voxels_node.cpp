@@ -70,39 +70,55 @@ void ConvexConnectedVoxels::surfelLevelObjectHypothesis(
             supervoxel_clusters.begin(); it != supervoxel_clusters.end();
          it++) {
        voxel_labels[it->first] = -1;
-       pcl::Supervoxel<PointT>::Ptr supervoxel =
-          supervoxel_clusters.at(it->first);
+       // pcl::Supervoxel<PointT>::Ptr supervoxel =
+       //    supervoxel_clusters.at(it->first);
     }
     int label = -1;
     AdjacencyList::vertex_iterator i, end;
+
+    /*
+    std::cout << supervoxel_clusters.size()  << "\n\n";
+    for (boost::tie(i, end) = boost::vertices(adjacency_list); i != end; i++) {
+       AdjacencyList::adjacency_iterator ai, a_end;
+       boost::tie(ai, a_end) = boost::adjacent_vertices(*i, adjacency_list);
+       std::cout << adjacency_list[*i]  << "\t ->";
+       for (; ai != a_end; ai++) {
+          std::cout << adjacency_list[*ai]  << ", ";
+       }
+       std::cout  << "\n";
+    }
+    ROS_WARN("DONE\n\n");
+    return;
+    */
+    
+    
     for (boost::tie(i, end) = boost::vertices(adjacency_list); i != end; i++) {
        AdjacencyList::adjacency_iterator ai, a_end;
        boost::tie(ai, a_end) = boost::adjacent_vertices(*i, adjacency_list);
        uint32_t vindex = static_cast<int>(adjacency_list[*i]);
        
-       Eigen::Vector4f v_normal = this->cloudMeanNormal(
-          supervoxel_clusters.at(vindex)->normals_);
-       // Eigen::Vector4f v_normal = supervoxel_clusters.at(
-       //     vindex)->normal_.getNormalVector4fMap();
+       // Eigen::Vector4f v_normal = this->cloudMeanNormal(
+       //    supervoxel_clusters.at(vindex)->normals_);
+       Eigen::Vector4f v_normal = supervoxel_clusters.at(
+          vindex)->normal_.getNormalVector4fMap();
        std::map<uint32_t, int>::iterator it = voxel_labels.find(vindex);
        if (it->second == -1) {
           voxel_labels[vindex] = ++label;
        }
 
-       bool vertex_has_neigbor = false;
+       bool vertex_has_neigbor = true;
        if (ai == a_end) {
-         vertex_has_neigbor = true;
-         std::cout << "SKIP CHECKING : "<< vindex << "\t" << vertex_has_neigbor  << "\n";
+          vertex_has_neigbor = false;
+          std::cout << "SKIP CHECKING : "<< vindex << "\t"
+                    << vertex_has_neigbor  << "\n";
+          
          if (!supervoxel_clusters.at(vindex)->voxels_->empty()) {
-           convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
-         } else {
-           std::cout << "EMPTY INDEX: "<< vindex  << "\n";
+            // convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
          }
        }
        
        std::vector<uint32_t> neigb_ind;
        while (vertex_has_neigbor) {
-         // for (; ai != a_end; ai++) {
           bool found = false;
           AdjacencyList::edge_descriptor e_descriptor;
           boost::tie(e_descriptor, found) = boost::edge(
@@ -111,60 +127,97 @@ void ConvexConnectedVoxels::surfelLevelObjectHypothesis(
              float weight = adjacency_list[e_descriptor];
              uint32_t n_vindex = adjacency_list[*ai];
 
+             std::cout << "processing: " << n_vindex  << "\t"
+                       << supervoxel_clusters.size() << "\n";
 
-             // std::cout << "processing: " <<n_vindex  << "\n";
-             
-             // float conv_criteria = (
-             //    supervoxel_clusters.at(vindex)->centroid_.getVector4fMap() -
-             //    supervoxel_clusters.at(n_vindex)->centroid_.getVector4fMap()).
-             //    dot(v_normal);
+             Eigen::Vector4f update_normal = this->cloudMeanNormal(
+                supervoxel_clusters.at(vindex)->normals_, true);
+             Eigen::Vector4f update_centroid;
+             pcl::compute3DCentroid<PointT, float>(
+                *(supervoxel_clusters.at(vindex)->voxels_), update_centroid);
 
-             Eigen::Vector4f dist = (supervoxel_clusters.at(
-                vindex)->centroid_.getVector4fMap() - supervoxel_clusters.at(
-                   n_vindex)->centroid_.getVector4fMap())/
-                (supervoxel_clusters.at(
-                   vindex)->centroid_.getVector4fMap() - supervoxel_clusters.at(
-                      n_vindex)->centroid_.getVector4fMap()).norm();
              
-             float conv_criteria = (this->cloudMeanNormal(
-                 supervoxel_clusters.at(vindex)->normals_) - supervoxel_clusters.at(
-                     n_vindex)->normal_.getNormalVector4fMap()).dot(dist);
+             Eigen::Vector4f dist = (
+                supervoxel_clusters.at(vindex)->centroid_.getVector4fMap() -
+                supervoxel_clusters.at(n_vindex)->centroid_.getVector4fMap())/
+                (supervoxel_clusters.at(vindex)->centroid_.getVector4fMap() -
+                 supervoxel_clusters.at(n_vindex)->centroid_.getVector4fMap()
+                   ).norm();
+             
+             /*
+             Eigen::Vector4f dist = (
+                update_centroid - supervoxel_clusters.at(
+                   n_vindex)->centroid_.getVector4fMap()) / (
+                      update_centroid - supervoxel_clusters.at(
+                         n_vindex)->centroid_.getVector4fMap()).norm();
+             */
+             
+             float conv_criteria = (
+                // this->cloudMeanNormal(supervoxel_clusters.at(vindex)->normals_) -
+                // supervoxel_clusters.at(vindex)->normal_.getNormalVector4fMap()-
+                update_normal  -
+                supervoxel_clusters.at(n_vindex)->normal_.getNormalVector4fMap()
+                ).dot(dist);
+
+             // conv_criteria = (supervoxel_clusters.at(
+             //                     n_vindex)->centroid_.getVector4fMap() -
+             //    update_centroid).dot(supervoxel_clusters.at(
+             //                            n_vindex)->normal_.getNormalVector4fMap());
+                
              
              neigb_ind.push_back(n_vindex);
              if (conv_criteria <= static_cast<float>(this->convex_threshold_) ||
                  isnan(conv_criteria)) {
                 boost::remove_edge(e_descriptor, adjacency_list);
-
-                std::cout << "Value: " << conv_criteria << "\t"
-                          << convex_threshold_<< "\n";
-                
              } else {
                 this->updateSupervoxelClusters(supervoxel_clusters,
                                                vindex, n_vindex);
+                
                 AdjacencyList::adjacency_iterator ni, n_end;
                 boost::tie(ni, n_end) = boost::adjacent_vertices(
                    *ai, adjacency_list);
+                
                 for (; ni != n_end; ni++) {
                    bool is_found = false;
                    AdjacencyList::edge_descriptor n_edge;
                    boost::tie(n_edge, is_found) = boost::edge(
-                       *ai, *ni, adjacency_list);
+                      *ai, *ni, adjacency_list);
                    if (is_found && (*ni != *i)) {
                       boost::add_edge(*i, *ni, FLT_MIN, adjacency_list);
+                      // boost::remove_edge(n_edge, adjacency_list);
+                   } else if (is_found && (*ni == *i)) {
+                      // boost::remove_edge(n_edge, adjacency_list);
                    }
-                   boost::remove_edge(n_edge, adjacency_list);
+
+                   std::cout << "\t\tREMVING: " << adjacency_list[*ni]  << "\t"
+                             << n_vindex << "\t" << vindex << "\t"
+                             << adjacency_list[*ai] << "\n";
+                   
                 }
+                ROS_WARN("REMOVING");
+                
                 boost::clear_vertex(*ai, adjacency_list);
+                // std::cout << adjacency_list[boost::source(
+                //       e_descriptor, adjacency_list)]  << "\n";
+                // std::cout << adjacency_list[boost::target(
+                //       e_descriptor, adjacency_list)]  << "\n";
+
+
+                // boost::clear_vertex(v1, adjacency_list);
+                
+                ROS_WARN("ADDING");
                 voxel_labels[n_vindex] = label;
              }
           }
+
+          ROS_INFO("UPDATING");
           
           boost::tie(ai, a_end) = boost::adjacent_vertices(*i, adjacency_list);
           if (ai == a_end) {
             convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
             vertex_has_neigbor = false;
           } else {
-            // continue;
+             vertex_has_neigbor = true;
           }
        }
        // convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
