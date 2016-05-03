@@ -91,7 +91,7 @@ void ConvexConnectedVoxels::surfelLevelObjectHypothesis(
     return;
     */
     
-    
+    std::vector<uint32_t> good_vertices;
     for (boost::tie(i, end) = boost::vertices(adjacency_list); i != end; i++) {
        AdjacencyList::adjacency_iterator ai, a_end;
        boost::tie(ai, a_end) = boost::adjacent_vertices(*i, adjacency_list);
@@ -109,11 +109,12 @@ void ConvexConnectedVoxels::surfelLevelObjectHypothesis(
        bool vertex_has_neigbor = true;
        if (ai == a_end) {
           vertex_has_neigbor = false;
+
           std::cout << "SKIP CHECKING : "<< vindex << "\t"
                     << vertex_has_neigbor  << "\n";
           
          if (!supervoxel_clusters.at(vindex)->voxels_->empty()) {
-            // convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
+            convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
          }
        }
        
@@ -162,7 +163,7 @@ void ConvexConnectedVoxels::surfelLevelObjectHypothesis(
              // conv_criteria = (supervoxel_clusters.at(
              //                     n_vindex)->centroid_.getVector4fMap() -
              //    update_centroid).dot(supervoxel_clusters.at(
-             //                            n_vindex)->normal_.getNormalVector4fMap());
+             // n_vindex)->normal_.getNormalVector4fMap());
                 
              
              neigb_ind.push_back(n_vindex);
@@ -195,7 +196,7 @@ void ConvexConnectedVoxels::surfelLevelObjectHypothesis(
                    
                 }
                 ROS_WARN("REMOVING");
-                
+
                 boost::clear_vertex(*ai, adjacency_list);
                 // std::cout << adjacency_list[boost::source(
                 //       e_descriptor, adjacency_list)]  << "\n";
@@ -214,16 +215,33 @@ void ConvexConnectedVoxels::surfelLevelObjectHypothesis(
           
           boost::tie(ai, a_end) = boost::adjacent_vertices(*i, adjacency_list);
           if (ai == a_end) {
-            convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
+             convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
             vertex_has_neigbor = false;
           } else {
              vertex_has_neigbor = true;
           }
        }
-       // convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
+       if (ai == a_end) {
+          // convex_supervoxels[vindex] = supervoxel_clusters.at(vindex);
+       }
     }
+    // convex_supervoxels.clear();
+    // std::vector<bool> flag;
+    // for (int i = 0; i < label; i++) {
+    //    flag.push_back(false);
+    // }
+    // for (std::map<uint32_t, int>::iterator it = voxel_labels.begin();
+    //      it != voxel_labels.end(); it++) {
+    //    if (!flag[i])
+    //    convex_supervoxels[]
+    //    std::cout << it->first << ", " << it->second  << "\n";
+    // }
+
+
+    
     std::cout << "\033[31m LABEL: \033[0m"  << label << "\n";
-    std::cout << convex_supervoxels.size()  << "\n\n";
+    std::cout << convex_supervoxels.size()  << "\t" << good_vertices.size()
+              << "\n\n";
     supervoxel_clusters.clear();
 }
 
