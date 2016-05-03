@@ -55,6 +55,7 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}
 ##   * uncomment the generate_messages entry below
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
+
 ## Generate messages in the 'msg' folder
 # add_message_files(
 #   FILES
@@ -77,10 +78,10 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   std_msgs  # Or other packages containing msgs
-# )
+generate_messages(
+  DEPENDENCIES
+   std_msgs  # Or other packages containing msgs
+   )
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -97,6 +98,8 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}
 ##     and list every .cfg file to be processed
 
 ## Generate dynamic reconfigure parameters in the 'cfg' folder
+generate_dynamic_reconfigure_options(
+    cfg/SupervoxelSegmentation.cfg)
 # generate_dynamic_reconfigure_options(
 #   cfg/DynReconf1.cfg
 #   cfg/DynReconf2.cfg
@@ -141,11 +144,14 @@ include_directories(
 
 ## Declare a C++ executable
 add_executable(cuboid_bilateral_symmetric_segmentation_node 
-  src/cuboid_bilateral_symmetric_segmentation_node.cpp)
+  src/cuboid_bilateral_symmetric_segmentation_node.cpp
+  src/supervoxel_segmentation.cpp
+)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-# add_dependencies(cuboid_bilateral_symmetric_segmentation_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+#add_dependencies(cuboid_bilateral_symmetric_segmentation_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(cuboid_bilateral_symmetric_segmentation_node ${PROJECT_NAME}_gencfg)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(cuboid_bilateral_symmetric_segmentation_node
