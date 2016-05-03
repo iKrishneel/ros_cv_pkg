@@ -23,7 +23,6 @@ class SupervoxelSegmentation {
     double spatial_importance_;
     double normal_importance_;
     double voxel_resolution_;
-    double seed_resolution_;
     bool use_transform_;
     boost::mutex mutex_;
 
@@ -59,7 +58,10 @@ class SupervoxelSegmentation {
        const std::vector<uint32_t> &,
        jsk_recognition_msgs::ClusterPointIndices &);
 
-    double convex_threshold_;
+    double coplanar_threshold_;
+    double seed_resolution_;
+    double distance_threshold_;
+    double angle_threshold_;
 };
 
 

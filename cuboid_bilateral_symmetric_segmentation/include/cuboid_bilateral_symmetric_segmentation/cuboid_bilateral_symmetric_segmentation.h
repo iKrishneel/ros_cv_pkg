@@ -54,9 +54,10 @@ class CuboidBilateralSymmetricSegmentation:
   
     typedef  message_filters::sync_policies::ApproximateTime<
        sensor_msgs::PointCloud2,
-       // sensor_msgs::PointCloud2,
-       jsk_msgs::ClusterPointIndices,
-       jsk_msgs::BoundingBoxArray> SyncPolicy;
+       sensor_msgs::PointCloud2
+       // jsk_msgs::ClusterPointIndices,
+       // jsk_msgs::BoundingBoxArray
+       > SyncPolicy;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
     message_filters::Subscriber<jsk_msgs::ClusterPointIndices> sub_indices_;
@@ -64,7 +65,7 @@ class CuboidBilateralSymmetricSegmentation:
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
    
     typedef std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> SupervoxelMap;
-    typedef std::map<uint32_t, int> IntMap;
+    typedef std::map<uint32_t, int> UInt32Map;
    
  protected:
     void onInit();
@@ -79,11 +80,18 @@ class CuboidBilateralSymmetricSegmentation:
  public:
     CuboidBilateralSymmetricSegmentation();
     void cloudCB(const sensor_msgs::PointCloud2::ConstPtr &,
-                 const jsk_msgs::ClusterPointIndices::ConstPtr &,
-                 const jsk_msgs::BoundingBoxArray::ConstPtr &);
+                 const sensor_msgs::PointCloud2::ConstPtr &
+                 // const jsk_msgs::ClusterPointIndices::ConstPtr &,
+                 // const jsk_msgs::BoundingBoxArray::ConstPtr &
+       );
     void supervoxelDecomposition(SupervoxelMap &,
                                  pcl::PointCloud<NormalT>::Ptr,
                                  const pcl::PointCloud<PointT>::Ptr);
+    float coplanarityCriteria(const Eigen::Vector4f, const Eigen::Vector4f,
+                              const Eigen::Vector4f, const Eigen::Vector4f,
+                              const float = 10, const float = 0.02f);
+    void updateSupervoxelClusters(SupervoxelMap &,
+                                 const uint32_t, const uint32_t);
 };
 
 

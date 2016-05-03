@@ -137,5 +137,7 @@ void SupervoxelSegmentation::configCallback(
     this->voxel_resolution_ = config.voxel_resolution;
     this->seed_resolution_ = config.seed_resolution;
     this->use_transform_ = config.use_transform;
-    // this->convex_threshold_ = config.convex_threshold;
+    this->coplanar_threshold_ = config.coplanar_threshold;
+    this->distance_threshold_ = config.distance_threshold;
+    this->angle_threshold_ = config.angle_threshold;
 }
