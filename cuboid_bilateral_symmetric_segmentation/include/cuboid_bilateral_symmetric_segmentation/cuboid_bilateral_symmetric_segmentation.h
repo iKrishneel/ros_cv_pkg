@@ -84,8 +84,8 @@ class CuboidBilateralSymmetricSegmentation:
     CuboidBilateralSymmetricSegmentation();
     void cloudCB(const sensor_msgs::PointCloud2::ConstPtr &,
                  const sensor_msgs::PointCloud2::ConstPtr &,
-		 const jsk_msgs::PolygonArrayConstPtr &,
-		 const jsk_msgs::ModelCoefficientsArrayConstPtr &);
+                 const jsk_msgs::PolygonArrayConstPtr &,
+                 const jsk_msgs::ModelCoefficientsArrayConstPtr &);
     void supervoxelDecomposition(SupervoxelMap &,
                                  pcl::PointCloud<NormalT>::Ptr,
                                  const pcl::PointCloud<PointT>::Ptr);
@@ -95,9 +95,9 @@ class CuboidBilateralSymmetricSegmentation:
     void updateSupervoxelClusters(SupervoxelMap &,
                                  const uint32_t, const uint32_t);
     void supervoxel3DBoundingBox(jsk_msgs::BoundingBox &, const SupervoxelMap &,
-				 const jsk_msgs::PolygonArrayConstPtr &,
-				 const jsk_msgs::ModelCoefficientsArrayConstPtr &,
-				 const int);
+                                 const jsk_msgs::PolygonArrayConstPtr &,
+                                 const jsk_msgs::ModelCoefficientsArrayConstPtr &,
+                                 const int);
 
 };
 

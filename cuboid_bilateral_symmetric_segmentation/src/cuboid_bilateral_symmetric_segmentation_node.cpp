@@ -11,7 +11,7 @@ void CuboidBilateralSymmetricSegmentation::onInit() {
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/cbss/output/cloud", 1);
     this->pub_edge_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
-       "/cbss/output/cloud2", 1);
+       "/cbss/output/edges", 1);
      this->pub_indices_ = this->pnh_.advertise<jsk_msgs::ClusterPointIndices>(
         "/cbss/output/indices", 1);
      this->pub_bbox_ = this->pnh_.advertise<jsk_msgs::BoundingBoxArray>(
@@ -25,9 +25,9 @@ void CuboidBilateralSymmetricSegmentation::subscribe() {
     this->sub_coef_.subscribe(this->pnh_, "input_coefficients", 1);
     
     this->sync_ = boost::make_shared<message_filters::Synchronizer<
-					SyncPolicy> >(100);
+                                        SyncPolicy> >(100);
     this->sync_->connectInput(this->sub_cloud_, this->sub_normal_,
-			      this->sub_planes_, this->sub_coef_);
+                              this->sub_planes_, this->sub_coef_);
     this->sync_->registerCallback(
         boost::bind(&CuboidBilateralSymmetricSegmentation::cloudCB,
                     this, _1, _2, _3, _4));
@@ -56,7 +56,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     
     jsk_msgs::BoundingBox bounding_box;
     this->supervoxel3DBoundingBox(bounding_box, supervoxel_clusters,
-				  planes_msg, coefficients_msg, 1);
+                                  planes_msg, coefficients_msg, 1);
 
     // publish supervoxel
     sensor_msgs::PointCloud2 ros_voxels;
@@ -253,8 +253,8 @@ void CuboidBilateralSymmetricSegmentation::supervoxel3DBoundingBox(
        int csize = supervoxel_clusters.at(it->first)->voxels_->size();
        ROS_WARN("SIZE: %d", csize);
        if (y_pos < y_position && csize > this->min_cluster_size_) {
-	  y_position = y_pos;
-	  s_index = it->first;
+          y_position = y_pos;
+          s_index = it->first;
        }
        // *cloud += *(supervoxel_clusters.at(it->first)->voxels_);
     }
@@ -264,10 +264,17 @@ void CuboidBilateralSymmetricSegmentation::supervoxel3DBoundingBox(
     }
     pcl::copyPointCloud<PointT, PointT>(
        *(supervoxel_clusters.at(s_index)->voxels_), *cloud);
-    this->fitOriented3DBoundingBox(bounding_box, cloud, planes_msg, coefficients_msg);
+    this->fitOriented3DBoundingBox(bounding_box, cloud, planes_msg,
+                                   coefficients_msg);
 
     // get bounding box symmetrical planes
-    
+    cloud->clear();
+    this->transformBoxCornerPoints(cloud, bounding_box);
+
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*cloud, ros_cloud);
+    ros_cloud.header = planes_msg->header;
+    this->pub_edge_.publish(ros_cloud);
 }
 
 int main(int argc, char *argv[]) {
