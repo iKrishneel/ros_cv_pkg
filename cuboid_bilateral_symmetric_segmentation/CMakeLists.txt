@@ -78,10 +78,10 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}
 # )
 
 ## Generate added messages and services with any dependencies listed here
-generate_messages(
-  DEPENDENCIES
-   std_msgs  # Or other packages containing msgs
-   )
+# generate_messages(
+#   DEPENDENCIES
+#    std_msgs  # Or other packages containing msgs
+#    )
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -146,7 +146,7 @@ include_directories(
 add_executable(cuboid_bilateral_symmetric_segmentation_node 
   src/cuboid_bilateral_symmetric_segmentation_node.cpp
   src/supervoxel_segmentation.cpp
-)
+  src/moment_of_inertia_estimation.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above

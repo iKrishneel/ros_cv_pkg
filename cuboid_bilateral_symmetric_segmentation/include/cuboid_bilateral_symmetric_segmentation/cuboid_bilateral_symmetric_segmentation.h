@@ -35,6 +35,7 @@
 #include <omp.h>
 
 #include <cuboid_bilateral_symmetric_segmentation/supervoxel_segmentation.h>
+#include <cuboid_bilateral_symmetric_segmentation/moment_of_inertia_estimation.h>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/opencv.hpp>
@@ -75,7 +76,7 @@ class CuboidBilateralSymmetricSegmentation:
     ros::Publisher pub_cloud_;
     ros::Publisher pub_edge_;
     ros::Publisher pub_indices_;
-    ros::ServiceClient srv_client_;
+    ros::Publisher pub_bbox_;
    
  public:
     CuboidBilateralSymmetricSegmentation();
@@ -92,6 +93,9 @@ class CuboidBilateralSymmetricSegmentation:
                               const float = 10, const float = 0.02f);
     void updateSupervoxelClusters(SupervoxelMap &,
                                  const uint32_t, const uint32_t);
+    void supervoxel3DBoundingBox(jsk_msgs::BoundingBox &,
+                                SupervoxelMap &, const int);
+
 };
 
 
