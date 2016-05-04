@@ -20,34 +20,30 @@ void CuboidBilateralSymmetricSegmentation::onInit() {
 void CuboidBilateralSymmetricSegmentation::subscribe() {
     this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
     this->sub_normal_.subscribe(this->pnh_, "input_normals", 1);
-    this->sub_indices_.subscribe(this->pnh_, "input_indices", 1);
-    this->sub_boxes_.subscribe(this->pnh_, "input_boxes", 1);
+    this->sub_planes_.subscribe(this->pnh_, "input_planes", 1);
+    this->sub_coef_.subscribe(this->pnh_, "input_coefficients", 1);
     
     this->sync_ = boost::make_shared<message_filters::Synchronizer<
-                                       SyncPolicy> >(100);
-    this->sync_->connectInput(this->sub_cloud_,
-                              // this->sub_indices_,
-                              this->sub_normal_
-                              // this->sub_boxes_
-       );
+					SyncPolicy> >(100);
+    this->sync_->connectInput(this->sub_cloud_, this->sub_normal_,
+			      this->sub_planes_, this->sub_coef_);
     this->sync_->registerCallback(
         boost::bind(&CuboidBilateralSymmetricSegmentation::cloudCB,
-                    this, _1, _2));
+                    this, _1, _2, _3, _4));
 }
 
 void CuboidBilateralSymmetricSegmentation::unsubscribe() {
     this->sub_cloud_.unsubscribe();
     this->sub_normal_.unsubscribe();
-    this->sub_boxes_.unsubscribe();
-    this->sub_indices_.unsubscribe();
+    this->sub_coef_.unsubscribe();
+    this->sub_planes_.unsubscribe();
 }
 
 void CuboidBilateralSymmetricSegmentation::cloudCB(
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
-    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg2
-    // const jsk_msgs::ClusterPointIndices::ConstPtr &indices_msg,
-    // const jsk_msgs::BoundingBoxArray::ConstPtr &box_msg
-   ) {
+    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg2,
+    const jsk_msgs::PolygonArrayConstPtr &planes_msg,
+    const jsk_msgs::ModelCoefficientsArrayConstPtr &coefficients_msg) {
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     // std::vector<pcl::PointIndices::Ptr> indices =
@@ -64,7 +60,8 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     std::cout << "CLUSTER: " << supervoxel_clusters.size()  << "\n";
     
     jsk_msgs::BoundingBox bounding_box;
-    this->supervoxel3DBoundingBox(bounding_box, supervoxel_clusters, 1);
+    this->supervoxel3DBoundingBox(bounding_box, supervoxel_clusters,
+				  planes_msg, coefficients_msg, 1);
 
     // publish supervoxel
     sensor_msgs::PointCloud2 ros_voxels;
@@ -240,7 +237,10 @@ void CuboidBilateralSymmetricSegmentation::updateSupervoxelClusters(
 
 void CuboidBilateralSymmetricSegmentation::supervoxel3DBoundingBox(
     jsk_msgs::BoundingBox &bounding_box,
-    const SupervoxelMap &supervoxel_clusters, const int index) {
+    const SupervoxelMap &supervoxel_clusters,
+    const jsk_msgs::PolygonArrayConstPtr &planes_msg,
+    const jsk_msgs::ModelCoefficientsArrayConstPtr &coefficients_msg,
+    const int index) {
 
     ROS_INFO("\033[34mCOMPUTING BOUNDING BOX \33[0m");
    
@@ -268,6 +268,11 @@ void CuboidBilateralSymmetricSegmentation::supervoxel3DBoundingBox(
     if (cloud->empty()) {
        ROS_ERROR("EMPTY CLOUD AT INDEX: %d", index);
     }
+
+    this->fitOriented3DBoundingBox(bounding_box, cloud, planes_msg, coefficients_msg);
+    return;
+    
+
     
     pcl::MomentOfInertiaEstimation<PointT> feature_extractor;
     feature_extractor.setInputCloud(cloud);

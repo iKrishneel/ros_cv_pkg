@@ -36,15 +36,17 @@
 
 #include <cuboid_bilateral_symmetric_segmentation/supervoxel_segmentation.h>
 #include <cuboid_bilateral_symmetric_segmentation/moment_of_inertia_estimation.h>
+#include <cuboid_bilateral_symmetric_segmentation/oriented_bounding_box.h>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/opencv.hpp>
 #include <boost/thread/mutex.hpp>
 
-namespace jsk_msgs = jsk_recognition_msgs;
+// namespace jsk_msgs = jsk_recognition_msgs;
 
 class CuboidBilateralSymmetricSegmentation:
-    public SupervoxelSegmentation {
+    public SupervoxelSegmentation,
+    public OrientedBoundingBox {
     typedef pcl::PointXYZRGB PointT;
     typedef pcl::Normal NormalT;
     typedef pcl::SupervoxelClustering<PointT>::VoxelAdjacencyList AdjacencyList;
@@ -55,14 +57,13 @@ class CuboidBilateralSymmetricSegmentation:
   
     typedef  message_filters::sync_policies::ApproximateTime<
        sensor_msgs::PointCloud2,
-       sensor_msgs::PointCloud2
-       // jsk_msgs::ClusterPointIndices,
-       // jsk_msgs::BoundingBoxArray
-       > SyncPolicy;
+       sensor_msgs::PointCloud2,
+       jsk_msgs::PolygonArray,
+       jsk_msgs::ModelCoefficientsArray> SyncPolicy;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
-    message_filters::Subscriber<jsk_msgs::ClusterPointIndices> sub_indices_;
-    message_filters::Subscriber<jsk_msgs::BoundingBoxArray> sub_boxes_;
+    message_filters::Subscriber<jsk_msgs::PolygonArray> sub_planes_;
+    message_filters::Subscriber<jsk_msgs::ModelCoefficientsArray> sub_coef_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
    
     typedef std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> SupervoxelMap;
@@ -81,10 +82,9 @@ class CuboidBilateralSymmetricSegmentation:
  public:
     CuboidBilateralSymmetricSegmentation();
     void cloudCB(const sensor_msgs::PointCloud2::ConstPtr &,
-                 const sensor_msgs::PointCloud2::ConstPtr &
-                 // const jsk_msgs::ClusterPointIndices::ConstPtr &,
-                 // const jsk_msgs::BoundingBoxArray::ConstPtr &
-       );
+                 const sensor_msgs::PointCloud2::ConstPtr &,
+		 const jsk_msgs::PolygonArrayConstPtr &,
+		 const jsk_msgs::ModelCoefficientsArrayConstPtr &);
     void supervoxelDecomposition(SupervoxelMap &,
                                  pcl::PointCloud<NormalT>::Ptr,
                                  const pcl::PointCloud<PointT>::Ptr);
@@ -93,8 +93,10 @@ class CuboidBilateralSymmetricSegmentation:
                               const float = 10, const float = 0.02f);
     void updateSupervoxelClusters(SupervoxelMap &,
                                  const uint32_t, const uint32_t);
-    void supervoxel3DBoundingBox(jsk_msgs::BoundingBox &,
-				 const SupervoxelMap &, const int);
+    void supervoxel3DBoundingBox(jsk_msgs::BoundingBox &, const SupervoxelMap &,
+				 const jsk_msgs::PolygonArrayConstPtr &,
+				 const jsk_msgs::ModelCoefficientsArrayConstPtr &,
+				 const int);
 
 };
 
