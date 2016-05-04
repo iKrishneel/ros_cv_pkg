@@ -47,12 +47,6 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     const jsk_msgs::ModelCoefficientsArrayConstPtr &coefficients_msg) {
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-    // std::vector<pcl::PointIndices::Ptr> indices =
-    //    pcl_conversions::convertToPCLPointIndices(indices_msg->cluster_indices);
-    // if (indices.size() != box_msg->boxes.size()) {
-    //    ROS_ERROR("INDICES AND BOUNDING BOX ARRAY SIZE NOT EQUAL");
-    //    return;
-    // }
 
     SupervoxelMap supervoxel_clusters;
     pcl::PointCloud<NormalT>::Ptr normals(new pcl::PointCloud<NormalT>);
@@ -270,13 +264,10 @@ void CuboidBilateralSymmetricSegmentation::supervoxel3DBoundingBox(
     }
     pcl::copyPointCloud<PointT, PointT>(
        *(supervoxel_clusters.at(s_index)->voxels_), *cloud);
-    std::cout << "PROCESSING: " << cloud->size() << "\n";
-    
-    if (cloud->empty()) {
-       ROS_ERROR("EMPTY CLOUD AT INDEX: %d", index);
-    }
-
     this->fitOriented3DBoundingBox(bounding_box, cloud, planes_msg, coefficients_msg);
+
+    // get bounding box symmetrical planes
+    
 }
 
 int main(int argc, char *argv[]) {
