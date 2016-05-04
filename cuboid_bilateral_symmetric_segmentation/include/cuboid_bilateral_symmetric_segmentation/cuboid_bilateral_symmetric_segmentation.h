@@ -35,7 +35,6 @@
 #include <omp.h>
 
 #include <cuboid_bilateral_symmetric_segmentation/supervoxel_segmentation.h>
-#include <cuboid_bilateral_symmetric_segmentation/moment_of_inertia_estimation.h>
 #include <cuboid_bilateral_symmetric_segmentation/oriented_bounding_box.h>
 
 #include <opencv2/core/core.hpp>
