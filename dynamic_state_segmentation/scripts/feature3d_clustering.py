@@ -83,8 +83,8 @@ def dbscan_clustering(in_features, max_distance, min_sample):
     #db = DBSCAN(eps=max_distance, min_samples=min_sample, algorithm='kd_tree', leaf_size=40 ).fit(features)
 
     #######
-    bandwidth = estimate_bandwidth(features, quantile=0.1, n_samples=features.shape[0])
-    db = MeanShift(bandwidth=bandwidth, bin_seeding=True).fit(features)
+    bandwidth = estimate_bandwidth(features, quantile=0.1, n_samples=features.shape[0]/2)
+    db = MeanShift(bandwidth=bandwidth, bin_seeding=True, min_bin_freq=1).fit(features)
     
     #######
     labels = db.labels_
@@ -93,7 +93,7 @@ def dbscan_clustering(in_features, max_distance, min_sample):
     label, indices, counts = np.unique(
         labels, return_inverse=True, return_counts=True)
     
-    print label, "\t", len(db.cluster_centers_)
+    print label, "\t", len(db.cluster_centers_), "\t BANDWIDTH: ", bandwidth
     print "\n------\n"
     print indices
     print counts

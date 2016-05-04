@@ -8,13 +8,13 @@ CuboidBilateralSymmetricSegmentation::CuboidBilateralSymmetricSegmentation() {
 void CuboidBilateralSymmetricSegmentation::onInit() {
     this->subscribe();
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
-       "cloud", 1);
+       "/cbss/output/cloud", 1);
     this->pub_edge_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
-       "cloud2", 1);
+       "/cbss/output/cloud2", 1);
      this->pub_indices_ = this->pnh_.advertise<jsk_msgs::ClusterPointIndices>(
-        "indices", 1);
+        "/cbss/output/indices", 1);
      this->pub_bbox_ = this->pnh_.advertise<jsk_msgs::BoundingBoxArray>(
-        "bounding_box", 1);
+        "/cbss/output/bounding_box", 1);
 }
 
 void CuboidBilateralSymmetricSegmentation::subscribe() {
@@ -239,16 +239,32 @@ void CuboidBilateralSymmetricSegmentation::updateSupervoxelClusters(
 }
 
 void CuboidBilateralSymmetricSegmentation::supervoxel3DBoundingBox(
-    jsk_msgs::BoundingBox &bounding_box, SupervoxelMap &supervoxel_clusters,
-    const int index) {
+    jsk_msgs::BoundingBox &bounding_box,
+    const SupervoxelMap &supervoxel_clusters, const int index) {
+
+    ROS_INFO("\033[34mCOMPUTING BOUNDING BOX \33[0m");
+   
     if (supervoxel_clusters.empty() || index > supervoxel_clusters.size()) {
        ROS_ERROR("EMPTY VOXEL MAP");
        return;
     }
-    std::cout << "PROCESSING"  << "\n";
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+    // select the highest cluster
+    float y_position = FLT_MAX;
+    int s_index = -1;
+    for (SupervoxelMap::const_iterator it = supervoxel_clusters.begin();
+         it != supervoxel_clusters.end(); it++) {
+       float y_pos = supervoxel_clusters.at(it->first)->centroid_.y;
+       if (y_pos < y_position) {
+	  y_position = y_pos;
+	  s_index = it->first;
+       }
+       // *cloud += *(supervoxel_clusters.at(it->first)->voxels_);
+    }
     pcl::copyPointCloud<PointT, PointT>(
-       *(supervoxel_clusters.at(index)->voxels_), *cloud);
+       *(supervoxel_clusters.at(s_index)->voxels_), *cloud);
+    std::cout << "PROCESSING: " << cloud->size() << "\n";
+    
     if (cloud->empty()) {
        ROS_ERROR("EMPTY CLOUD AT INDEX: %d", index);
     }

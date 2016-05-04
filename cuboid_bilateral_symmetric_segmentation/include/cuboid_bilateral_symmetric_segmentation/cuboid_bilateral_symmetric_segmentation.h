@@ -94,7 +94,7 @@ class CuboidBilateralSymmetricSegmentation:
     void updateSupervoxelClusters(SupervoxelMap &,
                                  const uint32_t, const uint32_t);
     void supervoxel3DBoundingBox(jsk_msgs::BoundingBox &,
-                                SupervoxelMap &, const int);
+				 const SupervoxelMap &, const int);
 
 };
 

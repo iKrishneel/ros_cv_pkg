@@ -15,7 +15,7 @@ void DynamicStateSegmentation::onInit() {
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "target", 1);
     this->pub_edge_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
-       "edge", 1);
+       "region", 1);
      this->pub_indices_ = this->pnh_.advertise<
         jsk_recognition_msgs::ClusterPointIndices>("indices", 1);
 }
@@ -114,12 +114,14 @@ void DynamicStateSegmentation::cloudCB(
 
 
     // routine for Mean-shift
+    /*
     all_indices.clear();
     kdtree_->setInputCloud(seed_cloud);
     this->clusterFeatures(all_indices, seed_cloud, seed_normals, 20, 0.05);
     cloud->clear();
     *cloud = *seed_cloud;
-   
+    */
+    
     /* // uncomment this for graph-cuts
     pcl::PointCloud<PointT>::Ptr convex(new pcl::PointCloud<PointT>);
     pcl::PointCloud<PointT>::Ptr concave(new pcl::PointCloud<PointT>);
@@ -821,7 +823,7 @@ void DynamicStateSegmentation::clusterFeatures(
        for (int j = 0; j < neigbor_indices.size(); j++) {
           int idx = neigbor_indices[j];
           Eigen::Vector4f n_n = descriptors->points[idx].getNormalVector4fMap();
-          sum += (c_n.dot(n_n) / (c_n.norm() * n_n.norm()));
+          sum += (c_n.dot(n_n)); // / (c_n.norm() * n_n.norm()));
           Eigen::Vector4f n_pt = cloud->points[idx].getVector4fMap();
           // coplanar += ((n_pt - c_pt).dot(n_n));
 
