@@ -67,6 +67,8 @@ class CuboidBilateralSymmetricSegmentation:
    
     typedef std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> SupervoxelMap;
     typedef std::map<uint32_t, int> UInt32Map;
+
+    uint32_t min_cluster_size_;
    
  protected:
     void onInit();

@@ -57,6 +57,7 @@ class OrientedBoundingBox {
 				  const pcl::PointCloud<PointT>::Ptr,
 				  const jsk_msgs::PolygonArrayConstPtr &,
 				  const jsk_msgs::ModelCoefficientsArrayConstPtr &);
+    void plotPlane(pcl::PointCloud<PointT>::Ptr, const jsk_msgs::BoundingBox);
 };
 
 

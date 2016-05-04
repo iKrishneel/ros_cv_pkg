@@ -166,3 +166,21 @@ int OrientedBoundingBox::findNearestPlane(
    }
    return nearest_index;
 }
+
+void OrientedBoundingBox::plotPlane(
+   pcl::PointCloud<PointT>::Ptr cloud, const jsk_msgs::BoundingBox bounding_box) {
+   Eigen::Vector3f center = Eigen::Vector3f(bounding_box.pose.position.x,
+					    bounding_box.pose.position.y,
+					    bounding_box.pose.position.z);
+   Eigen::Vector3f dims= Eigen::Vector3f(bounding_box.dimensions.x / 2.0f,
+						bounding_box.dimensions.y / 2.0f,
+						bounding_box.dimensions.z / 2.0f);
+   Eigen::Vector3f corner1 = Eigen::Vector3f(dims(0), dims(1), dims(2));
+   Eigen::Vector3f corner2 = Eigen::Vector3f(dims(0), dims(1), dims(2));
+   Eigen::Vector3f corner3 = Eigen::Vector3f(dims(0), dims(1), dims(2));
+   Eigen::Vector3f corner4 = Eigen::Vector3f(dims(0), dims(1), dims(2));
+   Eigen::Vector3f corner5 = Eigen::Vector3f(dims(0), dims(1), dims(2));
+   Eigen::Vector3f corner6 = Eigen::Vector3f(dims(0), dims(1), dims(2));
+   Eigen::Vector3f corner7 = Eigen::Vector3f(dims(0), dims(1), dims(2));
+   Eigen::Vector3f corner8 = Eigen::Vector3f(dims(0), dims(1), dims(2));
+}
