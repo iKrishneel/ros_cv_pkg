@@ -1,18 +1,20 @@
 <launch>
-  <arg name="INPUT" default="/camera/depth_registered/points" />
+  <arg name="POINTS" default="/camera/depth_registered/points" />
+  <arg name="NORMALS" default="/normals" />
   <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />
+
   <arg name="seg_plane" default="false" />
 
   <!-- <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch"> -->
-  <!--   <arg name="cloud" value="$(arg INPUT)"/> -->
+  <!--   <arg name="cloud" value="$(arg POINTS)"/> -->
   <!-- </include> -->
 
   
   <node pkg="cuboid_bilateral_symmetric_segmentation" 
 	type="cuboid_bilateral_symmetric_segmentation_node"
 	name="cuboid_bilateral_symmetric_segmentation" output="screen" clear_params="false">
-    <remap from="input_cloud" to="$(arg INPUT)" />
-    <remap from="input_normals" to="$(arg INPUT)" />
+    <remap from="input_cloud" to="$(arg POINTS)" />
+    <remap from="input_normals" to="$(arg NORMALS)" />
     
     <remap from="input_planes" to="/multi_plane_estimate/output_refined_polygon" />
     <remap from="input_coefficients" to="/multi_plane_estimate/output_refined_coefficients" />

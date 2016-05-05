@@ -42,15 +42,17 @@ void CuboidBilateralSymmetricSegmentation::unsubscribe() {
 
 void CuboidBilateralSymmetricSegmentation::cloudCB(
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
-    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg2,
+    const sensor_msgs::PointCloud2::ConstPtr &normal_msg,
     const jsk_msgs::PolygonArrayConstPtr &planes_msg,
     const jsk_msgs::ModelCoefficientsArrayConstPtr &coefficients_msg) {
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-
+    pcl::PointCloud<NormalT>::Ptr normals (new pcl::PointCloud<NormalT>);
+    pcl::fromROSMsg(*normal_msg, *normals);
+    
     SupervoxelMap supervoxel_clusters;
-    pcl::PointCloud<NormalT>::Ptr normals(new pcl::PointCloud<NormalT>);
-    this->supervoxelDecomposition(supervoxel_clusters, normals, cloud);
+    pcl::PointCloud<NormalT>::Ptr sv_normals(new pcl::PointCloud<NormalT>);
+    this->supervoxelDecomposition(supervoxel_clusters, sv_normals, cloud);
 
     std::cout << "CLUSTER: " << supervoxel_clusters.size()  << "\n";
     
@@ -73,11 +75,13 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     bounding_boxes.header = cloud_msg->header;
     pub_bbox_.publish(bounding_boxes);
     
+
+    this->symmetricalConsistency(cloud, normals, bounding_box);
     
-    // sensor_msgs::PointCloud2 ros_cloud;
-    // pcl::toROSMsg(*cloud, ros_cloud);
-    // ros_cloud.header = cloud_msg->header;
-    // this->pub_cloud_.publish(ros_cloud);
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*cloud, ros_cloud);
+    ros_cloud.header = cloud_msg->header;
+    this->pub_edge_.publish(ros_cloud);
 }
 
 void CuboidBilateralSymmetricSegmentation::supervoxelDecomposition(
@@ -271,14 +275,54 @@ void CuboidBilateralSymmetricSegmentation::supervoxel3DBoundingBox(
     cloud->clear();
     std::vector<Eigen::Vector4f> plane_coefficients;
     this->transformBoxCornerPoints(plane_coefficients, cloud, bounding_box);
-
-    
-
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = planes_msg->header;
     this->pub_edge_.publish(ros_cloud);
+}
+
+bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
+    pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<NormalT>::Ptr normals,
+    const jsk_msgs::BoundingBox bounding_box) {
+    if (cloud->empty()) {
+       ROS_ERROR("EMPTY CLOUD FOR SYMMETRICAL CONSISTENCY");
+       return false;
+    }
+    pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
+    std::vector<Eigen::Vector4f> plane_coefficients;
+    this->transformBoxCornerPoints(plane_coefficients,
+                                   temp_cloud, bounding_box);
+    if (plane_coefficients.empty()) {
+       ROS_ERROR("PLANE COEFFICENT NOT FOUND");
+       return false;
+    }
+
+    //! reflected point
+    temp_cloud->clear();
+    for (int i = 0; i < 1; i++) {
+       i = 3;
+       Eigen::Vector3f plane_n = plane_coefficients[i].head<3>();
+       for (int j = 0; j < cloud->size(); j++) {
+          // double d = pcl::pointToPlaneDistance<PointT>(cloud->points[j],
+          //                                              plane_coefficients[i]);
+          Eigen::Vector3f n = normals->points[j].getNormalVector3fMap();
+          Eigen::Vector3f p = cloud->points[j].getVector3fMap();
+          float beta = p(0)*plane_n(0) + p(1)*plane_n(1) + p(2)*plane_n(2);
+          float alpha = (plane_n(0) * plane_n(0)) +
+             (plane_n(1) * plane_n(1)) + (plane_n(2) * plane_n(2));
+          float t = (plane_coefficients[i](3) - beta) / alpha;
+          
+          PointT pt = cloud->points[j];
+          pt.x = p(0) + (t * 2 * plane_n(0));
+          pt.y = p(1) + (t * 2 * plane_n(1));
+          pt.z = p(2) + (t * 2 * plane_n(2));
+          temp_cloud->push_back(pt);
+       }
+    }
+    cloud->clear();
+    *cloud = *temp_cloud;
 }
 
 int main(int argc, char *argv[]) {
