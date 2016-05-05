@@ -53,15 +53,26 @@ class OrientedBoundingBox {
     bool use_pca_;
     bool force_to_flip_z_axis_;
    
+    int num_points_;
+    int num_planes_;
+
+ protected:
+    std::vector<Eigen::Vector3f> colors_;
+   
  public:
     OrientedBoundingBox();
     bool fitOriented3DBoundingBox(jsk_msgs::BoundingBox &,
                                   const pcl::PointCloud<PointT>::Ptr,
                                   const jsk_msgs::PolygonArrayConstPtr &,
                                   const jsk_msgs::ModelCoefficientsArrayConstPtr &);
-    void transformBoxCornerPoints(pcl::PointCloud<PointT>::Ptr,
-                                  const jsk_msgs::BoundingBox);
-    void plotPlane(pcl::PointCloud<PointT>::Ptr);
+    void transformBoxCornerPoints(std::vector<Eigen::Vector4f> &,
+                                 pcl::PointCloud<PointT>::Ptr,
+                                  const jsk_msgs::BoundingBox,
+                                  const bool = false);
+    bool computePlaneCoefficients(std::vector<Eigen::Vector4f> &,
+                                  const pcl::PointCloud<PointT>::Ptr);
+    void plotPlane(pcl::PointCloud<PointT>::Ptr,
+                  const pcl::PointCloud<PointT>::Ptr);
 };
 
 #endif  // _ORIENTED_BOUNDING_BOX_H_

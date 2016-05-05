@@ -267,10 +267,14 @@ void CuboidBilateralSymmetricSegmentation::supervoxel3DBoundingBox(
     this->fitOriented3DBoundingBox(bounding_box, cloud, planes_msg,
                                    coefficients_msg);
 
-    // get bounding box symmetrical planes
+    //! get bounding box symmetrical planes
     cloud->clear();
-    this->transformBoxCornerPoints(cloud, bounding_box);
+    std::vector<Eigen::Vector4f> plane_coefficients;
+    this->transformBoxCornerPoints(plane_coefficients, cloud, bounding_box);
 
+    
+
+    
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = planes_msg->header;

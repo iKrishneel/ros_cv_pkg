@@ -2,8 +2,12 @@
 #include <cuboid_bilateral_symmetric_segmentation/oriented_bounding_box.h>
 
 OrientedBoundingBox::OrientedBoundingBox() :
-    use_pca_(true), force_to_flip_z_axis_(true), align_boxes_(true) {
-   
+    num_points_(3), num_planes_(4), use_pca_(true),
+    force_to_flip_z_axis_(true), align_boxes_(true) {
+    this->colors_.push_back(Eigen::Vector3f(255, 0, 0));  // D2
+    this->colors_.push_back(Eigen::Vector3f(0, 255, 0));  // D1
+    this->colors_.push_back(Eigen::Vector3f(0, 0, 255));  // C1
+    this->colors_.push_back(Eigen::Vector3f(255, 0, 255));  // C2
 }
 
 bool OrientedBoundingBox::fitOriented3DBoundingBox(
@@ -175,57 +179,54 @@ int OrientedBoundingBox::findNearestPlane(
 }
 
 void OrientedBoundingBox::transformBoxCornerPoints(
+    std::vector<Eigen::Vector4f> &plane_coefficients,
     pcl::PointCloud<PointT>::Ptr cloud,
-    const jsk_msgs::BoundingBox bounding_box) {
+    const jsk_msgs::BoundingBox bounding_box, const bool is_plot) {
     Eigen::Vector3f center = Eigen::Vector3f(bounding_box.pose.position.x,
                                              bounding_box.pose.position.y,
                                              bounding_box.pose.position.z);
     Eigen::Vector3f dims = Eigen::Vector3f(bounding_box.dimensions.x / 2.0f,
                                            bounding_box.dimensions.y / 2.0f,
                                            bounding_box.dimensions.z / 2.0f);
-    const int SIZE = 12;
-    Eigen::Vector3f corners[SIZE];
+    
+    std::vector<std::vector<Eigen::Vector3f> > corners(this->num_planes_);
+    std::vector<Eigen::Vector3f> corner(this->num_points_);
     // 4 corners
-    corners[0] = Eigen::Vector3f(dims(0), dims(1), dims(2));
-    corners[1] = Eigen::Vector3f(-dims(0), -dims(1), -dims(2));
-    corners[2] = Eigen::Vector3f(-dims(0), -dims(1), dims(2));
-        
-    corners[3] = Eigen::Vector3f(dims(0), -dims(1), dims(2));
-    corners[4] = Eigen::Vector3f(-dims(0), dims(1), -dims(2));
-    corners[5] = Eigen::Vector3f(-dims(0), dims(1), dims(2));
+    corner[0] = Eigen::Vector3f(dims(0), dims(1), dims(2));
+    corner[1] = Eigen::Vector3f(-dims(0), -dims(1), -dims(2));
+    corner[2] = Eigen::Vector3f(-dims(0), -dims(1), dims(2));
+    corners[0] = corner;
+    
+    std::vector<Eigen::Vector3f> corner2(this->num_points_);
+    corner2[0] = Eigen::Vector3f(dims(0), -dims(1), dims(2));
+    corner2[1] = Eigen::Vector3f(-dims(0), dims(1), -dims(2));
+    corner2[2] = Eigen::Vector3f(-dims(0), dims(1), dims(2));
+    corners[1] = corner2;
     
     // 4 mid-points
-    corners[6] = Eigen::Vector3f(dims(0), 0, -dims(2));
-    corners[7] = Eigen::Vector3f(-dims(0), 0, -dims(2));
-    corners[8] = Eigen::Vector3f(-dims(0), 0, dims(2));
-    
-    corners[9] = Eigen::Vector3f(0, -dims(1), -dims(2));
-    corners[10] = Eigen::Vector3f(0, dims(1), dims(2));
-    corners[11] = Eigen::Vector3f(0, dims(1), -dims(2));
-    
-    Eigen::Vector3f colors[SIZE];
-    colors[0] = Eigen::Vector3f(255, 0, 0);  // D2
-    colors[1] = Eigen::Vector3f(255, 0, 0);  // D2
-    colors[2] = Eigen::Vector3f(255, 0, 0);  // D2
-    
-    colors[3] = Eigen::Vector3f(0, 255, 0);  // D1
-    colors[4] = Eigen::Vector3f(0, 255, 0);  // D1
-    colors[5] = Eigen::Vector3f(0, 255, 0);  // D1
-    
-    colors[6] = Eigen::Vector3f(0, 0, 255);  // C1
-    colors[7] = Eigen::Vector3f(0, 0, 255);  // C1
-    colors[8] = Eigen::Vector3f(0, 0, 255);  // C1
+    std::vector<Eigen::Vector3f> corner3(this->num_points_);
+    corner3[0] = Eigen::Vector3f(dims(0), 0, -dims(2));
+    corner3[1] = Eigen::Vector3f(-dims(0), 0, -dims(2));
+    corner3[2] = Eigen::Vector3f(-dims(0), 0, dims(2));
+    corners[2] = corner3;
 
-    colors[9] = Eigen::Vector3f(255, 0, 255);  // C1
-    colors[10] = Eigen::Vector3f(255, 0, 255);  // C2
-    colors[11] = Eigen::Vector3f(255, 0, 255);  // C2
+    std::vector<Eigen::Vector3f> corner4(this->num_points_);
+    corner4[0] = Eigen::Vector3f(0, -dims(1), -dims(2));
+    corner4[1] = Eigen::Vector3f(0, dims(1), dims(2));
+    corner4[2] = Eigen::Vector3f(0, dims(1), -dims(2));
+    corners[3] = corner4;
     
     cloud->clear();
-    for (int i = 0; i < SIZE; i++) {
-       PointT pt = this->Eigen2PointT(corners[i], colors[i]);
-       cloud->push_back(pt);
+    for (int i = 0; i < corners.size(); i++) {
+       for (int j = 0; j < corners[i].size(); j++) {
+          PointT pt = this->Eigen2PointT(corners[i][j], colors_[i]);
+          cloud->push_back(pt);
+       }
     }
 
+    std::cout << "SIZE:  " << cloud->size() << "\t" << corners.size() << "\n";
+    
+    // Trasformation
     Eigen::Quaternion<float> quaternion = Eigen::Quaternion<float>(
        bounding_box.pose.orientation.w, bounding_box.pose.orientation.x,
        bounding_box.pose.orientation.y, bounding_box.pose.orientation.z);
@@ -235,31 +236,60 @@ void OrientedBoundingBox::transformBoxCornerPoints(
     bounding_box.pose.position.y,
     bounding_box.pose.position.z;
     transform.rotate(quaternion);
-    
     pcl::transformPointCloud(*cloud, *cloud, transform);
-    PointT pt = this->Eigen2PointT(center, Eigen::Vector3f(255, 255, 255));
-    cloud->push_back(pt);
 
-    this->plotPlane(cloud);
-    
+    this->computePlaneCoefficients(plane_coefficients, cloud);
+
+    if (is_plot) {
+       pcl::PointCloud<PointT>::Ptr plane_cloud(new pcl::PointCloud<PointT>);
+       PointT pt = this->Eigen2PointT(center, Eigen::Vector3f(255, 255, 255));
+       // cloud->push_back(pt);
+       this->plotPlane(plane_cloud, cloud);
+       cloud->clear();
+       *cloud = *plane_cloud;
+    }
 }
 
-void OrientedBoundingBox::plotPlane(pcl::PointCloud<PointT>::Ptr cloud) {
-    if (cloud->size() < 3) {
+bool OrientedBoundingBox::computePlaneCoefficients(
+    std::vector<Eigen::Vector4f> &plane_coefficients,
+    const pcl::PointCloud<PointT>::Ptr plane_points) {
+    if (plane_points->size() < this->num_points_) {
+       ROS_ERROR("TO FEW POINTS \nCANNOT COMPUTE PLANE COEFFICIENTS");
+       return false;
+    }
+    for (int i = 0; i < plane_points->size(); i += this->num_points_) {
+       Eigen::Vector3f pt0 = plane_points->points[i].getVector3fMap();
+       Eigen::Vector3f pt2 = plane_points->points[i+2].getVector3fMap() - pt0;
+       Eigen::Vector3f pt1 = plane_points->points[i+1].getVector3fMap() - pt0;
+       Eigen::Vector3f normal = pt2.cross(pt1);
+       if (!isnan(normal(0)) && !isnan(normal(1)) && !isnan(normal(2))) {
+          Eigen::Vector4f coef;
+          coef.head<3>() = normal;
+          coef(3) = (normal(0) * pt0(0)) +
+             (normal(1) * pt0(1)) + (normal(2) * pt0(2));
+          plane_coefficients.push_back(coef);
+       }
+    }
+    return true;
+}
+
+void OrientedBoundingBox::plotPlane(
+    pcl::PointCloud<PointT>::Ptr cloud,
+    const pcl::PointCloud<PointT>::Ptr plane_points) {
+    if (plane_points->size() < this->num_points_) {
        ROS_ERROR("POINTS ON PLANE NOT PROVIDED");
        return;
     }
-
-    for (int i = 0; i < 12; i += 3) {
-       Eigen::Vector3f pt0 = cloud->points[i].getVector3fMap();
-       Eigen::Vector3f pt2 = cloud->points[i+1].getVector3fMap() - pt0;
-       Eigen::Vector3f pt1 = cloud->points[i+2].getVector3fMap() - pt0;
-    
+    cloud->clear();
+    for (int i = 0; i < plane_points->size(); i += this->num_points_) {
+       Eigen::Vector3f pt0 = plane_points->points[i].getVector3fMap();
+       Eigen::Vector3f pt2 = plane_points->points[i+2].getVector3fMap() - pt0;
+       Eigen::Vector3f pt1 = plane_points->points[i+1].getVector3fMap() - pt0;
        Eigen::Vector3f normal = pt2.cross(pt1);
 
        std::cout << normal  << "\n";
-
-       PointT color = cloud->points[i];
+       
+       PointT color = plane_points->points[i];
        for (float y = -1.0f; y < 1.0f; y += 0.01f) {
           for (float x = -1.0f; x < 1.0f; x += 0.01f) {
              PointT pt = color;

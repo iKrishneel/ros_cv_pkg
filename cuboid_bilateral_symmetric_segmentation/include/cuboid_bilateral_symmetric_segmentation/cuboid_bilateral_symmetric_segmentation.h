@@ -21,6 +21,7 @@
 #include <pcl/common/centroid.h>
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/segmentation/extract_clusters.h>
+#include <pcl/sample_consensus/sac_model_plane.h>
 
 #include <geometry_msgs/PointStamped.h>
 #include <sensor_msgs/Image.h>
