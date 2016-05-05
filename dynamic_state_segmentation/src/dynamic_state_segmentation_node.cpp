@@ -16,6 +16,8 @@ void DynamicStateSegmentation::onInit() {
        "target", 1);
     this->pub_edge_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "region", 1);
+    this->pub_normal_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+       "normals", 1);
      this->pub_indices_ = this->pnh_.advertise<
         jsk_recognition_msgs::ClusterPointIndices>("indices", 1);
 }
@@ -162,6 +164,11 @@ void DynamicStateSegmentation::cloudCB(
     pcl::toROSMsg(*seed_cloud, ros_edge);
     ros_edge.header = cloud_msg->header;
     this->pub_edge_.publish(ros_edge);
+
+    sensor_msgs::PointCloud2 ros_normals;
+    pcl::toROSMsg(*seed_normals, ros_normals);
+    ros_normals.header = cloud_msg->header;
+    this->pub_normal_.publish(ros_normals);
 }
 
 void DynamicStateSegmentation::seedCorrespondingRegion(
