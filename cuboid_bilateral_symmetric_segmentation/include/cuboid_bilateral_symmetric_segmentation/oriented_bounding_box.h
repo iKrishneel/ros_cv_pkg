@@ -72,7 +72,8 @@ class OrientedBoundingBox {
     bool computePlaneCoefficients(std::vector<Eigen::Vector4f> &,
                                   const pcl::PointCloud<PointT>::Ptr);
     void plotPlane(pcl::PointCloud<PointT>::Ptr,
-                  const pcl::PointCloud<PointT>::Ptr);
+		   const pcl::PointCloud<PointT>::Ptr,
+		   const int = 0, const int = 0);
 };
 
 #endif  // _ORIENTED_BOUNDING_BOX_H_

@@ -299,6 +299,10 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
        return false;
     }
 
+    //! plot plane
+    pcl::PointCloud<PointT>::Ptr plane(new pcl::PointCloud<PointT>);
+    this->plotPlane(plane, temp_cloud, 3*3);
+    
     //! reflected point
     temp_cloud->clear();
     for (int i = 0; i < 1; i++) {
@@ -322,7 +326,8 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
        }
     }
     cloud->clear();
-    *cloud = *temp_cloud;
+    *cloud += *temp_cloud;
+    *cloud += *plane;
 }
 
 int main(int argc, char *argv[]) {

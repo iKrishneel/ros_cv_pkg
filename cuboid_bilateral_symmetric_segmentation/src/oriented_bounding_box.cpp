@@ -224,7 +224,7 @@ void OrientedBoundingBox::transformBoxCornerPoints(
        }
     }
 
-    std::cout << "SIZE:  " << cloud->size() << "\t" << corners.size() << "\n";
+    // std::cout << "SIZE:  " << cloud->size() << "\t" << corners.size() << "\n";
     
     // Trasformation
     Eigen::Quaternion<float> quaternion = Eigen::Quaternion<float>(
@@ -275,13 +275,14 @@ bool OrientedBoundingBox::computePlaneCoefficients(
 
 void OrientedBoundingBox::plotPlane(
     pcl::PointCloud<PointT>::Ptr cloud,
-    const pcl::PointCloud<PointT>::Ptr plane_points) {
+    const pcl::PointCloud<PointT>::Ptr plane_points,
+    const int s_index, const int t_plane) {
     if (plane_points->size() < this->num_points_) {
        ROS_ERROR("POINTS ON PLANE NOT PROVIDED");
        return;
     }
-    cloud->clear();
-    for (int i = 0; i < plane_points->size(); i += this->num_points_) {
+    // cloud->clear();
+    for (int i = s_index; i < plane_points->size() - t_plane; i += this->num_points_) {
        Eigen::Vector3f pt0 = plane_points->points[i].getVector3fMap();
        Eigen::Vector3f pt2 = plane_points->points[i+2].getVector3fMap() - pt0;
        Eigen::Vector3f pt1 = plane_points->points[i+1].getVector3fMap() - pt0;
