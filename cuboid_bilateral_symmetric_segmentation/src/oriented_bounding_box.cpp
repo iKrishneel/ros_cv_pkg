@@ -282,7 +282,8 @@ void OrientedBoundingBox::plotPlane(
        return;
     }
     // cloud->clear();
-    for (int i = s_index; i < plane_points->size() - t_plane; i += this->num_points_) {
+    for (int i = s_index; i < plane_points->size() - t_plane;
+         i += this->num_points_) {
        Eigen::Vector3f pt0 = plane_points->points[i].getVector3fMap();
        Eigen::Vector3f pt2 = plane_points->points[i+2].getVector3fMap() - pt0;
        Eigen::Vector3f pt1 = plane_points->points[i+1].getVector3fMap() - pt0;

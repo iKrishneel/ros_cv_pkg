@@ -22,6 +22,7 @@
 #include <pcl/filters/radius_outlier_removal.h>
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/sample_consensus/sac_model_plane.h>
+#include <pcl/filters/voxel_grid_occlusion_estimation.h>
 
 #include <geometry_msgs/PointStamped.h>
 #include <sensor_msgs/Image.h>
@@ -42,14 +43,17 @@
 #include <opencv2/opencv.hpp>
 #include <boost/thread/mutex.hpp>
 
-// namespace jsk_msgs = jsk_recognition_msgs;
-
 class CuboidBilateralSymmetricSegmentation:
     public SupervoxelSegmentation,
     public OrientedBoundingBox {
+   
     typedef pcl::PointXYZRGB PointT;
     typedef pcl::Normal NormalT;
     typedef pcl::SupervoxelClustering<PointT>::VoxelAdjacencyList AdjacencyList;
+
+    typedef std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> SupervoxelMap;
+    typedef std::map<uint32_t, int> UInt32Map;
+    typedef pcl::VoxelGridOcclusionEstimation<PointT> OcclusionHandler;
    
  private:
     boost::mutex mutex_;
@@ -65,11 +69,10 @@ class CuboidBilateralSymmetricSegmentation:
     message_filters::Subscriber<jsk_msgs::PolygonArray> sub_planes_;
     message_filters::Subscriber<jsk_msgs::ModelCoefficientsArray> sub_coef_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
-   
-    typedef std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> SupervoxelMap;
-    typedef std::map<uint32_t, int> UInt32Map;
 
     uint32_t min_cluster_size_;
+    float leaf_size_;
+    boost::shared_ptr<OcclusionHandler> occlusion_handler_;
    
  protected:
     void onInit();
@@ -102,7 +105,7 @@ class CuboidBilateralSymmetricSegmentation:
     bool symmetricalConsistency(pcl::PointCloud<PointT>::Ptr,
                                 const pcl::PointCloud<NormalT>::Ptr,
                                 const jsk_msgs::BoundingBox);
-
+    bool occlusionRegionCheck(const PointT);
 };
 
 

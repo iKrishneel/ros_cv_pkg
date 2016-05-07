@@ -2,7 +2,10 @@
 #include <cuboid_bilateral_symmetric_segmentation/cuboid_bilateral_symmetric_segmentation.h>
 
 CuboidBilateralSymmetricSegmentation::CuboidBilateralSymmetricSegmentation() :
-    min_cluster_size_(50) {
+    min_cluster_size_(50), leaf_size_(0.01f) {
+    this->occlusion_handler_ = boost::shared_ptr<OcclusionHandler>(
+      new OcclusionHandler);
+    this->pnh_.getParam("leaf_size", this->leaf_size_);
     this->onInit();
 }
 
@@ -12,10 +15,10 @@ void CuboidBilateralSymmetricSegmentation::onInit() {
        "/cbss/output/cloud", 1);
     this->pub_edge_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/cbss/output/edges", 1);
-     this->pub_indices_ = this->pnh_.advertise<jsk_msgs::ClusterPointIndices>(
+    this->pub_indices_ = this->pnh_.advertise<jsk_msgs::ClusterPointIndices>(
         "/cbss/output/indices", 1);
-     this->pub_bbox_ = this->pnh_.advertise<jsk_msgs::BoundingBoxArray>(
-        "/cbss/output/bounding_box", 1);
+    this->pub_bbox_ = this->pnh_.advertise<jsk_msgs::BoundingBoxArray>(
+       "/cbss/output/bounding_box", 1);
 }
 
 void CuboidBilateralSymmetricSegmentation::subscribe() {
@@ -62,21 +65,28 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
 
     // publish supervoxel
     sensor_msgs::PointCloud2 ros_voxels;
-    jsk_recognition_msgs::ClusterPointIndices ros_indices;
+    jsk_msgs::ClusterPointIndices ros_indices;
     this->publishSupervoxel(supervoxel_clusters,
                             ros_voxels, ros_indices, cloud_msg->header);
     this->pub_cloud_.publish(ros_voxels);
     this->pub_indices_.publish(ros_indices);
 
     // publish bounding
-    jsk_recognition_msgs::BoundingBoxArray bounding_boxes;
+    jsk_msgs::BoundingBoxArray bounding_boxes;
     bounding_box.header = cloud_msg->header;
     bounding_boxes.boxes.push_back(bounding_box);
     bounding_boxes.header = cloud_msg->header;
     pub_bbox_.publish(bounding_boxes);
-    
 
+    
+    std::clock_t start;
+    double duration;
+    start = std::clock();
+    
     this->symmetricalConsistency(cloud, normals, bounding_box);
+
+    duration = (std::clock() - start) / static_cast<double>(CLOCKS_PER_SEC);
+    ROS_WARN("DURATION: %f", duration);
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*cloud, ros_cloud);
@@ -189,17 +199,14 @@ float CuboidBilateralSymmetricSegmentation::coplanarityCriteria(
                               n_normal.norm() * normal.norm()));
     float ang_thresh = angle_thresh * (M_PI/180.0f);
     float coplannarity = 0.0f;
-    // std::cout << tetha * (180/M_PI)  << "\t";
     if (tetha < ang_thresh) {
        float direct1 = normal.dot(centroid - n_centroid);
        float direct2 = n_normal.dot(centroid - n_centroid);
        float dist = std::fabs(std::max(direct1, direct2));
-       // std::cout << dist << "\t" << dist_thresh << "\t" << ang_thresh;
        if (dist < dist_thresh) {
           coplannarity = 1.0f;
        }
     }
-    // std::cout  << "\n";
     return coplannarity;
 }
 
@@ -286,11 +293,19 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
     pcl::PointCloud<PointT>::Ptr cloud,
     const pcl::PointCloud<NormalT>::Ptr normals,
     const jsk_msgs::BoundingBox bounding_box) {
-    if (cloud->empty()) {
+    if (cloud->empty() || cloud->size() != normals->size()) {
        ROS_ERROR("EMPTY CLOUD FOR SYMMETRICAL CONSISTENCY");
        return false;
     }
+    this->occlusion_handler_->setInputCloud(cloud);
+    this->occlusion_handler_->setLeafSize(leaf_size_, leaf_size_, leaf_size_);
+    this->occlusion_handler_->initializeVoxelGrid();
+    
     pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
+    this->occlusion_handler_->filter(*temp_cloud);
+    cloud->clear();
+    *cloud = *temp_cloud;
+    
     std::vector<Eigen::Vector4f> plane_coefficients;
     this->transformBoxCornerPoints(plane_coefficients,
                                    temp_cloud, bounding_box);
@@ -309,8 +324,6 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
        i = 3;
        Eigen::Vector3f plane_n = plane_coefficients[i].head<3>();
        for (int j = 0; j < cloud->size(); j++) {
-          // double d = pcl::pointToPlaneDistance<PointT>(cloud->points[j],
-          //                                              plane_coefficients[i]);
           Eigen::Vector3f n = normals->points[j].getNormalVector3fMap();
           Eigen::Vector3f p = cloud->points[j].getVector3fMap();
           float beta = p(0)*plane_n(0) + p(1)*plane_n(1) + p(2)*plane_n(2);
@@ -322,6 +335,16 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
           pt.x = p(0) + (t * 2 * plane_n(0));
           pt.y = p(1) + (t * 2 * plane_n(1));
           pt.z = p(2) + (t * 2 * plane_n(2));
+          
+          if (this->occlusionRegionCheck(pt)) {
+             pt.r = 0;
+             pt.b = 255;
+             pt.g = 255;
+          } else {
+             pt.r = 0;
+             pt.b = 255;
+             pt.g = 0;
+          }
           temp_cloud->push_back(pt);
        }
     }
@@ -330,10 +353,19 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
     *cloud += *plane;
 }
 
+bool CuboidBilateralSymmetricSegmentation::occlusionRegionCheck(
+    const PointT voxel) {
+    Eigen::Vector3i grid_coord = Eigen::Vector3i();
+    grid_coord = this->occlusion_handler_->getGridCoordinates(
+       voxel.x, voxel.y, voxel.z);
+    int state = INT_MAX;
+    occlusion_handler_->occlusionEstimation(state, grid_coord);
+    return (state == 0) ? false : true;
+}
+
 int main(int argc, char *argv[]) {
     ros::init(argc, argv, "cuboid_bilateral_symmetric_segmentation");
     CuboidBilateralSymmetricSegmentation cbss;
     ros::spin();
     return 0;
 }
-
