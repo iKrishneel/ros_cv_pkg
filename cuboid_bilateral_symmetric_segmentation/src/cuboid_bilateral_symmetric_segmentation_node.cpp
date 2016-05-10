@@ -311,8 +311,10 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
     
     pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
     this->occlusion_handler_->filter(*temp_cloud);
-    cloud->clear();
-    *cloud = *temp_cloud;
+    // cloud->clear();
+    // *cloud = *temp_cloud;
+
+    //! update the normals ?
     
     std::vector<Eigen::Vector4f> plane_coefficients;
     this->transformBoxCornerPoints(plane_coefficients,
@@ -326,7 +328,7 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
     pcl::PointCloud<PointT>::Ptr plane(new pcl::PointCloud<PointT>);
     this->plotPlane(plane, temp_cloud, 3*3);
 
-    double neigbor_dist_thresh = 0.01f;
+    double neigbor_dist_thresh = 0.02f;
     
     //! reflected point
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr symm_normal(
@@ -347,7 +349,7 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
           pt.x = p(0) + (t * 2 * plane_n(0));
           pt.y = p(1) + (t * 2 * plane_n(1));
           pt.z = p(2) + (t * 2 * plane_n(2));
-
+          
           if (this->occlusionRegionCheck(pt)) {
              pt.r = 0;
              pt.b = 255;
@@ -366,31 +368,13 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
                 pt.b = 0;
                 pt.g = 0;
              } else {  //! get reflected normal
-                Eigen::Vector3f symm_n = n - (
-                   2.0f * ((plane_n.normalized()).dot(n)) *
-                   plane_n.normalized());
+                Eigen::Vector3f symm_n = n -
+                   (2.0f*((plane_n.normalized()).dot(n))*plane_n.normalized());
                 Eigen::Vector3f sneig_r = normals->points[
                    nidx].getNormalVector3fMap();
                 float dot_prod = (symm_n.dot(sneig_r)) / (
                    symm_n.norm() * sneig_r.norm());
                 float angle = std::acos(dot_prod) * (180.0f/M_PI);
-
-                symm_normal->push_back(
-                   this->convertVector4fToPointXyzRgbNormal(
-                      pt.getVector3fMap(),
-                      symm_n, Eigen::Vector3f(0, 255, 0)));
-
-                symm_normal->push_back(
-                   this->convertVector4fToPointXyzRgbNormal(
-                      cloud->points[nidx].getVector3fMap(),
-                      sneig_r, Eigen::Vector3f(255, 0, 0)));
-                
-                symm_normal->push_back(
-                   this->convertVector4fToPointXyzRgbNormal(
-                      p, n, Eigen::Vector3f(0, 0, 255)));
-                std::cout << "Size: " << symm_normal->size()  << "\n";
-                j += 1000;
-                
                 
                 // std::cout << "ANGLE: " << angle  << "\n";
                 if (angle > 20) {
@@ -404,6 +388,22 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
                    pt.b = 255;
                    pt.g = 0;
                 }
+
+                // for visualization
+                symm_normal->push_back(
+                   this->convertVector4fToPointXyzRgbNormal(
+                      pt.getVector3fMap(),
+                      symm_n, Eigen::Vector3f(0, 255, 0)));
+
+                symm_normal->push_back(
+                   this->convertVector4fToPointXyzRgbNormal(
+                      cloud->points[nidx].getVector3fMap(),
+                      sneig_r, Eigen::Vector3f(255, 0, 0)));
+                
+                symm_normal->push_back(
+                   this->convertVector4fToPointXyzRgbNormal(
+                      p, n, Eigen::Vector3f(0, 0, 255)));
+
              }
           }
           temp_cloud->push_back(pt);
