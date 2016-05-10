@@ -50,11 +50,13 @@ class CuboidBilateralSymmetricSegmentation:
    
     typedef pcl::PointXYZRGB PointT;
     typedef pcl::Normal NormalT;
+    typedef pcl::PointXYZRGBNormal PointNormalT;
     typedef pcl::SupervoxelClustering<PointT>::VoxelAdjacencyList AdjacencyList;
 
     typedef std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> SupervoxelMap;
     typedef std::map<uint32_t, int> UInt32Map;
     typedef pcl::VoxelGridOcclusionEstimation<PointT> OcclusionHandler;
+    // typedef pcl::VoxelGridOcclusionEstimation<PointNormalT> OcclusionHandler;
    
  private:
     boost::mutex mutex_;
@@ -109,7 +111,7 @@ class CuboidBilateralSymmetricSegmentation:
                                  const jsk_msgs::ModelCoefficientsArrayConstPtr &,
                                  const int);
     bool symmetricalConsistency(pcl::PointCloud<PointT>::Ptr,
-                                const pcl::PointCloud<NormalT>::Ptr,
+                                pcl::PointCloud<NormalT>::Ptr,
                                 const jsk_msgs::BoundingBox);
     bool occlusionRegionCheck(const PointT);
     template<class T>

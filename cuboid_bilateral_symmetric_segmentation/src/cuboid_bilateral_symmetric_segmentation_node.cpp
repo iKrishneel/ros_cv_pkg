@@ -296,25 +296,40 @@ void CuboidBilateralSymmetricSegmentation::supervoxel3DBoundingBox(
 }
 
 bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
-    pcl::PointCloud<PointT>::Ptr cloud,
-    const pcl::PointCloud<NormalT>::Ptr normals,
+    pcl::PointCloud<PointT>::Ptr cloud, pcl::PointCloud<NormalT>::Ptr normals,
     const jsk_msgs::BoundingBox bounding_box) {
     if (cloud->empty() || cloud->size() != normals->size()) {
        ROS_ERROR("EMPTY CLOUD FOR SYMMETRICAL CONSISTENCY");
        return false;
     }
+    /* FUSE SO NORMAL AND POINTS BOTH FILTERED
+    pcl::PointCloud<PointNormalT>::Ptr cloud_normals(
+       new pcl::PointCloud<PointNormalT>);
+    for (int i = 0; i < cloud->size(); i++) {
+       PointNormalT pt = this->convertVector4fToPointXyzRgbNormal(
+          cloud->points[i].getVector3fMap(),
+          normals->points[i].getNormalVector3fMap(),
+          Eigen::Vector3f(cloud->points[i].r, cloud->points[i].g,
+                          cloud->points[i].b));
+       cloud_normals->push_back(pt);
+    }
+    */
     this->kdtree_->setInputCloud(cloud);
-    
+
     this->occlusion_handler_->setInputCloud(cloud);
     this->occlusion_handler_->setLeafSize(leaf_size_, leaf_size_, leaf_size_);
     this->occlusion_handler_->initializeVoxelGrid();
-    
+
+    /* FUSE SO NORMAL AND POINTS BOTH FILTERED
+    pcl::PointCloud<PointNormalT>::Ptr temp_cloud(
+       new pcl::PointCloud<PointNormalT>);
+    this->occlusion_handler_->filter(*temp_cloud);
+    */
+
     pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
     this->occlusion_handler_->filter(*temp_cloud);
     // cloud->clear();
     // *cloud = *temp_cloud;
-
-    //! update the normals ?
     
     std::vector<Eigen::Vector4f> plane_coefficients;
     this->transformBoxCornerPoints(plane_coefficients,
@@ -413,7 +428,6 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
     *cloud += *plane;
 
     // just for viz
-    
     sensor_msgs::PointCloud2 ros_normal;
     pcl::toROSMsg(*symm_normal, ros_normal);
     ros_normal.header = this->header_;
