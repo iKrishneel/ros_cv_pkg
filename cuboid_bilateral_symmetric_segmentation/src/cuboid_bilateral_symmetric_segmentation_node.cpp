@@ -4,7 +4,9 @@
 CuboidBilateralSymmetricSegmentation::CuboidBilateralSymmetricSegmentation() :
     min_cluster_size_(50), leaf_size_(0.01f) {
     this->occlusion_handler_ = boost::shared_ptr<OcclusionHandler>(
-      new OcclusionHandler);
+       new OcclusionHandler);
+    this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
+    
     this->pnh_.getParam("leaf_size", this->leaf_size_);
     this->onInit();
 }
@@ -19,6 +21,9 @@ void CuboidBilateralSymmetricSegmentation::onInit() {
         "/cbss/output/indices", 1);
     this->pub_bbox_ = this->pnh_.advertise<jsk_msgs::BoundingBoxArray>(
        "/cbss/output/bounding_box", 1);
+
+    this->pub_normal_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+       "/cbss/output/normals", 1);
 }
 
 void CuboidBilateralSymmetricSegmentation::subscribe() {
@@ -58,6 +63,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     this->supervoxelDecomposition(supervoxel_clusters, sv_normals, cloud);
 
     std::cout << "CLUSTER: " << supervoxel_clusters.size()  << "\n";
+    this->header_ = cloud_msg->header;
     
     jsk_msgs::BoundingBox bounding_box;
     this->supervoxel3DBoundingBox(bounding_box, supervoxel_clusters,
@@ -297,6 +303,8 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
        ROS_ERROR("EMPTY CLOUD FOR SYMMETRICAL CONSISTENCY");
        return false;
     }
+    this->kdtree_->setInputCloud(cloud);
+    
     this->occlusion_handler_->setInputCloud(cloud);
     this->occlusion_handler_->setLeafSize(leaf_size_, leaf_size_, leaf_size_);
     this->occlusion_handler_->initializeVoxelGrid();
@@ -317,8 +325,12 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
     //! plot plane
     pcl::PointCloud<PointT>::Ptr plane(new pcl::PointCloud<PointT>);
     this->plotPlane(plane, temp_cloud, 3*3);
+
+    double neigbor_dist_thresh = 0.01f;
     
     //! reflected point
+    pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr symm_normal(
+       new pcl::PointCloud<pcl::PointXYZRGBNormal>);
     temp_cloud->clear();
     for (int i = 0; i < 1; i++) {
        i = 3;
@@ -335,15 +347,64 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
           pt.x = p(0) + (t * 2 * plane_n(0));
           pt.y = p(1) + (t * 2 * plane_n(1));
           pt.z = p(2) + (t * 2 * plane_n(2));
-          
+
           if (this->occlusionRegionCheck(pt)) {
              pt.r = 0;
              pt.b = 255;
              pt.g = 255;
           } else {
-             pt.r = 0;
-             pt.b = 255;
-             pt.g = 0;
+             std::vector<int> neigbor_indices;
+             this->getPointNeigbour<int>(neigbor_indices, pt, 1);
+             int nidx = neigbor_indices[0];
+             Eigen::Vector4f ref_pt = pt.getVector4fMap();
+             ref_pt(3) = 0.0f;
+             double distance = pcl::distances::l2(
+                ref_pt, cloud->points[nidx].getVector4fMap());
+             
+             if (distance > neigbor_dist_thresh) {
+                pt.r = 255;
+                pt.b = 0;
+                pt.g = 0;
+             } else {  //! get reflected normal
+                Eigen::Vector3f symm_n = n - (
+                   2.0f * ((plane_n.normalized()).dot(n)) *
+                   plane_n.normalized());
+                Eigen::Vector3f sneig_r = normals->points[
+                   nidx].getNormalVector3fMap();
+                float dot_prod = (symm_n.dot(sneig_r)) / (
+                   symm_n.norm() * sneig_r.norm());
+                float angle = std::acos(dot_prod) * (180.0f/M_PI);
+
+                symm_normal->push_back(
+                   this->convertVector4fToPointXyzRgbNormal(
+                      pt.getVector3fMap(),
+                      symm_n, Eigen::Vector3f(0, 255, 0)));
+
+                symm_normal->push_back(
+                   this->convertVector4fToPointXyzRgbNormal(
+                      cloud->points[nidx].getVector3fMap(),
+                      sneig_r, Eigen::Vector3f(255, 0, 0)));
+                
+                symm_normal->push_back(
+                   this->convertVector4fToPointXyzRgbNormal(
+                      p, n, Eigen::Vector3f(0, 0, 255)));
+                std::cout << "Size: " << symm_normal->size()  << "\n";
+                j += 1000;
+                
+                
+                // std::cout << "ANGLE: " << angle  << "\n";
+                if (angle > 20) {
+                   pt.r = 0;
+                   pt.b = 0;
+                   pt.g = 255;
+                } else {
+                   // std::cout << symm_n  << "\n\n" << sneig_r;
+                   // std::cout << "\n------------"  << "\n";
+                   pt.r = 0;
+                   pt.b = 255;
+                   pt.g = 0;
+                }
+             }
           }
           temp_cloud->push_back(pt);
        }
@@ -351,6 +412,13 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
     cloud->clear();
     *cloud += *temp_cloud;
     *cloud += *plane;
+
+    // just for viz
+    
+    sensor_msgs::PointCloud2 ros_normal;
+    pcl::toROSMsg(*symm_normal, ros_normal);
+    ros_normal.header = this->header_;
+    this->pub_normal_.publish(ros_normal);
 }
 
 bool CuboidBilateralSymmetricSegmentation::occlusionRegionCheck(
@@ -361,6 +429,42 @@ bool CuboidBilateralSymmetricSegmentation::occlusionRegionCheck(
     int state = INT_MAX;
     occlusion_handler_->occlusionEstimation(state, grid_coord);
     return (state == 0) ? false : true;
+}
+
+template<class T>
+void CuboidBilateralSymmetricSegmentation::getPointNeigbour(
+    std::vector<int> &neigbor_indices, const PointT seed_point,
+    const T K, bool is_knn) {
+    if (isnan(seed_point.x) || isnan(seed_point.y) || isnan(seed_point.z)) {
+       ROS_ERROR("POINT IS NAN. RETURING VOID IN GET NEIGBOUR");
+       return;
+    }
+    neigbor_indices.clear();
+    std::vector<float> point_squared_distance;
+    if (is_knn) {
+       int search_out = this->kdtree_->nearestKSearch(
+          seed_point, K, neigbor_indices, point_squared_distance);
+    } else {
+       int search_out = this->kdtree_->radiusSearch(
+          seed_point, K, neigbor_indices, point_squared_distance);
+    }
+}
+
+pcl::PointXYZRGBNormal
+CuboidBilateralSymmetricSegmentation::convertVector4fToPointXyzRgbNormal(
+    const Eigen::Vector3f &centroid, const Eigen::Vector3f &normal,
+    const Eigen::Vector3f color) {
+    pcl::PointXYZRGBNormal pt;
+    pt.x = centroid(0);
+    pt.y = centroid(1);
+    pt.z = centroid(2);
+    pt.r = color(0);
+    pt.g = color(1);
+    pt.b = color(2);
+    pt.normal_x = normal(0);
+    pt.normal_y = normal(1);
+    pt.normal_z = normal(2);
+    return pt;
 }
 
 int main(int argc, char *argv[]) {

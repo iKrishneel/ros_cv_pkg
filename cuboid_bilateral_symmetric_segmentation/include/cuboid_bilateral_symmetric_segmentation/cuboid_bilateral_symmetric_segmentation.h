@@ -29,6 +29,7 @@
 #include <sensor_msgs/CameraInfo.h>
 #include <sensor_msgs/image_encodings.h>
 #include <cv_bridge/cv_bridge.h>
+#include <std_msgs/Header.h>
 
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
 #include <jsk_recognition_utils/geo/polygon.h>
@@ -73,6 +74,9 @@ class CuboidBilateralSymmetricSegmentation:
     uint32_t min_cluster_size_;
     float leaf_size_;
     boost::shared_ptr<OcclusionHandler> occlusion_handler_;
+    pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
+
+    std_msgs::Header header_;
    
  protected:
     void onInit();
@@ -83,6 +87,8 @@ class CuboidBilateralSymmetricSegmentation:
     ros::Publisher pub_edge_;
     ros::Publisher pub_indices_;
     ros::Publisher pub_bbox_;
+    ros::Publisher pub_normal_;
+
    
  public:
     CuboidBilateralSymmetricSegmentation();
@@ -106,6 +112,13 @@ class CuboidBilateralSymmetricSegmentation:
                                 const pcl::PointCloud<NormalT>::Ptr,
                                 const jsk_msgs::BoundingBox);
     bool occlusionRegionCheck(const PointT);
+    template<class T>
+    void getPointNeigbour(std::vector<int> &, const PointT,
+                          const T = 8, bool = true);
+
+    pcl::PointXYZRGBNormal convertVector4fToPointXyzRgbNormal(
+       const Eigen::Vector3f &, const Eigen::Vector3f &,
+       const Eigen::Vector3f);
 };
 
 
