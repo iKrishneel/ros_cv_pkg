@@ -349,62 +349,61 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
           pt.x = p(0) + (t * 2 * plane_n(0));
           pt.y = p(1) + (t * 2 * plane_n(1));
           pt.z = p(2) + (t * 2 * plane_n(2));
-          
-          if (this->occlusionRegionCheck(pt)) {
-             pt.r = 0;
-             pt.b = 255;
-             pt.g = 255;
-          } else {
-             std::vector<int> neigbor_indices;
-             this->getPointNeigbour<int>(neigbor_indices, pt, 1);
-             int nidx = neigbor_indices[0];
-             Eigen::Vector4f ref_pt = pt.getVector4fMap();
-             ref_pt(3) = 0.0f;
-             double distance = pcl::distances::l2(
-                ref_pt, cloud->points[nidx].getVector4fMap());
-             
-             if (distance > neigbor_dist_thresh) {
+
+          std::vector<int> neigbor_indices;
+          this->getPointNeigbour<int>(neigbor_indices, pt, 1);
+          int nidx = neigbor_indices[0];
+          Eigen::Vector4f ref_pt = pt.getVector4fMap();
+          ref_pt(3) = 0.0f;
+          double distance = pcl::distances::l2(
+             ref_pt, cloud->points[nidx].getVector4fMap());
+
+          if (distance > neigbor_dist_thresh) {
+             if (this->occlusionRegionCheck(pt)) {
+                // ASSIGN WEIGHT TO OBJECT
+                pt.r = 0;
+                pt.b = 255;
+                pt.g = 255;
+             } else {
+                // SET TO BACKGROUND
                 pt.r = 255;
                 pt.b = 0;
                 pt.g = 0;
-             } else {  //! get reflected normal
-                Eigen::Vector3f symm_n = n -
-                   (2.0f*((plane_n.normalized()).dot(n))*plane_n.normalized());
-                Eigen::Vector3f sneig_r = normals->points[
-                   nidx].getNormalVector3fMap();
-                float dot_prod = (symm_n.dot(sneig_r)) / (
-                   symm_n.norm() * sneig_r.norm());
-                float angle = std::acos(dot_prod) * (180.0f/M_PI);
-                
-                // std::cout << "ANGLE: " << angle  << "\n";
-                if (angle > 20) {
-                   pt.r = 0;
-                   pt.b = 0;
-                   pt.g = 255;
-                } else {
-                   // std::cout << symm_n  << "\n\n" << sneig_r;
-                   // std::cout << "\n------------"  << "\n";
-                   pt.r = 0;
-                   pt.b = 255;
-                   pt.g = 0;
-                }
-
-                // for visualization
-                symm_normal->push_back(
-                   this->convertVector4fToPointXyzRgbNormal(
-                      pt.getVector3fMap(),
-                      symm_n, Eigen::Vector3f(0, 255, 0)));
-
-                symm_normal->push_back(
-                   this->convertVector4fToPointXyzRgbNormal(
-                      cloud->points[nidx].getVector3fMap(),
-                      sneig_r, Eigen::Vector3f(255, 0, 0)));
-                
-                symm_normal->push_back(
-                   this->convertVector4fToPointXyzRgbNormal(
-                      p, n, Eigen::Vector3f(0, 0, 255)));
-
              }
+          } else {  //! get reflected normal
+             Eigen::Vector3f symm_n = n -
+                (2.0f*((plane_n.normalized()).dot(n))*plane_n.normalized());
+             Eigen::Vector3f sneig_r = normals->points[
+                nidx].getNormalVector3fMap();
+             float dot_prod = (symm_n.dot(sneig_r)) / (
+                symm_n.norm() * sneig_r.norm());
+             float angle = std::acos(dot_prod) * (180.0f/M_PI);
+
+             if (angle > 20) {
+                pt.r = 0;
+                pt.b = 0;
+                pt.g = 255;
+             } else {
+                pt.r = 0;
+                pt.b = 255;
+                pt.g = 0;
+             }
+
+             // for visualization
+             symm_normal->push_back(
+                this->convertVector4fToPointXyzRgbNormal(
+                   pt.getVector3fMap(),
+                   symm_n, Eigen::Vector3f(0, 255, 0)));
+
+             symm_normal->push_back(
+                this->convertVector4fToPointXyzRgbNormal(
+                   cloud->points[nidx].getVector3fMap(),
+                   sneig_r, Eigen::Vector3f(255, 0, 0)));
+                
+             symm_normal->push_back(
+                this->convertVector4fToPointXyzRgbNormal(
+                   p, n, Eigen::Vector3f(0, 0, 255)));
+
           }
           temp_cloud->push_back(pt);
        }
