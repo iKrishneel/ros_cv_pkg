@@ -1,0 +1,12 @@
+\subsubsection parameters ROS parameters
+
+Reads and maintains the following parameters on the ROS server
+
+- \b "~quaternion_x" : \b [double] quaternion x min: -1.0, default: -0.045, max: 1.0
+- \b "~quaternion_y" : \b [double] quaternion y min: -1.0, default: 0.16, max: 1.0
+- \b "~quaternion_z" : \b [double] quaternion z min: -1.0, default: 1.0, max: 1.0
+- \b "~quaternion_w" : \b [double] quaternion w min: -1.0, default: 0.0, max: 1.0
+- \b "~translation_x" : \b [double] translation x min: -1.0, default: -0.08, max: 1.0
+- \b "~translation_y" : \b [double] translation y min: -1.0, default: -0.03, max: 1.0
+- \b "~translation_z" : \b [double] translation z min: -1.0, default: -0.02, max: 1.0
+

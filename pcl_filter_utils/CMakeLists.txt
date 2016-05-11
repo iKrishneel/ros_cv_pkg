@@ -12,7 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
 )
 
-find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msgs std_srvs geometry_msgs roscpp rospy sensor_msgs visualization_msgs message_filters message_generation jsk_pcl_ros interactive_markers pcl_conversions jsk_topic_tools rviz eigen_conversions dynamic_tf_publisher jsk_interactive_marker jsk_recognition_msgs move_base_msgs rosgraph_msgs topic_tools jsk_topic_tools jsk_ik_server pcl_msgs jsk_footstep_msgs jsk_perception jsk_calibration resized_image_transport smach_msgs pcl_ros nav_msgs tf dynamic_reconfigure roseus)
+find_package(catkin REQUIRED COMPONENTS message_generation std_msgs std_srvs geometry_msgs roscpp rospy sensor_msgs message_filters message_runtime jsk_pcl_ros interactive_markers pcl_conversions jsk_topic_tools rviz eigen_conversions jsk_recognition_msgs pcl_msgs jsk_perception pcl_ros nav_msgs tf dynamic_reconfigure)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -90,8 +90,8 @@ generate_dynamic_reconfigure_options(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
  INCLUDE_DIRS include
- LIBRARIES pcl_filter_utils
- CATKIN_DEPENDS dynamic_reconfigure #cv_bridge image_transport roscpp sensor_msgs
+ #LIBRARIES pcl_filter_utils
+ CATKIN_DEPENDS rospy roscpp message_runtime  #cv_bridge image_transport roscpp sensor_msgs
  DEPENDS system_lib
 )
 
@@ -116,7 +116,7 @@ add_executable(pcl_filter_utils_node src/pcl_filter_utils_node.cpp)
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
-add_dependencies(pcl_filter_utils_node ${PROJECT_NAME}_gencfg)
+add_dependencies(pcl_filter_utils_node ${PROJECT_NAME}_gencfg ${PROJECT_NAME}_gencpp)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(pcl_filter_utils_node

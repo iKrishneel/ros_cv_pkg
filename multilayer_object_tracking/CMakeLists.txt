@@ -14,7 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
 )
 
-find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msgs std_srvs geometry_msgs roscpp rospy sensor_msgs visualization_msgs message_filters message_generation jsk_pcl_ros interactive_markers pcl_conversions jsk_topic_tools rviz eigen_conversions dynamic_tf_publisher jsk_interactive_marker jsk_recognition_msgs move_base_msgs rosgraph_msgs topic_tools jsk_topic_tools jsk_ik_server pcl_msgs jsk_footstep_msgs jsk_perception jsk_calibration resized_image_transport smach_msgs pcl_ros nav_msgs tf dynamic_reconfigure roseus)
+find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msgs std_srvs geometry_msgs roscpp rospy sensor_msgs visualization_msgs message_filters message_runtime jsk_pcl_ros pcl_conversions rviz eigen_conversions dynamic_tf_publisher jsk_recognition_msgs pcl_msgs jsk_perception jsk_calibration resized_image_transport pcl_ros nav_msgs tf dynamic_reconfigure)
 
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -86,10 +86,10 @@ generate_messages(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-    INCLUDE_DIRS include
-    LIBRARIES multilayer_object_tracking
-    CATKIN_DEPENDS roscpp
-    DEPENDS system_lib
+  INCLUDE_DIRS include
+  LIBRARIES multilayer_object_tracking
+  CATKIN_DEPENDS roscpp cv_bridge message_runtime
+  DEPENDS system_lib
 )
 
 ###########

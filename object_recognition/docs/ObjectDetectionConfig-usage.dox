@@ -1,0 +1,11 @@
+\subsubsection usage Usage
+\verbatim
+<node name="object_recognition" pkg="object_recognition" type="object_recognition">
+  <param name="trainer_manifest" type="str" value="sliding_window_trainer_manifest.xml" />
+  <param name="image_downsize" type="int" value="2" />
+  <param name="scaling_factor" type="double" value="-0.06" />
+  <param name="stack_size" type="int" value="2" />
+  <param name="sliding_window_increment" type="int" value="16" />
+</node>
+\endverbatim
+

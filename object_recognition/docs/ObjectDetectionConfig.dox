@@ -1,0 +1,10 @@
+\subsubsection parameters ROS parameters
+
+Reads and maintains the following parameters on the ROS server
+
+- \b "~trainer_manifest" : \b [str] name of trainer manifest file min: , default: sliding_window_trainer_manifest.xml, max: 
+- \b "~image_downsize" : \b [int] factor for resizing the image min: 1, default: 2, max: 4
+- \b "~scaling_factor" : \b [double] sliding window scaling factor in each stack min: -0.9, default: -0.06, max: 0.9
+- \b "~stack_size" : \b [int] number of image stack in pyramid min: 1, default: 2, max: 15
+- \b "~sliding_window_increment" : \b [int] number of pixels to increment the window min: 4, default: 16, max: 32
+

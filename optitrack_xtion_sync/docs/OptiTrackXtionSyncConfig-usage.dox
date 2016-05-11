@@ -1,0 +1,13 @@
+\subsubsection usage Usage
+\verbatim
+<node name="optitrack_xtion_sync" pkg="optitrack_xtion_sync" type="optitrack_xtion_sync">
+  <param name="quaternion_x" type="double" value="-0.045" />
+  <param name="quaternion_y" type="double" value="0.16" />
+  <param name="quaternion_z" type="double" value="1.0" />
+  <param name="quaternion_w" type="double" value="0.0" />
+  <param name="translation_x" type="double" value="-0.08" />
+  <param name="translation_y" type="double" value="-0.03" />
+  <param name="translation_z" type="double" value="-0.02" />
+</node>
+\endverbatim
+
