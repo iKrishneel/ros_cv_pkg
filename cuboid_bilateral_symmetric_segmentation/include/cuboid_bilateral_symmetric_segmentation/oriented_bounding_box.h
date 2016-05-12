@@ -74,6 +74,8 @@ class OrientedBoundingBox {
     void plotPlane(pcl::PointCloud<PointT>::Ptr,
                    const pcl::PointCloud<PointT>::Ptr,
                    const int = 0, const int = 0);
+    void plotPlane(pcl::PointCloud<PointT>::Ptr, const Eigen::Vector4f,
+                   const Eigen::Vector3f = Eigen::Vector3f(255, 0, 25));
 };
 
 #endif  // _ORIENTED_BOUNDING_BOX_H_

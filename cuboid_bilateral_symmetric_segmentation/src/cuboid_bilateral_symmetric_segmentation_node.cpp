@@ -198,7 +198,7 @@ void CuboidBilateralSymmetricSegmentation::supervoxelDecomposition(
 
 bool CuboidBilateralSymmetricSegmentation::mergeNeigboringSupervoxels(
     SupervoxelMap &supervoxel_clusters, const int index) {
-    if (supervoxel_clusters.empty() || index != -1) {
+    if (supervoxel_clusters.empty() || supervoxel_clusters.size() == -1) {
        ROS_ERROR("CANNOT MERGE DUE TO SIZE ERROR");
        return false;
     }
@@ -212,14 +212,19 @@ bool CuboidBilateralSymmetricSegmentation::mergeNeigboringSupervoxels(
        double dist = pcl::distances::l2(
           centroid, it->second->centroid_.getVector4fMap());
        int vsize = it->second->voxels_->size();
-       if (dist < proximity && vsize> this->min_cluster_size_) {
+       if (dist < proximity && vsize> this->min_cluster_size_ &&
+           it->first != index) {
           proximity = dist;
           idx = it->first;
        }
+
+       // std::cout << it->first  << "\n";
     }
     if (idx == -1) {
+       ROS_ERROR("NO NEAREST NEIGBOUR");
        return false;
     }
+    // std::cout << "MERGING: " << index << " \t" << idx  << "\n";
     this->updateSupervoxelClusters(supervoxel_clusters, index, idx);
     return true;
 }
@@ -315,22 +320,39 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
        ROS_ERROR("EMPTY SUPERVOXEL FOR SYMMETRICAL CONSISTENCY");
        return;
     }
+
+    bool has_neigbour = true;
+    int s_index = start_index;
+    
     jsk_msgs::BoundingBox bounding_box;
     pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
     pcl::PointCloud<NormalT>::Ptr in_normals(new pcl::PointCloud<NormalT>);
-    this->supervoxel3DBoundingBox(
-       bounding_box, in_cloud, in_normals, supervoxel_clusters,
-       planes_msg, coefficients_msg, start_index);
-    
+
     Eigen::Vector4f plane_coefficient;
     float max_energy = 0.0f;
-    
-    this->symmetricalConsistency(plane_coefficient, max_energy, in_cloud,
-                                 in_normals, cloud, bounding_box);
+    while (has_neigbour) {
+       this->supervoxel3DBoundingBox(
+          bounding_box, in_cloud, in_normals, supervoxel_clusters,
+          planes_msg, coefficients_msg, start_index);
+       float energy = 0.0f;
+       Eigen::Vector4f plane_coef;
+       this->symmetricalConsistency(plane_coef, energy, in_cloud,
+                                    in_normals, cloud, bounding_box);
+       if (energy > max_energy) {
+          has_neigbour = this->mergeNeigboringSupervoxels(
+             supervoxel_clusters, s_index);
+          plane_coefficient = plane_coef;
+          max_energy = energy;
+       } else {
+          has_neigbour = false;
+       }
+       
+       // std::cout << plane_coefficient  << "\n\n";
+       // std::cout << supervoxel_clusters.size()  << "\n\n";
+    }
 
+    this->plotPlane(in_cloud, plane_coefficient);
     
-    std::cout << plane_coefficient  << "\n\n";
-
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*in_cloud, ros_cloud);
     ros_cloud.header = planes_msg->header;
@@ -370,7 +392,7 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
        new pcl::PointCloud<pcl::PointXYZRGBNormal>);
 
     int best_plane = -1;
-    // max_energy = 0.0f;
+    max_energy = 0.0f;
     pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
     for (int i = 0; i < plane_coefficients.size(); i++) {
        temp_cloud->clear();
@@ -464,10 +486,10 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
        if (symmetric_energy > max_energy) {
           best_plane = i;
           max_energy = symmetric_energy;
+          plane_coefficient = plane_coefficients[best_plane];
        }
        std::cout << "\033[34m TOTAL ENERY:\033[0m" << symmetric_energy << "\n";
     }
-    plane_coefficient = plane_coefficients[best_plane];
     
     //! plot plane
     pcl::PointCloud<PointT>::Ptr plane(new pcl::PointCloud<PointT>);

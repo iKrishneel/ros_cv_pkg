@@ -299,6 +299,31 @@ void OrientedBoundingBox::plotPlane(
     }
 }
 
+void OrientedBoundingBox::plotPlane(
+    pcl::PointCloud<PointT>::Ptr cloud, const Eigen::Vector4f param,
+    const Eigen::Vector3f color) {
+    Eigen::Vector3f center = Eigen::Vector3f(param(3)/param(0), 0, 0);
+    Eigen::Vector3f normal = param.head<3>();
+    float coef = normal.dot(center);
+    float x = coef / normal(0);
+    float y = coef / normal(1);
+    float z = coef / normal(2);
+    Eigen::Vector3f point_x = Eigen::Vector3f(x, 0.0f, 0.0f);
+    Eigen::Vector3f point_y = Eigen::Vector3f(0.0f, y, 0.0f) - point_x;
+    Eigen::Vector3f point_z = Eigen::Vector3f(0.0f, 0.0f, z) - point_x;
+    for (float y = -1.0f; y < 1.0f; y += 0.01f) {
+       for (float x = -1.0f; x < 1.0f; x += 0.01f) {
+          PointT pt;
+          pt.x = point_x(0) + point_y(0) * x + point_z(0) * y;
+          pt.y = point_x(1) + point_y(1) * x + point_z(1) * y;
+          pt.z = point_x(2) + point_y(2) * x + point_z(2) * y;
+          pt.g = 255;
+          cloud->push_back(pt);
+       }
+    }
+}
+
+
 OrientedBoundingBox::PointT OrientedBoundingBox::Eigen2PointT(
     Eigen::Vector3f vec, Eigen::Vector3f color) {
     PointT pt;
