@@ -223,9 +223,6 @@ void OrientedBoundingBox::transformBoxCornerPoints(
           cloud->push_back(pt);
        }
     }
-
-    // std::cout << "SIZE:  " << cloud->size() << "\t" << corners.size() << "\n";
-    
     // Trasformation
     Eigen::Quaternion<float> quaternion = Eigen::Quaternion<float>(
        bounding_box.pose.orientation.w, bounding_box.pose.orientation.x,
@@ -282,14 +279,12 @@ void OrientedBoundingBox::plotPlane(
        return;
     }
     // cloud->clear();
-    for (int i = s_index; i < plane_points->size() - t_plane;
+    for (int i = s_index; i < /*plane_points->size() -*/ t_plane;
          i += this->num_points_) {
        Eigen::Vector3f pt0 = plane_points->points[i].getVector3fMap();
        Eigen::Vector3f pt2 = plane_points->points[i+2].getVector3fMap() - pt0;
        Eigen::Vector3f pt1 = plane_points->points[i+1].getVector3fMap() - pt0;
        Eigen::Vector3f normal = pt2.cross(pt1);
-
-       std::cout << normal  << "\n";
        
        PointT color = plane_points->points[i];
        for (float y = -1.0f; y < 1.0f; y += 0.01f) {
