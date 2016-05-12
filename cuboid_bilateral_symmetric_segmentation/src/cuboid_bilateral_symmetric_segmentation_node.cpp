@@ -128,6 +128,7 @@ void CuboidBilateralSymmetricSegmentation::supervoxelDecomposition(
          it != supervoxel_clusters.end(); it++) {
        voxel_labels[it->first] = -1;
     }
+        
     int label = -1;
     AdjacencyList::vertex_iterator i, end;
     for (boost::tie(i, end) = boost::vertices(adjacency_list); i != end; i++) {
@@ -205,6 +206,34 @@ void CuboidBilateralSymmetricSegmentation::supervoxelDecomposition(
     }
     supervoxel_clusters.clear();
     supervoxel_clusters = coplanar_supervoxels;
+}
+
+bool CuboidBilateralSymmetricSegmentation::mergeNeigboringSupervoxels(
+    SupervoxelMap &supervoxel_clusters, const int index) {
+    if (supervoxel_clusters.empty() || index > supervoxel_clusters.size()) {
+       ROS_ERROR("CANNOT MERGE DUE TO SIZE ERROR");
+       return false;
+    }
+    //! find neigboring voxel in proximity
+    double proximity = DBL_MAX;
+    int idx = -1;
+    Eigen::Vector4f centroid = supervoxel_clusters.at(
+       index)->centroid_.getVector4fMap();
+    for (SupervoxelMap::const_iterator it = supervoxel_clusters.begin();
+         it != supervoxel_clusters.end(); it++) {
+       double dist = pcl::distances::l2(
+          centroid, it->second->centroid_.getVector4fMap());
+       int vsize = it->second->voxels_->size();
+       if (dist < proximity && vsize> this->min_cluster_size_) {
+          proximity = dist;
+          idx = it->first;
+       }
+    }
+    if (idx == -1) {
+       return false;
+    }
+    this->updateSupervoxelClusters(supervoxel_clusters, index, idx);
+    return true;
 }
 
 float CuboidBilateralSymmetricSegmentation::coplanarityCriteria(
@@ -317,17 +346,8 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
        ROS_ERROR("EMPTY CLOUD FOR SYMMETRICAL CONSISTENCY");
        return false;
     }
-    /*
-    this->kdtree_->setInputCloud(cloud);
-    this->occlusion_handler_->setInputCloud(cloud);
-    this->occlusion_handler_->setLeafSize(leaf_size_, leaf_size_, leaf_size_);
-    this->occlusion_handler_->initializeVoxelGrid();
-    */
+
     pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
-    // this->occlusion_handler_->filter(*temp_cloud);
-    // cloud->clear();
-    // *cloud = *temp_cloud;
-    
     std::vector<Eigen::Vector4f> plane_coefficients;
     this->transformBoxCornerPoints(plane_coefficients,
                                    temp_cloud, bounding_box);

@@ -101,6 +101,7 @@ class CuboidBilateralSymmetricSegmentation:
     void supervoxelDecomposition(SupervoxelMap &,
                                  pcl::PointCloud<NormalT>::Ptr,
                                  const pcl::PointCloud<PointT>::Ptr);
+    bool mergeNeigboringSupervoxels(SupervoxelMap &, const int);
     float coplanarityCriteria(const Eigen::Vector4f, const Eigen::Vector4f,
                               const Eigen::Vector4f, const Eigen::Vector4f,
                               const float = 10, const float = 0.02f);
