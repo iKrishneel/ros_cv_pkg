@@ -114,10 +114,10 @@ class CuboidBilateralSymmetricSegmentation:
                                  const jsk_msgs::PolygonArrayConstPtr &,
                                  const jsk_msgs::ModelCoefficientsArrayConstPtr &,
                                  const int);
-    void symmetryBasedObjectHypothesis(pcl::PointCloud<PointT>::Ptr,
-                                       pcl::PointCloud<NormalT>::Ptr,
+    void symmetryBasedObjectHypothesis(SupervoxelMap &, const int,
                                        const pcl::PointCloud<PointT>::Ptr,
-                                       const jsk_msgs::BoundingBox);
+                                       const jsk_msgs::PolygonArrayConstPtr &,
+                                       const jsk_msgs::ModelCoefficientsArrayConstPtr &);
     bool symmetricalConsistency(Eigen::Vector4f &, float &,
                                 pcl::PointCloud<PointT>::Ptr,
                                 pcl::PointCloud<NormalT>::Ptr,

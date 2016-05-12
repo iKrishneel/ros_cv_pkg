@@ -80,40 +80,14 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        ROS_ERROR("START ERROR");
        return;
     }
-    
-    jsk_msgs::BoundingBox bounding_box;
-    pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
-    pcl::PointCloud<NormalT>::Ptr in_normals(new pcl::PointCloud<NormalT>);
-    this->supervoxel3DBoundingBox(
-       bounding_box, in_cloud, in_normals, supervoxel_clusters,
-       planes_msg, coefficients_msg, start_index);
 
-    
-    std::clock_t start;
-    double duration;
-    start = std::clock();
-
-    //! will go in the for-loop
     this->kdtree_->setInputCloud(cloud);
     this->occlusion_handler_->setInputCloud(cloud);
     this->occlusion_handler_->setLeafSize(leaf_size_, leaf_size_, leaf_size_);
     this->occlusion_handler_->initializeVoxelGrid();
-
     
-    this->symmetryBasedObjectHypothesis(in_cloud, in_normals,
-                                        cloud, bounding_box);
-
-    
-    cloud->clear();
-    *cloud = *in_cloud;
-    
-    duration = (std::clock() - start) / static_cast<double>(CLOCKS_PER_SEC);
-    ROS_WARN("DURATION: %f", duration);
-    
-    sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*cloud, ros_cloud);
-    ros_cloud.header = cloud_msg->header;
-    this->pub_edge_.publish(ros_cloud);
+    this->symmetryBasedObjectHypothesis(supervoxel_clusters, start_index,
+                                        cloud, planes_msg, coefficients_msg);
 
     // publish supervoxel
     sensor_msgs::PointCloud2 ros_voxels;
@@ -122,13 +96,6 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
                             ros_voxels, ros_indices, cloud_msg->header);
     this->pub_cloud_.publish(ros_voxels);
     this->pub_indices_.publish(ros_indices);
-
-    // publish bounding
-    jsk_msgs::BoundingBoxArray bounding_boxes;
-    bounding_box.header = cloud_msg->header;
-    bounding_boxes.boxes.push_back(bounding_box);
-    bounding_boxes.header = cloud_msg->header;
-    pub_bbox_.publish(bounding_boxes);
 }
 
 void CuboidBilateralSymmetricSegmentation::supervoxelDecomposition(
@@ -231,7 +198,7 @@ void CuboidBilateralSymmetricSegmentation::supervoxelDecomposition(
 
 bool CuboidBilateralSymmetricSegmentation::mergeNeigboringSupervoxels(
     SupervoxelMap &supervoxel_clusters, const int index) {
-    if (supervoxel_clusters.empty() || index > supervoxel_clusters.size()) {
+    if (supervoxel_clusters.empty() || index != -1) {
        ROS_ERROR("CANNOT MERGE DUE TO SIZE ERROR");
        return false;
     }
@@ -320,24 +287,6 @@ void CuboidBilateralSymmetricSegmentation::supervoxel3DBoundingBox(
     }
     cloud->clear();
     normals->clear();
-    /*
-    float y_position = FLT_MAX;
-    int s_index = -1;
-    for (SupervoxelMap::const_iterator it = supervoxel_clusters.begin();
-         it != supervoxel_clusters.end(); it++) {
-       float y_pos = supervoxel_clusters.at(it->first)->centroid_.y;
-       int csize = supervoxel_clusters.at(it->first)->voxels_->size();
-       if (y_pos < y_position && csize > this->min_cluster_size_) {
-          y_position = y_pos;
-          s_index = it->first;
-       }
-    }
-    if (s_index == -1) {
-       ROS_ERROR("CLUSTERS ARE TOO SMALL");
-       return;
-    }
-    */
-    std::cout << "S: " << s_index  << "\n";
     
     pcl::copyPointCloud<PointT, PointT>(
        *(supervoxel_clusters.at(s_index)->voxels_), *cloud);
@@ -358,22 +307,41 @@ void CuboidBilateralSymmetricSegmentation::supervoxel3DBoundingBox(
 }
 
 void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
-    pcl::PointCloud<PointT>::Ptr cloud, pcl::PointCloud<NormalT>::Ptr normals,
-    const pcl::PointCloud<PointT>::Ptr orig_cloud,
-    const jsk_msgs::BoundingBox bounding_box) {
-    if (cloud->empty() || cloud->size() != normals->size() ||
-        orig_cloud->empty()) {
-       ROS_ERROR("EMPTY CLOUD FOR SYMMETRICAL CONSISTENCY");
+    SupervoxelMap &supervoxel_clusters, const int start_index,
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const jsk_msgs::PolygonArrayConstPtr &planes_msg,
+    const jsk_msgs::ModelCoefficientsArrayConstPtr &coefficients_msg) {
+    if (supervoxel_clusters.empty() || cloud->empty()) {
+       ROS_ERROR("EMPTY SUPERVOXEL FOR SYMMETRICAL CONSISTENCY");
        return;
     }
+    jsk_msgs::BoundingBox bounding_box;
+    pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
+    pcl::PointCloud<NormalT>::Ptr in_normals(new pcl::PointCloud<NormalT>);
+    this->supervoxel3DBoundingBox(
+       bounding_box, in_cloud, in_normals, supervoxel_clusters,
+       planes_msg, coefficients_msg, start_index);
+    
     Eigen::Vector4f plane_coefficient;
     float max_energy = 0.0f;
     
-    this->symmetricalConsistency(plane_coefficient, max_energy, cloud,
-                                 normals, orig_cloud, bounding_box);
+    this->symmetricalConsistency(plane_coefficient, max_energy, in_cloud,
+                                 in_normals, cloud, bounding_box);
 
     
     std::cout << plane_coefficient  << "\n\n";
+
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*in_cloud, ros_cloud);
+    ros_cloud.header = planes_msg->header;
+    this->pub_edge_.publish(ros_cloud);
+
+    // publish bounding
+    jsk_msgs::BoundingBoxArray bounding_boxes;
+    bounding_box.header = planes_msg->header;
+    bounding_boxes.boxes.push_back(bounding_box);
+    bounding_boxes.header = planes_msg->header;
+    pub_bbox_.publish(bounding_boxes);
 }
 
 bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
