@@ -51,6 +51,8 @@ class CuboidBilateralSymmetricSegmentation:
     typedef pcl::PointXYZRGB PointT;
     typedef pcl::Normal NormalT;
     typedef pcl::PointXYZRGBNormal PointNormalT;
+    typedef jsk_msgs::ModelCoefficientsArrayConstPtr ModelCoefficients;
+
     typedef pcl::SupervoxelClustering<PointT>::VoxelAdjacencyList AdjacencyList;
 
     typedef std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> SupervoxelMap;
@@ -75,6 +77,8 @@ class CuboidBilateralSymmetricSegmentation:
     uint32_t min_cluster_size_;
     float leaf_size_;
     float symmetric_angle_thresh_;
+    double neigbor_dist_thresh_;  //! distance for point to be symm
+    
    
     boost::shared_ptr<OcclusionHandler> occlusion_handler_;
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
@@ -97,7 +101,7 @@ class CuboidBilateralSymmetricSegmentation:
     void cloudCB(const sensor_msgs::PointCloud2::ConstPtr &,
                  const sensor_msgs::PointCloud2::ConstPtr &,
                  const jsk_msgs::PolygonArrayConstPtr &,
-                 const jsk_msgs::ModelCoefficientsArrayConstPtr &);
+                 const ModelCoefficients &);
     void supervoxelDecomposition(SupervoxelMap &,
                                  pcl::PointCloud<NormalT>::Ptr,
                                  const pcl::PointCloud<PointT>::Ptr);
@@ -112,17 +116,23 @@ class CuboidBilateralSymmetricSegmentation:
                                  pcl::PointCloud<NormalT>::Ptr,
                                  const SupervoxelMap &,
                                  const jsk_msgs::PolygonArrayConstPtr &,
-                                 const jsk_msgs::ModelCoefficientsArrayConstPtr &,
+                                 const ModelCoefficients &,
                                  const int);
     void symmetryBasedObjectHypothesis(SupervoxelMap &, const int,
                                        const pcl::PointCloud<PointT>::Ptr,
                                        const jsk_msgs::PolygonArrayConstPtr &,
-                                       const jsk_msgs::ModelCoefficientsArrayConstPtr &);
+                                       const ModelCoefficients &);
+   
     bool symmetricalConsistency(Eigen::Vector4f &, float &,
                                 pcl::PointCloud<PointT>::Ptr,
                                 pcl::PointCloud<NormalT>::Ptr,
                                 const pcl::PointCloud<PointT>::Ptr,
                                 const jsk_msgs::BoundingBox);
+    float symmetricalPlaneEnergy(pcl::PointCloud<PointT>::Ptr,
+                                 const pcl::PointCloud<NormalT>::Ptr,
+                                 const pcl::PointCloud<PointT>::Ptr,
+                                 const int, const std::vector<Eigen::Vector4f>);
+   
     bool occlusionRegionCheck(const PointT);
     template<class T>
     void getPointNeigbour(std::vector<int> &, const PointT,
