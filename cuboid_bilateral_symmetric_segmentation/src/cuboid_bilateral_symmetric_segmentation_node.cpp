@@ -323,28 +323,39 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     }
 
     SupervoxelMap supervoxel_clusters_copy = supervoxel_clusters;
-    
-    bool has_neigbour = true;
     int s_index = start_index;
     
     jsk_msgs::BoundingBox bounding_box;
     pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
     pcl::PointCloud<NormalT>::Ptr in_normals(new pcl::PointCloud<NormalT>);
 
+    //! stores best results
     Eigen::Vector4f plane_coefficient;
     float max_energy = 0.0f;
-    
+
+    bool has_neigbour = true;
+    bool is_init = true;
     while (has_neigbour) {
        
        this->supervoxel3DBoundingBox(
           bounding_box, in_cloud, in_normals, supervoxel_clusters,
           planes_msg, coefficients_msg, s_index);
-
        
        float energy = 0.0f;
        Eigen::Vector4f plane_coef;
        this->symmetricalConsistency(plane_coef, energy, in_cloud,
                                     in_normals, cloud, bounding_box);
+       
+       if (!is_init) {  //! test using previous best symm. plane
+          std::vector<Eigen::Vector4f> prev_plane_coef;
+          prev_plane_coef.push_back(plane_coefficient);
+          float prev_plane_enery = this->symmetricalPlaneEnergy(
+             in_cloud, in_normals, cloud, 0, prev_plane_coef);
+
+          if (prev_plane_enery > energy) {
+             plane_coef = prev_plane_coef[0];
+          }
+       }
 
        
        if (energy > max_energy) {  /// TODO(FIX): dont update until better?
@@ -355,8 +366,7 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
        } else {
           has_neigbour = false;
        }
-
-       
+       is_init = false;
     }
 
     std::cout << "\033[34m ENERY:\033[0m" << max_energy << "\n";
@@ -427,7 +437,7 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
     const pcl::PointCloud<PointT>::Ptr in_cloud, const int i,
     const std::vector<Eigen::Vector4f> plane_coefficients) {
     if (plane_coefficients.empty() || cloud->empty() || in_cloud->empty()) {
-       ROS_ERROR("ENERY COMPUTATION FAILED DUE TO EMPTY INPUTS");
+       ROS_ERROR("ENERGY COMPUTATION FAILED DUE TO EMPTY INPUTS");
        return 0.0f;
     }
     

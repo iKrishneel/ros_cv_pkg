@@ -1,7 +1,0 @@
-\subsubsection parameters ROS parameters
-
-Reads and maintains the following parameters on the ROS server
-
-- \b "~min_distance" : \b [double] min distance min: 0.0, default: 0.6, max: 10.0
-- \b "~max_distance" : \b [double] max distance min: 0.0, default: 2.0, max: 10.0
-

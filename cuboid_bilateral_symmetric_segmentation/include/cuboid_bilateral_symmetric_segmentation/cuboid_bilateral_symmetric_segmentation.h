@@ -52,9 +52,7 @@ class CuboidBilateralSymmetricSegmentation:
     typedef pcl::Normal NormalT;
     typedef pcl::PointXYZRGBNormal PointNormalT;
     typedef jsk_msgs::ModelCoefficientsArrayConstPtr ModelCoefficients;
-
     typedef pcl::SupervoxelClustering<PointT>::VoxelAdjacencyList AdjacencyList;
-
     typedef std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> SupervoxelMap;
     typedef std::map<uint32_t, int> UInt32Map;
     typedef pcl::VoxelGridOcclusionEstimation<PointT> OcclusionHandler;

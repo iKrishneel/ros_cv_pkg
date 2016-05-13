@@ -1,8 +1,0 @@
-\subsubsection usage Usage
-\verbatim
-<node name="pcl_filter_utils" pkg="pcl_filter_utils" type="pcl_filter_utils">
-  <param name="min_distance" type="double" value="0.6" />
-  <param name="max_distance" type="double" value="2.0" />
-</node>
-\endverbatim
-
