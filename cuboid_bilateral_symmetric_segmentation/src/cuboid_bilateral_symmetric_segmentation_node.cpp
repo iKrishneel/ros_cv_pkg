@@ -395,119 +395,23 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
        ROS_ERROR("PLANE COEFFICENT NOT FOUND");
        return false;
     }
-    
-    //! reflected point
-    pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr symm_normal(
-       new pcl::PointCloud<pcl::PointXYZRGBNormal>);
 
     int best_plane = -1;
     max_energy = 0.0f;
     pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
     for (int i = 0; i < plane_coefficients.size(); i++) {
        temp_cloud->clear();
-       float symmetric_energy = 0.0f;
-
-       symmetric_energy = this->symmetricalPlaneEnergy(
+       float symmetric_energy = this->symmetricalPlaneEnergy(
           cloud, normals, in_cloud, i, plane_coefficients);
        
-       /*
-       Eigen::Vector3f plane_n = plane_coefficients[i].head<3>();
-       for (int j = 0; j < cloud->size(); j++) {
-          Eigen::Vector3f n = normals->points[j].getNormalVector3fMap();
-          Eigen::Vector3f p = cloud->points[j].getVector3fMap();
-          float beta = p(0)*plane_n(0) + p(1)*plane_n(1) + p(2)*plane_n(2);
-          float alpha = (plane_n(0) * plane_n(0)) +
-             (plane_n(1) * plane_n(1)) + (plane_n(2) * plane_n(2));
-          float t = (plane_coefficients[i](3) - beta) / alpha;
-          
-          PointT pt = cloud->points[j];
-          pt.x = p(0) + (t * 2 * plane_n(0));
-          pt.y = p(1) + (t * 2 * plane_n(1));
-          pt.z = p(2) + (t * 2 * plane_n(2));
-          
-          std::vector<int> neigbor_indices;
-          this->getPointNeigbour<int>(neigbor_indices, pt, 1);
-          int nidx = neigbor_indices[0];
-          Eigen::Vector4f ref_pt = pt.getVector4fMap();
-          ref_pt(3) = 0.0f;
-          double distance = pcl::distances::l2(
-             ref_pt, in_cloud->points[nidx].getVector4fMap());
-
-          float weight = 0.0f;
-          if (distance > this->neigbor_dist_thresh_) {
-             if (this->occlusionRegionCheck(pt)) {
-                // WEIGHT = distance to plane
-                float a = pcl::pointToPlaneDistance<PointT>(
-                   pt, plane_coefficients[i].normalized());
-                float b = pcl::pointToPlaneDistance<PointT>(
-                   cloud->points[j], plane_coefficients[i].normalized());
-                weight = 0.50f - (std::fabs(a - b) / 1.0f);
-                
-                pt.r = 0;
-                pt.b = 255;
-                pt.g = 255;
-             } else {
-                // SET TO BACKGROUND
-                pt.r = 255;
-                pt.b = 0;
-                pt.g = 0;
-             }
-          } else {  //! get reflected normal
-             Eigen::Vector3f symm_n = n -
-                (2.0f*((plane_n.normalized()).dot(n))*plane_n.normalized());
-             Eigen::Vector3f sneig_r = normals->points[
-                nidx].getNormalVector3fMap();
-             float dot_prod = (symm_n.dot(sneig_r)) / (
-                symm_n.norm() * sneig_r.norm());
-             float angle = std::acos(dot_prod) * (180.0f/M_PI);
-
-             weight = 1.0 - (angle / 360.0f);
-             
-             if (angle > this->symmetric_angle_thresh_) {
-                weight += (-1.0f * (this->symmetric_angle_thresh_ / 360.0f));
-                
-                pt.r = 0;
-                pt.b = 0;
-                pt.g = 255;
-             } else {
-                pt.r = 0;
-                pt.b = 255;
-                pt.g = 0;
-             }
-#ifdef RVIZ
-             symm_normal->push_back(
-                this->convertVector4fToPointXyzRgbNormal(
-                   pt.getVector3fMap(),
-                   symm_n, Eigen::Vector3f(0, 255, 0)));
-
-             symm_normal->push_back(
-                this->convertVector4fToPointXyzRgbNormal(
-                   in_cloud->points[nidx].getVector3fMap(),
-                   sneig_r, Eigen::Vector3f(255, 0, 0)));
-                
-             symm_normal->push_back(
-                this->convertVector4fToPointXyzRgbNormal(
-                   p, n, Eigen::Vector3f(0, 0, 255)));
-#endif
-          }
-          temp_cloud->push_back(pt);
-
-          if (!isnan(weight)) {
-             symmetric_energy += weight;
-          }
-       }
-       */
        symmetric_energy /= static_cast<float>(cloud->size());
        if (symmetric_energy > max_energy) {
           best_plane = i;
           max_energy = symmetric_energy;
           plane_coefficient = plane_coefficients[best_plane];
        }
-       // std::cout << "\033[34m ENERY:\033[0m" << symmetric_energy <<
-       // "\n";
+
     }
-    
-    
     //! plot plane
     pcl::PointCloud<PointT>::Ptr plane(new pcl::PointCloud<PointT>);
     this->plotPlane(plane, plane_points, best_plane*3, (best_plane + 1) * 3);
@@ -515,12 +419,6 @@ bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
     // cloud->clear();
     // *cloud += *plane;
     // *cloud += *temp_cloud;
-    
-    // just for viz
-    sensor_msgs::PointCloud2 ros_normal;
-    pcl::toROSMsg(*symm_normal, ros_normal);
-    ros_normal.header = this->header_;
-    this->pub_normal_.publish(ros_normal);
 }
 
 float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
@@ -528,10 +426,16 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
     const pcl::PointCloud<NormalT>::Ptr normals,
     const pcl::PointCloud<PointT>::Ptr in_cloud, const int i,
     const std::vector<Eigen::Vector4f> plane_coefficients) {
-   
+    if (plane_coefficients.empty() || cloud->empty() || in_cloud->empty()) {
+       ROS_ERROR("ENERY COMPUTATION FAILED DUE TO EMPTY INPUTS");
+       return 0.0f;
+    }
+    
     pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr symm_normal(
        new pcl::PointCloud<pcl::PointXYZRGBNormal>);
+    
     pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
+    
     float symmetric_energy = 0.0f;
     Eigen::Vector3f plane_n = plane_coefficients[i].head<3>();
     for (int j = 0; j < cloud->size(); j++) {
