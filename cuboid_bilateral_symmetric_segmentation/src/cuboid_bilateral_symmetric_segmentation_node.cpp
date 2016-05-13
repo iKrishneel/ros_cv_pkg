@@ -65,6 +65,28 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     pcl::PointCloud<NormalT>::Ptr sv_normals(new pcl::PointCloud<NormalT>);
     this->supervoxelDecomposition(supervoxel_clusters, sv_normals, cloud);
 
+    // test neigbour
+    std::clock_t start;
+    double duration;
+    start = std::clock();
+    
+    std::map<uint32_t, std::vector<uint32_t> > adjacency_list;
+    this->supervoxelAdjacencyList(adjacency_list, supervoxel_clusters);
+
+    for (std::map<uint32_t, std::vector<uint32_t> >::iterator it =
+            adjacency_list.begin(); it != adjacency_list.end(); it++) {
+       std::cout << it->first  << "\t";
+       for (int i = 0; i < it->second.size(); i++) {
+          std::cout << it->second.at(i)  << ", ";
+       }
+       std::cout << "\n"  << "\n";
+    }
+
+    duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
+    std::cout<<"printf: "<< duration <<'\n';
+    
+    
+    /*
     // select the highest cluster
     float y_position = FLT_MAX;
     int start_index = -1;
@@ -90,6 +112,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     this->symmetryBasedObjectHypothesis(supervoxel_clusters, start_index,
                                         cloud, planes_msg, coefficients_msg);
 
+    */
     // publish supervoxel
     sensor_msgs::PointCloud2 ros_voxels;
     jsk_msgs::ClusterPointIndices ros_indices;
@@ -280,6 +303,69 @@ void CuboidBilateralSymmetricSegmentation::updateSupervoxelClusters(
     supervoxel_clusters.at(n_vindex)->normals_->clear();
 }
 
+void CuboidBilateralSymmetricSegmentation::supervoxelAdjacencyList(
+    std::map<uint32_t, std::vector<uint32_t> > &adjacency_list,
+    const SupervoxelMap supervoxel_clusters) {
+    if (supervoxel_clusters.empty()) {
+       ROS_ERROR("CANNOT COMPUTE EDGE DUE TO EMPTY INPUT");
+       return;
+    }
+    adjacency_list.clear();
+    if (supervoxel_clusters.size() == 1) {
+       SupervoxelMap::const_iterator it = supervoxel_clusters.begin();
+       std::vector<uint32_t> n;
+       n.push_back(it->first);
+       adjacency_list[it->first] = n;
+       return;
+    }
+    // build cloud
+    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+    for (SupervoxelMap::const_iterator it = supervoxel_clusters.begin();
+         it != supervoxel_clusters.end(); it++) {
+       for (int i = 0; i < it->second->voxels_->size(); i++) {
+          PointT pt = it->second->voxels_->points[i];
+          pt.r = it->first;
+          pt.b = it->first;
+          pt.g = it->first;
+          cloud->push_back(pt);
+       }
+    }
+    this->kdtree_->setInputCloud(cloud);
+
+    std::vector<int> neigbor_indices;
+    std::vector<int> adj_list;
+    for (SupervoxelMap::const_iterator it = supervoxel_clusters.begin();
+         it != supervoxel_clusters.end(); it++) {
+       int prev_index = -1;
+       int vsize = it->second->voxels_->size();
+       adj_list.clear();
+       for (int i = 0; i < it->second->voxels_->size(); i++) {
+          PointT pt = it->second->voxels_->points[i];
+          this->getPointNeigbour<int>(neigbor_indices, pt, 8);
+          for (int j = 0; j < neigbor_indices.size(); j++) {
+             int idx = cloud->points[neigbor_indices[j]].r;
+             if (idx != prev_index && idx != it->first) {
+                adj_list.push_back(idx);
+                prev_index = idx;
+             }
+          }
+          neigbor_indices.clear();
+       }
+       if (!adj_list.empty()) {
+          std::sort(adj_list.begin(), adj_list.end(), sortVector);
+          prev_index = -1;
+          std::vector<uint32_t> adj;
+          for (int k = 0; k < adj_list.size(); k++) {
+             if (adj_list[k] != prev_index) {
+                adj.push_back(adj_list[k]);
+                prev_index = adj_list[k];
+             }
+          }
+          adjacency_list[it->first] = adj;
+       }
+    }
+}
+
 void CuboidBilateralSymmetricSegmentation::supervoxel3DBoundingBox(
     jsk_msgs::BoundingBox &bounding_box, pcl::PointCloud<PointT>::Ptr cloud,
     pcl::PointCloud<NormalT>::Ptr normals,
@@ -322,6 +408,9 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
        return;
     }
 
+    //! flag for neigbour
+    
+    
     SupervoxelMap supervoxel_clusters_copy = supervoxel_clusters;
     int s_index = start_index;
     

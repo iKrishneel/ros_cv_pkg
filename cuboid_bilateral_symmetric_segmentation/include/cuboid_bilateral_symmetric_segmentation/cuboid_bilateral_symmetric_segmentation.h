@@ -109,6 +109,8 @@ class CuboidBilateralSymmetricSegmentation:
                               const float = 10, const float = 0.02f);
     void updateSupervoxelClusters(SupervoxelMap &,
                                  const uint32_t, const uint32_t);
+    void supervoxelAdjacencyList(std::map<uint32_t, std::vector<uint32_t> > &,
+                                 const SupervoxelMap);
     void supervoxel3DBoundingBox(jsk_msgs::BoundingBox &,
                                  pcl::PointCloud<PointT>::Ptr,
                                  pcl::PointCloud<NormalT>::Ptr,
@@ -139,6 +141,13 @@ class CuboidBilateralSymmetricSegmentation:
     pcl::PointXYZRGBNormal convertVector4fToPointXyzRgbNormal(
        const Eigen::Vector3f &, const Eigen::Vector3f &,
        const Eigen::Vector3f);
+
+   
+    struct SortVector {
+       bool operator() (int i, int j) {
+         return (i < j);
+      }
+    } sortVector;
 };
 
 
