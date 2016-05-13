@@ -64,29 +64,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     SupervoxelMap supervoxel_clusters;
     pcl::PointCloud<NormalT>::Ptr sv_normals(new pcl::PointCloud<NormalT>);
     this->supervoxelDecomposition(supervoxel_clusters, sv_normals, cloud);
-
-    // test neigbour
-    std::clock_t start;
-    double duration;
-    start = std::clock();
     
-    std::map<uint32_t, std::vector<uint32_t> > adjacency_list;
-    this->supervoxelAdjacencyList(adjacency_list, supervoxel_clusters);
-
-    for (std::map<uint32_t, std::vector<uint32_t> >::iterator it =
-            adjacency_list.begin(); it != adjacency_list.end(); it++) {
-       std::cout << it->first  << "\t";
-       for (int i = 0; i < it->second.size(); i++) {
-          std::cout << it->second.at(i)  << ", ";
-       }
-       std::cout << "\n"  << "\n";
-    }
-
-    duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
-    std::cout<<"printf: "<< duration <<'\n';
-    
-    
-    /*
     // select the highest cluster
     float y_position = FLT_MAX;
     int start_index = -1;
@@ -104,15 +82,16 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        return;
     }
 
+    /*
     this->kdtree_->setInputCloud(cloud);
     this->occlusion_handler_->setInputCloud(cloud);
     this->occlusion_handler_->setLeafSize(leaf_size_, leaf_size_, leaf_size_);
     this->occlusion_handler_->initializeVoxelGrid();
+    */
     
     this->symmetryBasedObjectHypothesis(supervoxel_clusters, start_index,
                                         cloud, planes_msg, coefficients_msg);
 
-    */
     // publish supervoxel
     sensor_msgs::PointCloud2 ros_voxels;
     jsk_msgs::ClusterPointIndices ros_indices;
@@ -408,8 +387,14 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
        return;
     }
 
-    //! flag for neigbour
+    // build voxel neigbors
+    std::map<uint32_t, std::vector<uint32_t> > adjacency_list;
+    this->supervoxelAdjacencyList(adjacency_list, supervoxel_clusters);
     
+    this->kdtree_->setInputCloud(cloud);
+    this->occlusion_handler_->setInputCloud(cloud);
+    this->occlusion_handler_->setLeafSize(leaf_size_, leaf_size_, leaf_size_);
+    this->occlusion_handler_->initializeVoxelGrid();
     
     SupervoxelMap supervoxel_clusters_copy = supervoxel_clusters;
     int s_index = start_index;
