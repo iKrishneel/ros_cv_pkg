@@ -82,16 +82,9 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        return;
     }
 
-    /*
-    this->kdtree_->setInputCloud(cloud);
-    this->occlusion_handler_->setInputCloud(cloud);
-    this->occlusion_handler_->setLeafSize(leaf_size_, leaf_size_, leaf_size_);
-    this->occlusion_handler_->initializeVoxelGrid();
-    */
-    
     this->symmetryBasedObjectHypothesis(supervoxel_clusters, start_index,
                                         cloud, planes_msg, coefficients_msg);
-
+        
     // publish supervoxel
     sensor_msgs::PointCloud2 ros_voxels;
     jsk_msgs::ClusterPointIndices ros_indices;
@@ -202,11 +195,17 @@ void CuboidBilateralSymmetricSegmentation::supervoxelDecomposition(
 }
 
 bool CuboidBilateralSymmetricSegmentation::mergeNeigboringSupervoxels(
-    SupervoxelMap &supervoxel_clusters, const int index) {
-    if (supervoxel_clusters.empty() || supervoxel_clusters.size() == -1) {
+    SupervoxelMap &supervoxel_clusters, AdjacentList &adjacency_list,
+    const int index) {
+    if (supervoxel_clusters.empty() || supervoxel_clusters.size() == -1 ||
+        adjacency_list.empty()) {
        ROS_ERROR("CANNOT MERGE DUE TO SIZE ERROR");
        return false;
     }
+    
+
+
+    
     //! find neigboring voxel in proximity
     double proximity = DBL_MAX;
     int idx = -1;
@@ -285,8 +284,7 @@ void CuboidBilateralSymmetricSegmentation::updateSupervoxelClusters(
 }
 
 void CuboidBilateralSymmetricSegmentation::supervoxelAdjacencyList(
-    std::map<uint32_t, std::vector<uint32_t> > &adjacency_list,
-    const SupervoxelMap supervoxel_clusters) {
+    AdjacentList &adjacency_list, const SupervoxelMap supervoxel_clusters) {
     if (supervoxel_clusters.empty()) {
        ROS_ERROR("CANNOT COMPUTE EDGE DUE TO EMPTY INPUT");
        return;
@@ -347,6 +345,30 @@ void CuboidBilateralSymmetricSegmentation::supervoxelAdjacencyList(
     cloud->clear();
     std::vector<int>().swap(neigbor_indices);
     std::vector<int>().swap(adj_list);
+
+    //! build graph
+    AdjacencyList neigbor_list;
+    std::map<uint32_t, AdjacencyList::vertex_descriptor> label_map;
+    for (AdjacentList::iterator it = adjacency_list.begin();
+         it != adjacency_list.end(); it++) {
+       AdjacencyList::vertex_descriptor node = boost::add_vertex(neigbor_list);
+       neigbor_list[node] = it->first;
+       label_map.insert(std::make_pair(it->first, node));
+    }
+    for (AdjacentList::iterator it = adjacency_list.begin();
+         it != adjacency_list.end(); it++) {
+       AdjacencyList::vertex_descriptor u = label_map[it->first];
+       for (std::vector<uint32_t>::iterator v_iter = it->second.begin();
+            v_iter != it->second.end(); v_iter++) {
+          AdjacencyList::vertex_descriptor v = label_map.find(*v_iter)->second;
+          AdjacencyList::edge_descriptor edge;
+          bool is_edge = false;
+          boost::tie(edge, is_edge) = boost::add_edge(u, v, neigbor_list);
+          if (is_edge) {
+             neigbor_list[edge] = 1.0f;
+          }
+       }
+    }
 }
 
 void CuboidBilateralSymmetricSegmentation::supervoxel3DBoundingBox(
@@ -392,8 +414,16 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     }
 
     // build voxel neigbors
-    std::map<uint32_t, std::vector<uint32_t> > adjacency_list;
+    AdjacentList adjacency_list;
     this->supervoxelAdjacencyList(adjacency_list, supervoxel_clusters);
+
+    this->adjacency_flag_.clear();
+    for (AdjacentList::iterator it = this->adjacency_flag_.begin();
+         it != this->adjacency_flag_.end(); it++) {
+       for (int i = 0; i < it->second.size(); i++) {
+          this->adjacency_flag_[it->first][i] = INIT;
+       }
+    }
     
     this->kdtree_->setInputCloud(cloud);
     this->occlusion_handler_->setInputCloud(cloud);
@@ -429,15 +459,17 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
           prev_plane_coef.push_back(plane_coefficient);
           float prev_plane_enery = this->symmetricalPlaneEnergy(
              in_cloud, in_normals, cloud, 0, prev_plane_coef);
-
+          
           if (prev_plane_enery > energy) {
              plane_coef = prev_plane_coef[0];
           }
        }
        
-       if (energy > max_energy) {  /// TODO(FIX): dont update until better?
+       if (energy > max_energy) {  // dont update until better?
+          ROS_WARN("UPDATING");
+          
           has_neigbour = this->mergeNeigboringSupervoxels(
-             supervoxel_clusters, s_index);
+             supervoxel_clusters, adjacency_list, s_index);
           plane_coefficient = plane_coef;
           max_energy = energy;
        } else {
