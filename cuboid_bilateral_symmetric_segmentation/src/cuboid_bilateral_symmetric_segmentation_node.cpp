@@ -197,6 +197,8 @@ void CuboidBilateralSymmetricSegmentation::supervoxelDecomposition(
     }
     supervoxel_clusters.clear();
     supervoxel_clusters = coplanar_supervoxels;
+    
+    // SupervoxelMap().swap(coplanar_supervoxels);
 }
 
 bool CuboidBilateralSymmetricSegmentation::mergeNeigboringSupervoxels(
@@ -297,7 +299,6 @@ void CuboidBilateralSymmetricSegmentation::supervoxelAdjacencyList(
        adjacency_list[it->first] = n;
        return;
     }
-    // build cloud
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     for (SupervoxelMap::const_iterator it = supervoxel_clusters.begin();
          it != supervoxel_clusters.end(); it++) {
@@ -343,6 +344,9 @@ void CuboidBilateralSymmetricSegmentation::supervoxelAdjacencyList(
           adjacency_list[it->first] = adj;
        }
     }
+    cloud->clear();
+    std::vector<int>().swap(neigbor_indices);
+    std::vector<int>().swap(adj_list);
 }
 
 void CuboidBilateralSymmetricSegmentation::supervoxel3DBoundingBox(
@@ -430,7 +434,6 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
              plane_coef = prev_plane_coef[0];
           }
        }
-
        
        if (energy > max_energy) {  /// TODO(FIX): dont update until better?
           has_neigbour = this->mergeNeigboringSupervoxels(
