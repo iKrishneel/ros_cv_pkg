@@ -2,7 +2,7 @@
 #include <dynamic_state_segmentation/dynamic_state_segmentation.h>
 
 DynamicStateSegmentation::DynamicStateSegmentation() :
-    num_threads_(16), neigbor_size_(50) {
+    num_threads_(16), neigbor_size_(50), min_cluster_size_(100) {
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
     this->onInit();
 }
@@ -112,7 +112,9 @@ void DynamicStateSegmentation::cloudCB(
     ROS_INFO("DONE.");
 
     // process estimated cloud and update seed point info
-    // this->regionOverSegmentation(seed_cloud, seed_normals, cloud, normals);
+    pcl::PointCloud<PointT>::Ptr seed_cloud2(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*seed_cloud, *seed_cloud2);
+    this->regionOverSegmentation(seed_cloud2, seed_normals, cloud, normals);
 
 
     // routine for Mean-shift
@@ -156,7 +158,7 @@ void DynamicStateSegmentation::cloudCB(
     this->pub_indices_.publish(ros_indices);
 
     sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*cloud, ros_cloud);
+    pcl::toROSMsg(*seed_cloud2, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
 
@@ -353,6 +355,7 @@ void DynamicStateSegmentation::regionOverSegmentation(
     double dist = DBL_MAX;
     int idx = -1;
     int icount = 0;
+    pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
     for (int i = 0; i < cloud->size(); i++) {
        if (pcl::distances::l2(cloud->points[i].getVector4fMap(),
                               center) < distance) {
@@ -360,7 +363,8 @@ void DynamicStateSegmentation::regionOverSegmentation(
           if (!isnan(pt.x) && !isnan(pt.y) && !isnan(pt.z)) {
              region->push_back(cloud->points[i]);
              normal->push_back(normals->points[i]);
-
+             prob_indices->indices.push_back(i);
+             
              // update the seed info
              double d = pcl::distances::l2(cloud->points[i].getVector4fMap(),
                                            this->seed_point_.getVector4fMap());
@@ -372,6 +376,61 @@ void DynamicStateSegmentation::regionOverSegmentation(
           }
        }
     }
+
+    // filter clusters
+    pcl::PointIndices::Ptr indices(new pcl::PointIndices);
+    std::vector<pcl::PointIndices> cluster_indices;
+    cluster_indices.clear();
+    pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
+    tree->setInputCloud(cloud);
+    pcl::EuclideanClusterExtraction<PointT> euclidean_clustering;
+    euclidean_clustering.setClusterTolerance(0.01f);
+    euclidean_clustering.setMinClusterSize(this->min_cluster_size_);
+    euclidean_clustering.setMaxClusterSize(25000);
+    euclidean_clustering.setSearchMethod(tree);
+    euclidean_clustering.setInputCloud(cloud);
+    euclidean_clustering.setIndices(prob_indices);
+    euclidean_clustering.extract(cluster_indices);
+    double min_distance = DBL_MAX;
+
+    idx = -1;
+    dist = DBL_MAX;
+    for (int i = 0; i < cluster_indices.size(); i++) {
+
+       pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
+       pcl::PointCloud<NormalT>::Ptr tmp_normal(new pcl::PointCloud<NormalT>);
+       for (int j = 0; j < cluster_indices[i].indices.size(); j++) {
+          int cidx = cluster_indices[i].indices[j];
+          tmp_cloud->push_back(cloud->points[cidx]);
+          tmp_normal->push_back(normals->points[cidx]);
+       }
+       
+       Eigen::Vector4f center;
+       pcl::compute3DCentroid<PointT, float>(*tmp_cloud, center);
+       double d = pcl::distances::l2(this->seed_point_.getVector4fMap(),
+                                        center);
+       if (d < dist) {
+          dist = d;
+          idx = i;
+
+          region->clear();
+          pcl::copyPointCloud<PointT, PointT>(*tmp_cloud, *region);
+          normal->clear();
+          pcl::copyPointCloud<NormalT, NormalT>(*tmp_normal, *normal);
+       }
+    }
+
+    dist = DBL_MAX;
+    idx = -1;
+    for (int i = 0; i < region->size(); i++) {
+       double d = pcl::distances::l2(region->points[i].getVector4fMap(),
+                                     this->seed_point_.getVector4fMap());
+       if (d < dist) {
+          dist = d;
+          idx = i;
+       }
+    }
+    
     if (idx != -1 && icount == region->size()) {
        this->seed_index_ = idx;
        this->seed_point_ = region->points[idx];
