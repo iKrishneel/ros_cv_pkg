@@ -82,9 +82,6 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        return;
     }
 
-    this->symmetryBasedObjectHypothesis(supervoxel_clusters, start_index,
-                                        cloud, planes_msg, coefficients_msg);
-        
     // publish supervoxel
     sensor_msgs::PointCloud2 ros_voxels;
     jsk_msgs::ClusterPointIndices ros_indices;
@@ -92,6 +89,19 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
                             ros_voxels, ros_indices, cloud_msg->header);
     this->pub_cloud_.publish(ros_voxels);
     this->pub_indices_.publish(ros_indices);
+    
+    this->symmetryBasedObjectHypothesis(supervoxel_clusters, start_index,
+                                        cloud, planes_msg, coefficients_msg);
+    ros::Duration(1).sleep();
+    
+    
+    // publish supervoxel
+    sensor_msgs::PointCloud2 ros_voxels1;
+    jsk_msgs::ClusterPointIndices ros_indices1;
+    this->publishSupervoxel(supervoxel_clusters,
+                            ros_voxels1, ros_indices1, cloud_msg->header);
+    this->pub_cloud_.publish(ros_voxels1);
+    this->pub_indices_.publish(ros_indices1);
 }
 
 void CuboidBilateralSymmetricSegmentation::supervoxelDecomposition(
