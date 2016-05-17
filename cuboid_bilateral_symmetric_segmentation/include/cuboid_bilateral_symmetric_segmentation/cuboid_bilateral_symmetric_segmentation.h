@@ -77,7 +77,6 @@ class CuboidBilateralSymmetricSegmentation:
     float leaf_size_;
     float symmetric_angle_thresh_;
     double neigbor_dist_thresh_;  //! distance for point to be symm
-    AdjacentList adjacency_flag_;
    
     boost::shared_ptr<OcclusionHandler> occlusion_handler_;
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
@@ -104,13 +103,14 @@ class CuboidBilateralSymmetricSegmentation:
     void supervoxelDecomposition(SupervoxelMap &,
                                  pcl::PointCloud<NormalT>::Ptr,
                                  const pcl::PointCloud<PointT>::Ptr);
-    bool mergeNeigboringSupervoxels(SupervoxelMap &, AdjacentList &, const int);
+    bool mergeNeigboringSupervoxels(SupervoxelMap &, AdjacencyList &,
+                                    const int);
     float coplanarityCriteria(const Eigen::Vector4f, const Eigen::Vector4f,
                               const Eigen::Vector4f, const Eigen::Vector4f,
                               const float = 10, const float = 0.02f);
     void updateSupervoxelClusters(SupervoxelMap &,
                                  const uint32_t, const uint32_t);
-    void supervoxelAdjacencyList(AdjacentList &, const SupervoxelMap);
+    void supervoxelAdjacencyList(AdjacencyList &, const SupervoxelMap);
     void supervoxel3DBoundingBox(jsk_msgs::BoundingBox &,
                                  pcl::PointCloud<PointT>::Ptr,
                                  pcl::PointCloud<NormalT>::Ptr,
@@ -148,9 +148,6 @@ class CuboidBilateralSymmetricSegmentation:
          return (i < j);
       }
     } sortVector;
-
-    enum {
-       INIT = 0, GOOD = 1, BAD = 2};
 };
 
 #endif  // _CUBOID_BILATERAL_SYMMETRIC_SEGMENTATION_H_

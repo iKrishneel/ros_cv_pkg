@@ -195,15 +195,14 @@ void CuboidBilateralSymmetricSegmentation::supervoxelDecomposition(
 }
 
 bool CuboidBilateralSymmetricSegmentation::mergeNeigboringSupervoxels(
-    SupervoxelMap &supervoxel_clusters, AdjacentList &adjacency_list,
+    SupervoxelMap &supervoxel_clusters, AdjacencyList &adjacency_list,
     const int index) {
-    if (supervoxel_clusters.empty() || supervoxel_clusters.size() == -1 ||
-        adjacency_list.empty()) {
+    if (supervoxel_clusters.empty() || supervoxel_clusters.size() == -1) {
        ROS_ERROR("CANNOT MERGE DUE TO SIZE ERROR");
        return false;
     }
     
-
+    
 
     
     //! find neigboring voxel in proximity
@@ -284,11 +283,12 @@ void CuboidBilateralSymmetricSegmentation::updateSupervoxelClusters(
 }
 
 void CuboidBilateralSymmetricSegmentation::supervoxelAdjacencyList(
-    AdjacentList &adjacency_list, const SupervoxelMap supervoxel_clusters) {
+    AdjacencyList &neigbor_list, const SupervoxelMap supervoxel_clusters) {
     if (supervoxel_clusters.empty()) {
        ROS_ERROR("CANNOT COMPUTE EDGE DUE TO EMPTY INPUT");
        return;
     }
+    AdjacentList adjacency_list;
     adjacency_list.clear();
     if (supervoxel_clusters.size() == 1) {
        SupervoxelMap::const_iterator it = supervoxel_clusters.begin();
@@ -347,7 +347,6 @@ void CuboidBilateralSymmetricSegmentation::supervoxelAdjacencyList(
     std::vector<int>().swap(adj_list);
 
     //! build graph
-    AdjacencyList neigbor_list;
     std::map<uint32_t, AdjacencyList::vertex_descriptor> label_map;
     for (AdjacentList::iterator it = adjacency_list.begin();
          it != adjacency_list.end(); it++) {
@@ -414,17 +413,9 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     }
 
     // build voxel neigbors
-    AdjacentList adjacency_list;
+    AdjacencyList adjacency_list;
     this->supervoxelAdjacencyList(adjacency_list, supervoxel_clusters);
 
-    this->adjacency_flag_.clear();
-    for (AdjacentList::iterator it = this->adjacency_flag_.begin();
-         it != this->adjacency_flag_.end(); it++) {
-       for (int i = 0; i < it->second.size(); i++) {
-          this->adjacency_flag_[it->first][i] = INIT;
-       }
-    }
-    
     this->kdtree_->setInputCloud(cloud);
     this->occlusion_handler_->setInputCloud(cloud);
     this->occlusion_handler_->setLeafSize(leaf_size_, leaf_size_, leaf_size_);
