@@ -396,7 +396,6 @@ void DynamicStateSegmentation::regionOverSegmentation(
     idx = -1;
     dist = DBL_MAX;
     for (int i = 0; i < cluster_indices.size(); i++) {
-
        pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
        pcl::PointCloud<NormalT>::Ptr tmp_normal(new pcl::PointCloud<NormalT>);
        for (int j = 0; j < cluster_indices[i].indices.size(); j++) {

@@ -92,17 +92,6 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     
     this->symmetryBasedObjectHypothesis(supervoxel_clusters, start_index,
                                         cloud, planes_msg, coefficients_msg);
-    
-    ros::Duration(5).sleep();
-    ROS_INFO("UPDATING SUPERVOXEL");
-    
-    // publish supervoxel
-    sensor_msgs::PointCloud2 ros_voxels1;
-    jsk_msgs::ClusterPointIndices ros_indices1;
-    this->publishSupervoxel(supervoxel_clusters,
-                            ros_voxels1, ros_indices1, cloud_msg->header);
-    this->pub_cloud_.publish(ros_voxels1);
-    this->pub_indices_.publish(ros_indices1);
 }
 
 void CuboidBilateralSymmetricSegmentation::supervoxelDecomposition(
@@ -123,7 +112,9 @@ void CuboidBilateralSymmetricSegmentation::supervoxelDecomposition(
          it != supervoxel_clusters.end(); it++) {
        voxel_labels[it->first] = -1;
     }
-        
+
+    // return;
+    
     int label = -1;
     AdjacencyList::vertex_iterator i, end;
     for (boost::tie(i, end) = boost::vertices(adjacency_list); i != end; i++) {
@@ -413,6 +404,9 @@ void CuboidBilateralSymmetricSegmentation::supervoxel3DBoundingBox(
     this->pub_edge_.publish(ros_cloud);
 }
 
+/**
+/// TODO: FIX EVALUATION ?
+**/
 void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     SupervoxelMap &supervoxel_clusters, const int start_index,
     const pcl::PointCloud<PointT>::Ptr cloud,
@@ -543,7 +537,7 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     this->fitOriented3DBoundingBox(bounding_box, in_cloud,
                                    planes_msg, coefficients_msg);
     */
-    
+
     Eigen::Vector4f plane_coefficient;
     float max_energy = 0.0f;
     /*
@@ -585,6 +579,7 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
        is_init = false;
     }
     */
+    
     //****
     for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
          it != supervoxel_clusters.end(); it++) {
@@ -614,7 +609,7 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
        }
     }
     //**
-
+    
     
     std::cout << "\033[34m ENERY:\033[0m" << max_energy << "\n";
     
@@ -749,7 +744,7 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
           weight = 1.0 - (angle / 360.0f);
              
           if (angle > this->symmetric_angle_thresh_) {
-             weight += (-1.0f * (this->symmetric_angle_thresh_ / 360.0f));
+             // weight += (-1.0f * (this->symmetric_angle_thresh_ / 360.0f));
                 
              pt.r = 0;
              pt.b = 0;
@@ -789,6 +784,69 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
     this->pub_normal_.publish(ros_normal);
 
     return symmetric_energy;
+}
+
+bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
+    pcl::PointCloud<PointT>::Ptr cloud, pcl::PointCloud<NormalT>::Ptr normals,
+    const pcl::PointCloud<PointT>::Ptr energy_map,
+    const Eigen::Vector4f plane_coefficient) {
+    if (cloud->empty() || cloud->size() != normals->size() ||
+       cloud->size() != energy_map->size()) {
+       ROS_ERROR("INCORRECT INPUT FOR MINCUT-MAXFLOW");
+       return false;
+    }
+    const int node_num = static_cast<int>(cloud->size());
+    const int edge_num = 8;
+    boost::shared_ptr<GraphType> graph(new GraphType(
+                                          node_num, edge_num * node_num));
+    for (int i = 0; i < node_num; i++) {
+       graph->add_node();
+    }
+
+    const float HARD_SET_WEIGHT = 100.0f;
+    const float object_thresh = 0.9f;
+    const float background_thresh = 0.2f;
+
+    this->kdtree_->setInputCloud(cloud);
+    
+    for (int i = 0; i < node_num; i++) {
+       float weight = energy_map->points[i].r;
+       if (weight > object_thresh) {
+          graph->add_tweights(i, HARD_SET_WEIGHT, 0);
+       } else if (weight < background_thresh) {
+          graph->add_tweights(i, 0, HARD_SET_WEIGHT);
+       } else {
+          float w = -std::log(weight) * 10.0f;
+          if (weight == 0.0f) {
+             w = -std::log(1e-9);
+          }
+          graph->add_tweights(i, w, w);
+       }
+
+       std::vector<int> neigbor_indices;
+       this->getPointNeigbour<int>(neigbor_indices, cloud->points[i], edge_num);
+       Eigen::Vector4f center_point = cloud->points[i].getVector4fMap();
+       Eigen::Vector4f center_norm = normals->points[i].getNormalVector4fMap();
+       for (int j = 0; j < neigbor_indices.size(); j++) {
+          int indx = neigbor_indices[j];
+          if (indx != i) {
+             float w = 0.0f;
+             Eigen::Vector4f neigbor_point = cloud->points[
+                indx].getVector4fMap();
+             Eigen::Vector4f neigbor_norm = normals->points[
+                indx].getNormalVector4fMap();
+             float conv_crit = (neigbor_point - center_point).dot(neigbor_norm);
+             if (conv_crit > 0.0f) {
+                // set weight
+             } else {
+                // set weight
+             }
+             graph->add_edge(i, indx, (w), (w));
+          }
+       }
+    }
+    float flow = graph->maxflow();
+    
 }
 
 bool CuboidBilateralSymmetricSegmentation::occlusionRegionCheck(

@@ -146,7 +146,10 @@ include_directories(
 add_executable(cuboid_bilateral_symmetric_segmentation_node 
   src/cuboid_bilateral_symmetric_segmentation_node.cpp
   src/supervoxel_segmentation.cpp
-  src/oriented_bounding_box.cpp)
+  src/oriented_bounding_box.cpp
+  src/maxflow/graph.cpp
+  src/maxflow/maxflow.cpp
+)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
