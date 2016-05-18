@@ -2,8 +2,8 @@
 #include <cuboid_bilateral_symmetric_segmentation/cuboid_bilateral_symmetric_segmentation.h>
 
 CuboidBilateralSymmetricSegmentation::CuboidBilateralSymmetricSegmentation() :
-    min_cluster_size_(50), leaf_size_(0.001f), symmetric_angle_thresh_(20),
-    neigbor_dist_thresh_(0.02) {
+    min_cluster_size_(50), leaf_size_(0.02f), symmetric_angle_thresh_(20),
+    neigbor_dist_thresh_(0.01) {
     this->occlusion_handler_ = boost::shared_ptr<OcclusionHandler>(
        new OcclusionHandler);
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
@@ -92,8 +92,9 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     
     this->symmetryBasedObjectHypothesis(supervoxel_clusters, start_index,
                                         cloud, planes_msg, coefficients_msg);
-    ros::Duration(1).sleep();
     
+    ros::Duration(5).sleep();
+    ROS_INFO("UPDATING SUPERVOXEL");
     
     // publish supervoxel
     sensor_msgs::PointCloud2 ros_voxels1;
@@ -440,7 +441,7 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     pcl::PointCloud<NormalT>::Ptr in_normals(new pcl::PointCloud<NormalT>);
 
     // optimization using graph
-    
+    /*
     this->supervoxel3DBoundingBox(
        bounding_box, in_cloud, in_normals, supervoxel_clusters,
        planes_msg, coefficients_msg, s_index);
@@ -464,8 +465,9 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
           AdjacencyList::edge_descriptor e_descriptor;
           boost::tie(e_descriptor, found) = boost::edge(*i, *ai,
                                                         adjacency_list);
-          if (found) {
-             uint32_t n_vindex = adjacency_list[*ai];
+          uint32_t n_vindex = adjacency_list[*ai];
+          if (found && supervoxel_clusters.at(n_vindex)->voxels_->size() >
+              this->min_cluster_size_) {
              pcl::PointCloud<PointT>::Ptr fused_cloud(
                 new pcl::PointCloud<PointT>);
              *fused_cloud += *(supervoxel_clusters.at(vindex)->voxels_);
@@ -522,6 +524,9 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
                    boost::remove_edge(e_descriptor, adjacency_list);
                 }
              }
+          } else if (found && supervoxel_clusters.at(
+                        n_vindex)->voxels_->size() < this->min_cluster_size_) {
+             boost::remove_edge(e_descriptor, adjacency_list);
           }
           boost::tie(ai, a_end) = boost::adjacent_vertices(*i, adjacency_list);
           if (ai == a_end) {
@@ -537,10 +542,10 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
                                              s_index)->voxels_), *in_cloud);
     this->fitOriented3DBoundingBox(bounding_box, in_cloud,
                                    planes_msg, coefficients_msg);
+    */
     
-    
-    // Eigen::Vector4f plane_coefficient;
-    // float max_energy = 0.0f;
+    Eigen::Vector4f plane_coefficient;
+    float max_energy = 0.0f;
     /*
     bool has_neigbour = true;
     bool is_init = true;
@@ -580,6 +585,37 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
        is_init = false;
     }
     */
+    //****
+    for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
+         it != supervoxel_clusters.end(); it++) {
+       *in_cloud += *(it->second->voxels_);
+       *in_normals += *(it->second->normals_);
+    }
+    
+    max_energy = 0.0;
+    for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
+         it != supervoxel_clusters.end(); it++) {
+       pcl::PointCloud<PointT>::Ptr in_c(new pcl::PointCloud<PointT>);
+       pcl::PointCloud<NormalT>::Ptr in_n(new pcl::PointCloud<NormalT>);
+       jsk_msgs::BoundingBox bbox;
+       this->supervoxel3DBoundingBox(
+          bbox, in_c, in_n, supervoxel_clusters,
+          planes_msg, coefficients_msg, it->first);
+       if (in_c->size() > this->min_cluster_size_) {
+          float energy = 0.0f;
+          Eigen::Vector4f plane_coef;
+          this->symmetricalConsistency(plane_coef, energy, in_cloud,
+                                       in_normals, cloud, bbox);
+          if (energy > max_energy) {
+             max_energy = energy;
+             plane_coefficient = plane_coef;
+             bounding_box = bbox;
+          }
+       }
+    }
+    //**
+
+    
     std::cout << "\033[34m ENERY:\033[0m" << max_energy << "\n";
     
     this->plotPlane(in_cloud, plane_coefficient);
@@ -682,13 +718,14 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
 
        float weight = 0.0f;
        if (distance > this->neigbor_dist_thresh_) {
+          /*
           if (this->occlusionRegionCheck(pt)) {
              // WEIGHT = distance to plane
              float a = pcl::pointToPlaneDistance<PointT>(
                 pt, plane_coefficients[i].normalized());
              float b = pcl::pointToPlaneDistance<PointT>(
                 cloud->points[j], plane_coefficients[i].normalized());
-             weight = 0.50f - (std::fabs(a - b) / 1.0f);
+             // weight = 0.50f - (std::fabs(a - b) / 1.0f);
                 
              pt.r = 0;
              pt.b = 255;
@@ -699,6 +736,7 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
              pt.b = 0;
              pt.g = 0;
           }
+          */
        } else {  //! get reflected normal
           Eigen::Vector3f symm_n = n -
              (2.0f*((plane_n.normalized()).dot(n))*plane_n.normalized());

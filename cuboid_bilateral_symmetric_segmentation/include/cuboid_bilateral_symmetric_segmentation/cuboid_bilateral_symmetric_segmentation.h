@@ -2,7 +2,6 @@
 #ifndef _CUBOID_BILATERAL_SYMMETRIC_SEGMENTATION_H_
 #define _CUBOID_BILATERAL_SYMMETRIC_SEGMENTATION_H_
 
-
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
@@ -122,7 +121,6 @@ class CuboidBilateralSymmetricSegmentation:
                                        const pcl::PointCloud<PointT>::Ptr,
                                        const jsk_msgs::PolygonArrayConstPtr &,
                                        const ModelCoefficients &);
-   
     bool symmetricalConsistency(Eigen::Vector4f &, float &,
                                 pcl::PointCloud<PointT>::Ptr,
                                 pcl::PointCloud<NormalT>::Ptr,
@@ -131,8 +129,7 @@ class CuboidBilateralSymmetricSegmentation:
     float symmetricalPlaneEnergy(pcl::PointCloud<PointT>::Ptr,
                                  const pcl::PointCloud<NormalT>::Ptr,
                                  const pcl::PointCloud<PointT>::Ptr,
-                                 const int, const std::vector<Eigen::Vector4f>);
-   
+                                 const int, const std::vector<Eigen::Vector4f>);   
     bool occlusionRegionCheck(const PointT);
     template<class T>
     void getPointNeigbour(std::vector<int> &, const PointT,
