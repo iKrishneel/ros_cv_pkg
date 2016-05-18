@@ -579,7 +579,7 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
        is_init = false;
     }
     */
-    
+
     //****
     for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
          it != supervoxel_clusters.end(); it++) {
@@ -609,7 +609,6 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
        }
     }
     //**
-    
     
     std::cout << "\033[34m ENERY:\033[0m" << max_energy << "\n";
     
@@ -785,6 +784,46 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
 
     return symmetric_energy;
 }
+
+void CuboidBilateralSymmetricSegmentation::symmetricalShapeMap(
+    pcl::PointCloud<PointT>::Ptr shape_map,
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const Eigen::Vector4f plane_coefficient) {
+    if (cloud->empty()) {
+       ROS_ERROR("EMPTY CLOUD TO COMPUTE SYMMETRICAL");
+       return;
+    }
+    shape_map->clear();
+    pcl::copyPointCloud<PointT, PointT>(*cloud, *shape_map);
+    Eigen::Vector3f plane_n = plane_coefficient.head<3>();
+    for (int j = 0; j < cloud->size(); j++) {
+       Eigen::Vector3f p = cloud->points[j].getVector3fMap();
+       float beta = p(0)*plane_n(0) + p(1)*plane_n(1) + p(2)*plane_n(2);
+       float alpha = (plane_n(0) * plane_n(0)) +
+          (plane_n(1) * plane_n(1)) + (plane_n(2) * plane_n(2));
+       float t = (plane_coefficient(3) - beta) / alpha;
+          
+       PointT pt = cloud->points[j];
+       pt.x = p(0) + (t * 2 * plane_n(0));
+       pt.y = p(1) + (t * 2 * plane_n(1));
+       pt.z = p(2) + (t * 2 * plane_n(2));
+          
+       std::vector<int> neigbor_indices;
+       this->getPointNeigbour<float>(neigbor_indices, pt, 0.01f, false);
+       if (neigbor_indices.empty()) {
+          shape_map->points[j].r = 0;
+          shape_map->points[j].g = 0;
+          shape_map->points[j].b = 0;
+       } else {
+          shape_map->points[j].r = 255;
+          shape_map->points[j].g = 255;
+          shape_map->points[j].b = 255;
+       }
+    }
+
+    
+}
+
 
 bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
     pcl::PointCloud<PointT>::Ptr cloud, pcl::PointCloud<NormalT>::Ptr normals,

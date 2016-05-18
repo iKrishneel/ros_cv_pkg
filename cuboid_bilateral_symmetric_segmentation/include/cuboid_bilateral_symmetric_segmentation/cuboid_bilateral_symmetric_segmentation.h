@@ -132,6 +132,10 @@ class CuboidBilateralSymmetricSegmentation:
                                  const pcl::PointCloud<NormalT>::Ptr,
                                  const pcl::PointCloud<PointT>::Ptr,
                                  const int, const std::vector<Eigen::Vector4f>);
+    void symmetricalShapeMap(pcl::PointCloud<PointT>::Ptr,
+                             const pcl::PointCloud<PointT>::Ptr,
+                             const Eigen::Vector4f);
+   
     bool minCutMaxFlow(pcl::PointCloud<PointT>::Ptr,
                        pcl::PointCloud<NormalT>::Ptr,
                        const pcl::PointCloud<PointT>::Ptr,
