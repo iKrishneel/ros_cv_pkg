@@ -1,12 +1,13 @@
 <launch>
-  <arg name="points" default="/camera/depth_registered/points" />
+  <arg name="POINTS" default="/camera/depth_registered/points" />
+  <arg name="INPUT" default="/camera/depth_registered/points" />
   <arg name="image" default="/camera/rgb/image_rect_color" />
 
   <arg name="sub_plane" default="true" />
   <arg name="cluster_points" default="false" />
   
   <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch">
-    <arg name="cloud" value="$(arg points)"/>
+    <arg name="cloud" value="$(arg POINTS)"/>
   </include>
   
   <node pkg="dynamic_state_segmentation" type="dynamic_state_segmentation_node"
@@ -45,7 +46,8 @@
 
   <group if="$(arg sub_plane)">
     <include file="$(find interactive_segmentation)/launch/organized_multi_plane_segmentation.launch">
-      <arg name="INPUT" value="/pcl_filter_utils/output/cloud"/>
+      <!-- <arg name="INPUT" value="/pcl_filter_utils/output/cloud"/> -->
+      <arg name="INPUT" value="$(arg INPUT)"/>
       <arg name="HANDLE_ESTIMATOR" value="false" />
     </include>
   </group>	 
