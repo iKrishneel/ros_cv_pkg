@@ -70,6 +70,7 @@ class CuboidBilateralSymmetricSegmentation:
     message_filters::Subscriber<jsk_msgs::ModelCoefficientsArray> sub_coef_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
+    int num_threads_;
     uint32_t min_cluster_size_;
     float leaf_size_;
     float symmetric_angle_thresh_;
@@ -141,7 +142,10 @@ class CuboidBilateralSymmetricSegmentation:
     template<class T>
     void getPointNeigbour(std::vector<int> &, const PointT,
                           const T = 8, bool = true);
-
+    template<class T>
+    void estimateNormals(const pcl::PointCloud<PointT>::Ptr,
+                         pcl::PointCloud<NormalT>::Ptr,
+                         T = 0.05f, bool = false) const;
     pcl::PointXYZRGBNormal convertVector4fToPointXyzRgbNormal(
        const Eigen::Vector3f &, const Eigen::Vector3f &,
        const Eigen::Vector3f);

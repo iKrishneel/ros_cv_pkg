@@ -2,8 +2,8 @@
 #include <cuboid_bilateral_symmetric_segmentation/cuboid_bilateral_symmetric_segmentation.h>
 
 CuboidBilateralSymmetricSegmentation::CuboidBilateralSymmetricSegmentation() :
-    min_cluster_size_(50), leaf_size_(0.02f), symmetric_angle_thresh_(91),
-    neigbor_dist_thresh_(0.015) {
+    min_cluster_size_(50), leaf_size_(0.02f), symmetric_angle_thresh_(70),
+    neigbor_dist_thresh_(0.01), num_threads_(8) {
     this->occlusion_handler_ = boost::shared_ptr<OcclusionHandler>(
        new OcclusionHandler);
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
@@ -422,9 +422,11 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     this->supervoxelAdjacencyList(adjacency_list, supervoxel_clusters);
 
     this->kdtree_->setInputCloud(cloud);
+    /*
     this->occlusion_handler_->setInputCloud(cloud);
     this->occlusion_handler_->setLeafSize(leaf_size_, leaf_size_, leaf_size_);
     this->occlusion_handler_->initializeVoxelGrid();
+    */
     
     SupervoxelMap supervoxel_clusters_copy = supervoxel_clusters;
     AdjacencyList adjacency_list_copy = adjacency_list;
@@ -581,11 +583,16 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     */
 
     //****
+
     for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
          it != supervoxel_clusters.end(); it++) {
        *in_cloud += *(it->second->voxels_);
        *in_normals += *(it->second->normals_);
     }
+    this->kdtree_->setInputCloud(in_cloud);
+    // in_normals->clear();
+    // this->estimateNormals<float>(in_cloud, in_normals);
+    
     pcl::PointCloud<PointT>::Ptr symm_potential(new pcl::PointCloud<PointT>);
     
     max_energy = 0.0;
@@ -603,8 +610,13 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
 
           in_c ->clear();
           pcl::copyPointCloud<PointT, PointT>(*in_cloud, *in_c);
+          // this->symmetricalConsistency(plane_coef, energy, in_c,
+          //                              in_normals, cloud, bbox);
+
+          //! DEBUG
           this->symmetricalConsistency(plane_coef, energy, in_c,
-                                       in_normals, cloud, bbox);
+                                       in_normals, in_cloud, bbox);
+          
           if (energy > max_energy) {
              max_energy = energy;
              plane_coefficient = plane_coef;
@@ -622,7 +634,7 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
 
 
 
-    
+    /*
     // *** DEBUG ***
     std::cout << "\n ----DEGUB----"  << "\n";
     this->kdtree_->setInputCloud(in_cloud);
@@ -630,9 +642,9 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     prev_plane_coef.push_back(plane_coefficient);
     float prev_plane_enery = this->symmetricalPlaneEnergy(
        in_cloud, in_normals, in_cloud, 0, prev_plane_coef);
+  
+    */
     // *** DEBUG END ***
-
-    
     
     // this->minCutMaxFlow(in_cloud, in_normals,
     //                     symm_potential, plane_coefficient);
@@ -645,10 +657,10 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     ros_cloud.header = planes_msg->header;
     this->pub_edge_.publish(ros_cloud);
     
-    // sensor_msgs::PointCloud2 ros_cloud1;
-    // pcl::toROSMsg(*symm_potential, ros_cloud1);
-    // ros_cloud1.header = planes_msg->header;
-    // this->pub_normal_.publish(ros_cloud1);
+    sensor_msgs::PointCloud2 ros_cloud1;
+    pcl::toROSMsg(*symm_potential, ros_cloud1);
+    ros_cloud1.header = planes_msg->header;
+    this->pub_normal_.publish(ros_cloud1);
     
     // publish bounding
     jsk_msgs::BoundingBoxArray bounding_boxes;
@@ -768,28 +780,18 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
        } else {  //! get reflected normal
           Eigen::Vector3f symm_n = n -
              (2.0f*((plane_n.normalized()).dot(n))*plane_n.normalized());
-
-          // **** DEBUG **
-          // Eigen::Vector4f p_coef = plane_coefficients[i].normalized();
-          // plane_n = p_coef.head<3>();
-          // Eigen::Vector3f symm_n = n -
-          //    (2.0f*((plane_n).dot(n))*plane_n);
-          // **** DEBUG END **
           
           Eigen::Vector3f sneig_r = normals->points[
              nidx].getNormalVector3fMap();
-          // float dot_prod = (symm_n.dot(sneig_r)) / (
-          //    symm_n.norm() * sneig_r.norm());
-
-          float dot_prod = (symm_n.dot(sneig_r));
+          float dot_prod = (symm_n.dot(sneig_r)) / (
+             symm_n.norm() * sneig_r.norm());
+          // float dot_prod = (symm_n.dot(sneig_r));
           
           float angle = std::acos(dot_prod) * (180.0f/M_PI);
-
-          std::cout << "ANGLE: " << angle  << "\n";
-          
           weight = 1.0f - (angle / 360.0f);
           
           if (angle > this->symmetric_angle_thresh_) {
+             std::cout << angle  << "\n";
              // weight += (-1.0f * (this->symmetric_angle_thresh_ / 360.0f));
              weight = 0.0f;
              
@@ -801,7 +803,7 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
              pt.b = 255;
              pt.g = 0;
           }
-// #ifdef RVIZ
+#ifdef RVIZ
           symm_normal->push_back(
              this->convertVector4fToPointXyzRgbNormal(
                 pt.getVector3fMap(),
@@ -817,7 +819,7 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
                 p, n, Eigen::Vector3f(0, 0, 255)));
 
           j+=cloud->size() + 10;
-// #endif
+#endif
        }
        temp_cloud->push_back(pt);
 
@@ -829,15 +831,13 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
           symmetric_energy += weight;
        }
     }
-
-    std::cout << "SIZE: " << symm_normal->size()  << "\n";
     
-// #ifdef RVIZ
+#ifdef RVIZ
     sensor_msgs::PointCloud2 ros_normal;
     pcl::toROSMsg(*symm_normal, ros_normal);
     ros_normal.header = this->header_;
     this->pub_normal_.publish(ros_normal);
-// #endif
+#endif
     return symmetric_energy;
 }
 
@@ -1020,6 +1020,27 @@ void CuboidBilateralSymmetricSegmentation::getPointNeigbour(
        int search_out = this->kdtree_->radiusSearch(
           seed_point, K, neigbor_indices, point_squared_distance);
     }
+}
+
+template<class T>
+void CuboidBilateralSymmetricSegmentation::estimateNormals(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    pcl::PointCloud<NormalT>::Ptr normals, const T k, bool use_knn) const {
+    if (cloud->empty()) {
+        ROS_ERROR("ERROR: The Input cloud is Empty.....");
+        return;
+    }
+    pcl::NormalEstimationOMP<PointT, NormalT> ne;
+    ne.setInputCloud(cloud);
+    ne.setNumberOfThreads(this->num_threads_);
+    pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT> ());
+    ne.setSearchMethod(tree);
+    if (use_knn) {
+        ne.setKSearch(k);
+    } else {
+        ne.setRadiusSearch(k);
+    }
+    ne.compute(*normals);
 }
 
 pcl::PointXYZRGBNormal
