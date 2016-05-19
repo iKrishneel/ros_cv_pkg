@@ -7,29 +7,14 @@
 #include <message_filters/sync_policies/approximate_time.h>
 
 #include <pcl_conversions/pcl_conversions.h>
-// #include <pcl/correspondence.h>
-// #include <pcl/recognition/cg/hough_3d.h>
-// #include <pcl/recognition/cg/geometric_consistency.h>
 #include <pcl/kdtree/kdtree_flann.h>
-
-// #include <pcl/common/transforms.h>
-// #include <pcl/filters/extract_indices.h>
 #include <pcl/features/normal_3d_omp.h>
 #include <pcl/registration/distances.h>
-// #include <pcl/features/fpfh_omp.h>
 #include <pcl/common/centroid.h>
-// #include <pcl/filters/radius_outlier_removal.h>
-// #include <pcl/segmentation/extract_clusters.h>
-// #include <pcl/sample_consensus/sac_model_plane.h>
 #include <pcl/filters/voxel_grid_occlusion_estimation.h>
 
 #include <geometry_msgs/PointStamped.h>
-#include <sensor_msgs/Image.h>
-#include <sensor_msgs/CameraInfo.h>
-#include <sensor_msgs/image_encodings.h>
-#include <cv_bridge/cv_bridge.h>
 #include <std_msgs/Header.h>
-
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
 #include <jsk_recognition_utils/geo/polygon.h>
 #include <jsk_recognition_msgs/PolygonArray.h>
