@@ -192,6 +192,7 @@ void OrientedBoundingBox::transformBoxCornerPoints(
     std::vector<std::vector<Eigen::Vector3f> > corners(this->num_planes_);
     std::vector<Eigen::Vector3f> corner(this->num_points_);
     // 4 corners
+    /*
     corner[0] = Eigen::Vector3f(dims(0), dims(1), dims(2));
     corner[1] = Eigen::Vector3f(-dims(0), -dims(1), -dims(2));
     corner[2] = Eigen::Vector3f(-dims(0), -dims(1), dims(2));
@@ -202,7 +203,7 @@ void OrientedBoundingBox::transformBoxCornerPoints(
     corner2[1] = Eigen::Vector3f(-dims(0), dims(1), -dims(2));
     corner2[2] = Eigen::Vector3f(-dims(0), dims(1), dims(2));
     corners[1] = corner2;
-    
+    */
     // 4 mid-points
     std::vector<Eigen::Vector3f> corner3(this->num_points_);
     corner3[0] = Eigen::Vector3f(dims(0), 0, -dims(2));

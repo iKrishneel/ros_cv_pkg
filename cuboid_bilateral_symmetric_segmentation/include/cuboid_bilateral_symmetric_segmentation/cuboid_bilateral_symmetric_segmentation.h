@@ -40,10 +40,6 @@
 #include <cuboid_bilateral_symmetric_segmentation/oriented_bounding_box.h>
 #include <cuboid_bilateral_symmetric_segmentation/maxflow/graph.h>
 
-#include <opencv2/core/core.hpp>
-#include <opencv2/opencv.hpp>
-#include <boost/thread/mutex.hpp>
-
 class CuboidBilateralSymmetricSegmentation:
     public SupervoxelSegmentation,
     public OrientedBoundingBox {

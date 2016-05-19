@@ -2,8 +2,8 @@
 #include <cuboid_bilateral_symmetric_segmentation/cuboid_bilateral_symmetric_segmentation.h>
 
 CuboidBilateralSymmetricSegmentation::CuboidBilateralSymmetricSegmentation() :
-    min_cluster_size_(50), leaf_size_(0.02f), symmetric_angle_thresh_(20),
-    neigbor_dist_thresh_(0.01) {
+    min_cluster_size_(50), leaf_size_(0.02f), symmetric_angle_thresh_(91),
+    neigbor_dist_thresh_(0.015) {
     this->occlusion_handler_ = boost::shared_ptr<OcclusionHandler>(
        new OcclusionHandler);
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
@@ -620,8 +620,22 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     
     std::cout << "\033[34m MAX ENERY:\033[0m" << max_energy << "\n";
 
-    this->minCutMaxFlow(in_cloud, in_normals,
-                        symm_potential, plane_coefficient);
+
+
+    
+    // *** DEBUG ***
+    std::cout << "\n ----DEGUB----"  << "\n";
+    this->kdtree_->setInputCloud(in_cloud);
+    std::vector<Eigen::Vector4f> prev_plane_coef;
+    prev_plane_coef.push_back(plane_coefficient);
+    float prev_plane_enery = this->symmetricalPlaneEnergy(
+       in_cloud, in_normals, in_cloud, 0, prev_plane_coef);
+    // *** DEBUG END ***
+
+    
+    
+    // this->minCutMaxFlow(in_cloud, in_normals,
+    //                     symm_potential, plane_coefficient);
     
     this->plotPlane(in_cloud, plane_coefficient);
     
@@ -630,6 +644,11 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     pcl::toROSMsg(*in_cloud, ros_cloud);
     ros_cloud.header = planes_msg->header;
     this->pub_edge_.publish(ros_cloud);
+    
+    // sensor_msgs::PointCloud2 ros_cloud1;
+    // pcl::toROSMsg(*symm_potential, ros_cloud1);
+    // ros_cloud1.header = planes_msg->header;
+    // this->pub_normal_.publish(ros_cloud1);
     
     // publish bounding
     jsk_msgs::BoundingBoxArray bounding_boxes;
@@ -689,7 +708,8 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
     const pcl::PointCloud<NormalT>::Ptr normals,
     const pcl::PointCloud<PointT>::Ptr in_cloud, const int i,
     const std::vector<Eigen::Vector4f> plane_coefficients) {
-    if (plane_coefficients.empty() || cloud->empty() || in_cloud->empty()) {
+    if (plane_coefficients.empty() || cloud->empty() ||
+        in_cloud->empty() || cloud->size() != normals->size()) {
        ROS_ERROR("ENERGY COMPUTATION FAILED DUE TO EMPTY INPUTS");
        return 0.0f;
     }
@@ -701,6 +721,7 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
     
     float symmetric_energy = 0.0f;
     Eigen::Vector3f plane_n = plane_coefficients[i].head<3>();
+    
     for (int j = 0; j < cloud->size(); j++) {
        Eigen::Vector3f n = normals->points[j].getNormalVector3fMap();
        Eigen::Vector3f p = cloud->points[j].getVector3fMap();
@@ -718,10 +739,11 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
        this->getPointNeigbour<int>(neigbor_indices, pt, 1);
        int nidx = neigbor_indices[0];
        Eigen::Vector4f ref_pt = pt.getVector4fMap();
+       Eigen::Vector4f ref_match = in_cloud->points[nidx].getVector4fMap();
        ref_pt(3) = 0.0f;
-       double distance = pcl::distances::l2(
-          ref_pt, in_cloud->points[nidx].getVector4fMap());
-
+       ref_match(3) = 0.0f;
+       double distance = pcl::distances::l2(ref_pt, ref_match);
+       
        float weight = 0.0f;
        if (distance > this->neigbor_dist_thresh_) {
           /*
@@ -746,17 +768,31 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
        } else {  //! get reflected normal
           Eigen::Vector3f symm_n = n -
              (2.0f*((plane_n.normalized()).dot(n))*plane_n.normalized());
+
+          // **** DEBUG **
+          // Eigen::Vector4f p_coef = plane_coefficients[i].normalized();
+          // plane_n = p_coef.head<3>();
+          // Eigen::Vector3f symm_n = n -
+          //    (2.0f*((plane_n).dot(n))*plane_n);
+          // **** DEBUG END **
+          
           Eigen::Vector3f sneig_r = normals->points[
              nidx].getNormalVector3fMap();
-          float dot_prod = (symm_n.dot(sneig_r)) / (
-             symm_n.norm() * sneig_r.norm());
+          // float dot_prod = (symm_n.dot(sneig_r)) / (
+          //    symm_n.norm() * sneig_r.norm());
+
+          float dot_prod = (symm_n.dot(sneig_r));
+          
           float angle = std::acos(dot_prod) * (180.0f/M_PI);
 
+          std::cout << "ANGLE: " << angle  << "\n";
+          
           weight = 1.0f - (angle / 360.0f);
-             
+          
           if (angle > this->symmetric_angle_thresh_) {
              // weight += (-1.0f * (this->symmetric_angle_thresh_ / 360.0f));
-                
+             weight = 0.0f;
+             
              pt.r = 0;
              pt.b = 0;
              pt.g = 255;
@@ -765,7 +801,7 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
              pt.b = 255;
              pt.g = 0;
           }
-#ifdef RVIZ
+// #ifdef RVIZ
           symm_normal->push_back(
              this->convertVector4fToPointXyzRgbNormal(
                 pt.getVector3fMap(),
@@ -775,11 +811,13 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
              this->convertVector4fToPointXyzRgbNormal(
                 in_cloud->points[nidx].getVector3fMap(),
                 sneig_r, Eigen::Vector3f(255, 0, 0)));
-                
+          
           symm_normal->push_back(
              this->convertVector4fToPointXyzRgbNormal(
                 p, n, Eigen::Vector3f(0, 0, 255)));
-#endif
+
+          j+=cloud->size() + 10;
+// #endif
        }
        temp_cloud->push_back(pt);
 
@@ -792,12 +830,14 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
        }
     }
 
-#ifdef RVIZ
+    std::cout << "SIZE: " << symm_normal->size()  << "\n";
+    
+// #ifdef RVIZ
     sensor_msgs::PointCloud2 ros_normal;
     pcl::toROSMsg(*symm_normal, ros_normal);
     ros_normal.header = this->header_;
     this->pub_normal_.publish(ros_normal);
-#endif
+// #endif
     return symmetric_energy;
 }
 
@@ -883,7 +923,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
           graph->add_tweights(i, HARD_SET_WEIGHT, 0);
           } else */
        if (weight <= background_thresh) {
-          std::cout << "BACKGRD: " << weight  << "\n";
+          // std::cout << "BACKGRD: " << weight  << "\n";
           graph->add_tweights(i, 0, HARD_SET_WEIGHT);
        } else {
           float w = -std::log(weight) * 10.0f;
@@ -930,7 +970,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              graph->add_edge(i, indx, nweights, nweights);
           }
        }
-       std::cout   << "\n";
+       // std::cout   << "\n";
     }
     ROS_INFO("\033[34m COMPUTING FLOW \033[0m");
 
