@@ -2,7 +2,7 @@
 #include <cuboid_bilateral_symmetric_segmentation/cuboid_bilateral_symmetric_segmentation.h>
 
 CuboidBilateralSymmetricSegmentation::CuboidBilateralSymmetricSegmentation() :
-    min_cluster_size_(50), leaf_size_(0.02f), symmetric_angle_thresh_(70),
+    min_cluster_size_(50), leaf_size_(0.02f), symmetric_angle_thresh_(45),
     neigbor_dist_thresh_(0.01), num_threads_(8) {
     this->occlusion_handler_ = boost::shared_ptr<OcclusionHandler>(
        new OcclusionHandler);
@@ -590,8 +590,6 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
        *in_normals += *(it->second->normals_);
     }
     this->kdtree_->setInputCloud(in_cloud);
-    // in_normals->clear();
-    // this->estimateNormals<float>(in_cloud, in_normals);
     
     pcl::PointCloud<PointT>::Ptr symm_potential(new pcl::PointCloud<PointT>);
     
@@ -610,10 +608,6 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
 
           in_c ->clear();
           pcl::copyPointCloud<PointT, PointT>(*in_cloud, *in_c);
-          // this->symmetricalConsistency(plane_coef, energy, in_c,
-          //                              in_normals, cloud, bbox);
-
-          //! DEBUG
           this->symmetricalConsistency(plane_coef, energy, in_c,
                                        in_normals, in_cloud, bbox);
           
@@ -628,26 +622,11 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
           std::cout << "\033[32m ENERY:\033[0m" << energy << "\n";
        }
     }
-    //**
     
     std::cout << "\033[34m MAX ENERY:\033[0m" << max_energy << "\n";
-
-
-
-    /*
-    // *** DEBUG ***
-    std::cout << "\n ----DEGUB----"  << "\n";
-    this->kdtree_->setInputCloud(in_cloud);
-    std::vector<Eigen::Vector4f> prev_plane_coef;
-    prev_plane_coef.push_back(plane_coefficient);
-    float prev_plane_enery = this->symmetricalPlaneEnergy(
-       in_cloud, in_normals, in_cloud, 0, prev_plane_coef);
-  
-    */
-    // *** DEBUG END ***
     
-    // this->minCutMaxFlow(in_cloud, in_normals,
-    //                     symm_potential, plane_coefficient);
+    this->minCutMaxFlow(in_cloud, in_normals,
+                        symm_potential, plane_coefficient);
     
     this->plotPlane(in_cloud, plane_coefficient);
     
@@ -656,11 +635,13 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     pcl::toROSMsg(*in_cloud, ros_cloud);
     ros_cloud.header = planes_msg->header;
     this->pub_edge_.publish(ros_cloud);
-    
+
+    /*
     sensor_msgs::PointCloud2 ros_cloud1;
     pcl::toROSMsg(*symm_potential, ros_cloud1);
     ros_cloud1.header = planes_msg->header;
     this->pub_normal_.publish(ros_cloud1);
+    */
     
     // publish bounding
     jsk_msgs::BoundingBoxArray bounding_boxes;
