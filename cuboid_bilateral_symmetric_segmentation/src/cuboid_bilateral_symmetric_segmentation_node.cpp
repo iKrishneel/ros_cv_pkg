@@ -18,6 +18,7 @@ void CuboidBilateralSymmetricSegmentation::onInit() {
        "/cbss/output/cloud", 1);
     this->pub_edge_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/cbss/output/edges", 1);
+    
     this->pub_indices_ = this->pnh_.advertise<jsk_msgs::ClusterPointIndices>(
         "/cbss/output/indices", 1);
     this->pub_bbox_ = this->pnh_.advertise<jsk_msgs::BoundingBoxArray>(
@@ -25,6 +26,8 @@ void CuboidBilateralSymmetricSegmentation::onInit() {
 
     this->pub_normal_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/cbss/output/normals", 1);
+    this->pub_object_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+       "/cbss/output/object", 1);
 }
 
 void CuboidBilateralSymmetricSegmentation::subscribe() {
@@ -624,9 +627,11 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     }
     
     std::cout << "\033[34m MAX ENERY:\033[0m" << max_energy << "\n";
-    
+
+
     this->minCutMaxFlow(in_cloud, in_normals,
                         symm_potential, plane_coefficient);
+
     
     this->plotPlane(in_cloud, plane_coefficient);
     
@@ -636,12 +641,12 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     ros_cloud.header = planes_msg->header;
     this->pub_edge_.publish(ros_cloud);
 
-    /*
+
     sensor_msgs::PointCloud2 ros_cloud1;
     pcl::toROSMsg(*symm_potential, ros_cloud1);
     ros_cloud1.header = planes_msg->header;
     this->pub_normal_.publish(ros_cloud1);
-    */
+
     
     // publish bounding
     jsk_msgs::BoundingBoxArray bounding_boxes;
@@ -772,7 +777,6 @@ float CuboidBilateralSymmetricSegmentation::symmetricalPlaneEnergy(
           weight = 1.0f - (angle / 360.0f);
           
           if (angle > this->symmetric_angle_thresh_) {
-             std::cout << angle  << "\n";
              // weight += (-1.0f * (this->symmetric_angle_thresh_ / 360.0f));
              weight = 0.0f;
              
@@ -878,7 +882,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
     
     const float HARD_SET_WEIGHT = 100.0f;
     const float object_thresh = 0.9f;
-    const float background_thresh = 0.2f;
+    const float background_thresh = 0.0f;
     const float alpha_thresh = 0.5f;
     
     const int node_num = static_cast<int>(cloud->size());
@@ -899,22 +903,21 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
     
     for (int i = 0; i < node_num; i++) {
        float weight = energy_map->points[i].r/255.0f;
+       float w = -std::log(weight) * 10.0f;
+       w = weight * 10;
+       
        /*if (weight > object_thresh) {
           std::cout << "OBJECT: " << weight  << "\n";
           graph->add_tweights(i, HARD_SET_WEIGHT, 0);
           } else */
+       
        if (weight <= background_thresh) {
-          // std::cout << "BACKGRD: " << weight  << "\n";
           graph->add_tweights(i, 0, HARD_SET_WEIGHT);
        } else {
-          float w = -std::log(weight) * 10.0f;
-          w = weight * 10;
-          
           if (weight == 0.0f) {
              w = -std::log(1e-9);
           }
-          // std::cout << w  << "\t" << weight << "\n";
-          graph->add_tweights(i, w, 0.0f);
+          graph->add_tweights(i, w, 0.5 * w);
        }
 
        std::vector<int> neigbor_indices;
@@ -933,20 +936,21 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              if (conv_crit > 0.0f) {
                 wc = std::pow((1.0f - neigbor_norm.dot(center_norm)), 2);
              } else {
-                wc = (1.0f - neigbor_norm.dot(center_norm));
+                // wc = (1.0f - neigbor_norm.dot(center_norm));
+                wc = 0.0f;
              }
-             // wc *= alpha_thresh;
+             wc *= alpha_thresh;
              
              float ws = 0.0f;
              ws = std::exp(-1.0f * (shape_map->points[indx].r/255.0f));
-             // ws *= (1.0f - alpha_thresh);
+             ws *= (1.0f - alpha_thresh);
              
              if (wc < 1e-9) {
                 wc = 1e-9;
              }
              
              // float nweights = fabs(std::log(wc + ws));
-             float nweights =  ws + wc;
+             float nweights = wc + ws;
              
              graph->add_edge(i, indx, nweights, nweights);
           }
@@ -971,7 +975,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*shape_map, ros_cloud);
     ros_cloud.header = this->header_;
-    this->pub_normal_.publish(ros_cloud);
+    this->pub_object_.publish(ros_cloud);
 }
 
 bool CuboidBilateralSymmetricSegmentation::occlusionRegionCheck(

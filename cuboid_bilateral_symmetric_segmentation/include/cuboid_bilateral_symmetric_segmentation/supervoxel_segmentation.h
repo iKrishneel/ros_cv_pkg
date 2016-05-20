@@ -10,8 +10,7 @@
 #include <pcl/segmentation/supervoxel_clustering.h>
 
 #include <dynamic_reconfigure/server.h>
-// #include <sensor_msgs/PointCloud2.h>
-// #include <std_msgs/Header.h>
+
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <cuboid_bilateral_symmetric_segmentation/SupervoxelSegmentationConfig.h>
 

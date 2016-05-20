@@ -69,13 +69,13 @@ class CuboidBilateralSymmetricSegmentation:
     void onInit();
     void subscribe();
     void unsubscribe();
-
+   
     ros::Publisher pub_cloud_;
     ros::Publisher pub_edge_;
     ros::Publisher pub_indices_;
     ros::Publisher pub_bbox_;
     ros::Publisher pub_normal_;
-
+    ros::Publisher pub_object_;
    
  public:
     CuboidBilateralSymmetricSegmentation();
