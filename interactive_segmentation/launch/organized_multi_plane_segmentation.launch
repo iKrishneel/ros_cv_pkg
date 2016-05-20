@@ -32,40 +32,40 @@
     </rosparam>
   </node>
 
-  <node pkg="nodelet" type="nodelet" name="colorize_error"
-        machine="$(arg MACHINE)"
-        args="load jsk_pcl/ColorizeDistanceFromPlane $(arg MANAGER)"
-        clear_params="false">
-    <remap from="~input" to="$(arg INPUT)"/>
-    <remap from="~input_indices" to="multi_plane_estimate/output_refined"/>
-    <remap from="~input_coefficients" to="multi_plane_estimate/output_refined_coefficients"/>
-    <remap from="~input_polygons" to="/multi_plane_estimate/output_refined_polygon" />
-  </node>
+  <!-- <node pkg="nodelet" type="nodelet" name="colorize_error" -->
+  <!--       machine="$(arg MACHINE)" -->
+  <!--       args="load jsk_pcl/ColorizeDistanceFromPlane $(arg MANAGER)" -->
+  <!--       clear_params="false"> -->
+  <!--   <remap from="~input" to="$(arg INPUT)"/> -->
+  <!--   <remap from="~input_indices" to="multi_plane_estimate/output_refined"/> -->
+  <!--   <remap from="~input_coefficients" to="multi_plane_estimate/output_refined_coefficients"/> -->
+  <!--   <remap from="~input_polygons" to="/multi_plane_estimate/output_refined_polygon" /> -->
+  <!-- </node> -->
   
-  <node pkg="nodelet" type="nodelet"
-        name="cluster_decomposer"
-        machine="$(arg MACHINE)"
-        args="load jsk_pcl/ClusterPointIndicesDecomposer $(arg MANAGER)"
-        output="screen">
-    <remap from="~input" to="$(arg INPUT)" />
-    <remap from="~target" to="/multi_plane_estimate/output" />
-    <rosparam>
-      publish_clouds: false
-      publish_tf: false
-    </rosparam>
-  </node>
-  <node pkg="nodelet" type="nodelet"
-        name="cluster_decomposer2"
-        machine="$(arg MACHINE)"
-        args="load jsk_pcl/ClusterPointIndicesDecomposer $(arg MANAGER)"
-        output="screen">
-    <remap from="~input" to="$(arg INPUT)" />
-    <remap from="~target" to="/multi_plane_estimate/output_nonconnected" />
-    <rosparam>
-      publish_clouds: false
-      publish_tf: false
-    </rosparam>
-  </node>
+  <!-- <node pkg="nodelet" type="nodelet" -->
+  <!--       name="cluster_decomposer" -->
+  <!--       machine="$(arg MACHINE)" -->
+  <!--       args="load jsk_pcl/ClusterPointIndicesDecomposer $(arg MANAGER)" -->
+  <!--       output="screen"> -->
+  <!--   <remap from="~input" to="$(arg INPUT)" /> -->
+  <!--   <remap from="~target" to="/multi_plane_estimate/output" /> -->
+  <!--   <rosparam> -->
+  <!--     publish_clouds: false -->
+  <!--     publish_tf: false -->
+  <!--   </rosparam> -->
+  <!-- </node> -->
+  <!-- <node pkg="nodelet" type="nodelet" -->
+  <!--       name="cluster_decomposer2" -->
+  <!--       machine="$(arg MACHINE)" -->
+  <!--       args="load jsk_pcl/ClusterPointIndicesDecomposer $(arg MANAGER)" -->
+  <!--       output="screen"> -->
+  <!--   <remap from="~input" to="$(arg INPUT)" /> -->
+  <!--   <remap from="~target" to="/multi_plane_estimate/output_nonconnected" /> -->
+  <!--   <rosparam> -->
+  <!--     publish_clouds: false -->
+  <!--     publish_tf: false -->
+  <!--   </rosparam> -->
+  <!-- </node> -->
 
   <node pkg="nodelet" type="nodelet"
         name="plane_extraction"
