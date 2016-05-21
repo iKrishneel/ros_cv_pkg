@@ -521,30 +521,56 @@ bool CuboidBilateralSymmetricSegmentation::optimizeSymmetricalPlane(
        new pcl::IterativeClosestPoint<PointT, PointT>);
     pcl::PointCloud<PointT>::Ptr out_cloud(new pcl::PointCloud<PointT>);
     out_cloud->resize(static_cast<int>(in_cloud->size()));
-    Eigen::Vector3f plane_n = plane_coefficient.head<3>();
-    for (int j = 0; j < in_cloud->size(); j++) {
-       Eigen::Vector3f p = in_cloud->points[j].getVector3fMap();
-       float beta = p(0)*plane_n(0) + p(1)*plane_n(1) + p(2)*plane_n(2);
-       float alpha = (plane_n(0) * plane_n(0)) +
-          (plane_n(1) * plane_n(1)) + (plane_n(2) * plane_n(2));
-       float t = (plane_coefficient(3) - beta) / alpha;
-       PointT pt = in_cloud->points[j];
-       pt.x = p(0) + (t * 2 * plane_n(0));
-       pt.y = p(1) + (t * 2 * plane_n(1));
-       pt.z = p(2) + (t * 2 * plane_n(2));
-       out_cloud->points[j] = pt;
-    }
-    icp->setInputSource(out_cloud);
-    icp->setInputTarget(in_cloud);
     pcl::PointCloud<PointT>::Ptr align_cloud(new pcl::PointCloud<PointT>);
-    icp->align(*align_cloud);
+    Eigen::Vector3f plane_n = plane_coefficient.head<3>();
 
-    std::cout << "--------------------------------------------"  << "\n";
-    std::cout << "has converged:" << icp->hasConverged() << " score: "
-              << icp->getFitnessScore() << std::endl;
-    std::cout << icp->getFinalTransformation() << std::endl;
-
+    const double stop_term = 1e-5;
     
+    // do {
+       for (int j = 0; j < in_cloud->size(); j++) {
+          Eigen::Vector3f p = in_cloud->points[j].getVector3fMap();
+          float beta = p(0)*plane_n(0) + p(1)*plane_n(1) + p(2)*plane_n(2);
+          float alpha = (plane_n(0) * plane_n(0)) +
+             (plane_n(1) * plane_n(1)) + (plane_n(2) * plane_n(2));
+          float t = (plane_coefficient(3) - beta) / alpha;
+          PointT pt = in_cloud->points[j];
+          pt.x = p(0) + (t * 2 * plane_n(0));
+          pt.y = p(1) + (t * 2 * plane_n(1));
+          pt.z = p(2) + (t * 2 * plane_n(2));
+          out_cloud->points[j] = pt;
+       }
+       icp->setInputSource(out_cloud);
+       icp->setInputTarget(in_cloud);
+       icp->align(*align_cloud);
+
+       std::cout << "--------------------------------------------"  << "\n";
+       std::cout << "has converged:" << icp->hasConverged() << " score: "
+                 << icp->getFitnessScore() << std::endl;
+       std::cout << icp->getFinalTransformation() << std::endl;
+       
+// } while (icp->getFitnessScore() < stop_term);
+
+
+       //! transform plane
+       Eigen::Vector4f pop;
+       pop(0) = plane_coefficient(0) * plane_coefficient(3);
+       pop(1) = plane_coefficient(1) * plane_coefficient(3);
+       pop(2) = plane_coefficient(2) * plane_coefficient(3);
+       pop(3) = 1.0f;
+       
+       Eigen::Vector4f normal = plane_coefficient;
+
+       Eigen::Vector4f t_pop = icp->getFinalTransformation() * pop;
+       Eigen::Matrix<float, 4, 4> inv = icp->getFinalTransformation().inverse();
+       // Eigen::Vector4f t_normal = inv.transpose() * normal;
+       Eigen::Vector4f t_normal = icp->getFinalTransformation() * normal;
+       // float d = t_pop.head<3>().dot(t_normal.head<3>());
+       float d = t_pop.dot(t_normal);
+       
+       Eigen::Vector4f new_plane_coef = t_normal;
+       new_plane_coef(3) = d;
+       this->plotPlane(align_cloud, new_plane_coef);
+       
     this->plotPlane(out_cloud, plane_coefficient);
     pcl::transformPointCloud<PointT, float>(*out_cloud, *out_cloud,
                                             icp->getFinalTransformation());
