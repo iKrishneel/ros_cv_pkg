@@ -11,6 +11,7 @@
 #include <pcl/features/normal_3d_omp.h>
 #include <pcl/registration/distances.h>
 #include <pcl/common/centroid.h>
+#include <pcl/registration/icp.h>
 #include <pcl/filters/voxel_grid_occlusion_estimation.h>
 
 #include <geometry_msgs/PointStamped.h>
@@ -105,6 +106,8 @@ class CuboidBilateralSymmetricSegmentation:
                                        const pcl::PointCloud<PointT>::Ptr,
                                        const jsk_msgs::PolygonArrayConstPtr &,
                                        const ModelCoefficients &);
+    bool optimizeSymmetricalPlane(Eigen::Vector4f &,
+                                  const pcl::PointCloud<PointT>::Ptr);
     bool symmetricalConsistency(Eigen::Vector4f &, float &,
                                 pcl::PointCloud<PointT>::Ptr,
                                 pcl::PointCloud<NormalT>::Ptr,

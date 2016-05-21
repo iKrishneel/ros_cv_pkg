@@ -423,13 +423,7 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     // build voxel neigbors
     AdjacencyList adjacency_list;
     this->supervoxelAdjacencyList(adjacency_list, supervoxel_clusters);
-
     this->kdtree_->setInputCloud(cloud);
-    /*
-    this->occlusion_handler_->setInputCloud(cloud);
-    this->occlusion_handler_->setLeafSize(leaf_size_, leaf_size_, leaf_size_);
-    this->occlusion_handler_->initializeVoxelGrid();
-    */
     
     SupervoxelMap supervoxel_clusters_copy = supervoxel_clusters;
     AdjacencyList adjacency_list_copy = adjacency_list;
@@ -440,152 +434,9 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     pcl::PointCloud<NormalT>::Ptr in_normals(new pcl::PointCloud<NormalT>);
 
     // optimization using graph
-    /*
-    this->supervoxel3DBoundingBox(
-       bounding_box, in_cloud, in_normals, supervoxel_clusters,
-       planes_msg, coefficients_msg, s_index);
-    
-    Eigen::Vector4f plane_coefficient;
-    float max_energy = 0.0f;
-    this->symmetricalConsistency(plane_coefficient, max_energy, in_cloud,
-                                 in_normals, cloud, bounding_box);
-
-    AdjacencyList::vertex_iterator i, end;
-    for (boost::tie(i, end) = boost::vertices(adjacency_list); i != end; i++) {
-       AdjacencyList::adjacency_iterator ai, a_end;
-       boost::tie(ai, a_end) = boost::adjacent_vertices(*i, adjacency_list);
-       bool vertex_has_neigbor = false;
-       uint32_t vindex = adjacency_list[*i];
-       if (static_cast<int>(vindex) == s_index) {  //! remove if all scene
-          vertex_has_neigbor = true;
-       }
-       while (vertex_has_neigbor) {
-          bool found = false;
-          AdjacencyList::edge_descriptor e_descriptor;
-          boost::tie(e_descriptor, found) = boost::edge(*i, *ai,
-                                                        adjacency_list);
-          uint32_t n_vindex = adjacency_list[*ai];
-          if (found && supervoxel_clusters.at(n_vindex)->voxels_->size() >
-              this->min_cluster_size_) {
-             pcl::PointCloud<PointT>::Ptr fused_cloud(
-                new pcl::PointCloud<PointT>);
-             *fused_cloud += *(supervoxel_clusters.at(vindex)->voxels_);
-             *fused_cloud += *(supervoxel_clusters.at(n_vindex)->voxels_);
-
-             pcl::PointCloud<NormalT>::Ptr fused_normals(
-                new pcl::PointCloud<NormalT>);
-             *fused_normals += *(supervoxel_clusters.at(vindex)->normals_);
-             *fused_normals += *(supervoxel_clusters.at(n_vindex)->normals_);
-             
-             if (!fused_cloud->empty() & !fused_normals->empty()) {
-                this->fitOriented3DBoundingBox(bounding_box, fused_cloud,
-                                               planes_msg, coefficients_msg);
-                
-                float energy = 0.0f;
-                Eigen::Vector4f plane_coef;
-                this->symmetricalConsistency(plane_coef, energy,
-                                             fused_cloud, fused_normals,
-                                             cloud, bounding_box);
-
-                std::vector<Eigen::Vector4f> prev_plane_coef;
-                prev_plane_coef.push_back(plane_coefficient);
-                float prev_plane_enery = this->symmetricalPlaneEnergy(
-                   fused_cloud, fused_normals, cloud, 0, prev_plane_coef);
-                prev_plane_enery /= static_cast<float>(fused_cloud->size());
-                if (prev_plane_enery > energy) {
-                   plane_coef = prev_plane_coef[0];
-                   energy = prev_plane_enery;
-                }
-                prev_plane_coef.clear();
-                
-                if (energy > max_energy) {
-
-                   ROS_WARN("UPDATING");
-                   this->updateSupervoxelClusters(supervoxel_clusters,
-                                                  vindex, n_vindex);
-                   plane_coefficient = plane_coef;
-                   max_energy = energy;
-                   
-                   AdjacencyList::adjacency_iterator ni, n_end;
-                   boost::tie(ni, n_end) = boost::adjacent_vertices(
-                      *ai, adjacency_list);
-                   for (; ni != n_end; ni++) {
-                      bool is_found = false;
-                      AdjacencyList::edge_descriptor n_edge;
-                      boost::tie(n_edge, is_found) = boost::edge(
-                         *ai, *ni, adjacency_list);
-                      if (is_found && (*ni != *i)) {
-                         boost::add_edge(*i, *ni, FLT_MIN, adjacency_list);
-                      }
-                   }
-                   boost::clear_vertex(*ai, adjacency_list);
-                } else {
-                   boost::remove_edge(e_descriptor, adjacency_list);
-                }
-             }
-          } else if (found && supervoxel_clusters.at(
-                        n_vindex)->voxels_->size() < this->min_cluster_size_) {
-             boost::remove_edge(e_descriptor, adjacency_list);
-          }
-          boost::tie(ai, a_end) = boost::adjacent_vertices(*i, adjacency_list);
-          if (ai == a_end) {
-             vertex_has_neigbor = false;
-          } else {
-             vertex_has_neigbor = true;
-          }
-       }
-    }
-
-    in_cloud->clear();
-    pcl::copyPointCloud<PointT, PointT>(*(supervoxel_clusters.at(
-                                             s_index)->voxels_), *in_cloud);
-    this->fitOriented3DBoundingBox(bounding_box, in_cloud,
-                                   planes_msg, coefficients_msg);
-    */
 
     Eigen::Vector4f plane_coefficient;
     float max_energy = 0.0f;
-    /*
-    bool has_neigbour = true;
-    bool is_init = true;
-    while (has_neigbour) {
-       
-       this->supervoxel3DBoundingBox(
-          bounding_box, in_cloud, in_normals, supervoxel_clusters,
-          planes_msg, coefficients_msg, s_index);
-       
-       float energy = 0.0f;
-       Eigen::Vector4f plane_coef;
-       this->symmetricalConsistency(plane_coef, energy, in_cloud,
-                                    in_normals, cloud, bounding_box);
-       
-       if (!is_init) {  //! test using previous best symm. plane
-          std::vector<Eigen::Vector4f> prev_plane_coef;
-          prev_plane_coef.push_back(plane_coefficient);
-          float prev_plane_enery = this->symmetricalPlaneEnergy(
-             in_cloud, in_normals, cloud, 0, prev_plane_coef);
-          prev_plane_enery /= static_cast<float>(in_cloud->size());
-          if (prev_plane_enery > energy) {
-             plane_coef = prev_plane_coef[0];
-             energy = prev_plane_enery;
-          }
-       }
-       
-       if (energy > max_energy) {  // dont update until better?
-          ROS_WARN("UPDATING");
-          
-          has_neigbour = this->mergeNeigboringSupervoxels(
-             supervoxel_clusters, adjacency_list, s_index);
-          plane_coefficient = plane_coef;
-          max_energy = energy;
-       } else {
-          has_neigbour = false;
-       }
-       is_init = false;
-    }
-    */
-
-    //****
 
     for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
          it != supervoxel_clusters.end(); it++) {
@@ -628,11 +479,14 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     
     std::cout << "\033[34m MAX ENERY:\033[0m" << max_energy << "\n";
 
+    // *******OPTIMIZE THE CURRENT BEST PLANE**********
+    this->optimizeSymmetricalPlane(plane_coefficient, in_cloud);
+    // *****************END***************************
 
+    /*
     this->minCutMaxFlow(in_cloud, in_normals,
                         symm_potential, plane_coefficient);
-
-    
+    */
     this->plotPlane(in_cloud, plane_coefficient);
     
     
@@ -641,12 +495,12 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     ros_cloud.header = planes_msg->header;
     this->pub_edge_.publish(ros_cloud);
 
-
+    /*
     sensor_msgs::PointCloud2 ros_cloud1;
     pcl::toROSMsg(*symm_potential, ros_cloud1);
     ros_cloud1.header = planes_msg->header;
     this->pub_normal_.publish(ros_cloud1);
-
+    */
     
     // publish bounding
     jsk_msgs::BoundingBoxArray bounding_boxes;
@@ -654,6 +508,56 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     bounding_boxes.boxes.push_back(bounding_box);
     bounding_boxes.header = planes_msg->header;
     pub_bbox_.publish(bounding_boxes);
+}
+
+bool CuboidBilateralSymmetricSegmentation::optimizeSymmetricalPlane(
+    Eigen::Vector4f &plane_coefficient,
+    const pcl::PointCloud<PointT>::Ptr in_cloud) {
+    if (in_cloud->size() < 5) {
+       ROS_ERROR("SYMMETRIC PLANE OPTIMIZATION FAILED");
+       return false;
+    }
+    pcl::IterativeClosestPoint<PointT, PointT>::Ptr icp(
+       new pcl::IterativeClosestPoint<PointT, PointT>);
+    pcl::PointCloud<PointT>::Ptr out_cloud(new pcl::PointCloud<PointT>);
+    out_cloud->resize(static_cast<int>(in_cloud->size()));
+    Eigen::Vector3f plane_n = plane_coefficient.head<3>();
+    for (int j = 0; j < in_cloud->size(); j++) {
+       Eigen::Vector3f p = in_cloud->points[j].getVector3fMap();
+       float beta = p(0)*plane_n(0) + p(1)*plane_n(1) + p(2)*plane_n(2);
+       float alpha = (plane_n(0) * plane_n(0)) +
+          (plane_n(1) * plane_n(1)) + (plane_n(2) * plane_n(2));
+       float t = (plane_coefficient(3) - beta) / alpha;
+       PointT pt = in_cloud->points[j];
+       pt.x = p(0) + (t * 2 * plane_n(0));
+       pt.y = p(1) + (t * 2 * plane_n(1));
+       pt.z = p(2) + (t * 2 * plane_n(2));
+       out_cloud->points[j] = pt;
+    }
+    icp->setInputSource(out_cloud);
+    icp->setInputTarget(in_cloud);
+    pcl::PointCloud<PointT>::Ptr align_cloud(new pcl::PointCloud<PointT>);
+    icp->align(*align_cloud);
+
+    std::cout << "--------------------------------------------"  << "\n";
+    std::cout << "has converged:" << icp->hasConverged() << " score: "
+              << icp->getFitnessScore() << std::endl;
+    std::cout << icp->getFinalTransformation() << std::endl;
+
+    
+    this->plotPlane(out_cloud, plane_coefficient);
+    pcl::transformPointCloud<PointT, float>(*out_cloud, *out_cloud,
+                                            icp->getFinalTransformation());
+    
+    sensor_msgs::PointCloud2 ros_cloud1;
+    pcl::toROSMsg(*align_cloud, ros_cloud1);
+    ros_cloud1.header = header_;
+    this->pub_normal_.publish(ros_cloud1);
+
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*out_cloud, ros_cloud);
+    ros_cloud.header = header_;
+    this->pub_object_.publish(ros_cloud);
 }
 
 bool CuboidBilateralSymmetricSegmentation::symmetricalConsistency(
