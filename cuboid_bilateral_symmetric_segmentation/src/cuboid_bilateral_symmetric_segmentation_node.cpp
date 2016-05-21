@@ -880,15 +880,18 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
        return false;
     }
     
-    const float HARD_SET_WEIGHT = 100.0f;
+    const float HARD_SET_WEIGHT = 10.0f;
     const float object_thresh = 0.9f;
     const float background_thresh = 0.0f;
     const float alpha_thresh = 0.5f;
     
     const int node_num = static_cast<int>(cloud->size());
-    const int edge_num = 20;
+    const int edge_num = 16;
     boost::shared_ptr<GraphType> graph(new GraphType(
                                           node_num, edge_num * node_num));
+
+    //! update search tree
+    this->kdtree_->setInputCloud(cloud);
     
     //! get shape potential?
     pcl::PointCloud<PointT>::Ptr shape_map(new pcl::PointCloud<PointT>);
@@ -899,18 +902,93 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
        graph->add_node();
     }
 
-    this->kdtree_->setInputCloud(cloud);
+
+    this->occlusion_handler_->setInputCloud(cloud);
+    this->occlusion_handler_->setLeafSize(leaf_size_, leaf_size_, leaf_size_);
+    this->occlusion_handler_->initializeVoxelGrid();
+    
+    Eigen::Vector3f plane_n = plane_coefficient.head<3>();
     
     for (int i = 0; i < node_num; i++) {
-       float weight = energy_map->points[i].r/255.0f;
-       float w = -std::log(weight) * 10.0f;
-       w = weight * 10;
+       // get data term
+       Eigen::Vector3f n = normals->points[i].getNormalVector3fMap();
+       Eigen::Vector3f p = cloud->points[i].getVector3fMap();
+       float beta = p(0)*plane_n(0) + p(1)*plane_n(1) + p(2)*plane_n(2);
+       float alpha = (plane_n(0) * plane_n(0)) +
+          (plane_n(1) * plane_n(1)) + (plane_n(2) * plane_n(2));
+       float t = (plane_coefficient(3) - beta) / alpha;
+          
+       PointT pt = cloud->points[i];
+       pt.x = p(0) + (t * 2 * plane_n(0));
+       pt.y = p(1) + (t * 2 * plane_n(1));
+       pt.z = p(2) + (t * 2 * plane_n(2));
+          
+       std::vector<int> neigbor_index;
+       this->getPointNeigbour<int>(neigbor_index, pt, 1);
+       int nidx = neigbor_index[0];
+       Eigen::Vector4f ref_pt = pt.getVector4fMap();
+       Eigen::Vector4f ref_match = cloud->points[nidx].getVector4fMap();
+       ref_pt(3) = 0.0f;
+       ref_match(3) = 0.0f;
+       double distance = pcl::distances::l2(ref_pt, ref_match);
+
+       float weight = 0.0f;
+
+       if (distance > this->neigbor_dist_thresh_) {
+
+          if (this->occlusionRegionCheck(pt)) {
+             float a = pcl::pointToPlaneDistance<PointT>(
+                pt, plane_coefficient.normalized());
+             float b = pcl::pointToPlaneDistance<PointT>(
+                cloud->points[i], plane_coefficient.normalized());
+             weight = 0.50f - (std::fabs(a - b) / 1.0f);
+             
+             weight *= 10.0f;
+             // weight = -std::log(weight) * 10.0f;
+
+             graph->add_tweights(i, 0.0, HARD_SET_WEIGHT);
+             
+          } else {
+             graph->add_tweights(i, 0.0, HARD_SET_WEIGHT);
+          }
+
+          // graph->add_tweights(i, 0, HARD_SET_WEIGHT);
+       } else {
+          Eigen::Vector3f symm_n = n -
+             (2.0f*((plane_n.normalized()).dot(n))*plane_n.normalized());
+          
+          Eigen::Vector3f sneig_r = normals->points[
+             nidx].getNormalVector3fMap();
+          float dot_prod = (symm_n.dot(sneig_r)) / (
+             symm_n.norm() * sneig_r.norm());
+          
+          float angle = std::acos(dot_prod) * (180.0f/M_PI);
+          weight = 1.0f - ((angle - 10) / (45.0f - 10));
+        
+          if (weight < 0.0f) {
+             // weight = -std::log(-weight) * 10.0f;
+             // weight *= -1.0f;
+             graph->add_tweights(i, weight, 0.0f);
+          } else {
+             weight *= 1.0f;
+             graph->add_tweights(i, weight, 0.0f);
+          }
+        
+          // graph->add_tweights(i, weight * 10.0f, 0.0f);
+       }
+
+       std::cout << "WEIGHT: " << weight  << "\n";
+       
+          // make graph
+       // float weight = energy_map->points[i].r/255.0f;
+       // float w = -std::log(weight) * 10.0f;
+       // w = weight * 10;
        
        /*if (weight > object_thresh) {
           std::cout << "OBJECT: " << weight  << "\n";
           graph->add_tweights(i, HARD_SET_WEIGHT, 0);
           } else */
-       
+       /*
        if (weight <= background_thresh) {
           graph->add_tweights(i, 0, HARD_SET_WEIGHT);
        } else {
@@ -919,11 +997,14 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
           }
           graph->add_tweights(i, w, 0.5 * w);
        }
-
+       */
        std::vector<int> neigbor_indices;
        this->getPointNeigbour<int>(neigbor_indices, cloud->points[i], edge_num);
        Eigen::Vector4f center_point = cloud->points[i].getVector4fMap();
        Eigen::Vector4f center_norm = normals->points[i].getNormalVector4fMap();
+
+       float cweight = 0.0f;
+       
        for (int j = 0; j < neigbor_indices.size(); j++) {
           int indx = neigbor_indices[j];
           if (indx != i) {
@@ -933,29 +1014,52 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              Eigen::Vector4f neigbor_norm = normals->points[
                 indx].getNormalVector4fMap();
              float conv_crit = (neigbor_point - center_point).dot(neigbor_norm);
-             if (conv_crit > 0.0f) {
-                wc = std::pow((1.0f - neigbor_norm.dot(center_norm)), 2);
+             float conv_crit1 = (center_point - neigbor_point).dot(center_norm);
+             if (conv_crit > 0.0f && conv_crit1 > 0.0f) {
+                // wc = std::pow((1.0f -
+                // neigbor_norm.dot(center_norm)), 2);
+                wc = std::acos(
+                   (neigbor_norm.dot(center_norm)) /
+                   (neigbor_norm.norm() * center_norm.norm())) / (2 * M_PI);
+                wc = std::exp(-1.0f * wc);
+
+                // std::cout << "\033[33m CONVEX: \033[0m" << wc << "\n";
+                
              } else {
                 // wc = (1.0f - neigbor_norm.dot(center_norm));
-                wc = 0.0f;
+
+                wc = std::acos(
+                   (neigbor_norm.dot(center_norm)) /
+                   (neigbor_norm.norm() * center_norm.norm())) / (M_PI/6);
+                wc = 1.0f - std::exp(-1.0f * wc);
+
+                // std::cout << "\033[31m CONCAVE: \033[0m" << wc << "\n";
              }
-             wc *= alpha_thresh;
+             wc = isnan(wc) ? 0.0f : wc;
+             // wc *= alpha_thresh;
              
              float ws = 0.0f;
              ws = std::exp(-1.0f * (shape_map->points[indx].r/255.0f));
-             ws *= (1.0f - alpha_thresh);
-             
-             if (wc < 1e-9) {
-                wc = 1e-9;
-             }
+             // ws *= (1.0f - alpha_thresh);
              
              // float nweights = fabs(std::log(wc + ws));
-             float nweights = wc + ws;
+             float nweights = wc;
+
+             if (nweights < 1e-9) {
+                nweights = 1e-9;
+             }
+             
+             // std::cout << nweights  << "\n";
+             // nweights = 0.0f;
              
              graph->add_edge(i, indx, nweights, nweights);
           }
        }
-       // std::cout   << "\n";
+
+       // energy_map->points[i].g = (cweight/static_cast<float>(edge_num))*255.0f;
+       // energy_map->points[i].r = (cweight/static_cast<float>(edge_num))*255.0f;
+       // energy_map->points[i].b = (cweight/static_cast<float>(edge_num))*255.0f;
+       // std::cout  << (cweight/static_cast<float>(edge_num))  << "\n";
     }
     ROS_INFO("\033[34m COMPUTING FLOW \033[0m");
 
@@ -976,6 +1080,11 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
     pcl::toROSMsg(*shape_map, ros_cloud);
     ros_cloud.header = this->header_;
     this->pub_object_.publish(ros_cloud);
+
+    // sensor_msgs::PointCloud2 ros_cloud1;
+    // pcl::toROSMsg(*energy_map, ros_cloud1);
+    // ros_cloud1.header = this->header_;
+    // this->pub_normal_.publish(ros_cloud1);
 }
 
 bool CuboidBilateralSymmetricSegmentation::occlusionRegionCheck(
