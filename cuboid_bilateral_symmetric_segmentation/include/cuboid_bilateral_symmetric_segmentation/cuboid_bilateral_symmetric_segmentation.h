@@ -107,7 +107,7 @@ class CuboidBilateralSymmetricSegmentation:
                                        const jsk_msgs::PolygonArrayConstPtr &,
                                        const ModelCoefficients &);
     bool optimizeSymmetricalPlane(Eigen::Vector4f &,
-                                  const pcl::PointCloud<PointT>::Ptr);
+                                  pcl::PointCloud<PointT>::Ptr);
     bool symmetricalConsistency(Eigen::Vector4f &, float &,
                                 pcl::PointCloud<PointT>::Ptr,
                                 pcl::PointCloud<NormalT>::Ptr,
