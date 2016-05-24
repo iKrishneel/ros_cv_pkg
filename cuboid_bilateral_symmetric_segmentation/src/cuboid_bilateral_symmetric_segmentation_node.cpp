@@ -825,7 +825,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
     const float alpha_thresh = 0.7f;
     
     const int node_num = static_cast<int>(cloud->size());
-    const int edge_num = 100;
+    const int edge_num = 8;
     boost::shared_ptr<GraphType> graph(new GraphType(
                                           node_num, edge_num * node_num));
 
@@ -948,8 +948,8 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
                 indx].getVector4fMap();
              Eigen::Vector4f neigbor_norm = normals->points[
                 indx].getNormalVector4fMap();
-             float conv_crit1 = (neigbor_point - center_point).dot(neigbor_norm);
-             float conv_crit = (center_point - neigbor_point).dot(center_norm);
+             float conv_crit = (neigbor_point - center_point).dot(neigbor_norm);
+             float conv_crit1 = (center_point - neigbor_point).dot(center_norm);
              if (conv_crit > 0.0f /*&& conv_crit1 > 0.0f*/) {
                 wc = std::acos(
                    (neigbor_norm.dot(center_norm)) /
@@ -979,7 +979,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              ws *= (0.50f);
              
              // float nweights = fabs(std::log(wc + ws));
-             float nweights = wc;  // + ws;
+             float nweights = wc * 2;  // + ws;
              // nweights = std::fabs((1.0f*std::log(wc)) + (1.0f*std::log(ws)));
 
              if (nweights < 0.0000001f) {
@@ -990,10 +990,15 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              graph->add_edge(i, indx, nweights, nweights);
           }
        }
-       /*
-       if (cweight > 0 && weight >= 0.0f && is_weight) {
-          graph->add_tweights(i, HARD_SET_WEIGHT, 0);
-       } else if (cweight > 0 && weight < 0.0f) {
+       
+       if (cweight <= 0 /*&& weight >= 0.0f && is_weight*/) {
+          // graph->add_tweights(i, HARD_SET_WEIGHT, 0);
+
+          // energy_map->points[i].g = (0)*255.0f;
+          // energy_map->points[i].r = (1)*255.0f;
+          // energy_map->points[i].b = (1)*255.0f;
+          
+       } /*else if (cweight > 0 && weight < 0.0f) {
           graph->add_tweights(i, 3.0f, 5.0f);
        } else if (cweight < 0 && weight >= 0.0f) {
           graph->add_tweights(i, 3.0f, 7.0f);
