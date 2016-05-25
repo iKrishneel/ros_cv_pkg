@@ -540,7 +540,6 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     pcl::toROSMsg(*in_cloud, ros_cloud);
     ros_cloud.header = planes_msg->header;
     this->pub_edge_.publish(ros_cloud);
-
     
     // publish bounding
     jsk_msgs::BoundingBoxArray bounding_boxes;
@@ -961,8 +960,8 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
           } else {
              // c_weight = std::exp(-2.0f * (tetha / 90.0f));
              float s = (1.0f - (c_normal.dot(n_normal)));
-             c_weight = std::exp(-1.0f * s);
-             std::cout << "\033[34m U-WEIGHT:\033[0m " << c_weight  << "\n";
+             c_weight = std::exp(-2.0f * s);
+             // std::cout << "\033[34m U-WEIGHT:\033[0m " << c_weight  << "\n";
           }
           
           float angle = std::acos(dot_prod) * (180.0f/M_PI);
