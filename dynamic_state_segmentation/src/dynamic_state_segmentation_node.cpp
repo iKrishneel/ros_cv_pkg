@@ -16,6 +16,8 @@ void DynamicStateSegmentation::onInit() {
        "target", 1);
     this->pub_edge_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "region", 1);
+    this->pub_prob_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+       "probabilty_map", 1);
     this->pub_normal_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "normals", 1);
      this->pub_indices_ = this->pnh_.advertise<
@@ -115,18 +117,18 @@ void DynamicStateSegmentation::cloudCB(
      * process estimated cloud and update seed point info
      */
     pcl::PointCloud<PointT>::Ptr seed_cloud2(new pcl::PointCloud<PointT>);
+    pcl::PointCloud<NormalT>::Ptr seed_normals2(new pcl::PointCloud<NormalT>);
     pcl::copyPointCloud<PointT, PointT>(*seed_cloud, *seed_cloud2);
-    this->regionOverSegmentation(seed_cloud2, seed_normals, cloud, normals);
-
+    this->regionOverSegmentation(seed_cloud2, seed_normals2, cloud, normals);
     
     /**
-     * 
+     * MOVE THIS TO THE REGIONOVERSEGMENT FOR LOOP
      */
-    seed_cloud->clear();
-    *seed_cloud = *seed_cloud2;
-    for (int i = 0; i < seed_cloud->size(); i++) {
-       Eigen::Vector4f n_pt = seed_cloud->points[i].getVector4fMap();
-       Eigen::Vector4f n_nl = seed_normals->points[i].getNormalVector4fMap();
+    pcl::PointCloud<PointT>::Ptr convex_prob_map(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*seed_cloud2, *convex_prob_map);
+    for (int i = 0; i < seed_cloud2->size(); i++) {
+       Eigen::Vector4f n_pt = seed_cloud2->points[i].getVector4fMap();
+       Eigen::Vector4f n_nl = seed_normals2->points[i].getNormalVector4fMap();
        Eigen::Vector4f c_pt = this->seed_point_.getVector4fMap();
        Eigen::Vector4f c_nl = this->seed_normal_.getNormalVector4fMap();
        int val = this->seedVoxelConvexityCriteria(
@@ -137,11 +139,11 @@ void DynamicStateSegmentation::cloudCB(
        if (val == 1) {
           weight = std::exp(-1.0f * (ang / 360.0f));
        } else {
-          weight = std::exp(-2.0f * (ang / 30.0f));
+          weight = std::exp(-2.0f * (ang / 60.0f));
        }
-       seed_cloud->points[i].r = weight * 255;
-       seed_cloud->points[i].b = weight * 255;
-       seed_cloud->points[i].g = weight * 255;
+       convex_prob_map->points[i].r = weight * 255.0f;
+       convex_prob_map->points[i].b = weight * 255.0f;
+       convex_prob_map->points[i].g = weight * 255.0f;
     }
 
 
@@ -191,6 +193,11 @@ void DynamicStateSegmentation::cloudCB(
     pcl::toROSMsg(*seed_cloud2, ros_cloud);
     ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
+
+    sensor_msgs::PointCloud2 ros_prob;
+    pcl::toROSMsg(*convex_prob_map, ros_prob);
+    ros_prob.header = cloud_msg->header;
+    this->pub_prob_.publish(ros_prob);
 
     sensor_msgs::PointCloud2 ros_edge;
     pcl::toROSMsg(*seed_cloud, ros_edge);

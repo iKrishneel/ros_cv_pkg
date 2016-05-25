@@ -91,6 +91,7 @@ class DynamicStateSegmentation {
 
     ros::Publisher pub_cloud_;
     ros::Publisher pub_edge_;
+    ros::Publisher pub_prob_;
     ros::Publisher pub_normal_;
     ros::Publisher pub_indices_;
     ros::ServiceClient srv_client_;
