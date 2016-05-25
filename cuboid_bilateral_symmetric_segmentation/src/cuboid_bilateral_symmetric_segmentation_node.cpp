@@ -498,10 +498,9 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     // this->optimizeSymmetricalPlane(plane_coefficient, in_cloud);
     // *****************END***************************
 
-    
+    /*
     Eigen::Vector4f c_centroid = this->seed_info_.getVector4fMap();
     Eigen::Vector4f c_normal = this->seed_info_.getNormalVector4fMap();
-    
     for (int i = 0; i < in_cloud->size(); i++) {
        Eigen::Vector4f n_centroid = in_cloud->points[i].getVector4fMap();
        Eigen::Vector4f n_normal = sv_normals->points[i].getNormalVector4fMap();
@@ -516,31 +515,26 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
        } else {
           weight = std::exp(-2.0f * (ang / 30.0f));
        }
-       // weight = 1.0f;
        float s_weight = symm_potential->points[i].r / 255.0f;
-       // std::cout << weight << "\t" << s_weight  << "\t";
-       
        weight += s_weight;
        weight /= 2.0f;
        weight *= 255.0f;
-
-       // std::cout << weight  << "\n";
        
        symm_potential->points[i].r = weight * 1.0f;
        symm_potential->points[i].b = weight * 1.0f;
        symm_potential->points[i].g = weight * 1.0f;
     }
-    
+    */
     
     sensor_msgs::PointCloud2 ros_cloud1;
     pcl::toROSMsg(*symm_potential, ros_cloud1);
     ros_cloud1.header = planes_msg->header;
     this->pub_normal_.publish(ros_cloud1);
 
-    /*
+
     this->minCutMaxFlow(in_cloud, in_normals,
-                        symm_potential, plane_coefficient);
-    */
+                        sv_normals, plane_coefficient);
+
     this->plotPlane(in_cloud, plane_coefficient);
     
     sensor_msgs::PointCloud2 ros_cloud;
@@ -859,19 +853,19 @@ void CuboidBilateralSymmetricSegmentation::symmetricalShapeMap(
 
 bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
     pcl::PointCloud<PointT>::Ptr cloud, pcl::PointCloud<NormalT>::Ptr normals,
-    const pcl::PointCloud<PointT>::Ptr energy_map,
+    const pcl::PointCloud<NormalT>::Ptr sv_normals,
     const Eigen::Vector4f plane_coefficient) {
-    if (cloud->empty() || cloud->size() != normals->size()
-        /*|| cloud->size() != energy_map->size()*/) {
+    if (cloud->empty() || cloud->size() != normals->size()) {
        ROS_ERROR("INCORRECT INPUT FOR MINCUT-MAXFLOW");
        return false;
     }
+    pcl::PointCloud<PointT>::Ptr energy_map(new pcl::PointCloud<PointT>);
     
     const float HARD_SET_WEIGHT = 100.0f;
     const float alpha_thresh = 0.7f;
     
     const int node_num = static_cast<int>(cloud->size());
-    const int edge_num = 8;
+    const int edge_num = 9;
     boost::shared_ptr<GraphType> graph(new GraphType(
                                           node_num, edge_num * node_num));
 
@@ -885,11 +879,15 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
     for (int i = 0; i < node_num; i++) {
        graph->add_node();
     }
-
+    /*
     this->occlusion_handler_->setInputCloud(cloud);
     this->occlusion_handler_->setLeafSize(leaf_size_, leaf_size_, leaf_size_);
     this->occlusion_handler_->initializeVoxelGrid();
+    */
 
+    
+    Eigen::Vector4f c_centroid = this->seed_info_.getVector4fMap();
+    Eigen::Vector4f c_normal = this->seed_info_.getNormalVector4fMap();
     Eigen::Vector3f plane_n = plane_coefficient.head<3>();
     
     for (int i = 0; i < node_num; i++) {
@@ -945,6 +943,24 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              nidx].getNormalVector3fMap();
           float dot_prod = (symm_n.dot(sneig_r)) / (
              symm_n.norm() * sneig_r.norm());
+
+
+          //! convexity map
+          Eigen::Vector4f n_centroid = cloud->points[i].getVector4fMap();
+          Eigen::Vector4f n_normal = sv_normals->points[
+             i].getNormalVector4fMap();
+          n_centroid(3) = 1.0f;
+          int val = this->seedVoxelConvexityCriteria(
+             c_centroid, c_normal, n_centroid, n_normal, -0.0f);
+          float c_weight = 0.0f;
+          float tetha = std::acos(c_normal.dot(n_normal) /
+                                ((c_normal.norm() * n_normal.norm())));
+          tetha *= (180.0/M_PI);
+          if (val == 1) {
+             c_weight = std::exp(-1.0f * (tetha / 360.0f));
+          } else {
+             c_weight = std::exp(-2.0f * (tetha / 90.0f));
+          }
           
           float angle = std::acos(dot_prod) * (180.0f/M_PI);
           // weight = 1.0f - ((angle - 0.0f) / (90.0f - 0.0f));
@@ -952,50 +968,31 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
           if (isnan(weight)) {
              weight = 0.0f;
           }
-          float t_weight = 0.0f;
-          float lambda = 60.0f;
-
-          std::cout << "\n ANGLE: " << angle  << "\n";
           
-          if (angle < 30.0f) {
+          float t_weight = 0.0f;
+          float lambda = 100.0f;
+          
+          if (angle < 40.0f) {
+             weight = (weight * c_weight);
              t_weight = 1.0f - weight;
-             graph->add_tweights(i, weight * lambda, t_weight * lambda);
 
              std::cout << "\033[34m U-WEIGHT:\033[0m " << weight  << "\n";
           } else {
-             weight /= 2.0f;
+             weight *= 0.10f;
+             weight = (weight * c_weight);
              t_weight = 1.0f - weight;
-             graph->add_tweights(i, weight * lambda, t_weight * lambda);
+
              std::cout << "\033[33mV-WEIGHT:\033[0m " << weight  << "\n";
           }
           
-          /*
-          if (weight < 0.0f) {
-             // weight = -std::log(-weight) * 10.0f;
-             weight *= -10.0f;
-             graph->add_tweights(i, weight, weight);
-             // graph->add_tweights(i, weight * 0.0f, HARD_SET_WEIGHT);
+          //! add capacities
+          graph->add_tweights(i, weight * lambda, t_weight * lambda);
 
-             std::cout << "\033[34mWEIGHT:\033[0m " << weight  << "\n";
-
-             energy_map->points[i].g = (0)*0.0f;
-             energy_map->points[i].r = (0)*255.0f;
-             energy_map->points[i].b = (1)*255.0f;
-             
-          } else {
-
-             energy_map->points[i].g = (1)*0.0f;
-             energy_map->points[i].r = (1)*255.0f;
-             energy_map->points[i].b = (1)*0.0f;
-             
-             weight *= 10.0f;
-             // graph->add_tweights(i, weight, 2.0f);
-             graph->add_tweights(i, weight, weight);
-             
-             std::cout << "\033[31m WEIGHT:\033[0m " << weight  << "\n";
-          }
-          */
-          // graph->add_tweights(i, weight * 60.0f, 0.0f);
+          PointT pt = cloud->points[i];
+          pt.r = weight * 255.0;
+          pt.b = weight * 255.0;
+          pt.g = weight * 255.0;
+          energy_map->push_back(pt);
        }
 
        // std::cout << "WEIGHT: " << weight  << "\n";
@@ -1039,7 +1036,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
 
                 cweight -= 1.0f;
              }
-             // wc = isnan(wc) ? 0.0f : wc;
+             wc = isnan(wc) ? 0.0f : wc;
              // wc *= alpha_thresh;
              
              float ws = 0.0f;
@@ -1047,8 +1044,8 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              ws *= (0.50f);
              
              // float nweights = fabs(std::log(wc + ws));
-             float nweights = wc;  // + ws;
-             nweights = std::fabs((1.0f*std::log(wc)));  // + (1.0f*std::log(ws)));
+             float nweights = wc * 50;  // + ws;
+             // nweights = std::fabs((1.0f*std::log(wc)));  // + (1.0f*std::log(ws)));
 
              if (nweights < 0.0000001f) {
                 nweights = 0.0000001f;
@@ -1073,7 +1070,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
     // shape_map->clear();
     for (int i = 0; i < node_num; i++) {
        if (graph->what_segment(i) == GraphType::SOURCE) {
-          shape_map->push_back(cloud->points[i]);
+          // shape_map->push_back(cloud->points[i]);
           shape_map->points[i] = cloud->points[i];
        } else {
           shape_map->points[i].r = 0;

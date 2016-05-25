@@ -126,7 +126,7 @@ class CuboidBilateralSymmetricSegmentation:
    
     bool minCutMaxFlow(pcl::PointCloud<PointT>::Ptr,
                        pcl::PointCloud<NormalT>::Ptr,
-                       const pcl::PointCloud<PointT>::Ptr,
+                       const pcl::PointCloud<NormalT>::Ptr,
                        const Eigen::Vector4f);
    
     bool occlusionRegionCheck(const PointT);
