@@ -111,11 +111,41 @@ void DynamicStateSegmentation::cloudCB(
     
     ROS_INFO("DONE.");
 
-    // process estimated cloud and update seed point info
+    /**
+     * process estimated cloud and update seed point info
+     */
     pcl::PointCloud<PointT>::Ptr seed_cloud2(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*seed_cloud, *seed_cloud2);
     this->regionOverSegmentation(seed_cloud2, seed_normals, cloud, normals);
 
+    
+    /**
+     * 
+     */
+    seed_cloud->clear();
+    *seed_cloud = *seed_cloud2;
+    for (int i = 0; i < seed_cloud->size(); i++) {
+       Eigen::Vector4f n_pt = seed_cloud->points[i].getVector4fMap();
+       Eigen::Vector4f n_nl = seed_normals->points[i].getNormalVector4fMap();
+       Eigen::Vector4f c_pt = this->seed_point_.getVector4fMap();
+       Eigen::Vector4f c_nl = this->seed_normal_.getNormalVector4fMap();
+       int val = this->seedVoxelConvexityCriteria(
+          c_pt, c_nl, n_pt, n_nl, -0.01f);
+       float weight = 0.0f;
+       float ang = std::acos(c_nl.dot(n_nl) / ((c_nl.norm() * n_nl.norm())));
+       ang *= (180.0/M_PI);
+       if (val == 1) {
+          weight = std::exp(-1.0f * (ang / 360.0f));
+       } else {
+          weight = std::exp(-2.0f * (ang / 30.0f));
+       }
+       seed_cloud->points[i].r = weight * 255;
+       seed_cloud->points[i].b = weight * 255;
+       seed_cloud->points[i].g = weight * 255;
+    }
+
+
+    
 
     // routine for Mean-shift
     /*
@@ -429,7 +459,8 @@ void DynamicStateSegmentation::regionOverSegmentation(
           idx = i;
        }
     }
-    
+    ROS_WARN("DISABLE: SEED POINT INFO NOT UPDATED");
+    /*
     if (idx != -1 && icount == region->size()) {
        this->seed_index_ = idx;
        this->seed_point_ = region->points[idx];
@@ -437,6 +468,7 @@ void DynamicStateSegmentation::regionOverSegmentation(
     } else {
        ROS_WARN("SEED POINT INFO NOT UPDATED");
     }
+    */
 }
 
 
