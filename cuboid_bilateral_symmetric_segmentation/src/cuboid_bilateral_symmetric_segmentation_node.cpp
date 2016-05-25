@@ -901,12 +901,33 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              symm_n.norm() * sneig_r.norm());
           
           float angle = std::acos(dot_prod) * (180.0f/M_PI);
-          weight = 1.0f - ((angle - 0.0f) / (40.0f - 0.0f));
+          // weight = 1.0f - ((angle - 0.0f) / (90.0f - 0.0f));
+          weight = std::exp(-1.0f * (angle / 360.0f));
+          if (isnan(weight)) {
+             weight = 0.0f;
+          }
+          float t_weight = 0.0f;
+          float lambda = 60.0f;
 
+          std::cout << "\n ANGLE: " << angle  << "\n";
+          
+          if (angle < 30.0f) {
+             t_weight = 1.0f - weight;
+             graph->add_tweights(i, weight * lambda, t_weight * lambda);
+
+             std::cout << "\033[34m U-WEIGHT:\033[0m " << weight  << "\n";
+          } else {
+             weight /= 2.0f;
+             t_weight = 1.0f - weight;
+             graph->add_tweights(i, weight * lambda, t_weight * lambda);
+             std::cout << "\033[33mV-WEIGHT:\033[0m " << weight  << "\n";
+          }
+          
+          /*
           if (weight < 0.0f) {
              // weight = -std::log(-weight) * 10.0f;
              weight *= -10.0f;
-             graph->add_tweights(i, weight/2.0f, weight/2.0f);
+             graph->add_tweights(i, weight, weight);
              // graph->add_tweights(i, weight * 0.0f, HARD_SET_WEIGHT);
 
              std::cout << "\033[34mWEIGHT:\033[0m " << weight  << "\n";
@@ -923,10 +944,11 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              
              weight *= 10.0f;
              // graph->add_tweights(i, weight, 2.0f);
-             graph->add_tweights(i, weight, 0.0f);
+             graph->add_tweights(i, weight, weight);
              
              std::cout << "\033[31m WEIGHT:\033[0m " << weight  << "\n";
           }
+          */
           // graph->add_tweights(i, weight * 60.0f, 0.0f);
        }
 
@@ -956,7 +978,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
                    (neigbor_norm.norm() * center_norm.norm())) / (2 * M_PI);
                 wc = std::exp(-1.0f * wc);
 
-                wc = 1.0f;
+                wc = 0.90f;
 
                 cweight +=1.0f;
                 
@@ -979,8 +1001,8 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              ws *= (0.50f);
              
              // float nweights = fabs(std::log(wc + ws));
-             float nweights = wc * 2;  // + ws;
-             // nweights = std::fabs((1.0f*std::log(wc)) + (1.0f*std::log(ws)));
+             float nweights = wc;  // + ws;
+             nweights = std::fabs((1.0f*std::log(wc)));  // + (1.0f*std::log(ws)));
 
              if (nweights < 0.0000001f) {
                 nweights = 0.0000001f;
@@ -990,22 +1012,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              graph->add_edge(i, indx, nweights, nweights);
           }
        }
-       
-       if (cweight <= 0 /*&& weight >= 0.0f && is_weight*/) {
-          // graph->add_tweights(i, HARD_SET_WEIGHT, 0);
 
-          // energy_map->points[i].g = (0)*255.0f;
-          // energy_map->points[i].r = (1)*255.0f;
-          // energy_map->points[i].b = (1)*255.0f;
-          
-       } /*else if (cweight > 0 && weight < 0.0f) {
-          graph->add_tweights(i, 3.0f, 5.0f);
-       } else if (cweight < 0 && weight >= 0.0f) {
-          graph->add_tweights(i, 3.0f, 7.0f);
-       } else {
-          graph->add_tweights(i, 0, HARD_SET_WEIGHT);
-       }
-       */
     }
 
     
