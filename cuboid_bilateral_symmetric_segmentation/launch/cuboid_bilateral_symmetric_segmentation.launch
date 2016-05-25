@@ -14,6 +14,7 @@
 	type="cuboid_bilateral_symmetric_segmentation_node"
 	name="cuboid_bilateral_symmetric_segmentation" output="screen" clear_params="false">
     <remap from="input_cloud" to="$(arg POINTS)" />
+    <remap from="input_prob" to="/probabilty_map" />
     <remap from="input_normals" to="$(arg NORMALS)" />
     
     <remap from="input_planes" to="/multi_plane_estimate/output_refined_polygon" />

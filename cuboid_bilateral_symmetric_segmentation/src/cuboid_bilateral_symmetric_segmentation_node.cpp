@@ -32,21 +32,24 @@ void CuboidBilateralSymmetricSegmentation::onInit() {
 
 void CuboidBilateralSymmetricSegmentation::subscribe() {
     this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
+    this->sub_prob_.subscribe(this->pnh_, "input_prob", 1);
     this->sub_normal_.subscribe(this->pnh_, "input_normals", 1);
     this->sub_planes_.subscribe(this->pnh_, "input_planes", 1);
     this->sub_coef_.subscribe(this->pnh_, "input_coefficients", 1);
     
     this->sync_ = boost::make_shared<message_filters::Synchronizer<
                                         SyncPolicy> >(100);
-    this->sync_->connectInput(this->sub_cloud_, this->sub_normal_,
-                              this->sub_planes_, this->sub_coef_);
+    this->sync_->connectInput(this->sub_cloud_, this->sub_prob_,
+                              this->sub_normal_, this->sub_planes_,
+                              this->sub_coef_);
     this->sync_->registerCallback(
         boost::bind(&CuboidBilateralSymmetricSegmentation::cloudCB,
-                    this, _1, _2, _3, _4));
+                    this, _1, _2, _3, _4, _5));
 }
 
 void CuboidBilateralSymmetricSegmentation::unsubscribe() {
     this->sub_cloud_.unsubscribe();
+    this->sub_prob_.unsubscribe();
     this->sub_normal_.unsubscribe();
     this->sub_coef_.unsubscribe();
     this->sub_planes_.unsubscribe();
@@ -54,14 +57,18 @@ void CuboidBilateralSymmetricSegmentation::unsubscribe() {
 
 void CuboidBilateralSymmetricSegmentation::cloudCB(
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
+    const sensor_msgs::PointCloud2::ConstPtr &prob_msg,
     const sensor_msgs::PointCloud2::ConstPtr &normal_msg,
     const jsk_msgs::PolygonArrayConstPtr &planes_msg,
     const ModelCoefficients &coefficients_msg) {
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
+    this->convex_prob_map_ = pcl::PointCloud<PointT>::Ptr(
+       new pcl::PointCloud<PointT>);
+    pcl::fromROSMsg(*prob_msg, *convex_prob_map_);
     pcl::PointCloud<NormalT>::Ptr normals (new pcl::PointCloud<NormalT>);
     pcl::fromROSMsg(*normal_msg, *normals);
-
+    
     this->header_ = cloud_msg->header;
     
     SupervoxelMap supervoxel_clusters;

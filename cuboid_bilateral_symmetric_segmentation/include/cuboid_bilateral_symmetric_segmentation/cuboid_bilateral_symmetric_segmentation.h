@@ -46,11 +46,11 @@ class CuboidBilateralSymmetricSegmentation:
     ros::NodeHandle pnh_;
   
     typedef  message_filters::sync_policies::ApproximateTime<
-       sensor_msgs::PointCloud2,
-       sensor_msgs::PointCloud2,
-       jsk_msgs::PolygonArray,
+       sensor_msgs::PointCloud2, sensor_msgs::PointCloud2,
+       sensor_msgs::PointCloud2, jsk_msgs::PolygonArray,
        jsk_msgs::ModelCoefficientsArray> SyncPolicy;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_prob_;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
     message_filters::Subscriber<jsk_msgs::PolygonArray> sub_planes_;
     message_filters::Subscriber<jsk_msgs::ModelCoefficientsArray> sub_coef_;
@@ -65,6 +65,8 @@ class CuboidBilateralSymmetricSegmentation:
     boost::shared_ptr<OcclusionHandler> occlusion_handler_;
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
     std_msgs::Header header_;
+
+    pcl::PointCloud<PointT>::Ptr convex_prob_map_;
    
  protected:
     void onInit();
@@ -81,6 +83,7 @@ class CuboidBilateralSymmetricSegmentation:
  public:
     CuboidBilateralSymmetricSegmentation();
     void cloudCB(const sensor_msgs::PointCloud2::ConstPtr &,
+                 const sensor_msgs::PointCloud2::ConstPtr &,
                  const sensor_msgs::PointCloud2::ConstPtr &,
                  const jsk_msgs::PolygonArrayConstPtr &,
                  const ModelCoefficients &);
