@@ -531,7 +531,6 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     ros_cloud1.header = planes_msg->header;
     this->pub_normal_.publish(ros_cloud1);
 
-
     this->minCutMaxFlow(in_cloud, in_normals,
                         sv_normals, plane_coefficient);
 
@@ -914,7 +913,6 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
        double distance = pcl::distances::l2(ref_pt, ref_match);
 
        float weight = 0.0f;
-       bool is_weight = true;
        if (distance > this->neigbor_dist_thresh_) {
           /*
           if (this->occlusionRegionCheck(pt)) {
@@ -933,9 +931,9 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              graph->add_tweights(i, weight, weight);
           }
           */
-          is_weight = false;
           graph->add_tweights(i, 0, HARD_SET_WEIGHT);
        } else {
+       
           Eigen::Vector3f symm_n = n -
              (2.0f*((plane_n.normalized()).dot(n))*plane_n.normalized());
           
@@ -957,9 +955,14 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
                                 ((c_normal.norm() * n_normal.norm())));
           tetha *= (180.0/M_PI);
           if (val == 1) {
-             c_weight = std::exp(-1.0f * (tetha / 360.0f));
+             // c_weight = std::exp(-1.0f * (tetha / 360.0f));
+             float s = std::pow(1.0f - (c_normal.dot(n_normal)), 2);
+             c_weight = std::exp(-1.0f * s);
           } else {
-             c_weight = std::exp(-2.0f * (tetha / 90.0f));
+             // c_weight = std::exp(-2.0f * (tetha / 90.0f));
+             float s = (1.0f - (c_normal.dot(n_normal)));
+             c_weight = std::exp(-1.0f * s);
+             std::cout << "\033[34m U-WEIGHT:\033[0m " << c_weight  << "\n";
           }
           
           float angle = std::acos(dot_prod) * (180.0f/M_PI);
@@ -971,18 +974,18 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
           
           float t_weight = 0.0f;
           float lambda = 100.0f;
-          
+
           if (angle < 40.0f) {
              weight = (weight * c_weight);
              t_weight = 1.0f - weight;
 
-             std::cout << "\033[34m U-WEIGHT:\033[0m " << weight  << "\n";
+             // std::cout << "\033[34m U-WEIGHT:\033[0m " << weight  << "\n";
           } else {
              weight *= 0.10f;
              weight = (weight * c_weight);
-             t_weight = 1.0f - weight;
+              t_weight = 1.0f - weight;
 
-             std::cout << "\033[33mV-WEIGHT:\033[0m " << weight  << "\n";
+             // std::cout << "\033[33mV-WEIGHT:\033[0m " << weight  << "\n";
           }
           
           //! add capacities
@@ -1021,10 +1024,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
                    (neigbor_norm.norm() * center_norm.norm())) / (2 * M_PI);
                 wc = std::exp(-1.0f * wc);
 
-                wc = 0.90f;
-
-                cweight +=1.0f;
-                
+                // wc = 0.90f;
              } else {
 
                 wc = std::acos(
@@ -1032,34 +1032,42 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
                    (neigbor_norm.norm() * center_norm.norm())) / (M_PI/3);
                 wc = 1.0f - std::exp(-2.0f * wc);
                 
-                wc = 0.001f;
-
-                cweight -= 1.0f;
+                // wc = 0.001f;
              }
              wc = isnan(wc) ? 0.0f : wc;
-             // wc *= alpha_thresh;
+             wc *= alpha_thresh;
              
              float ws = 0.0f;
              ws = std::exp(-1.0f * (shape_map->points[indx].r/255.0f));
              ws *= (0.50f);
              
              // float nweights = fabs(std::log(wc + ws));
-             float nweights = wc * 50;  // + ws;
-             // nweights = std::fabs((1.0f*std::log(wc)));  // + (1.0f*std::log(ws)));
+             // float nweights = wc * 50;  // + ws;
+             float nweights = (wc + ws) * 50.0f;
 
              if (nweights < 0.0000001f) {
                 nweights = 0.0000001f;
              }
-             std::cout << nweights  << "\t";
+             // std::cout << nweights  << "\t";
+
+
+             // using color
+             PointT ipt = cloud->points[indx];
+             PointT cpt = cloud->points[i];
+             float intn = ((cpt.r -  ipt.r) * (cpt.r -  ipt.r) +
+                           (cpt.b - ipt.b) * (cpt.b - ipt.b) +
+                           (cpt.g * ipt.g) * (cpt.g * ipt.g)) / (255 * 255);
+             
+             double ndist = pcl::distances::l2(center_point, neigbor_point);
+             float b_term = std::exp(-1.0f * intn/(2.0f * 100)) *
+                (1.0f / (100.0f * static_cast<float>(ndist)));
+             // std::cout << b_term << "\t" << intn  << "\n";
+             // nweights = b_term * 10.0f;
              
              graph->add_edge(i, indx, nweights, nweights);
           }
        }
-
     }
-
-    
-
     
     ROS_INFO("\033[34m COMPUTING FLOW \033[0m");
 
@@ -1080,17 +1088,20 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
        }
     }
 
+    cloud->clear();
+    *cloud = *shape_map;
+
+    ROS_INFO("\033[34m CLOUD CONSTRUCTRED \033[0m");
+    
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*shape_map, ros_cloud);
     ros_cloud.header = this->header_;
     this->pub_object_.publish(ros_cloud);
-    
 
     sensor_msgs::PointCloud2 ros_cloud1;
     pcl::toROSMsg(*energy_map, ros_cloud1);
     ros_cloud1.header = this->header_;
     this->pub_normal_.publish(ros_cloud1);
-
 }
 
 bool CuboidBilateralSymmetricSegmentation::occlusionRegionCheck(
