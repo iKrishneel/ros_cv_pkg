@@ -32,7 +32,7 @@ void CuboidBilateralSymmetricSegmentation::onInit() {
 
 void CuboidBilateralSymmetricSegmentation::subscribe() {
     this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
-    this->sub_prob_.subscribe(this->pnh_, "input_prob", 1);
+    this->sub_prob_.subscribe(this->pnh_, "input_seed", 1);
     this->sub_normal_.subscribe(this->pnh_, "input_normals", 1);
     this->sub_planes_.subscribe(this->pnh_, "input_planes", 1);
     this->sub_coef_.subscribe(this->pnh_, "input_coefficients", 1);
@@ -57,19 +57,24 @@ void CuboidBilateralSymmetricSegmentation::unsubscribe() {
 
 void CuboidBilateralSymmetricSegmentation::cloudCB(
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
-    const sensor_msgs::PointCloud2::ConstPtr &prob_msg,
+    const sensor_msgs::PointCloud2::ConstPtr &seed_msg,
     const sensor_msgs::PointCloud2::ConstPtr &normal_msg,
     const jsk_msgs::PolygonArrayConstPtr &planes_msg,
     const ModelCoefficients &coefficients_msg) {
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-    this->convex_prob_map_ = pcl::PointCloud<PointT>::Ptr(
-       new pcl::PointCloud<PointT>);
-    pcl::fromROSMsg(*prob_msg, *convex_prob_map_);
+    pcl::PointCloud<PointNormalT>::Ptr seeds(
+       new pcl::PointCloud<PointNormalT>);
+    pcl::fromROSMsg(*seed_msg, *seeds);
     pcl::PointCloud<NormalT>::Ptr normals (new pcl::PointCloud<NormalT>);
     pcl::fromROSMsg(*normal_msg, *normals);
     
     this->header_ = cloud_msg->header;
+    if (seeds->empty()) {
+       ROS_ERROR("SEED INFO TOPIC IS EMPTY");
+       return;
+    }
+    this->seed_info_ = seeds->points[0];
     
     SupervoxelMap supervoxel_clusters;
     pcl::PointCloud<NormalT>::Ptr sv_normals(new pcl::PointCloud<NormalT>);
@@ -438,7 +443,7 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     jsk_msgs::BoundingBox bounding_box;
     pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
     pcl::PointCloud<NormalT>::Ptr in_normals(new pcl::PointCloud<NormalT>);
-
+    pcl::PointCloud<NormalT>::Ptr sv_normals(new pcl::PointCloud<NormalT>);
     // optimization using graph
 
     Eigen::Vector4f plane_coefficient;
@@ -447,7 +452,7 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
          it != supervoxel_clusters.end(); it++) {
        *in_cloud += *(it->second->voxels_);
-       *in_normals += *(it->second->normals_);
+       *sv_normals += *(it->second->normals_);
     }
     
     // pcl::copyPointCloud<PointT, PointT>(*cloud, *in_cloud);
@@ -493,17 +498,51 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     // this->optimizeSymmetricalPlane(plane_coefficient, in_cloud);
     // *****************END***************************
 
+    
+    Eigen::Vector4f c_centroid = this->seed_info_.getVector4fMap();
+    Eigen::Vector4f c_normal = this->seed_info_.getNormalVector4fMap();
+    
+    for (int i = 0; i < in_cloud->size(); i++) {
+       Eigen::Vector4f n_centroid = in_cloud->points[i].getVector4fMap();
+       Eigen::Vector4f n_normal = sv_normals->points[i].getNormalVector4fMap();
+       int val = this->seedVoxelConvexityCriteria(c_centroid, c_normal,
+                                                  n_centroid, n_normal, -0.01f);
+       float weight = 0.0f;
+       float ang = std::acos(c_normal.dot(n_normal) /
+                             ((c_normal.norm() * n_normal.norm())));
+       ang *= (180.0/M_PI);
+       if (val == 1) {
+          weight = std::exp(-1.0f * (ang / 360.0f));
+       } else {
+          weight = std::exp(-2.0f * (ang / 30.0f));
+       }
+       // weight = 1.0f;
+       float s_weight = symm_potential->points[i].r / 255.0f;
+       // std::cout << weight << "\t" << s_weight  << "\t";
+       
+       weight += s_weight;
+       weight /= 2.0f;
+       weight *= 255.0f;
+
+       // std::cout << weight  << "\n";
+       
+       symm_potential->points[i].r = weight * 1.0f;
+       symm_potential->points[i].b = weight * 1.0f;
+       symm_potential->points[i].g = weight * 1.0f;
+    }
+    
+    
     sensor_msgs::PointCloud2 ros_cloud1;
     pcl::toROSMsg(*symm_potential, ros_cloud1);
     ros_cloud1.header = planes_msg->header;
     this->pub_normal_.publish(ros_cloud1);
-    
+
+    /*
     this->minCutMaxFlow(in_cloud, in_normals,
                         symm_potential, plane_coefficient);
-
+    */
     this->plotPlane(in_cloud, plane_coefficient);
     
-
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*in_cloud, ros_cloud);
     ros_cloud.header = planes_msg->header;
@@ -1105,6 +1144,27 @@ void CuboidBilateralSymmetricSegmentation::estimateNormals(
         ne.setRadiusSearch(k);
     }
     ne.compute(*normals);
+}
+
+int CuboidBilateralSymmetricSegmentation::seedVoxelConvexityCriteria(
+    Eigen::Vector4f c_centroid, Eigen::Vector4f c_normal,
+    Eigen::Vector4f n_centroid, Eigen::Vector4f n_normal,
+    const float thresh, bool is_seed) {
+    float pt2seed_relation = FLT_MAX;
+    float seed2pt_relation = FLT_MAX;
+    if (is_seed) {
+       pt2seed_relation = (n_centroid - c_centroid).dot(n_normal);
+       seed2pt_relation = (c_centroid - n_centroid).dot(c_normal);
+    }
+    float norm_similarity = (M_PI - std::acos(
+                                c_normal.dot(n_normal) /
+                                (c_normal.norm() * n_normal.norm()))) / M_PI;
+    if (seed2pt_relation > thresh &&
+        pt2seed_relation > thresh && norm_similarity > 0.50f) {
+       return 1;
+    } else {
+       return -1;
+    }
 }
 
 pcl::PointXYZRGBNormal

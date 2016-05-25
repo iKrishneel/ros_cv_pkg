@@ -66,7 +66,7 @@ class CuboidBilateralSymmetricSegmentation:
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
     std_msgs::Header header_;
 
-    pcl::PointCloud<PointT>::Ptr convex_prob_map_;
+    PointNormalT seed_info_;
    
  protected:
     void onInit();
@@ -137,6 +137,9 @@ class CuboidBilateralSymmetricSegmentation:
     void estimateNormals(const pcl::PointCloud<PointT>::Ptr,
                          pcl::PointCloud<NormalT>::Ptr,
                          T = 0.05f, bool = false) const;
+    int seedVoxelConvexityCriteria(Eigen::Vector4f, Eigen::Vector4f,
+                                   Eigen::Vector4f, Eigen::Vector4f,
+                                   const float = 0.0f, bool = true);
     pcl::PointXYZRGBNormal convertVector4fToPointXyzRgbNormal(
        const Eigen::Vector3f &, const Eigen::Vector3f &,
        const Eigen::Vector3f);
