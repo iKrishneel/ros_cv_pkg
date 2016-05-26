@@ -124,6 +124,7 @@ void DynamicStateSegmentation::cloudCB(
     /**
      * MOVE THIS TO THE REGIONOVERSEGMENT FOR LOOP
      */
+    /*
     pcl::PointCloud<PointT>::Ptr convex_prob_map(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*seed_cloud2, *convex_prob_map);
     for (int i = 0; i < seed_cloud2->size(); i++) {
@@ -145,10 +146,24 @@ void DynamicStateSegmentation::cloudCB(
        convex_prob_map->points[i].b = weight * 255.0f;
        convex_prob_map->points[i].g = weight * 255.0f;
     }
-
-
+    */
+    pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr convex_prob_map(
+       new pcl::PointCloud<pcl::PointXYZRGBNormal>);
+    pcl::PointXYZRGBNormal seed_info;
+    seed_info.x = this->seed_point_.x;
+    seed_info.y = this->seed_point_.y;
+    seed_info.z = this->seed_point_.z;
+    seed_info.r = this->seed_point_.r;
+    seed_info.g = this->seed_point_.g;
+    seed_info.b = this->seed_point_.b;
+    seed_info.normal_x = this->seed_normal_.normal_x;
+    seed_info.normal_y = this->seed_normal_.normal_y;
+    seed_info.normal_z = this->seed_normal_.normal_z;
+    seed_info.curvature = this->seed_normal_.curvature;
+    convex_prob_map->push_back(seed_info);
+    convex_prob_map->push_back(seed_info);
+    convex_prob_map->push_back(seed_info);
     
-
     // routine for Mean-shift
     /*
     all_indices.clear();

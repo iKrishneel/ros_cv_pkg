@@ -3,9 +3,9 @@
   <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />
   <arg name="seg_plane" default="false" />
 
-  <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch">
-    <arg name="cloud" value="$(arg INPUT)"/>
-  </include>
+  <!-- <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch"> -->
+  <!--   <arg name="cloud" value="$(arg INPUT)"/> -->
+  <!-- </include> -->
 
   <!-- launch the plane segmentation -->
   <!-- <include file="$(find convex_connected_voxels)/launch/organized_multi_plane_segmentation.launch"> -->
