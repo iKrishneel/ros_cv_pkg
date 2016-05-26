@@ -76,7 +76,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     }
     this->seed_info_ = seeds->points[0];
 
-    
+    /*
     //------------------TEMP-CHECK----------------------
     bool label_all = true;
     ObjectRegionHandler orh(this->min_cluster_size_, num_threads_);
@@ -91,7 +91,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        if (region->empty()) {
           return;
        }
-       // >> PROCESS <<
+       
 
        orh.updateObjectRegion(region);
     
@@ -134,6 +134,37 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     this->pub_cloud_.publish(ros_voxels);
     this->pub_indices_.publish(ros_indices);
     
+    this->symmetryBasedObjectHypothesis(supervoxel_clusters, start_index,
+                                        cloud, planes_msg,
+                                        coefficients_msg);
+    */
+    this->segmentation(cloud, cloud, planes_msg, coefficients_msg);
+    
+}
+
+void CuboidBilateralSymmetricSegmentation::segmentation(
+    pcl::PointCloud<PointT>::Ptr results,
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const jsk_msgs::PolygonArrayConstPtr &planes_msg,
+    const ModelCoefficients &coefficients_msg) {
+    if (cloud->empty()) {
+       ROS_ERROR("EMPTY CLOUD FOR CBSS SEGMENTATION");
+       return;
+    }
+
+    SupervoxelMap supervoxel_clusters;
+    pcl::PointCloud<NormalT>::Ptr sv_normals(new pcl::PointCloud<NormalT>);
+    this->supervoxelDecomposition(supervoxel_clusters, sv_normals, cloud);
+    
+    // publish supervoxel
+    sensor_msgs::PointCloud2 ros_voxels;
+    jsk_msgs::ClusterPointIndices ros_indices;
+    this->publishSupervoxel(supervoxel_clusters,
+                            ros_voxels, ros_indices, planes_msg->header);
+    this->pub_cloud_.publish(ros_voxels);
+    this->pub_indices_.publish(ros_indices);
+
+    int start_index = 10;
     this->symmetryBasedObjectHypothesis(supervoxel_clusters, start_index,
                                         cloud, planes_msg, coefficients_msg);
 }
