@@ -76,7 +76,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     }
     this->seed_info_ = seeds->points[0];
 
-    /*
+
     //------------------TEMP-CHECK----------------------
     bool label_all = true;
     ObjectRegionHandler orh(this->min_cluster_size_, num_threads_);
@@ -92,53 +92,19 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           return;
        }
        
-
+       pcl::PointCloud<PointT>::Ptr results(new pcl::PointCloud<PointT>);
+       this->segmentation(results, region, planes_msg, coefficients_msg);
        orh.updateObjectRegion(region);
-    
-       sensor_msgs::PointCloud2 ros_cloud;
-       pcl::toROSMsg(*region, ros_cloud);
-       ros_cloud.header = planes_msg->header;
-       this->pub_edge_.publish(ros_cloud);
+
+       // label_all = false;
+       // sensor_msgs::PointCloud2 ros_cloud;
+       // pcl::toROSMsg(*region, ros_cloud);
+       // ros_cloud.header = planes_msg->header;
+       // this->pub_edge_.publish(ros_cloud);
     }
     
     return;
     //---------------END-TEMP-CHECK---------------------
-
-    
-    SupervoxelMap supervoxel_clusters;
-    pcl::PointCloud<NormalT>::Ptr sv_normals(new pcl::PointCloud<NormalT>);
-    this->supervoxelDecomposition(supervoxel_clusters, sv_normals, cloud);
-    
-    // select the highest cluster
-    float y_position = FLT_MAX;
-    int start_index = -1;
-    for (SupervoxelMap::const_iterator it = supervoxel_clusters.begin();
-         it != supervoxel_clusters.end(); it++) {
-       float y_pos = supervoxel_clusters.at(it->first)->centroid_.y;
-       int csize = supervoxel_clusters.at(it->first)->voxels_->size();
-       if (y_pos < y_position && csize > this->min_cluster_size_) {
-          y_position = y_pos;
-          start_index = it->first;
-       }
-    }
-    if (start_index == -1) {
-       ROS_ERROR("START ERROR");
-       return;
-    }
-    
-    // publish supervoxel
-    sensor_msgs::PointCloud2 ros_voxels;
-    jsk_msgs::ClusterPointIndices ros_indices;
-    this->publishSupervoxel(supervoxel_clusters,
-                            ros_voxels, ros_indices, cloud_msg->header);
-    this->pub_cloud_.publish(ros_voxels);
-    this->pub_indices_.publish(ros_indices);
-    
-    this->symmetryBasedObjectHypothesis(supervoxel_clusters, start_index,
-                                        cloud, planes_msg,
-                                        coefficients_msg);
-    */
-    this->segmentation(cloud, cloud, planes_msg, coefficients_msg);
     
 }
 
