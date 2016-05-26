@@ -25,6 +25,7 @@
 #include <cuboid_bilateral_symmetric_segmentation/supervoxel_segmentation.h>
 #include <cuboid_bilateral_symmetric_segmentation/oriented_bounding_box.h>
 #include <cuboid_bilateral_symmetric_segmentation/maxflow/graph.h>
+#include <cuboid_bilateral_symmetric_segmentation/object_region_handler.h>
 
 class CuboidBilateralSymmetricSegmentation:
     public SupervoxelSegmentation,

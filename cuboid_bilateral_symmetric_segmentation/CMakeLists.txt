@@ -153,6 +153,8 @@ add_executable(cuboid_bilateral_symmetric_segmentation_node
   src/oriented_bounding_box.cpp
   src/maxflow/graph.cpp
   src/maxflow/maxflow.cpp
+
+  src/object_region_handler.cpp
 )
 
 ## Add cmake target dependencies of the executable

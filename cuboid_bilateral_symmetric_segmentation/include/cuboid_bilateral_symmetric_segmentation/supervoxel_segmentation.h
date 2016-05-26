@@ -21,7 +21,6 @@ class SupervoxelSegmentation {
     double color_importance_;
     double spatial_importance_;
     double normal_importance_;
-    double voxel_resolution_;
     bool use_transform_;
     boost::mutex mutex_;
 
@@ -61,6 +60,7 @@ class SupervoxelSegmentation {
     double seed_resolution_;
     double distance_threshold_;
     double angle_threshold_;
+    double voxel_resolution_;
 };
 
 

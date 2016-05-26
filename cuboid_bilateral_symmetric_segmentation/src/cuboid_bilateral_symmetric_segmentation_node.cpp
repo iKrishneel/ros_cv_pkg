@@ -75,6 +75,32 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        return;
     }
     this->seed_info_ = seeds->points[0];
+
+    
+    //------------------TEMP-CHECK----------------------
+    ObjectRegionHandler orh(this->min_cluster_size_, num_threads_);
+    if (!orh.setInputCloud(cloud, cloud_msg->header)) {
+       ROS_ERROR("CANNOT SET INFO");
+       return;
+    }
+    pcl::PointCloud<PointT>::Ptr region(new pcl::PointCloud<PointT>);
+    PointNormalT seed_info;
+    orh.getCandidateRegion(region, seed_info);
+    if (region->empty()) {
+       return;
+    }
+    // >> PROCESS <<
+
+    orh.updateObjectRegion(region);
+    
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*region, ros_cloud);
+    ros_cloud.header = planes_msg->header;
+    this->pub_edge_.publish(ros_cloud);
+    
+    return;
+    //---------------END-TEMP-CHECK---------------------
+
     
     SupervoxelMap supervoxel_clusters;
     pcl::PointCloud<NormalT>::Ptr sv_normals(new pcl::PointCloud<NormalT>);
@@ -96,7 +122,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        ROS_ERROR("START ERROR");
        return;
     }
-
+    
     // publish supervoxel
     sensor_msgs::PointCloud2 ros_voxels;
     jsk_msgs::ClusterPointIndices ros_indices;
@@ -127,7 +153,7 @@ void CuboidBilateralSymmetricSegmentation::supervoxelDecomposition(
          it != supervoxel_clusters.end(); it++) {
        voxel_labels[it->first] = -1;
     }
-
+    
     // return;
     
     int label = -1;
