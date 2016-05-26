@@ -78,25 +78,28 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
 
     
     //------------------TEMP-CHECK----------------------
+    bool label_all = true;
     ObjectRegionHandler orh(this->min_cluster_size_, num_threads_);
     if (!orh.setInputCloud(cloud, cloud_msg->header)) {
        ROS_ERROR("CANNOT SET INFO");
        return;
     }
-    pcl::PointCloud<PointT>::Ptr region(new pcl::PointCloud<PointT>);
-    PointNormalT seed_info;
-    orh.getCandidateRegion(region, seed_info);
-    if (region->empty()) {
-       return;
-    }
-    // >> PROCESS <<
+    while (label_all) {
+       pcl::PointCloud<PointT>::Ptr region(new pcl::PointCloud<PointT>);
+       PointNormalT seed_info;
+       label_all = orh.getCandidateRegion(region, seed_info);
+       if (region->empty()) {
+          return;
+       }
+       // >> PROCESS <<
 
-    orh.updateObjectRegion(region);
+       orh.updateObjectRegion(region);
     
-    sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*region, ros_cloud);
-    ros_cloud.header = planes_msg->header;
-    this->pub_edge_.publish(ros_cloud);
+       sensor_msgs::PointCloud2 ros_cloud;
+       pcl::toROSMsg(*region, ros_cloud);
+       ros_cloud.header = planes_msg->header;
+       this->pub_edge_.publish(ros_cloud);
+    }
     
     return;
     //---------------END-TEMP-CHECK---------------------

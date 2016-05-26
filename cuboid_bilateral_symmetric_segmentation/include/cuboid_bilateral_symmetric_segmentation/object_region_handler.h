@@ -29,6 +29,8 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
     int num_threads_;
     int seed_index_;
     int neigbor_size_;
+    int iter_counter_;
+   
    
     std_msgs::Header header_;
     std::vector<pcl::PointIndices> all_indices_;
@@ -63,7 +65,7 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
  public:
     ObjectRegionHandler(const int = 50, const int = 1);
     bool setInputCloud(const pcl::PointCloud<PointT>::Ptr, std_msgs::Header);
-    void getCandidateRegion(pcl::PointCloud<PointT>::Ptr,
+    bool getCandidateRegion(pcl::PointCloud<PointT>::Ptr,
                             pcl::PointXYZRGBNormal &);
     void updateObjectRegion(pcl::PointCloud<PointT>::Ptr);
     void getLabels(std::vector<pcl::PointIndices> &);

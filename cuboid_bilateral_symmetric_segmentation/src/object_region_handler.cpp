@@ -24,19 +24,22 @@ bool ObjectRegionHandler::setInputCloud(
     return true;
 }
 
-void ObjectRegionHandler::getCandidateRegion(
+bool ObjectRegionHandler::getCandidateRegion(
     pcl::PointCloud<PointT>::Ptr out_cloud, pcl::PointXYZRGBNormal &info) {
-    if (this->in_cloud_->empty()) {
+    if (this->in_cloud_->size() < this->min_cluster_size_) {
        ROS_ERROR("INPUT CLOUD NOT SET");
-       return;
+       return false;
     }
-
     ROS_INFO("\033[34mDOING SUPERVOXEL\033[0m");
     //! do supervoxel
     AdjacencyList adjacency_list;
     SupervoxelMap supervoxel_clusters;
     this->supervoxelSegmentation(this->in_cloud_, supervoxel_clusters,
                                  adjacency_list);
+    if (this->is_init_) {
+       this->iter_counter_ = static_cast<int>(supervoxel_clusters.size());
+       this->is_init_ = false;
+    }
 
     ROS_INFO("\033[34mSELECTING ONE CLUSTER\033[0m");
     //! select one supervoxel
@@ -51,7 +54,7 @@ void ObjectRegionHandler::getCandidateRegion(
     PointT seed_point;
     if (t_index == supervoxel_clusters.size() + 1) {
        ROS_ERROR("CANNOT SELECT ANY SUPERVOXEL");
-       return;
+       return false;
     } else {  // MOVE INSIDE THE LOOP
        int k = 1;
        std::vector<int> neigbor_indices;
@@ -77,7 +80,7 @@ void ObjectRegionHandler::getCandidateRegion(
     
     ROS_INFO("\033[34mDOING REGION GROWING\033[0m");
     
-    //! region growing
+    //! region growing ?? REUSE NORMALS
     pcl::PointCloud<NormalT>::Ptr normals(new pcl::PointCloud<NormalT>);
     this->estimateNormals<int>(this->in_cloud_, normals, neigbor_size_, true);
     std::vector<int> labels(static_cast<int>(this->in_cloud_->size()));
@@ -120,7 +123,12 @@ void ObjectRegionHandler::getCandidateRegion(
     info.normal_z = normals->points[this->seed_index_].normal_z;
     info.curvature = normals->points[this->seed_index_].curvature;
 
-    ROS_INFO("\033[34mDONE\033[0m");
+    ROS_INFO("\033[34mDONE: %d\033[0m", iter_counter_);
+
+    if (iter_counter_-- == 0) {
+       return false;
+    }
+    return true;
 }
 
 void ObjectRegionHandler::updateObjectRegion(
@@ -168,7 +176,7 @@ void ObjectRegionHandler::updateObjectRegion(
     for (int i = 0; i < cloud->size(); i++) {
        neigbor_indices.clear();
        this->pointNeigbour<float>(neigbor_indices, cloud->points[i],
-                                  this->voxel_resolution_, false);       
+                                  this->voxel_resolution_, false);
        for (int j = 0; j < neigbor_indices.size(); j++) {
           int idx = neigbor_indices[j];
           in_cloud_->points[idx].x = std::numeric_limits<double>::quiet_NaN();
