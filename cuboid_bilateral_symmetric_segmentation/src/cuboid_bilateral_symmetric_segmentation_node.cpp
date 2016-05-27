@@ -76,7 +76,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     }
     this->seed_info_ = seeds->points[0];
 
-    /*
+    
     // ------------------TEMP-CHECK----------------------
     ROS_INFO("\nRUNNING CBSS SEGMENTATION");
     
@@ -103,16 +103,24 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           label_all = false;
        }
 
-       sensor_msgs::PointCloud2 ros_cloud;
-       pcl::toROSMsg(*results, ros_cloud);
-       ros_cloud.header = planes_msg->header;
-       this->pub_cloud_.publish(ros_cloud);
+       // sensor_msgs::PointCloud2 ros_cloud;
+       // pcl::toROSMsg(*results, ros_cloud);
+       // ros_cloud.header = planes_msg->header;
+       // this->pub_cloud_.publish(ros_cloud);
     }
     
     std::vector<pcl::PointIndices> all_indices;
     orh.getLabels(all_indices);
     
     std::cout << "FINISHED NOW PUBLISHING..." << all_indices.size()  << "\n";
+
+    pcl::PointCloud<PointT>::Ptr temp(new pcl::PointCloud<PointT>);
+    for (int i = 0; i < all_indices.size(); i++) {
+       for (int j = 0; j < all_indices[i].indices.size(); j++) {
+          int idx = all_indices[i].indices[j];
+          temp->push_back(cloud->points[idx]);
+       }
+    }
     
     jsk_msgs::ClusterPointIndices ros_indices;
     ros_indices.cluster_indices = this->convertToROSPointIndices(
@@ -121,13 +129,15 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     this->pub_indices_.publish(ros_indices);
     
     sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*cloud, ros_cloud);
-    ros_cloud.header = planes_msg->header;
+    pcl::toROSMsg(*temp, ros_cloud);
+    ros_cloud.header = cloud_msg->header;
     this->pub_cloud_.publish(ros_cloud);
     // ---------------END-TEMP-CHECK---------------------
-    */
+    
+    /*
     pcl::PointCloud<PointT>::Ptr results(new pcl::PointCloud<PointT>);
     this->segmentation(results, cloud, planes_msg, coefficients_msg);
+    */
 }
 
 void CuboidBilateralSymmetricSegmentation::segmentation(
