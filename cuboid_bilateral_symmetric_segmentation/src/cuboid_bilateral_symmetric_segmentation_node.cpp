@@ -998,7 +998,28 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
        ref_match(3) = 0.0f;
        double distance = pcl::distances::l2(ref_pt, ref_match);
 
+
+       //! convexity map
+       Eigen::Vector4f n_centroid = cloud->points[i].getVector4fMap();
+       Eigen::Vector4f n_normal = sv_normals->points[i].getNormalVector4fMap();
+       n_centroid(3) = 1.0f;
+       int val = this->seedVoxelConvexityCriteria(
+          c_centroid, c_normal, n_centroid, n_normal, -0.01f);
+       Eigen::Vector4f direction = n_centroid - c_centroid;
+       float tetha = std::acos((direction.dot(n_normal)) /
+                               ((direction).norm() * n_normal.norm()));
+       float c_weight = 0.0f;
+       if (val == 1) {
+          float gamma = -1.0f;
+          c_weight = std::exp(gamma * ((M_PI - tetha)/(2*M_PI)));
+       } else {
+          float gamma = -1.0f;
+          c_weight = std::exp(gamma * ((M_PI - tetha)/(M_PI/2)));
+       }
+       
        float weight = 0.0f;
+       float t_weight = 0.0f;
+       float lambda = 100.0f;
        if (distance > this->neigbor_dist_thresh_) {
           /*
           if (this->occlusionRegionCheck(pt)) {
@@ -1017,76 +1038,29 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              graph->add_tweights(i, weight, weight);
           }
           */
-          graph->add_tweights(i, 0, HARD_SET_WEIGHT);
+          weight = (val == 1) ? c_weight : 0.0f;
+          t_weight = 1.0f - weight;
+          graph->add_tweights(i, weight * lambda, t_weight * lambda);
        } else {
-       
           Eigen::Vector3f symm_n = n -
              (2.0f*((plane_n.normalized()).dot(n))*plane_n.normalized());
-          
           Eigen::Vector3f sneig_r = normals->points[
              nidx].getNormalVector3fMap();
           float dot_prod = (symm_n.dot(sneig_r)) / (
              symm_n.norm() * sneig_r.norm());
-
-
-          //! convexity map
-          Eigen::Vector4f n_centroid = cloud->points[i].getVector4fMap();
-          Eigen::Vector4f n_normal = sv_normals->points[
-             i].getNormalVector4fMap();
-          n_centroid(3) = 1.0f;
-          int val = this->seedVoxelConvexityCriteria(
-             c_centroid, c_normal, n_centroid, n_normal, -0.01f);
-          float c_weight = 0.0f;
-          float tetha = std::acos(c_normal.dot(n_normal) /
-                                ((c_normal.norm() * n_normal.norm())));
-          
-          tetha *= (180.0/M_PI);
-          if (val == 1) {
-             // c_weight = std::exp(-1.0f * (tetha / 360.0f));
-             float s = std::pow(1.0f - (c_normal.dot(n_normal)), 2);
-             c_weight = std::exp(-1.0f * s);
-
-
-             // TODO(FIX):  SET THE WEIGHT USING CONVEX FORMULAR
-
-             float tt = std::acos(((n_centroid - c_centroid).dot(n_normal)) /
-                                  (((n_centroid - c_centroid).norm() * n_normal.norm())));
-             tt *= (180.0/M_PI);
-             
-             std::cout << "\033[34mWEIGHT:\033[0m " << s << "\t"
-                       << c_weight << "\t" << tetha << "\t" << tt << "\n";
-             
-             c_weight = 0.99f;
-
-             
-          } else {
-             // c_weight = std::exp(-2.0f * (tetha / 90.0f));
-             float s = (1.0f - (c_normal.dot(n_normal)));
-             c_weight = std::exp(-2.0f * s) * 0.5f;
-             // std::cout << "\033[34m U-WEIGHT:\033[0m " << c_weight << "\n";
-             c_weight = 0.1f;
-          }
-          
           float angle = std::acos(dot_prod) * (180.0f/M_PI);
-          // weight = 1.0f - ((angle - 0.0f) / (90.0f - 0.0f));
           weight = std::exp(-1.0f * (angle / 360.0f));
-          if (isnan(weight)) {
-             weight = 0.0f;
-          }
-          
-          float t_weight = 0.0f;
-          float lambda = 100.0f;
-
+          weight = isnan(weight) ? 0.0f : weight;
           if (angle < 40.0f) {
-             // weight = (weight * c_weight);
-             weight = (weight + c_weight) / 2.0f;
+             weight = (weight * c_weight);
+             // weight = (weight + c_weight) / 2.0f;
              t_weight = 1.0f - weight;
 
              // std::cout << "\033[34m U-WEIGHT:\033[0m " << weight  << "\n";
           } else {
              weight *= 0.10f;
-             // weight = (weight * c_weight);
-             weight = (weight + c_weight) / 2.0f;
+             weight = (weight * c_weight);
+             // weight = (weight + c_weight) / 2.0f;
              t_weight = 1.0f - weight;
 
              // std::cout << "\033[33mV-WEIGHT:\033[0m " << weight  << "\n";
@@ -1094,7 +1068,6 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
           
           //! add capacities
           graph->add_tweights(i, weight * lambda, t_weight * lambda);
-
        }
 
        //! plot
@@ -1102,7 +1075,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
        ptt.r = weight * 255.0;
        ptt.b = weight * 255.0;
        ptt.g = weight * 255.0;
-       energy_map->push_back(ptt);
+       // energy_map->push_back(ptt);
 
        //! plot normal
        symm_normal->push_back(
@@ -1111,7 +1084,6 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              sv_normals->points[i].getNormalVector3fMap(),
              Eigen::Vector3f(ptt.r, ptt.g, ptt.b)));
        
-       // std::cout << "WEIGHT: " << weight  << "\n";
 
        std::vector<int> neigbor_indices;
        this->getPointNeigbour<int>(neigbor_indices, cloud->points[i], edge_num);
@@ -1148,7 +1120,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
                 // wc = 0.001f;
              }
              wc = isnan(wc) ? 0.0f : wc;
-             wc *= alpha_thresh;
+             // wc *= alpha_thresh;
              
              float ws = 0.0f;
              ws = std::exp(-1.0f * (shape_map->points[indx].r/255.0f));
@@ -1156,11 +1128,12 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              
              // float nweights = fabs(std::log(wc + ws));
              // float nweights = wc * 50;  // + ws;
-             float nweights = (wc + ws) * 50.0f;
+             float nweights = (wc) * 1.0f;
 
-             if (nweights < 0.0000001f) {
-                nweights = 0.0000001f;
-             }
+             nweights = (nweights < 0.0000001f) ? 0.0000001f : nweights;
+             // if (nweights < 0.0000001f) {
+             //    nweights = 0.0000001f;
+             // }
              // std::cout << nweights  << "\t";
 
 
