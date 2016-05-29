@@ -145,7 +145,7 @@ class CuboidBilateralSymmetricSegmentation:
                          T = 0.05f, bool = false) const;
     int seedVoxelConvexityCriteria(Eigen::Vector4f, Eigen::Vector4f,
                                    Eigen::Vector4f, Eigen::Vector4f,
-                                   const float = 0.0f, bool = true);
+                                   const float = 0.0f);
     pcl::PointXYZRGBNormal convertVector4fToPointXyzRgbNormal(
        const Eigen::Vector3f &, const Eigen::Vector3f &,
        const Eigen::Vector3f);
