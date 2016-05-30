@@ -4,8 +4,10 @@
 ObjectRegionHandler::ObjectRegionHandler(const int mc_size, int thread) :
     min_cluster_size_(mc_size), is_init_(true), num_threads_(thread),
     neigbor_size_(50) {
-    // this->sv_cloud_ = pcl::PointCloud<PointT>::Ptr(new pcl::PointCloud<PointT>);
     this->in_cloud_ = pcl::PointCloud<PointT>::Ptr(new pcl::PointCloud<PointT>);
+    this->in_normals_ = pcl::PointCloud<NormalT>::Ptr(
+       new pcl::PointCloud<NormalT>);
+    this->region_indices_ = pcl::PointIndices::Ptr(new pcl::PointIndices);
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
 }
 
@@ -15,12 +17,31 @@ bool ObjectRegionHandler::setInputCloud(
        ROS_ERROR("EMPTY CLOUD FOR REGION HANDLER");
        return false;
     }
-    pcl::copyPointCloud<PointT, PointT>(*cloud, *in_cloud_);
-    // pcl::copyPointCloud<PointT, PointT>(*cloud, *sv_cloud_);
-    this->kdtree_->setInputCloud(cloud);
+    this->supervoxelSegmentation(cloud, this->supervoxel_clusters_,
+                                 this->adjacency_list_);
+    if (supervoxel_clusters_.empty()) {
+       ROS_ERROR("SUPERVOXEL MAP IS EMPTY");
+       return false;
+    }
+    this->in_cloud_->clear();
+    this->in_normals_->clear();
+    this->indices_map_.clear();
+    for (SupervoxelMap::iterator it = supervoxel_clusters_.begin();
+         it != supervoxel_clusters_.end(); it++) {
+       pcl::PointIndices::Ptr indices(new pcl::PointIndices);
+       int s_size = static_cast<int>(this->in_cloud_->size());
+       for (int i = 0; i < it->second->voxels_->size(); i++) {
+          indices->indices.push_back(s_size + i);
+       }
+       this->indices_map_[it->first] = indices;
+       *in_cloud_ += *(it->second->voxels_);
+       *in_normals_ += *(it->second->normals_);
+    }
+    this->kdtree_->setInputCloud(this->in_cloud_);
     this->is_init_ = true;
     this->header_ = header;
     this->all_indices_.clear();
+    ROS_INFO("\033[34mPOINT CLOUD INFO IS SET FOR SEGMENTATION...\n\033[0m");
     return true;
 }
 
@@ -32,39 +53,36 @@ bool ObjectRegionHandler::getCandidateRegion(
     }
     ROS_INFO("\033[34mDOING SUPERVOXEL\033[0m");
     //! do supervoxel
-    AdjacencyList adjacency_list;
-    SupervoxelMap supervoxel_clusters;
-    this->supervoxelSegmentation(this->in_cloud_, supervoxel_clusters,
-                                 adjacency_list);
-    if (this->is_init_) {
-       this->iter_counter_ = static_cast<int>(supervoxel_clusters.size());
-       this->is_init_ = false;
-    }
 
+    
     ROS_INFO("\033[34mSELECTING ONE CLUSTER\033[0m");
     //! select one supervoxel
-    uint32_t t_index = supervoxel_clusters.size() + 1;
-    for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
-         it != supervoxel_clusters.end(); it++) {
+    uint32_t t_index = supervoxel_clusters_.size() + 1;
+    for (SupervoxelMap::iterator it = supervoxel_clusters_.begin();
+         it != supervoxel_clusters_.end(); it++) {
        if (it->second->voxels_->size() > this->min_cluster_size_) {
           t_index = it->first;
           break;
        }
     }
+    
     PointT seed_point;
-    if (t_index == supervoxel_clusters.size() + 1) {
+    if (t_index == supervoxel_clusters_.size() + 1) {
        ROS_ERROR("CANNOT SELECT ANY SUPERVOXEL");
        return false;
-    } else {  // MOVE INSIDE THE LOOP
-       int k = 1;
+    } else {
+       this->seed_point_.x = supervoxel_clusters_.at(t_index)->centroid_.x;
+       this->seed_point_.y = supervoxel_clusters_.at(t_index)->centroid_.y;
+       this->seed_point_.z = supervoxel_clusters_.at(t_index)->centroid_.z;
+       this->seed_point_.r = supervoxel_clusters_.at(t_index)->centroid_.r;
+       this->seed_point_.g = supervoxel_clusters_.at(t_index)->centroid_.g;
+       this->seed_point_.b = supervoxel_clusters_.at(t_index)->centroid_.b;
+       this->seed_normal_ = supervoxel_clusters_.at(t_index)->normal_;
+
+       // ? NO NEED
+       /*
+         int k = 1;
        std::vector<int> neigbor_indices;
-       PointT point;
-       point.x = supervoxel_clusters.at(t_index)->centroid_.x;
-       point.y = supervoxel_clusters.at(t_index)->centroid_.y;
-       point.z = supervoxel_clusters.at(t_index)->centroid_.z;
-       point.r = supervoxel_clusters.at(t_index)->centroid_.r;
-       point.g = supervoxel_clusters.at(t_index)->centroid_.g;
-       point.b = supervoxel_clusters.at(t_index)->centroid_.b;
        this->pointNeigbour<int>(neigbor_indices, point, k);
        int idx = neigbor_indices[0];
        Eigen::Vector4f cpt = point.getVector4fMap();
@@ -72,19 +90,20 @@ bool ObjectRegionHandler::getCandidateRegion(
        cpt(3) = 1.0f;
        npt(3) = 1.0f;
        double d = pcl::distances::l2(cpt, npt);
-       if (d < 0.02) {
+       if (d < this->voxel_resolution_ * 2.0) {  // ?? CONFIRM THIS
           this->seed_index_ = idx;
           seed_point = this->in_cloud_->points[idx];
        }
+       */
     }
     
     ROS_INFO("\033[34mDOING REGION GROWING\033[0m");
     
-    //! region growing ?? REUSE NORMALS
-    pcl::PointCloud<NormalT>::Ptr normals(new pcl::PointCloud<NormalT>);
-    this->estimateNormals<int>(this->in_cloud_, normals, neigbor_size_, true);
+    //! region growing
+    // pcl::PointCloud<NormalT>::Ptr normals(new pcl::PointCloud<NormalT>);
+    // this->estimateNormals<int>(this->in_cloud_, normals, neigbor_size_;
+    
     std::vector<int> labels(static_cast<int>(this->in_cloud_->size()));
-
     for (int i = 0; i < this->in_cloud_->size(); i++) {
        if (i == this->seed_index_) {
           labels[i] = 1;
@@ -92,15 +111,18 @@ bool ObjectRegionHandler::getCandidateRegion(
        labels[i] = -1;
     }
     this->seedCorrespondingRegion(labels, this->in_cloud_,
-                                  normals, this->seed_index_);
+                                  this->in_normals_, this->seed_index_);
 
     pcl::PointCloud<PointT>::Ptr seed_cloud(new pcl::PointCloud<PointT>);
     pcl::PointCloud<NormalT>::Ptr seed_normals(new pcl::PointCloud<NormalT>);
+    this->region_indices_->indices.clear();
     for (int i = 0; i < labels.size(); i++) {
        if (labels[i] != -1) {
           PointT pt = this->in_cloud_->points[i];
           seed_cloud->push_back(pt);
-          seed_normals->push_back(normals->points[i]);
+          seed_normals->push_back(in_normals_->points[i]);
+
+          this->region_indices_->indices.push_back(i);
        }
     }
 
@@ -108,20 +130,21 @@ bool ObjectRegionHandler::getCandidateRegion(
               << seed_normals->size()  << "\n";
     
     //! get lenght
-    this->regionOverSegmentation(seed_cloud, seed_normals, in_cloud_, normals);
+    this->regionOverSegmentation(seed_cloud, seed_normals,
+                                 this->in_cloud_, this->in_normals_);
     out_cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*seed_cloud, *out_cloud);
     
-    info.x = this->in_cloud_->points[this->seed_index_].x;
-    info.y = this->in_cloud_->points[this->seed_index_].y;
-    info.z = this->in_cloud_->points[this->seed_index_].z;
-    info.r = this->in_cloud_->points[this->seed_index_].r;
-    info.b = this->in_cloud_->points[this->seed_index_].b;
-    info.g = this->in_cloud_->points[this->seed_index_].g;
-    info.normal_x = normals->points[this->seed_index_].normal_x;
-    info.normal_y = normals->points[this->seed_index_].normal_y;
-    info.normal_z = normals->points[this->seed_index_].normal_z;
-    info.curvature = normals->points[this->seed_index_].curvature;
+    info.x = this->seed_point_.x;
+    info.y = this->seed_point_.y;
+    info.z = this->seed_point_.z;
+    info.r = this->seed_point_.r;
+    info.b = this->seed_point_.b;
+    info.g = this->seed_point_.g;
+    info.normal_x = this->seed_normal_.normal_x;
+    info.normal_y = this->seed_normal_.normal_x;
+    info.normal_z = this->seed_normal_.normal_x;
+    info.curvature = this->seed_normal_.normal_x;
 
     ROS_INFO("\033[34mDONE: %d\033[0m", iter_counter_);
 
@@ -150,7 +173,7 @@ void ObjectRegionHandler::updateObjectRegion(
     ROS_INFO("\033[36mGETTING THE BEST CLOUD\033[0m");
     
     //! get the region
-    PointT seed_point = this->in_cloud_->points[this->seed_index_];
+    PointT seed_point = this->seed_point_;
     double distance = DBL_MAX;
     for (int i = 0; i < cluster_indices.size(); i++) {
        pcl::PointCloud<PointT>::Ptr temp(new pcl::PointCloud<PointT>);
@@ -215,13 +238,20 @@ void ObjectRegionHandler::seedCorrespondingRegion(
     for (int i = 1; i < neigbor_indices.size(); i++) {
         int index = neigbor_indices[i];
         if (index != parent_index && labels[index] == -1) {
-            Eigen::Vector4f parent_pt = cloud->points[
-               this->seed_index_].getVector4fMap();
-            Eigen::Vector4f parent_norm = normals->points[
-               this->seed_index_].getNormalVector4fMap();
-            Eigen::Vector4f child_pt = cloud->points[index].getVector4fMap();
+           Eigen::Vector4f parent_pt = this->seed_point_.getVector4fMap();
+           parent_pt(3) = 1.0f;
+           Eigen::Vector4f parent_norm =
+              this->seed_normal_.getNormalVector4fMap();
+           
+           // Eigen::Vector4f parent_pt = cloud->points[
+           //    this->seed_index_].getVector4fMap();
+           // Eigen::Vector4f parent_norm = normals->points[
+           //    this->seed_index_].getNormalVector4fMap();
+            
+           Eigen::Vector4f child_pt = cloud->points[index].getVector4fMap();
+           child_pt(3) = 1.0f;
             Eigen::Vector4f child_norm = normals->points[
-                index].getNormalVector4fMap();
+               index].getNormalVector4fMap();
             if (this->seedVoxelConvexityCriteria(
                    parent_pt, parent_norm, child_pt, child_norm, -0.01f) == 1) {
                 merge_list[i] = index;
@@ -332,7 +362,7 @@ void ObjectRegionHandler::regionOverSegmentation(
     int idx = -1;
     int icount = 0;
     pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
-    PointT seed_point = this->in_cloud_->points[this->seed_index_];
+    PointT seed_point = this->seed_point_;
     for (int i = 0; i < cloud->size(); i++) {
        if (pcl::distances::l2(cloud->points[i].getVector4fMap(),
                               center) < distance) {

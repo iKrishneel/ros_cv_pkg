@@ -18,12 +18,21 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
     typedef pcl::Normal NormalT;
     typedef pcl::SupervoxelClustering<PointT>::VoxelAdjacencyList AdjacencyList;
     typedef std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> SupervoxelMap;
+    typedef std::map<uint32_t, pcl::PointIndices::Ptr> IndicesMap;
     typedef std::map<uint32_t, int> UInt32Map;
    
  private:
     pcl::PointCloud<PointT>::Ptr in_cloud_;
-    pcl::PointCloud<PointT>::Ptr sv_cloud_;
+    pcl::PointCloud<NormalT>::Ptr in_normals_;
 
+    AdjacencyList adjacency_list_;
+    SupervoxelMap supervoxel_clusters_;
+    IndicesMap indices_map_;
+   
+    PointT seed_point_;
+    NormalT seed_normal_;
+    pcl::PointIndices::Ptr region_indices_;
+   
     int min_cluster_size_;
     bool is_init_;
     int num_threads_;
@@ -71,6 +80,5 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
     void getLabels(std::vector<pcl::PointIndices> &);
    
 };
-
 
 #endif  // _OBJECT_REGION_HANDLER_H_
