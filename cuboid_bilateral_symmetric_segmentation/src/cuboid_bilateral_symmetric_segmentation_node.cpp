@@ -158,7 +158,7 @@ void CuboidBilateralSymmetricSegmentation::segmentation(
                                         cloud, planes_msg, coefficients_msg);
     
     // publish supervoxel
-    bool is_pub_clusters = false;
+    bool is_pub_clusters = true;
     if (is_pub_clusters) {
        sensor_msgs::PointCloud2 ros_voxels;
        jsk_msgs::ClusterPointIndices ros_indices;
@@ -1014,7 +1014,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
           c_weight = std::exp(gamma * ((M_PI - tetha)/(2*M_PI)));
        } else {
           float gamma = -1.0f;
-          c_weight = std::exp(gamma * ((M_PI - tetha)/(M_PI/2)));
+          c_weight = std::exp(gamma * ((M_PI - tetha)/(M_PI/4)));
        }
        
        float weight = 0.0f;
@@ -1038,7 +1038,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              graph->add_tweights(i, weight, weight);
           }
           */
-          weight = (val == 1) ? c_weight : 0.0f;
+          weight = (val == 1) ? c_weight : 0.20f;
           t_weight = 1.0f - weight;
           graph->add_tweights(i, weight * lambda, t_weight * lambda);
        } else {
