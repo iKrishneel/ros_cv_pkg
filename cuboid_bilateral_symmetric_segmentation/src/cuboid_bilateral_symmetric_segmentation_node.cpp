@@ -105,16 +105,15 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           if (region->empty()) {
              return;
           }
+
+          
+          pcl::PointIndices::Ptr labels(new pcl::PointIndices);
+          this->symmetryBasedObjectHypothesis(
+             supervoxel_clusters, labels, cloud, planes_msg, coefficients_msg);
+          
           
           pcl::PointCloud<PointT>::Ptr results(new pcl::PointCloud<PointT>);
-          this->symmetryBasedObjectHypothesis(
-             supervoxel_clusters, results, cloud, planes_msg, coefficients_msg);
-          
-          // **********TEMP**********************:
           *results = *region;
-          pcl::PointIndices::Ptr labels(new pcl::PointIndices);
-          // **********END-TEMP**********************:
-          
           orh.updateObjectRegion(results, labels);
 
           // supervoxel_clusters.clear();
@@ -184,13 +183,13 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        this->pub_cloud_.publish(ros_cloud);
        
     } else {
-       pcl::PointCloud<PointT>::Ptr results(new pcl::PointCloud<PointT>);
-       this->segmentation(results, cloud, planes_msg, coefficients_msg);
+       pcl::PointIndices::Ptr labels(new pcl::PointIndices);
+       this->segmentation(labels, cloud, planes_msg, coefficients_msg);
     }
 }
 
 void CuboidBilateralSymmetricSegmentation::segmentation(
-    pcl::PointCloud<PointT>::Ptr results,
+    pcl::PointIndices::Ptr labels,
     const pcl::PointCloud<PointT>::Ptr cloud,
     const jsk_msgs::PolygonArrayConstPtr &planes_msg,
     const ModelCoefficients &coefficients_msg) {
@@ -203,7 +202,7 @@ void CuboidBilateralSymmetricSegmentation::segmentation(
     pcl::PointCloud<NormalT>::Ptr sv_normals(new pcl::PointCloud<NormalT>);
     this->supervoxelDecomposition(supervoxel_clusters, sv_normals, cloud);
 
-    this->symmetryBasedObjectHypothesis(supervoxel_clusters, results,
+    this->symmetryBasedObjectHypothesis(supervoxel_clusters, labels,
                                         cloud, planes_msg, coefficients_msg);
     
     // publish supervoxel
@@ -531,7 +530,7 @@ void CuboidBilateralSymmetricSegmentation::supervoxel3DBoundingBox(
 /// TODO: FIX EVALUATION ?
 **/
 void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
-    SupervoxelMap &supervoxel_clusters, pcl::PointCloud<PointT>::Ptr results,
+    SupervoxelMap &supervoxel_clusters, pcl::PointIndices::Ptr labels,
     const pcl::PointCloud<PointT>::Ptr cloud,
     const jsk_msgs::PolygonArrayConstPtr &planes_msg,
     const ModelCoefficients &coefficients_msg) {
@@ -655,16 +654,17 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     this->pub_normal_.publish(ros_cloud1);
 
     ROS_INFO("\033[32m DEBUG: ENERGY MINIMIZATION\033[0m");
-    
+
     this->minCutMaxFlow(in_cloud, in_normals,
-                        in_normals, plane_coefficient);
+                        labels, plane_coefficient);
+    
     // this->minCutMaxFlow(in_cloud, in_normals,
     //                     sv_normals, plane_coefficient);
     
     ROS_INFO("\033[32m DEBUG: PUBLISHING RESULT......\033[0m");
     
-    results->clear();
-    pcl::copyPointCloud<PointT, PointT>(*in_cloud, *results);
+    // results->clear();
+    // pcl::copyPointCloud<PointT, PointT>(*in_cloud, *results);
     
     this->plotPlane(in_cloud, plane_coefficient);
     
@@ -983,8 +983,7 @@ void CuboidBilateralSymmetricSegmentation::symmetricalShapeMap(
 
 bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
     pcl::PointCloud<PointT>::Ptr cloud, pcl::PointCloud<NormalT>::Ptr normals,
-    const pcl::PointCloud<NormalT>::Ptr sv_normals,
-    const Eigen::Vector4f plane_coefficient) {
+    pcl::PointIndices::Ptr labels, const Eigen::Vector4f plane_coefficient) {
     if (cloud->empty() || cloud->size() != normals->size()) {
        ROS_ERROR("INCORRECT INPUT FOR MINCUT-MAXFLOW");
        return false;

@@ -85,7 +85,7 @@ class CuboidBilateralSymmetricSegmentation:
                  const sensor_msgs::PointCloud2::ConstPtr &,
                  const jsk_msgs::PolygonArrayConstPtr &,
                  const ModelCoefficients &);
-    void segmentation(pcl::PointCloud<PointT>::Ptr,
+    void segmentation(pcl::PointIndices::Ptr,
                       const pcl::PointCloud<PointT>::Ptr,
                       const jsk_msgs::PolygonArrayConstPtr &,
                       const ModelCoefficients &);
@@ -108,7 +108,7 @@ class CuboidBilateralSymmetricSegmentation:
                                  const ModelCoefficients &,
                                  const int);
     void symmetryBasedObjectHypothesis(SupervoxelMap &,
-                                       pcl::PointCloud<PointT>::Ptr,
+                                       pcl::PointIndices::Ptr,
                                        const pcl::PointCloud<PointT>::Ptr,
                                        const jsk_msgs::PolygonArrayConstPtr &,
                                        const ModelCoefficients &);
@@ -129,7 +129,7 @@ class CuboidBilateralSymmetricSegmentation:
    
     bool minCutMaxFlow(pcl::PointCloud<PointT>::Ptr,
                        pcl::PointCloud<NormalT>::Ptr,
-                       const pcl::PointCloud<NormalT>::Ptr,
+                       pcl::PointIndices::Ptr,
                        const Eigen::Vector4f);
    
     bool occlusionRegionCheck(const PointT);
