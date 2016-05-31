@@ -139,7 +139,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           ros_cloud1.header = planes_msg->header;
           this->pub_edge_.publish(ros_cloud1);
 
-          ros::Duration(3).sleep();
+          // ros::Duration(3).sleep();
        }
 
        return;
