@@ -116,8 +116,6 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           *results = *region;
           orh.updateObjectRegion(results, labels);
 
-          // supervoxel_clusters.clear();
-          // supervoxel_clusters = orh.region_supervoxels_;
           
           std::cout << "\t\tSV: " << supervoxel_clusters.size()  << "\n";
           for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
@@ -657,14 +655,10 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
 
     this->minCutMaxFlow(in_cloud, in_normals,
                         labels, plane_coefficient);
-    
-    // this->minCutMaxFlow(in_cloud, in_normals,
-    //                     sv_normals, plane_coefficient);
+
     
     ROS_INFO("\033[32m DEBUG: PUBLISHING RESULT......\033[0m");
     
-    // results->clear();
-    // pcl::copyPointCloud<PointT, PointT>(*in_cloud, *results);
     
     this->plotPlane(in_cloud, plane_coefficient);
     
@@ -1203,18 +1197,23 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
        }
     }
     
-    ROS_INFO("\033[34m COMPUTING FLOW \033[0m");
+    ROS_INFO("\033[34m COMPUTING FLOW OF GRAPH WITH: %d \033[0m", node_num);
 
     float flow = graph->maxflow();
 
     ROS_INFO("\033[34m FLOW: %3.2f \033[0m", flow);
 
     // shape_map->clear();
+    labels->indices.clear();
     for (int i = 0; i < node_num; i++) {
        if (graph->what_segment(i) == GraphType::SOURCE) {
+          labels->indices.push_back(1);
+          
           shape_map->push_back(cloud->points[i]);
           shape_map->points[i] = cloud->points[i];
        } else {
+          labels->indices.push_back(-1);
+          
           shape_map->points[i].r = 0;
           shape_map->points[i].g = 255;
           shape_map->points[i].b = 0;
