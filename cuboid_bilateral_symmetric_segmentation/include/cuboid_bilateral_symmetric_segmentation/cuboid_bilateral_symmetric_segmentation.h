@@ -22,7 +22,7 @@
 #include <jsk_recognition_utils/pcl_conversion_util.h>
 #include <omp.h>
 
-#include <cuboid_bilateral_symmetric_segmentation/supervoxel_segmentation.h>
+// #include <cuboid_bilateral_symmetric_segmentation/supervoxel_segmentation.h>
 #include <cuboid_bilateral_symmetric_segmentation/oriented_bounding_box.h>
 #include <cuboid_bilateral_symmetric_segmentation/maxflow/graph.h>
 #include <cuboid_bilateral_symmetric_segmentation/object_region_handler.h>
@@ -35,8 +35,8 @@ class CuboidBilateralSymmetricSegmentation:
     typedef pcl::Normal NormalT;
     typedef pcl::PointXYZRGBNormal PointNormalT;
     typedef jsk_msgs::ModelCoefficientsArrayConstPtr ModelCoefficients;
-    typedef pcl::SupervoxelClustering<PointT>::VoxelAdjacencyList AdjacencyList;
-    typedef std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> SupervoxelMap;
+   // typedef pcl::SupervoxelClustering<PointT>::VoxelAdjacencyList AdjacencyList;
+   // typedef std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> SupervoxelMap;
     typedef std::map<uint32_t, int> UInt32Map;
     typedef std::map<uint32_t, std::vector<uint32_t> > AdjacentList;
     typedef pcl::VoxelGridOcclusionEstimation<PointT> OcclusionHandler;

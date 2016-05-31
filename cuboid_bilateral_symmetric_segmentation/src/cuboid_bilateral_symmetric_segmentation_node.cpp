@@ -101,14 +101,6 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
                                              region, seed_info);
 
           ROS_INFO("\033[35m REGION SIZE: %d \033[0m", region->size());
-
-          symm_normal->push_back(seed_info);
-          symm_normal->push_back(seed_info);
-          symm_normal->push_back(seed_info);
-          sensor_msgs::PointCloud2 ros_cloud3;
-          pcl::toROSMsg(*symm_normal, ros_cloud3);
-          ros_cloud3.header = planes_msg->header;
-          this->pub_normal_.publish(ros_cloud3);
           
           if (region->empty()) {
              return;
@@ -125,18 +117,23 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           
           orh.updateObjectRegion(results, labels);
 
-          // if (counter++ > 20) {
-          //    label_all = false;
-          // }
-
-          std::cout << "\t\tSV: " << supervoxel_clusters.size()  << "\n";
+          // supervoxel_clusters.clear();
+          // supervoxel_clusters = orh.region_supervoxels_;
           
+          std::cout << "\t\tSV: " << supervoxel_clusters.size()  << "\n";
+          for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
+               it != supervoxel_clusters.end(); it++) {
+             std::cout << "Size: " << it->second->voxels_->size()  << "\t";
+             
+          }
+
           sensor_msgs::PointCloud2 ros_voxels;
           jsk_msgs::ClusterPointIndices ros_indices;
           this->publishSupervoxel(supervoxel_clusters,
                                   ros_voxels, ros_indices, planes_msg->header);
           this->pub_cloud_.publish(ros_voxels);
           this->pub_indices_.publish(ros_indices);
+
           
           // sensor_msgs::PointCloud2 ros_cloud;
           // pcl::toROSMsg(*results, ros_cloud);
@@ -148,6 +145,14 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           ros_cloud1.header = planes_msg->header;
           this->pub_edge_.publish(ros_cloud1);
 
+          symm_normal->push_back(seed_info);
+          symm_normal->push_back(seed_info);
+          symm_normal->push_back(seed_info);
+          sensor_msgs::PointCloud2 ros_cloud3;
+          pcl::toROSMsg(*symm_normal, ros_cloud3);
+          ros_cloud3.header = planes_msg->header;
+          this->pub_normal_.publish(ros_cloud3);
+          
           ros::Duration(3).sleep();
        }
 

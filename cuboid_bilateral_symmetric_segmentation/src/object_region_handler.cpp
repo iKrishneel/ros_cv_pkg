@@ -145,6 +145,26 @@ bool ObjectRegionHandler::getCandidateRegion(
 
     // get supervoxel
     this->getRegionSupervoxels(region_supervoxels, seed_cloud);
+
+    /*
+    for (SupervoxelMap::iterator it = region_supervoxels.begin();
+         it != region_supervoxels.end(); it++) {
+       pcl::Supervoxel<PointT>::Ptr super_v(new pcl::Supervoxel<PointT>);
+       for (int i = 0; i < it->second->voxels_->size(); i++) {
+          super_v->voxels_->push_back(it->second->voxels_->points[i]);
+          super_v->normals_->push_back(it->second->normals_->points[i]);
+       }
+       super_v->centroid_ = it->second->centroid_;
+       super_v->normal_ = it->second->normal_;
+       
+       // this->region_supervoxels_[it->first] = it->second;
+       this->region_supervoxels_[it->first] = super_v;
+       
+       std::cout << "\t\t" << it->second->voxels_->size()  << "\t"
+                 << region_supervoxels.size() <<"\n";
+    }
+    */
+    
     
     out_cloud->clear();
     pcl::copyPointCloud<PointT, PointT>(*seed_cloud, *out_cloud);
@@ -576,9 +596,17 @@ void ObjectRegionHandler::getRegionSupervoxels(
          it != region_cache.end(); it++) {
        int v_size = supervoxel_clusters_.at(it->first)->voxels_->size() / 2;
        if (it->second > v_size) {
-          region_supervoxels.insert(
-             std::pair<uint32_t, pcl::Supervoxel<PointT>::Ptr>(
-                it->first, supervoxel_clusters_.at(it->first)));
+          pcl::Supervoxel<PointT>::Ptr sv = this->supervoxel_clusters_.at(
+             it->first);
+          pcl::Supervoxel<PointT>::Ptr super_v(new pcl::Supervoxel<PointT>);
+          for (int i = 0; i < sv->voxels_->size(); i++) {
+             super_v->voxels_->push_back(sv->voxels_->points[i]);
+             super_v->normals_->push_back(sv->normals_->points[i]);
+          }
+          super_v->centroid_ = sv->centroid_;
+          super_v->normal_ = sv->normal_;
+          region_supervoxels[it->first] = super_v;
+          
           *region += *(supervoxel_clusters_.at(it->first)->voxels_);
           for (int j = 0; j < this->indices_map_.size(); j++) {
              IndicesMap im = this->indices_map_[j];

@@ -61,6 +61,9 @@ class SupervoxelSegmentation {
     double distance_threshold_;
     double angle_threshold_;
     double voxel_resolution_;
+
+    typedef pcl::SupervoxelClustering<PointT>::VoxelAdjacencyList AdjacencyList;
+    typedef std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> SupervoxelMap;
 };
 
 

@@ -16,8 +16,8 @@
 class ObjectRegionHandler: public SupervoxelSegmentation {
 
     typedef pcl::Normal NormalT;
-    typedef pcl::SupervoxelClustering<PointT>::VoxelAdjacencyList AdjacencyList;
-    typedef std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> SupervoxelMap;
+    // typedef pcl::SupervoxelClustering<PointT>::VoxelAdjacencyList AdjacencyList;
+    // typedef std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> SupervoxelMap;
     // typedef std::multimap<int, uint32_t> IndicesMap;
     typedef std::map<uint32_t, int> UInt32Map;
 
