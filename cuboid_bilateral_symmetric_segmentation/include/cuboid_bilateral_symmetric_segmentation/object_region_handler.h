@@ -72,6 +72,7 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
                                const pcl::PointIndices::Ptr,
                                const float = 0.02f, const int = 50,
                                const int = 20000);
+    void getRegionSupervoxels(SupervoxelMap &, pcl::PointCloud<PointT>::Ptr);
    
  protected:
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
@@ -79,7 +80,7 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
  public:
     ObjectRegionHandler(const int = 50, const int = 1);
     bool setInputCloud(const pcl::PointCloud<PointT>::Ptr, std_msgs::Header);
-    bool getCandidateRegion(pcl::PointCloud<PointT>::Ptr,
+    bool getCandidateRegion(SupervoxelMap &, pcl::PointCloud<PointT>::Ptr,
                             pcl::PointXYZRGBNormal &);
     void updateObjectRegion(pcl::PointCloud<PointT>::Ptr,
                             const pcl::PointIndices::Ptr);

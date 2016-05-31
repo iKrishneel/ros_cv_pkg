@@ -96,7 +96,9 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           
           pcl::PointCloud<PointT>::Ptr region(new pcl::PointCloud<PointT>);
           PointNormalT seed_info;
-          label_all = orh.getCandidateRegion(region, seed_info);
+          SupervoxelMap supervoxel_clusters;
+          label_all = orh.getCandidateRegion(supervoxel_clusters,
+                                             region, seed_info);
 
           ROS_INFO("\033[35m REGION SIZE: %d \033[0m", region->size());
 
@@ -112,11 +114,9 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
              return;
           }
           
-          
           pcl::PointCloud<PointT>::Ptr results(new pcl::PointCloud<PointT>);
-          // this->segmentation(results, region, planes_msg,
-          // coefficients_msg);
-
+          // this->symmetryBasedObjectHypothesis(
+          // supervoxel_clusters, results, cloud, planes_msg, coefficients_msg);
           
           // **********TEMP**********************:
           *results = *region;
@@ -129,17 +129,26 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           //    label_all = false;
           // }
 
-          sensor_msgs::PointCloud2 ros_cloud;
-          pcl::toROSMsg(*results, ros_cloud);
-          ros_cloud.header = planes_msg->header;
-          this->pub_cloud_.publish(ros_cloud);
+          std::cout << "\t\tSV: " << supervoxel_clusters.size()  << "\n";
+          
+          sensor_msgs::PointCloud2 ros_voxels;
+          jsk_msgs::ClusterPointIndices ros_indices;
+          this->publishSupervoxel(supervoxel_clusters,
+                                  ros_voxels, ros_indices, planes_msg->header);
+          this->pub_cloud_.publish(ros_voxels);
+          this->pub_indices_.publish(ros_indices);
+          
+          // sensor_msgs::PointCloud2 ros_cloud;
+          // pcl::toROSMsg(*results, ros_cloud);
+          // ros_cloud.header = planes_msg->header;
+          // this->pub_cloud_.publish(ros_cloud);
 
           sensor_msgs::PointCloud2 ros_cloud1;
           pcl::toROSMsg(*region, ros_cloud1);
           ros_cloud1.header = planes_msg->header;
           this->pub_edge_.publish(ros_cloud1);
 
-          // ros::Duration(3).sleep();
+          ros::Duration(3).sleep();
        }
 
        return;
