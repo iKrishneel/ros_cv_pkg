@@ -2,7 +2,7 @@
 #include <cuboid_bilateral_symmetric_segmentation/cuboid_bilateral_symmetric_segmentation.h>
 
 CuboidBilateralSymmetricSegmentation::CuboidBilateralSymmetricSegmentation() :
-    min_cluster_size_(50), leaf_size_(0.001f), symmetric_angle_thresh_(45),
+    min_cluster_size_(100), leaf_size_(0.001f), symmetric_angle_thresh_(45),
     neigbor_dist_thresh_(0.01), num_threads_(8) {
     this->occlusion_handler_ = boost::shared_ptr<OcclusionHandler>(
        new OcclusionHandler);
@@ -76,7 +76,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     }
     this->seed_info_ = seeds->points[0];
 
-    bool run_type_auto = true;
+    bool run_type_auto = false;
     
     if (run_type_auto) {
        ROS_INFO("\nRUNNING CBSS SEGMENTATION");
@@ -107,8 +107,8 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           }
           
           pcl::PointCloud<PointT>::Ptr results(new pcl::PointCloud<PointT>);
-          // this->symmetryBasedObjectHypothesis(
-          // supervoxel_clusters, results, cloud, planes_msg, coefficients_msg);
+          this->symmetryBasedObjectHypothesis(
+             supervoxel_clusters, results, cloud, planes_msg, coefficients_msg);
           
           // **********TEMP**********************:
           *results = *region;
@@ -139,12 +139,13 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           // pcl::toROSMsg(*results, ros_cloud);
           // ros_cloud.header = planes_msg->header;
           // this->pub_cloud_.publish(ros_cloud);
-
+          /*
           sensor_msgs::PointCloud2 ros_cloud1;
           pcl::toROSMsg(*region, ros_cloud1);
           ros_cloud1.header = planes_msg->header;
           this->pub_edge_.publish(ros_cloud1);
-
+          */
+          
           symm_normal->push_back(seed_info);
           symm_normal->push_back(seed_info);
           symm_normal->push_back(seed_info);
@@ -656,7 +657,7 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     ROS_INFO("\033[32m DEBUG: ENERGY MINIMIZATION\033[0m");
     
     this->minCutMaxFlow(in_cloud, in_normals,
-                        sv_normals, plane_coefficient);
+                        in_normals, plane_coefficient);
     // this->minCutMaxFlow(in_cloud, in_normals,
     //                     sv_normals, plane_coefficient);
     
@@ -1049,7 +1050,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
 
        //! convexity map
        Eigen::Vector4f n_centroid = cloud->points[i].getVector4fMap();
-       Eigen::Vector4f n_normal = sv_normals->points[i].getNormalVector4fMap();
+       Eigen::Vector4f n_normal = normals->points[i].getNormalVector4fMap();
        n_centroid(3) = 1.0f;
        int val = this->seedVoxelConvexityCriteria(
           c_centroid, c_normal, n_centroid, n_normal, -0.01f);
@@ -1129,7 +1130,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
        symm_normal->push_back(
           this->convertVector4fToPointXyzRgbNormal(
              cloud->points[i].getVector3fMap(),
-             sv_normals->points[i].getNormalVector3fMap(),
+             normals->points[i].getNormalVector3fMap(),
              Eigen::Vector3f(ptt.r, ptt.g, ptt.b)));
        
 
