@@ -82,7 +82,7 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
     void updateObjectRegion(pcl::PointCloud<PointT>::Ptr,
                             const pcl::PointIndices::Ptr);
     void getLabels(std::vector<pcl::PointIndices> &);
-   
+    pcl::PointCloud<PointT>::Ptr sv_cloud_;
 };
 
 #endif  // _OBJECT_REGION_HANDLER_H_

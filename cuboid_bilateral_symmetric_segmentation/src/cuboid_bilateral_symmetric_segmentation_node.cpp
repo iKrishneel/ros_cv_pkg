@@ -76,7 +76,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     }
     this->seed_info_ = seeds->points[0];
 
-    bool run_type_auto = false;
+    bool run_type_auto = true;
     
     if (run_type_auto) {
        ROS_INFO("\nRUNNING CBSS SEGMENTATION");
@@ -99,50 +99,14 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           SupervoxelMap supervoxel_clusters;
           label_all = orh.getCandidateRegion(supervoxel_clusters,
                                              region, seed_info);
-
+          this->seed_info_ = seed_info;
+          
           ROS_INFO("\033[35m REGION SIZE: %d \033[0m", region->size());
           
           if (region->empty()) {
              return;
           }
 
-          
-          pcl::PointIndices::Ptr labels(new pcl::PointIndices);
-          this->symmetryBasedObjectHypothesis(
-             supervoxel_clusters, labels, cloud, planes_msg, coefficients_msg);
-          
-          
-          pcl::PointCloud<PointT>::Ptr results(new pcl::PointCloud<PointT>);
-          *results = *region;
-          orh.updateObjectRegion(results, labels);
-
-          
-          std::cout << "\t\tSV: " << supervoxel_clusters.size()  << "\n";
-          for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
-               it != supervoxel_clusters.end(); it++) {
-             std::cout << "Size: " << it->second->voxels_->size()  << "\t";
-             
-          }
-
-          sensor_msgs::PointCloud2 ros_voxels;
-          jsk_msgs::ClusterPointIndices ros_indices;
-          this->publishSupervoxel(supervoxel_clusters,
-                                  ros_voxels, ros_indices, planes_msg->header);
-          this->pub_cloud_.publish(ros_voxels);
-          this->pub_indices_.publish(ros_indices);
-
-          
-          // sensor_msgs::PointCloud2 ros_cloud;
-          // pcl::toROSMsg(*results, ros_cloud);
-          // ros_cloud.header = planes_msg->header;
-          // this->pub_cloud_.publish(ros_cloud);
-          /*
-          sensor_msgs::PointCloud2 ros_cloud1;
-          pcl::toROSMsg(*region, ros_cloud1);
-          ros_cloud1.header = planes_msg->header;
-          this->pub_edge_.publish(ros_cloud1);
-          */
-          
           symm_normal->push_back(seed_info);
           symm_normal->push_back(seed_info);
           symm_normal->push_back(seed_info);
@@ -150,11 +114,31 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           pcl::toROSMsg(*symm_normal, ros_cloud3);
           ros_cloud3.header = planes_msg->header;
           this->pub_normal_.publish(ros_cloud3);
+
           
-          ros::Duration(3).sleep();
+          pcl::PointIndices::Ptr labels(new pcl::PointIndices);
+          this->symmetryBasedObjectHypothesis(
+             supervoxel_clusters, labels, cloud, planes_msg, coefficients_msg);
+          orh.updateObjectRegion(region, labels);
+
+          
+          sensor_msgs::PointCloud2 ros_cloud1;
+          pcl::toROSMsg(*region, ros_cloud1);
+          ros_cloud1.header = planes_msg->header;
+          this->pub_edge_.publish(ros_cloud1);
+
+          
+          // sensor_msgs::PointCloud2 ros_cloud;
+          // pcl::toROSMsg(*results, ros_cloud);
+          // ros_cloud.header = planes_msg->header;
+          // this->pub_cloud_.publish(ros_cloud);
+
+          label_all = (counter++ > 1) ? false : false;
+          
+          // ros::Duration(3).sleep();
        }
 
-       return;
+       // return;
        
        std::vector<pcl::PointIndices> all_indices;
        orh.getLabels(all_indices);
@@ -165,7 +149,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        for (int i = 0; i < all_indices.size(); i++) {
           for (int j = 0; j < all_indices[i].indices.size(); j++) {
              int idx = all_indices[i].indices[j];
-             temp->push_back(cloud->points[idx]);
+             temp->push_back(orh.sv_cloud_->points[idx]);
           }
        }
     
@@ -1207,12 +1191,12 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
     labels->indices.clear();
     for (int i = 0; i < node_num; i++) {
        if (graph->what_segment(i) == GraphType::SOURCE) {
-          labels->indices.push_back(1);
+          labels->indices.push_back(i);
           
           shape_map->push_back(cloud->points[i]);
           shape_map->points[i] = cloud->points[i];
        } else {
-          labels->indices.push_back(-1);
+          // labels->indices.push_back(i);
           
           shape_map->points[i].r = 0;
           shape_map->points[i].g = 255;
