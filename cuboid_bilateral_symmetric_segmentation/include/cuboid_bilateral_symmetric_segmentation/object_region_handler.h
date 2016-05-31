@@ -18,8 +18,13 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
     typedef pcl::Normal NormalT;
     typedef pcl::SupervoxelClustering<PointT>::VoxelAdjacencyList AdjacencyList;
     typedef std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr> SupervoxelMap;
-    typedef std::map<uint32_t, pcl::PointIndices::Ptr> IndicesMap;
+    // typedef std::multimap<int, uint32_t> IndicesMap;
     typedef std::map<uint32_t, int> UInt32Map;
+
+    struct IndicesMap {
+       uint32_t label;
+       int index;
+    };
    
  private:
     pcl::PointCloud<PointT>::Ptr in_cloud_;
@@ -27,11 +32,11 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
 
     AdjacencyList adjacency_list_;
     SupervoxelMap supervoxel_clusters_;
-    IndicesMap indices_map_;
+    std::vector<IndicesMap> indices_map_;
+    pcl::PointIndices::Ptr region_indices_;  //! indices of selected points
    
     PointT seed_point_;
     NormalT seed_normal_;
-    pcl::PointIndices::Ptr region_indices_;
    
     int min_cluster_size_;
     bool is_init_;
@@ -76,7 +81,8 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
     bool setInputCloud(const pcl::PointCloud<PointT>::Ptr, std_msgs::Header);
     bool getCandidateRegion(pcl::PointCloud<PointT>::Ptr,
                             pcl::PointXYZRGBNormal &);
-    void updateObjectRegion(pcl::PointCloud<PointT>::Ptr);
+    void updateObjectRegion(pcl::PointCloud<PointT>::Ptr,
+                            const pcl::PointIndices::Ptr);
     void getLabels(std::vector<pcl::PointIndices> &);
    
 };

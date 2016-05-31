@@ -76,7 +76,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     }
     this->seed_info_ = seeds->points[0];
 
-    bool run_type_auto = false;
+    bool run_type_auto = true;
     
     if (run_type_auto) {
        ROS_INFO("\nRUNNING CBSS SEGMENTATION");
@@ -88,28 +88,62 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           return;
        }
        int counter = 0;
+       
        while (label_all) {
+
+          pcl::PointCloud<PointNormalT>::Ptr symm_normal(
+             new pcl::PointCloud<PointNormalT>);
+          
           pcl::PointCloud<PointT>::Ptr region(new pcl::PointCloud<PointT>);
           PointNormalT seed_info;
           label_all = orh.getCandidateRegion(region, seed_info);
+
+          ROS_INFO("\033[35m REGION SIZE: %d \033[0m", region->size());
+
+          symm_normal->push_back(seed_info);
+          symm_normal->push_back(seed_info);
+          symm_normal->push_back(seed_info);
+          sensor_msgs::PointCloud2 ros_cloud3;
+          pcl::toROSMsg(*symm_normal, ros_cloud3);
+          ros_cloud3.header = planes_msg->header;
+          this->pub_normal_.publish(ros_cloud3);
+          
           if (region->empty()) {
              return;
           }
-       
+          
+          
           pcl::PointCloud<PointT>::Ptr results(new pcl::PointCloud<PointT>);
-          this->segmentation(results, region, planes_msg, coefficients_msg);
-          orh.updateObjectRegion(results);
+          // this->segmentation(results, region, planes_msg,
+          // coefficients_msg);
 
-          if (counter++ == 10) {
-             label_all = false;
-          }
+          
+          // **********TEMP**********************:
+          *results = *region;
+          pcl::PointIndices::Ptr labels(new pcl::PointIndices);
+          // **********END-TEMP**********************:
+          
+          orh.updateObjectRegion(results, labels);
 
-          // sensor_msgs::PointCloud2 ros_cloud;
-          // pcl::toROSMsg(*results, ros_cloud);
-          // ros_cloud.header = planes_msg->header;
-          // this->pub_cloud_.publish(ros_cloud);
+          // if (counter++ > 20) {
+          //    label_all = false;
+          // }
+
+          sensor_msgs::PointCloud2 ros_cloud;
+          pcl::toROSMsg(*results, ros_cloud);
+          ros_cloud.header = planes_msg->header;
+          this->pub_cloud_.publish(ros_cloud);
+
+          sensor_msgs::PointCloud2 ros_cloud1;
+          pcl::toROSMsg(*region, ros_cloud1);
+          ros_cloud1.header = planes_msg->header;
+          this->pub_edge_.publish(ros_cloud1);
+
+          ros::Duration(3).sleep();
        }
-    
+
+       return;
+       
        std::vector<pcl::PointIndices> all_indices;
        orh.getLabels(all_indices);
     
