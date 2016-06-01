@@ -40,7 +40,7 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
     int num_threads_;
     int seed_index_;
     int neigbor_size_;
-    int iter_counter_;
+    uint32_t prev_index_;
    
    
     std_msgs::Header header_;

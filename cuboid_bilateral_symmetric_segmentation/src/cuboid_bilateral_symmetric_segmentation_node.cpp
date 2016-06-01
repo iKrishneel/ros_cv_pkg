@@ -90,22 +90,39 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        int counter = 0;
        
        while (label_all) {
-
-          pcl::PointCloud<PointNormalT>::Ptr symm_normal(
-             new pcl::PointCloud<PointNormalT>);
-          
           pcl::PointCloud<PointT>::Ptr region(new pcl::PointCloud<PointT>);
           PointNormalT seed_info;
           SupervoxelMap supervoxel_clusters;
+
+          /** TODO
+           * -sort the centroid from front to back. Then start
+              segmentation from the front and proceed
+           */
+          
           label_all = orh.getCandidateRegion(supervoxel_clusters,
                                              region, seed_info);
           this->seed_info_ = seed_info;
-          
-          ROS_INFO("\033[35m REGION SIZE: %d \033[0m", region->size());
-          
           if (region->empty()) {
              return;
           }
+
+          
+          pcl::PointIndices::Ptr labels(new pcl::PointIndices);
+          this->symmetryBasedObjectHypothesis(
+             supervoxel_clusters, labels, cloud, planes_msg, coefficients_msg);
+          orh.updateObjectRegion(region, labels);
+          
+          label_all = (counter++ > 10) ? false : true;
+          
+          
+          sensor_msgs::PointCloud2 ros_cloud1;
+          pcl::toROSMsg(*region, ros_cloud1);
+          ros_cloud1.header = planes_msg->header;
+          this->pub_edge_.publish(ros_cloud1);
+
+          // rviz
+          pcl::PointCloud<PointNormalT>::Ptr symm_normal(
+             new pcl::PointCloud<PointNormalT>);
 
           symm_normal->push_back(seed_info);
           symm_normal->push_back(seed_info);
@@ -115,43 +132,22 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           ros_cloud3.header = planes_msg->header;
           this->pub_normal_.publish(ros_cloud3);
 
-          
-          pcl::PointIndices::Ptr labels(new pcl::PointIndices);
-          this->symmetryBasedObjectHypothesis(
-             supervoxel_clusters, labels, cloud, planes_msg, coefficients_msg);
-          orh.updateObjectRegion(region, labels);
-
-          
-          sensor_msgs::PointCloud2 ros_cloud1;
-          pcl::toROSMsg(*region, ros_cloud1);
-          ros_cloud1.header = planes_msg->header;
-          this->pub_edge_.publish(ros_cloud1);
-
-          
-          // sensor_msgs::PointCloud2 ros_cloud;
-          // pcl::toROSMsg(*results, ros_cloud);
-          // ros_cloud.header = planes_msg->header;
-          // this->pub_cloud_.publish(ros_cloud);
-
-          label_all = (counter++ > 1) ? false : false;
-          
-          // ros::Duration(3).sleep();
+          // ros::Duration(2).sleep();
        }
-
-       // return;
        
        std::vector<pcl::PointIndices> all_indices;
        orh.getLabels(all_indices);
     
-       std::cout << "FINISHED NOW PUBLISHING..." << all_indices.size()  << "\n";
+       std::cout << "FINISHED NOW PUBLISHING..." << all_indices.size()
+                 << "\t" << orh.sv_cloud_->size()  << "\n";
 
-       pcl::PointCloud<PointT>::Ptr temp(new pcl::PointCloud<PointT>);
-       for (int i = 0; i < all_indices.size(); i++) {
-          for (int j = 0; j < all_indices[i].indices.size(); j++) {
-             int idx = all_indices[i].indices[j];
-             temp->push_back(orh.sv_cloud_->points[idx]);
-          }
-       }
+       // pcl::PointCloud<PointT>::Ptr temp(new pcl::PointCloud<PointT>);
+       // for (int i = 0; i < all_indices.size(); i++) {
+       //    for (int j = 0; j < all_indices[i].indices.size(); j++) {
+       //       int idx = all_indices[i].indices[j];
+       //       temp->push_back(orh.sv_cloud_->points[idx]);
+       //    }
+       // }
     
        jsk_msgs::ClusterPointIndices ros_indices;
        ros_indices.cluster_indices = this->convertToROSPointIndices(
@@ -160,7 +156,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        this->pub_indices_.publish(ros_indices);
     
        sensor_msgs::PointCloud2 ros_cloud;
-       pcl::toROSMsg(*temp, ros_cloud);
+       pcl::toROSMsg(*(orh.sv_cloud_), ros_cloud);
        ros_cloud.header = cloud_msg->header;
        this->pub_cloud_.publish(ros_cloud);
        
@@ -1065,6 +1061,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
           }
           */
           weight = (val == 1) ? c_weight : 0.20f;
+          weight = (isnan(weight)) ? 0.0f : weight;
           t_weight = 1.0f - weight;
           graph->add_tweights(i, weight * lambda, t_weight * lambda);
        } else {
@@ -1157,11 +1154,6 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              float nweights = (wc) * 1.0f;
 
              nweights = (nweights < 0.0000001f) ? 0.0000001f : nweights;
-             // if (nweights < 0.0000001f) {
-             //    nweights = 0.0000001f;
-             // }
-             // std::cout << nweights  << "\t";
-
 
              // using color
              PointT ipt = cloud->points[indx];
