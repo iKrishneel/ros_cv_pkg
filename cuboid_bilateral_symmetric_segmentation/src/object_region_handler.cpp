@@ -45,12 +45,14 @@ bool ObjectRegionHandler::setInputCloud(
     if (this->in_cloud_->size() != this->in_normals_->size()) {
        ROS_ERROR("INCORRECT CLOUD AND NORMAL SIZE");
     }
-    
     this->kdtree_->setInputCloud(this->in_cloud_);
     this->is_init_ = true;
     this->header_ = header;
     this->all_indices_.clear();
     this->prev_index_ = static_cast<uint32_t>(cloud->size());
+
+    this->origin_ = Eigen::Vector4f(0.0f, 0.0f, 0.0f, 1.0f);
+    
     ROS_INFO("\033[34mPOINT CLOUD INFO IS SET FOR SEGMENTATION...\n\033[0m");
     return true;
 }
@@ -68,17 +70,36 @@ bool ObjectRegionHandler::getCandidateRegion(
        return false;
     }
     ROS_INFO("\033[34mSELECTING ONE CLUSTER\033[0m");
+
+    
     //! select one supervoxel
+    double distance = DBL_MAX;
     uint32_t t_index = supervoxel_clusters_.size() + 1;
     for (SupervoxelMap::iterator it = supervoxel_clusters_.begin();
          it != supervoxel_clusters_.end(); it++) {
+       Eigen::Vector4f centroid = it->second->centroid_.getVector4fMap();
+       centroid(3) = 1.0f;
+       double dist = pcl::distances::l2(origin_, centroid);
+       if (dist < distance && it->second->voxels_->size() >
+           this->min_cluster_size_ && this->prev_index_ != it->first) {
+          distance = dist;
+          t_index = it->first;
+       }
+       /*
        if (it->second->voxels_->size() > this->min_cluster_size_ &&
            this->prev_index_ != it->first) {
           t_index = it->first;
           break;
        }
+       */
     }
+    this->origin_ = supervoxel_clusters_.at(t_index)->centroid_.getVector4fMap();
+    
+    ROS_INFO("SUPERVOXEL INFO:  %d,  %d,  %d",
+             supervoxel_clusters_.size(), t_index, prev_index_);
+    
     this->prev_index_ = t_index;
+
     
     if (t_index == supervoxel_clusters_.size() + 1) {
        ROS_ERROR("CANNOT SELECT ANY SUPERVOXEL");
@@ -146,9 +167,12 @@ bool ObjectRegionHandler::getCandidateRegion(
               << seed_normals->size()  << "\n";
     
     //! get lenght
+    // FIX ?? bug
     this->regionOverSegmentation(seed_cloud, seed_normals,
                                  this->in_cloud_, this->in_normals_);
 
+    ROS_INFO("\033[34mEXTRACTING SUPERVOXEL\033[0m");
+    
     // get supervoxel
     this->getRegionSupervoxels(region_supervoxels, seed_cloud);
 
@@ -480,9 +504,16 @@ void ObjectRegionHandler::regionOverSegmentation(
           }
        }
     }
+
+    ROS_ERROR("\n INDICES SIZE: %d\n", prob_indices->indices.size());
+    
     
     bool is_cluster = true;
     if (is_cluster) {
+
+       ROS_INFO("\033[33m \t\tDOIING CLUSTERING \033[0m");
+       
+       
        std::vector<pcl::PointIndices> cluster_indices;
        cluster_indices.clear();
        pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
@@ -498,6 +529,9 @@ void ObjectRegionHandler::regionOverSegmentation(
        double min_distance = DBL_MAX;
        idx = -1;
        dist = DBL_MAX;
+
+       ROS_INFO("\033[33m \t\tSELECTING BEST \033[0m");
+       
        for (int i = 0; i < cluster_indices.size(); i++) {
           pcl::PointCloud<PointT>::Ptr tmp_cloud(new pcl::PointCloud<PointT>);
           pcl::PointCloud<NormalT>::Ptr tmp_normal(
@@ -521,14 +555,17 @@ void ObjectRegionHandler::regionOverSegmentation(
              pcl::copyPointCloud<NormalT, NormalT>(*tmp_normal, *normal);
           }
        }
-       this->region_indices_->indices.clear();
-       for (int i = 0; i < cluster_indices[idx].indices.size(); i++) {
-          int pt_indx = cluster_indices[idx].indices[i];
-          this->region_indices_->indices.push_back(pt_indx);
-       }
+
+       ROS_INFO("\033[33m \t\tCOPYING ....%d \033[0m", idx);
+       
+       // this->region_indices_->indices.clear();
+       // for (int i = 0; i < cluster_indices[idx].indices.size(); i++) {
+       //    int pt_indx = cluster_indices[idx].indices[i];
+       //    this->region_indices_->indices.push_back(pt_indx);
+       // }
 
        //! update seed point
-       ROS_WARN("ENABLE: SEED POINT INFO UPDATED");
+       // ROS_WARN("ENABLE: SEED POINT INFO UPDATED");
        
        // int csize = cluster_indices[idx].indices.size() / 2;
        // int ind = cluster_indices[idx].indices[csize];

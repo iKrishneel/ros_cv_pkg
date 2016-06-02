@@ -112,7 +112,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
              supervoxel_clusters, labels, cloud, planes_msg, coefficients_msg);
           orh.updateObjectRegion(region, labels);
           
-          label_all = (counter++ > 10) ? false : true;
+          label_all = (counter++ > 100) ? false : true;
           
           
           sensor_msgs::PointCloud2 ros_cloud1;

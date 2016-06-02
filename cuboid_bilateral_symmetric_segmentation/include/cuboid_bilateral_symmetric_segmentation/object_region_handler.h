@@ -41,7 +41,7 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
     int seed_index_;
     int neigbor_size_;
     uint32_t prev_index_;
-   
+    Eigen::Vector4f origin_;
    
     std_msgs::Header header_;
     std::vector<pcl::PointIndices> all_indices_;
