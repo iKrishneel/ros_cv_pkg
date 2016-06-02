@@ -76,7 +76,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     }
     this->seed_info_ = seeds->points[0];
 
-    bool run_type_auto = true;
+    bool run_type_auto = !true;
     
     if (run_type_auto) {
        ROS_INFO("\nRUNNING CBSS SEGMENTATION");
@@ -141,13 +141,6 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        std::cout << "FINISHED NOW PUBLISHING..." << all_indices.size()
                  << "\t" << orh.sv_cloud_->size()  << "\n";
 
-       // pcl::PointCloud<PointT>::Ptr temp(new pcl::PointCloud<PointT>);
-       // for (int i = 0; i < all_indices.size(); i++) {
-       //    for (int j = 0; j < all_indices[i].indices.size(); j++) {
-       //       int idx = all_indices[i].indices[j];
-       //       temp->push_back(orh.sv_cloud_->points[idx]);
-       //    }
-       // }
     
        jsk_msgs::ClusterPointIndices ros_indices;
        ros_indices.cluster_indices = this->convertToROSPointIndices(
@@ -167,8 +160,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
 }
 
 void CuboidBilateralSymmetricSegmentation::segmentation(
-    pcl::PointIndices::Ptr labels,
-    const pcl::PointCloud<PointT>::Ptr cloud,
+    pcl::PointIndices::Ptr labels, pcl::PointCloud<PointT>::Ptr cloud,
     const jsk_msgs::PolygonArrayConstPtr &planes_msg,
     const ModelCoefficients &coefficients_msg) {
     if (cloud->empty()) {
@@ -181,7 +173,7 @@ void CuboidBilateralSymmetricSegmentation::segmentation(
     this->supervoxelDecomposition(supervoxel_clusters, sv_normals, cloud);
 
     this->symmetryBasedObjectHypothesis(supervoxel_clusters, labels,
-                                        cloud, planes_msg, coefficients_msg);
+                                        cloud, planes_msg, coefficients_msg);    
     
     // publish supervoxel
     bool is_pub_clusters = true;
@@ -193,6 +185,35 @@ void CuboidBilateralSymmetricSegmentation::segmentation(
        this->pub_cloud_.publish(ros_voxels);
        this->pub_indices_.publish(ros_indices);
     }
+
+    //! publish result
+    cloud->clear();
+    for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
+         it != supervoxel_clusters.end(); it++) {
+       *cloud += *(it->second->voxels_);
+    }
+
+    // TODO(CLUSTER): selecte the best cluster
+    
+    pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
+    for (int i = 0; i < labels->indices.size(); i++) {
+       int index = labels->indices[i];
+       temp_cloud->push_back(cloud->points[index]);
+    }
+
+    std::vector<pcl::PointIndices> all_indices;
+    all_indices.push_back(*labels);
+
+    jsk_msgs::ClusterPointIndices ros_indices;
+    ros_indices.cluster_indices = this->convertToROSPointIndices(
+       all_indices, planes_msg->header);
+    ros_indices.header = planes_msg->header;
+    this->pub_indices_.publish(ros_indices);
+    
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*temp_cloud, ros_cloud);
+    ros_cloud.header = planes_msg->header;
+    this->pub_cloud_.publish(ros_cloud);
 }
 
 void CuboidBilateralSymmetricSegmentation::supervoxelDecomposition(

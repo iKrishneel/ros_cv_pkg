@@ -86,7 +86,7 @@ class CuboidBilateralSymmetricSegmentation:
                  const jsk_msgs::PolygonArrayConstPtr &,
                  const ModelCoefficients &);
     void segmentation(pcl::PointIndices::Ptr,
-                      const pcl::PointCloud<PointT>::Ptr,
+                      pcl::PointCloud<PointT>::Ptr,
                       const jsk_msgs::PolygonArrayConstPtr &,
                       const ModelCoefficients &);
     void supervoxelDecomposition(SupervoxelMap &,
