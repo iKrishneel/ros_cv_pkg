@@ -407,6 +407,7 @@ void DynamicStateSegmentation::regionOverSegmentation(
     double dist = DBL_MAX;
     int idx = -1;
     int icount = 0;
+    distance = (distance < 0.1) ? 0.1 : distance;
     pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
     for (int i = 0; i < cloud->size(); i++) {
        if (pcl::distances::l2(cloud->points[i].getVector4fMap(),
@@ -436,7 +437,7 @@ void DynamicStateSegmentation::regionOverSegmentation(
     pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
     tree->setInputCloud(cloud);
     pcl::EuclideanClusterExtraction<PointT> euclidean_clustering;
-    euclidean_clustering.setClusterTolerance(0.01f);
+    euclidean_clustering.setClusterTolerance(0.05f);
     euclidean_clustering.setMinClusterSize(this->min_cluster_size_);
     euclidean_clustering.setMaxClusterSize(25000);
     euclidean_clustering.setSearchMethod(tree);
@@ -491,6 +492,7 @@ void DynamicStateSegmentation::regionOverSegmentation(
        ROS_WARN("SEED POINT INFO NOT UPDATED");
     }
     */
+    
 }
 
 
