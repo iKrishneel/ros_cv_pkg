@@ -36,7 +36,6 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
     NormalT seed_normal_;
    
     int min_cluster_size_;
-    bool is_init_;
     int num_threads_;
     int seed_index_;
     int neigbor_size_;
@@ -70,6 +69,12 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
                                const float = 0.02f, const int = 50,
                                const int = 20000);
     void getRegionSupervoxels(SupervoxelMap &, pcl::PointCloud<PointT>::Ptr);
+    void supervoxelCoplanarityMerge(SupervoxelMap &, AdjacencyList &);
+    void updateSupervoxelClusters(SupervoxelMap &, const uint32_t,
+                                  const uint32_t);
+    float coplanarityCriteria(const Eigen::Vector4f, const Eigen::Vector4f,
+                              const Eigen::Vector4f, const Eigen::Vector4f,
+                              const float, const float);
    
  protected:
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
@@ -82,6 +87,7 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
     void updateObjectRegion(pcl::PointCloud<PointT>::Ptr,
                             const pcl::PointIndices::Ptr);
     void getLabels(std::vector<pcl::PointIndices> &);
+       
     pcl::PointCloud<PointT>::Ptr sv_cloud_;
 };
 

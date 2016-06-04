@@ -2,14 +2,15 @@
 #include <cuboid_bilateral_symmetric_segmentation/object_region_handler.h>
 
 ObjectRegionHandler::ObjectRegionHandler(const int mc_size, int thread) :
-    min_cluster_size_(mc_size), is_init_(true), num_threads_(thread),
-    neigbor_size_(50) {
+    min_cluster_size_(mc_size), num_threads_(thread), neigbor_size_(50) {
     this->in_cloud_ = pcl::PointCloud<PointT>::Ptr(new pcl::PointCloud<PointT>);
     this->sv_cloud_ = pcl::PointCloud<PointT>::Ptr(new pcl::PointCloud<PointT>);
     this->in_normals_ = pcl::PointCloud<NormalT>::Ptr(
        new pcl::PointCloud<NormalT>);
     this->region_indices_ = pcl::PointIndices::Ptr(new pcl::PointIndices);
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
+    this->all_indices_.clear();
+    this->origin_ = Eigen::Vector4f(0.0f, 0.0f, 0.0f, 1.0f);
 }
 
 bool ObjectRegionHandler::setInputCloud(
@@ -24,8 +25,12 @@ bool ObjectRegionHandler::setInputCloud(
        ROS_ERROR("SUPERVOXEL MAP IS EMPTY");
        return false;
     }
+
+    //! merge based on coplanity
+    this->supervoxelCoplanarityMerge(this->supervoxel_clusters_,
+                                     this->adjacency_list_);
+    
     this->in_cloud_->clear();
-    // this->sv_cloud_->clear();
     this->in_normals_->clear();
     this->indices_map_.clear();
     for (SupervoxelMap::iterator it = supervoxel_clusters_.begin();
@@ -38,7 +43,6 @@ bool ObjectRegionHandler::setInputCloud(
           this->indices_map_.push_back(im);
        }
        *in_cloud_ += *(it->second->voxels_);
-       // *sv_cloud_ += *(it->second->voxels_);
        *in_normals_ += *(it->second->normals_);
     }
 
@@ -46,12 +50,8 @@ bool ObjectRegionHandler::setInputCloud(
        ROS_ERROR("INCORRECT CLOUD AND NORMAL SIZE");
     }
     this->kdtree_->setInputCloud(this->in_cloud_);
-    this->is_init_ = true;
     this->header_ = header;
-    this->all_indices_.clear();
     this->prev_index_ = static_cast<uint32_t>(cloud->size());
-
-    this->origin_ = Eigen::Vector4f(0.0f, 0.0f, 0.0f, 1.0f);
     
     ROS_INFO("\033[34mPOINT CLOUD INFO IS SET FOR SEGMENTATION...\n\033[0m");
     return true;
@@ -71,7 +71,6 @@ bool ObjectRegionHandler::getCandidateRegion(
     }
     ROS_INFO("\033[34mSELECTING ONE CLUSTER\033[0m");
 
-    
     //! select one supervoxel
     double distance = DBL_MAX;
     uint32_t t_index = supervoxel_clusters_.size() + 1;
@@ -85,21 +84,16 @@ bool ObjectRegionHandler::getCandidateRegion(
           distance = dist;
           t_index = it->first;
        }
-       /*
-       if (it->second->voxels_->size() > this->min_cluster_size_ &&
-           this->prev_index_ != it->first) {
-          t_index = it->first;
-          break;
-       }
-       */
     }
-    this->origin_ = supervoxel_clusters_.at(t_index)->centroid_.getVector4fMap();
-    
+
     ROS_INFO("SUPERVOXEL INFO:  %d,  %d,  %d",
              supervoxel_clusters_.size(), t_index, prev_index_);
-    
-    this->prev_index_ = t_index;
 
+    if (t_index == supervoxel_clusters_.size() + 1) {
+       return false;
+    }
+    origin_ = supervoxel_clusters_.at(t_index)->centroid_.getVector4fMap();
+    this->prev_index_ = t_index;
     
     if (t_index == supervoxel_clusters_.size() + 1) {
        ROS_ERROR("CANNOT SELECT ANY SUPERVOXEL");
@@ -114,9 +108,6 @@ bool ObjectRegionHandler::getCandidateRegion(
        seed_point.b = supervoxel_clusters_.at(t_index)->centroid_.b;
        int k = 1;
        std::vector<int> neigbor_indices;
-
-       std::cout << seed_point  << "\n";
-       
        this->pointNeigbour<int>(neigbor_indices, seed_point, k);
        if (neigbor_indices.empty()) {
           ROS_ERROR("NO NEAREST NEIGBOIR TO SEED POINT FOUND");
@@ -167,7 +158,6 @@ bool ObjectRegionHandler::getCandidateRegion(
               << seed_normals->size()  << "\n";
     
     //! get lenght
-    // FIX ?? bug
     this->regionOverSegmentation(seed_cloud, seed_normals,
                                  this->in_cloud_, this->in_normals_);
 
@@ -262,7 +252,7 @@ void ObjectRegionHandler::updateObjectRegion(
        int pt_index = indices_map_[indx].index;
        
        //! prune points and normals of sv
-       PointT pt;
+       PointT pt = this->in_cloud_->points[indx];
        pt.x = std::numeric_limits<float>::quiet_NaN();
        pt.y = std::numeric_limits<float>::quiet_NaN();
        pt.z = std::numeric_limits<float>::quiet_NaN();
@@ -270,13 +260,21 @@ void ObjectRegionHandler::updateObjectRegion(
        
        seed_region_indices.indices.push_back(i + s_size);
        this->sv_cloud_->push_back(this->in_cloud_->points[indx]);
+
+       //! new sv input
+       this->in_cloud_->points[indx] = pt;
     }
     this->all_indices_.push_back(seed_region_indices);
     
     ROS_INFO("\033[36mUPDATING CLOUD\033[0m");
+
+
     
+    this->setInputCloud(in_cloud_, this->header_);
+    return;
+
+    // TODO(BUG): FIX THE BUG TO REMOVE SMALL SUPERVOXELS
     //! update the normals and centroids of the voxels
-    // SupervoxelMap supervoxel_copy;
     this->in_cloud_->clear();
     this->in_normals_->clear();
     this->indices_map_.clear();
@@ -655,7 +653,178 @@ void ObjectRegionHandler::getRegionSupervoxels(
           continue;
        }
     }
-    int csize = region->size()/2;
-    this->seed_point_ = region->points[csize];
-    this->seed_normal_ = region_normal->points[csize];
+
+    //! update seed
+    Eigen::Vector4f centroid;
+    pcl::compute3DCentroid<PointT, float>(*region, centroid);
+    PointT seed_point;
+    seed_point.x = centroid(0);
+    seed_point.y = centroid(1);
+    seed_point.z = centroid(2);
+    std::vector<int> neigbor_indices;
+    this->pointNeigbour<int>(neigbor_indices, seed_point, 1);
+    if (neigbor_indices.empty()) {
+       int csize = region->size()/2;
+       this->seed_point_ = region->points[csize];
+       this->seed_normal_ = region_normal->points[csize];
+    }
+    int idx = neigbor_indices[0];
+    // Eigen::Vector4f cpt = seed_point.getVector4fMap();
+    // Eigen::Vector4f npt = in_cloud_->points[idx].getVector4fMap();
+    // cpt(3) = 1.0f;
+    // npt(3) = 1.0f;
+    // double d = pcl::distances::l2(cpt, npt);
+    // if (d < this->seed_resolution_ * 4.0) {
+       this->seed_index_ = idx;
+       this->seed_point_ = this->in_cloud_->points[idx];
+       this->seed_normal_ = this->in_normals_->points[idx];
+    // } else {
+    //    int csize = region->size()/2;
+    //    this->seed_point_ = region->points[csize];
+    //    this->seed_normal_ = region_normal->points[csize];
+    // }
 }
+
+
+void ObjectRegionHandler::supervoxelCoplanarityMerge(
+    SupervoxelMap &supervoxel_clusters, AdjacencyList &adjacency_list) {
+    if (supervoxel_clusters.empty()) {
+       ROS_ERROR("EMPTY SUPERVOXEL FOR MERGING");
+       return;
+    }
+    SupervoxelMap coplanar_supervoxels;
+    UInt32Map voxel_labels;
+    coplanar_supervoxels.clear();
+    for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
+         it != supervoxel_clusters.end(); it++) {
+       voxel_labels[it->first] = -1;
+    }
+    int label = -1;
+    AdjacencyList::vertex_iterator i, end;
+    for (boost::tie(i, end) = boost::vertices(adjacency_list); i != end; i++) {
+       AdjacencyList::adjacency_iterator ai, a_end;
+       boost::tie(ai, a_end) = boost::adjacent_vertices(*i, adjacency_list);
+       uint32_t vindex = static_cast<int>(adjacency_list[*i]);
+       UInt32Map::iterator it = voxel_labels.find(vindex);
+       if (it->second == -1) {
+          voxel_labels[vindex] = ++label;
+       }
+       bool vertex_has_neigbor = true;
+       if (ai == a_end) {
+          vertex_has_neigbor = false;
+          if (!supervoxel_clusters.at(vindex)->voxels_->empty()) {
+             coplanar_supervoxels[vindex] = supervoxel_clusters.at(vindex);
+          }
+       }
+       Eigen::Vector4f v_normal = supervoxel_clusters.at(
+          vindex)->normal_.getNormalVector4fMap();
+       Eigen::Vector4f v_centroid = supervoxel_clusters.at(
+          vindex)->centroid_.getVector4fMap();
+       
+       while (vertex_has_neigbor) {
+          bool found = false;
+          AdjacencyList::edge_descriptor e_descriptor;
+          boost::tie(e_descriptor, found) = boost::edge(
+             *i, *ai, adjacency_list);
+          if (found) {
+             float weight = adjacency_list[e_descriptor];
+             uint32_t n_vindex = adjacency_list[*ai];
+
+             Eigen::Vector4f n_normal = supervoxel_clusters.at(
+               n_vindex)->normal_.getNormalVector4fMap();
+             Eigen::Vector4f n_centroid = supervoxel_clusters.at(
+                n_vindex)->centroid_.getVector4fMap();
+             float coplanar_criteria = this->coplanarityCriteria(
+                v_centroid, n_centroid, v_normal, n_normal,
+                this->angle_threshold_, this->distance_threshold_);
+             
+             if (coplanar_criteria <= static_cast<float>(coplanar_threshold_)) {
+                boost::remove_edge(e_descriptor, adjacency_list);
+             } else {
+                this->updateSupervoxelClusters(supervoxel_clusters,
+                                               vindex, n_vindex);
+                
+                AdjacencyList::adjacency_iterator ni, n_end;
+                boost::tie(ni, n_end) = boost::adjacent_vertices(
+                   *ai, adjacency_list);
+                
+                for (; ni != n_end; ni++) {
+                   bool is_found = false;
+                   AdjacencyList::edge_descriptor n_edge;
+                   boost::tie(n_edge, is_found) = boost::edge(
+                      *ai, *ni, adjacency_list);
+                   if (is_found && (*ni != *i)) {
+                      boost::add_edge(*i, *ni, FLT_MIN, adjacency_list);
+                   } else if (is_found && (*ni == *i)) {
+                      continue;
+                   }
+                }
+                boost::clear_vertex(*ai, adjacency_list);
+                voxel_labels[n_vindex] = label;
+             }
+          }
+          
+          boost::tie(ai, a_end) = boost::adjacent_vertices(*i, adjacency_list);
+          if (ai == a_end) {
+             coplanar_supervoxels[vindex] = supervoxel_clusters.at(vindex);
+             vertex_has_neigbor = false;
+          } else {
+             vertex_has_neigbor = true;
+          }
+       }
+    }
+    supervoxel_clusters.clear();
+    supervoxel_clusters = coplanar_supervoxels;
+    // SupervoxelMap().swap(coplanar_supervoxels);
+}
+
+void ObjectRegionHandler::updateSupervoxelClusters(
+    SupervoxelMap &supervoxel_clusters, const uint32_t vindex,
+    const uint32_t n_vindex) {
+    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+    *cloud = *(supervoxel_clusters.at(vindex)->voxels_) +
+       *(supervoxel_clusters.at(n_vindex)->voxels_);
+    pcl::PointCloud<pcl::Normal>::Ptr normals(
+       new pcl::PointCloud<pcl::Normal>);
+    *normals = *(supervoxel_clusters.at(vindex)->normals_) +
+       *(supervoxel_clusters.at(n_vindex)->normals_);
+    Eigen::Vector4f centre;
+    pcl::compute3DCentroid<PointT, float>(*cloud, centre);
+    pcl::PointXYZRGBA centroid;
+    centroid.x = centre(0);
+    centroid.y = centre(1);
+    centroid.z = centre(2);
+    pcl::PointXYZRGBA vcent = supervoxel_clusters.at(vindex)->centroid_;
+    pcl::PointXYZRGBA n_vcent = supervoxel_clusters.at(n_vindex)->centroid_;
+    centroid.g = (vcent.g - n_vcent.g)/2 + n_vcent.g;
+    centroid.b = (vcent.b - n_vcent.b)/2 + n_vcent.b;
+    centroid.a = (vcent.a - n_vcent.a)/2 + n_vcent.a;
+    supervoxel_clusters.at(vindex)->voxels_->clear();
+    supervoxel_clusters.at(vindex)->normals_->clear();
+    *(supervoxel_clusters.at(vindex)->voxels_) = *cloud;
+    *(supervoxel_clusters.at(vindex)->normals_) = *normals;
+    supervoxel_clusters.at(vindex)->centroid_ = centroid;
+
+    supervoxel_clusters.at(n_vindex)->voxels_->clear();
+    supervoxel_clusters.at(n_vindex)->normals_->clear();
+}
+
+float ObjectRegionHandler::coplanarityCriteria(
+    const Eigen::Vector4f centroid, const Eigen::Vector4f n_centroid,
+    const Eigen::Vector4f normal, const Eigen::Vector4f n_normal,
+    const float angle_thresh, const float dist_thresh) {
+    float tetha = std::acos(normal.dot(n_normal) / (
+                              n_normal.norm() * normal.norm()));
+    float ang_thresh = angle_thresh * (M_PI/180.0f);
+    float coplannarity = 0.0f;
+    if (tetha < ang_thresh) {
+       float direct1 = normal.dot(centroid - n_centroid);
+       float direct2 = n_normal.dot(centroid - n_centroid);
+       float dist = std::fabs(std::max(direct1, direct2));
+       if (dist < dist_thresh) {
+          coplannarity = 1.0f;
+       }
+    }
+    return coplannarity;
+}
+

@@ -76,8 +76,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     }
     this->seed_info_ = seeds->points[0];
 
-    bool run_type_auto = !true;
-    
+    bool run_type_auto = true;
     if (run_type_auto) {
        ROS_INFO("\nRUNNING CBSS SEGMENTATION");
     
@@ -90,29 +89,65 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        int counter = 0;
        
        while (label_all) {
+          label_all = (counter++ > 100) ? false : true;
+          
           pcl::PointCloud<PointT>::Ptr region(new pcl::PointCloud<PointT>);
           PointNormalT seed_info;
           SupervoxelMap supervoxel_clusters;
 
-          /** TODO
-           * -sort the centroid from front to back. Then start
-              segmentation from the front and proceed
-           */
-          
           label_all = orh.getCandidateRegion(supervoxel_clusters,
                                              region, seed_info);
+
+          /**
+           * START DEBUG
+           */
+          sensor_msgs::PointCloud2 ros_voxels;
+          jsk_msgs::ClusterPointIndices ros_indices;
+          this->publishSupervoxel(supervoxel_clusters,
+                                  ros_voxels, ros_indices,
+                                  planes_msg->header);
+          pcl::PointCloud<PointNormalT>::Ptr sv_norm(
+             new pcl::PointCloud<PointNormalT>);
+          for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
+               it != supervoxel_clusters.end(); it++) {
+
+             PointNormalT pnt;
+             pnt.r = 255;
+             pnt.g = 0;
+             pnt.b = 0;
+             pnt.normal_x = it->second->normal_.normal_x;
+             pnt.normal_y = it->second->normal_.normal_y;
+             pnt.normal_z = it->second->normal_.normal_z;
+             pnt.x = it->second->centroid_.x;
+             pnt.y = it->second->centroid_.y;
+             pnt.z = it->second->centroid_.z;
+             sv_norm->push_back(pnt);
+          }
+          
+          sensor_msgs::PointCloud2 ros_cloud4;
+          pcl::toROSMsg(*sv_norm, ros_cloud4);
+          ros_cloud4.header = planes_msg->header;
+          this->pub_normal_.publish(ros_cloud4);
+          this->pub_cloud_.publish(ros_voxels);
+          this->pub_indices_.publish(ros_indices);
+          // label_all = false;
+          /**
+           * END DEBUG
+           */
+          
+          if (!label_all) {
+             break;
+          }
+          
           this->seed_info_ = seed_info;
           if (region->empty()) {
              return;
           }
-
           
           pcl::PointIndices::Ptr labels(new pcl::PointIndices);
           this->symmetryBasedObjectHypothesis(
              supervoxel_clusters, labels, cloud, planes_msg, coefficients_msg);
           orh.updateObjectRegion(region, labels);
-          
-          label_all = (counter++ > 100) ? false : true;
           
           
           sensor_msgs::PointCloud2 ros_cloud1;
@@ -132,6 +167,9 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           ros_cloud3.header = planes_msg->header;
           this->pub_normal_.publish(ros_cloud3);
 
+          
+          // std::cout << "Press key to continue ..."  << "\n";
+          // getchar();
           // ros::Duration(2).sleep();
        }
        
@@ -173,7 +211,7 @@ void CuboidBilateralSymmetricSegmentation::segmentation(
     this->supervoxelDecomposition(supervoxel_clusters, sv_normals, cloud);
 
     this->symmetryBasedObjectHypothesis(supervoxel_clusters, labels,
-                                        cloud, planes_msg, coefficients_msg);    
+                                        cloud, planes_msg, coefficients_msg);
     
     // publish supervoxel
     bool is_pub_clusters = true;
