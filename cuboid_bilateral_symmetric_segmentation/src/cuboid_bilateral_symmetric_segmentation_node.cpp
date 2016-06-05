@@ -2,7 +2,7 @@
 #include <cuboid_bilateral_symmetric_segmentation/cuboid_bilateral_symmetric_segmentation.h>
 
 CuboidBilateralSymmetricSegmentation::CuboidBilateralSymmetricSegmentation() :
-    min_cluster_size_(100), leaf_size_(0.001f), symmetric_angle_thresh_(45),
+    min_cluster_size_(50), leaf_size_(0.001f), symmetric_angle_thresh_(45),
     neigbor_dist_thresh_(0.01), num_threads_(8) {
     this->occlusion_handler_ = boost::shared_ptr<OcclusionHandler>(
        new OcclusionHandler);
@@ -99,7 +99,11 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
 
           label_all = orh->getCandidateRegion(supervoxel_clusters,
                                              region, seed_info);
-
+          
+          this->convex_supervoxel_clusters_.clear();
+          this->convex_supervoxel_clusters_ = orh->convex_supervoxel_clusters_;
+          
+          
           /**
            * START DEBUG
            */
@@ -132,7 +136,8 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           this->pub_normal_.publish(ros_cloud4);
           this->pub_cloud_.publish(ros_voxels);
           this->pub_indices_.publish(ros_indices);
-          label_all = false;
+          // label_all = false;
+          
           /**
            * END DEBUG
            */
@@ -169,7 +174,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           ros_cloud3.header = planes_msg->header;
           this->pub_normal_.publish(ros_cloud3);
 
-          
+
           // std::cout << "Press key to continue ..."  << "\n";
           // getchar();
           // ros::Duration(2).sleep();
@@ -213,7 +218,8 @@ void CuboidBilateralSymmetricSegmentation::segmentation(
     SupervoxelMap supervoxel_clusters;
     pcl::PointCloud<NormalT>::Ptr sv_normals(new pcl::PointCloud<NormalT>);
     this->supervoxelDecomposition(supervoxel_clusters, sv_normals, cloud);
-
+    this->convex_supervoxel_clusters_.clear();
+    this->convex_supervoxel_clusters_ = supervoxel_clusters;
     this->symmetryBasedObjectHypothesis(supervoxel_clusters, labels,
                                         cloud, planes_msg, coefficients_msg);
     
@@ -582,15 +588,6 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
 
     ROS_INFO("\033[32m DEBUG: RUNNING OBJECT HYPOTHESIS\033[0m");
     
-    /* // build voxel neigbors
-    AdjacencyList adjacency_list;
-    this->supervoxelAdjacencyList(adjacency_list, supervoxel_clusters);
-    this->kdtree_->setInputCloud(cloud);
-    
-    SupervoxelMap supervoxel_clusters_copy = supervoxel_clusters;
-    AdjacencyList adjacency_list_copy = adjacency_list;
-    */
-    
     jsk_msgs::BoundingBox bounding_box;
     pcl::PointCloud<PointT>::Ptr in_cloud(new pcl::PointCloud<PointT>);
     pcl::PointCloud<NormalT>::Ptr in_normals(new pcl::PointCloud<NormalT>);
@@ -606,59 +603,47 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
        *sv_normals += *(it->second->normals_);
        *in_normals += *(it->second->normals_);
     }
-    
-    // pcl::copyPointCloud<PointT, PointT>(*cloud, *in_cloud);
-
-    ROS_INFO("\033[32m DEBUG: ESTIMATING NOMAL\033[0m");
-    
-    // TODO(FIX): import NORMALS from intial segmentation
-    // this->estimateNormals<float>(in_cloud, in_normals, 0.1f, false);
     this->kdtree_->setInputCloud(in_cloud);
 
+    
     
     ROS_INFO("\033[32m DEBUG: NORMAL ESTIMATED. COMPUTING ENERGY..\033[0m");
     
     pcl::PointCloud<PointT>::Ptr symm_potential(new pcl::PointCloud<PointT>);
     max_energy = 0.0;
-    for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
-         it != supervoxel_clusters.end(); it++) {
+    for (SupervoxelMap::iterator it = convex_supervoxel_clusters_.begin();
+         it != convex_supervoxel_clusters_.end(); it++) {
        pcl::PointCloud<PointT>::Ptr in_c(new pcl::PointCloud<PointT>);
        pcl::PointCloud<NormalT>::Ptr in_n(new pcl::PointCloud<NormalT>);
        jsk_msgs::BoundingBox bbox;
 
        std::cout << "computing bounding box!"  << "\n";
 
-       int val = this->seedVoxelConvexityCriteria(
-          seed_info_.getVector4fMap(), seed_info_.getNormalVector4fMap(),
-          it->second->centroid_.getVector4fMap(),
-          it->second->normal_.getNormalVector4fMap());
-       // if (val == 1)
-       {
-          this->supervoxel3DBoundingBox(
-             bbox, in_c, in_n, supervoxel_clusters,
-             planes_msg, coefficients_msg, it->first);
-          if (in_c->size() > this->min_cluster_size_) {
-             float energy = 0.0f;
-             Eigen::Vector4f plane_coef;
+       this->supervoxel3DBoundingBox(
+          bbox, in_c, in_n, this->convex_supervoxel_clusters_,
+          planes_msg, coefficients_msg, it->first);
+       
+       if (in_c->size() > this->min_cluster_size_) {
+          float energy = 0.0f;
+          Eigen::Vector4f plane_coef;
 
-             in_c ->clear();
-             pcl::copyPointCloud<PointT, PointT>(*in_cloud, *in_c);
+          in_c ->clear();
+          pcl::copyPointCloud<PointT, PointT>(*in_cloud, *in_c);
 
-             std::cout << "computing energy..."  << "\n";
+          std::cout << "computing energy..."  << "\n";
           
-             this->symmetricalConsistency(plane_coef, energy, in_c,
-                                          in_normals, in_cloud, bbox);
+          this->symmetricalConsistency(plane_coef, energy, in_c,
+                                       in_normals, in_cloud, bbox);
           
-             if (energy > max_energy) {
-                max_energy = energy;
-                plane_coefficient = plane_coef;
-                bounding_box = bbox;
+          if (energy > max_energy) {
+             max_energy = energy;
+             plane_coefficient = plane_coef;
+             bounding_box = bbox;
 
-                symm_potential->clear();
-                pcl::copyPointCloud<PointT, PointT>(*in_c, *symm_potential);
-             }
-             std::cout << "\033[32m ENERY:\033[0m" << energy << "\n";
+             symm_potential->clear();
+             pcl::copyPointCloud<PointT, PointT>(*in_c, *symm_potential);
           }
+          std::cout << "\033[32m ENERY:\033[0m" << energy << "\n";
        }
     }
     

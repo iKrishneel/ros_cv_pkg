@@ -63,7 +63,7 @@ class CuboidBilateralSymmetricSegmentation:
     boost::shared_ptr<OcclusionHandler> occlusion_handler_;
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
     std_msgs::Header header_;
-
+    SupervoxelMap convex_supervoxel_clusters_;
     PointNormalT seed_info_;
    
  protected:

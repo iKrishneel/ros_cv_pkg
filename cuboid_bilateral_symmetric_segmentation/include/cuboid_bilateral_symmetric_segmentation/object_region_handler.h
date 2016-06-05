@@ -39,7 +39,6 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
     int num_threads_;
     int seed_index_;
     int neigbor_size_;
-    uint32_t prev_index_;
     Eigen::Vector4f origin_;
    
     std_msgs::Header header_;
@@ -89,6 +88,7 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
     void getLabels(std::vector<pcl::PointIndices> &);
        
     pcl::PointCloud<PointT>::Ptr sv_cloud_;
+    SupervoxelMap convex_supervoxel_clusters_;
 };
 
 #endif  // _OBJECT_REGION_HANDLER_H_
