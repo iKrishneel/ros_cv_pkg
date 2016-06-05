@@ -487,7 +487,7 @@ void ObjectRegionHandler::regionOverSegmentation(
     ROS_ERROR("\n INDICES SIZE: %d\n", prob_indices->indices.size());
     
     
-    bool is_cluster = true;
+    bool is_cluster = !true;
     if (is_cluster) {
 
        ROS_INFO("\033[33m \t\tDOIING CLUSTERING \033[0m");
@@ -581,7 +581,7 @@ void ObjectRegionHandler::doEuclideanClustering(
 void ObjectRegionHandler::getRegionSupervoxels(
     SupervoxelMap &region_supervoxels, pcl::PointCloud<PointT>::Ptr region) {
     if (supervoxel_clusters_.empty() || region_indices_->indices.empty()) {
-       ROS_ERROR("SUPERVOXEL OR INDEX ARE EMPTY. NOT REGION CREATED");
+       ROS_ERROR("SUPERVOXEL OR INDEX ARE EMPTY. \nNO REGION CREATED ...");
        return;
     }
     UInt32Map region_cache;
