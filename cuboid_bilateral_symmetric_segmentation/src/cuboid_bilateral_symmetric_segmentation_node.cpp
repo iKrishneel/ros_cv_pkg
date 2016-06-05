@@ -81,8 +81,10 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        ROS_INFO("\nRUNNING CBSS SEGMENTATION");
     
        bool label_all = true;
-       ObjectRegionHandler orh(this->min_cluster_size_, num_threads_);
-       if (!orh.setInputCloud(cloud, cloud_msg->header)) {
+       ObjectRegionHandler *orh = new ObjectRegionHandler(
+          this->min_cluster_size_, num_threads_);
+
+       if (!orh->setInputCloud(cloud, cloud_msg->header)) {
           ROS_ERROR("CANNOT SET INFO");
           return;
        }
@@ -95,7 +97,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           PointNormalT seed_info;
           SupervoxelMap supervoxel_clusters;
 
-          label_all = orh.getCandidateRegion(supervoxel_clusters,
+          label_all = orh->getCandidateRegion(supervoxel_clusters,
                                              region, seed_info);
 
           /**
@@ -130,7 +132,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           this->pub_normal_.publish(ros_cloud4);
           this->pub_cloud_.publish(ros_voxels);
           this->pub_indices_.publish(ros_indices);
-          // label_all = false;
+          label_all = false;
           /**
            * END DEBUG
            */
@@ -147,7 +149,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           pcl::PointIndices::Ptr labels(new pcl::PointIndices);
           this->symmetryBasedObjectHypothesis(
              supervoxel_clusters, labels, cloud, planes_msg, coefficients_msg);
-          orh.updateObjectRegion(region, labels);
+          orh->updateObjectRegion(region, labels);
           
           
           sensor_msgs::PointCloud2 ros_cloud1;
@@ -174,10 +176,10 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        }
        
        std::vector<pcl::PointIndices> all_indices;
-       orh.getLabels(all_indices);
+       orh->getLabels(all_indices);
     
        std::cout << "FINISHED NOW PUBLISHING..." << all_indices.size()
-                 << "\t" << orh.sv_cloud_->size()  << "\n";
+                 << "\t" << orh->sv_cloud_->size()  << "\n";
 
     
        jsk_msgs::ClusterPointIndices ros_indices;
@@ -187,9 +189,11 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        this->pub_indices_.publish(ros_indices);
     
        sensor_msgs::PointCloud2 ros_cloud;
-       pcl::toROSMsg(*(orh.sv_cloud_), ros_cloud);
+       pcl::toROSMsg(*(orh->sv_cloud_), ros_cloud);
        ros_cloud.header = cloud_msg->header;
        this->pub_cloud_.publish(ros_cloud);
+
+       free(orh);
        
     } else {
        pcl::PointIndices::Ptr labels(new pcl::PointIndices);
@@ -623,31 +627,38 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
        jsk_msgs::BoundingBox bbox;
 
        std::cout << "computing bounding box!"  << "\n";
-       
-       this->supervoxel3DBoundingBox(
-          bbox, in_c, in_n, supervoxel_clusters,
-          planes_msg, coefficients_msg, it->first);
-       if (in_c->size() > this->min_cluster_size_) {
-          float energy = 0.0f;
-          Eigen::Vector4f plane_coef;
 
-          in_c ->clear();
-          pcl::copyPointCloud<PointT, PointT>(*in_cloud, *in_c);
+       int val = this->seedVoxelConvexityCriteria(
+          seed_info_.getVector4fMap(), seed_info_.getNormalVector4fMap(),
+          it->second->centroid_.getVector4fMap(),
+          it->second->normal_.getNormalVector4fMap());
+       // if (val == 1)
+       {
+          this->supervoxel3DBoundingBox(
+             bbox, in_c, in_n, supervoxel_clusters,
+             planes_msg, coefficients_msg, it->first);
+          if (in_c->size() > this->min_cluster_size_) {
+             float energy = 0.0f;
+             Eigen::Vector4f plane_coef;
 
-          std::cout << "computing energy..."  << "\n";
+             in_c ->clear();
+             pcl::copyPointCloud<PointT, PointT>(*in_cloud, *in_c);
+
+             std::cout << "computing energy..."  << "\n";
           
-          this->symmetricalConsistency(plane_coef, energy, in_c,
-                                       in_normals, in_cloud, bbox);
+             this->symmetricalConsistency(plane_coef, energy, in_c,
+                                          in_normals, in_cloud, bbox);
           
-          if (energy > max_energy) {
-             max_energy = energy;
-             plane_coefficient = plane_coef;
-             bounding_box = bbox;
+             if (energy > max_energy) {
+                max_energy = energy;
+                plane_coefficient = plane_coef;
+                bounding_box = bbox;
 
-             symm_potential->clear();
-             pcl::copyPointCloud<PointT, PointT>(*in_c, *symm_potential);
+                symm_potential->clear();
+                pcl::copyPointCloud<PointT, PointT>(*in_c, *symm_potential);
+             }
+             std::cout << "\033[32m ENERY:\033[0m" << energy << "\n";
           }
-          std::cout << "\033[32m ENERY:\033[0m" << energy << "\n";
        }
     }
     
@@ -1133,6 +1144,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
           float angle = std::acos(dot_prod) * (180.0f/M_PI);
           weight = std::exp(-1.0f * (angle / 360.0f));
           weight = isnan(weight) ? 0.0f : weight;
+          
           if (angle < 40.0f) {
              weight = (weight * c_weight);
              // weight = (weight + c_weight) / 2.0f;
