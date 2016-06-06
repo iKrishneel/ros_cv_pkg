@@ -76,7 +76,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     }
     this->seed_info_ = seeds->points[0];
 
-    bool run_type_auto = !true;
+    bool run_type_auto = true;
     if (run_type_auto) {
        ROS_INFO("\nRUNNING CBSS SEGMENTATION");
     
@@ -224,7 +224,7 @@ void CuboidBilateralSymmetricSegmentation::segmentation(
                                         cloud, planes_msg, coefficients_msg);
     
     // publish supervoxel
-    bool is_pub_clusters = true;
+    bool is_pub_clusters = !true;
     if (is_pub_clusters) {
        sensor_msgs::PointCloud2 ros_voxels;
        jsk_msgs::ClusterPointIndices ros_indices;

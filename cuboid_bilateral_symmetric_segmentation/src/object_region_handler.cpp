@@ -217,31 +217,24 @@ void ObjectRegionHandler::updateObjectRegion(
     if (cloud->empty() || labels->indices.empty()) {
        return;
     }
-
-    std::cout << "INPUT CLOID: " << cloud->size() << "\t"
-              << region_indices_->indices.size() << "\n";
-    
     ROS_INFO("\033[36mDOING CLUSTERING\033[0m");
     
     std::vector<pcl::PointIndices> cluster_indices;
-    // pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
     this->doEuclideanClustering(cluster_indices, cloud, labels, 0.01f,
                                 this->min_cluster_size_);
-    
     if (cluster_indices.empty()) {
        return;
     }
-    
-    ROS_INFO("\033[36mGETTING THE BEST CLOUD\033[0m");
-    std::cout << "cluster size: " << cluster_indices.size()  << "\n";
-
     int object_index = -1;
     double distance = DBL_MAX;
+    pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*cloud, *temp_cloud);
+    cloud->clear();
     for (int i = 0; i < cluster_indices.size(); i++) {
        pcl::PointCloud<PointT>::Ptr temp(new pcl::PointCloud<PointT>);
        for (int j = 0; j < cluster_indices[i].indices.size(); j++) {
           int idx = cluster_indices[i].indices[j];
-          temp->push_back(cloud->points[idx]);  //! bug
+          temp->push_back(temp_cloud->points[idx]);  //! bug
        }
        
        Eigen::Vector4f centroid;
