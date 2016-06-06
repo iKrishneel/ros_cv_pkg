@@ -225,7 +225,8 @@ void ObjectRegionHandler::updateObjectRegion(
     
     std::vector<pcl::PointIndices> cluster_indices;
     // pcl::PointIndices::Ptr prob_indices(new pcl::PointIndices);
-    this->doEuclideanClustering(cluster_indices, cloud, labels, 0.01f);
+    this->doEuclideanClustering(cluster_indices, cloud, labels, 0.01f,
+                                this->min_cluster_size_);
     
     if (cluster_indices.empty()) {
        return;
@@ -240,7 +241,7 @@ void ObjectRegionHandler::updateObjectRegion(
        pcl::PointCloud<PointT>::Ptr temp(new pcl::PointCloud<PointT>);
        for (int j = 0; j < cluster_indices[i].indices.size(); j++) {
           int idx = cluster_indices[i].indices[j];
-          temp->push_back(cloud->points[idx]);
+          temp->push_back(cloud->points[idx]);  //! bug
        }
        
        Eigen::Vector4f centroid;
@@ -601,13 +602,14 @@ void ObjectRegionHandler::doEuclideanClustering(
     tree->setInputCloud(cloud);
     pcl::EuclideanClusterExtraction<PointT> euclidean_clustering;
     euclidean_clustering.setClusterTolerance(tolerance_thresh);
-    euclidean_clustering.setMinClusterSize(this->min_cluster_size_);
+    euclidean_clustering.setMinClusterSize(min_size_thresh);
     euclidean_clustering.setMaxClusterSize(max_size_thresh);
     euclidean_clustering.setSearchMethod(tree);
     euclidean_clustering.setInputCloud(cloud);
     if (!prob_indices->indices.empty()) {
        euclidean_clustering.setIndices(prob_indices);
     }
+    cluster_indices.clear();
     euclidean_clustering.extract(cluster_indices);
 }
 

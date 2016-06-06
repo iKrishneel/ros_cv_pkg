@@ -62,11 +62,6 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
                                 pcl::PointCloud<NormalT>::Ptr,
                                 const pcl::PointCloud<PointT>::Ptr,
                                 const pcl::PointCloud<NormalT>::Ptr);
-    void doEuclideanClustering(std::vector<pcl::PointIndices> &,
-                               const pcl::PointCloud<PointT>::Ptr,
-                               const pcl::PointIndices::Ptr,
-                               const float = 0.02f, const int = 50,
-                               const int = 20000);
     void getRegionSupervoxels(SupervoxelMap &, pcl::PointCloud<PointT>::Ptr);
     void supervoxelCoplanarityMerge(SupervoxelMap &, AdjacencyList &);
     void updateSupervoxelClusters(SupervoxelMap &, const uint32_t,
@@ -86,7 +81,12 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
     void updateObjectRegion(pcl::PointCloud<PointT>::Ptr,
                             const pcl::PointIndices::Ptr);
     void getLabels(std::vector<pcl::PointIndices> &);
-       
+    void doEuclideanClustering(std::vector<pcl::PointIndices> &,
+                               const pcl::PointCloud<PointT>::Ptr,
+                               const pcl::PointIndices::Ptr,
+                               const float = 0.02f, const int = 50,
+                               const int = 200000);
+   
     pcl::PointCloud<PointT>::Ptr sv_cloud_;
     SupervoxelMap convex_supervoxel_clusters_;
 };

@@ -76,7 +76,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     }
     this->seed_info_ = seeds->points[0];
 
-    bool run_type_auto = true;
+    bool run_type_auto = !true;
     if (run_type_auto) {
        ROS_INFO("\nRUNNING CBSS SEGMENTATION");
     
@@ -214,7 +214,7 @@ void CuboidBilateralSymmetricSegmentation::segmentation(
        ROS_ERROR("EMPTY CLOUD FOR CBSS SEGMENTATION");
        return;
     }
-
+    
     SupervoxelMap supervoxel_clusters;
     pcl::PointCloud<NormalT>::Ptr sv_normals(new pcl::PointCloud<NormalT>);
     this->supervoxelDecomposition(supervoxel_clusters, sv_normals, cloud);
@@ -234,24 +234,49 @@ void CuboidBilateralSymmetricSegmentation::segmentation(
        this->pub_indices_.publish(ros_indices);
     }
 
-    //! publish result
-    cloud->clear();
+    pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
     for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
          it != supervoxel_clusters.end(); it++) {
-       *cloud += *(it->second->voxels_);
+       *temp_cloud += *(it->second->voxels_);
     }
 
-    // TODO(CLUSTER): selecte the best cluster
+    ObjectRegionHandler *orh = new ObjectRegionHandler(
+       this->min_cluster_size_, num_threads_);
+    std::vector<pcl::PointIndices> cluster_indices;
+    orh->doEuclideanClustering(cluster_indices, temp_cloud, labels, 0.01f,
+                               this->min_cluster_size_);
+
+    if (cluster_indices.empty()) {
+       ROS_ERROR("CLUSTERING FAILED TO EXTRACT OBJECT");
+       return;
+    }
     
-    pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
-    for (int i = 0; i < labels->indices.size(); i++) {
-       int index = labels->indices[i];
-       temp_cloud->push_back(cloud->points[index]);
-    }
+    int object_index = -1;
+    double distance = DBL_MAX;
+    Eigen::Vector4f seed_pt = this->seed_info_.getVector4fMap();
+    seed_pt(3) = 1.0f;
 
+    labels->indices.clear();
+    for (int i = 0; i < cluster_indices.size(); i++) {
+       pcl::PointCloud<PointT>::Ptr temp(new pcl::PointCloud<PointT>);
+       for (int j = 0; j < cluster_indices[i].indices.size(); j++) {
+          int idx = cluster_indices[i].indices[j];
+          temp->push_back(temp_cloud->points[idx]);
+       }
+       Eigen::Vector4f centroid;
+       pcl::compute3DCentroid<PointT, float>(*temp, centroid);
+       centroid(3) = 1.0f;
+       double d = pcl::distances::l2(centroid, seed_pt);
+       if (d < distance) {
+          distance = d;
+          cloud->clear();
+          pcl::copyPointCloud<PointT, PointT>(*temp, *cloud);
+          *labels = cluster_indices[i];
+       }
+    }
+    
     std::vector<pcl::PointIndices> all_indices;
     all_indices.push_back(*labels);
-
     jsk_msgs::ClusterPointIndices ros_indices;
     ros_indices.cluster_indices = this->convertToROSPointIndices(
        all_indices, planes_msg->header);
@@ -259,7 +284,7 @@ void CuboidBilateralSymmetricSegmentation::segmentation(
     this->pub_indices_.publish(ros_indices);
     
     sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*temp_cloud, ros_cloud);
+    pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = planes_msg->header;
     this->pub_cloud_.publish(ros_cloud);
 }
