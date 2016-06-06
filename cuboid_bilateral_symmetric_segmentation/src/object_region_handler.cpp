@@ -131,12 +131,20 @@ bool ObjectRegionHandler::getCandidateRegion(
 
     int icounter = 0;
     this->convex_supervoxel_clusters_.clear();
+    double cluster_distances = 0.0;
+    Eigen::Vector4f seed_pt = this->seed_point_.getVector4fMap();
+    seed_pt(3) = 1.0f;
     for (SupervoxelMap::iterator it = supervoxel_clusters_.begin();
          it != supervoxel_clusters_.end(); it++) {
        if (labels[icounter++] != -1) {
           *seed_cloud += *(it->second->voxels_);
           *seed_normals += *(it->second->normals_);
-
+          Eigen::Vector4f center = it->second->centroid_.getVector4fMap();
+          center(3) = 1.0f;
+          double d = pcl::distances::l2(seed_pt, center);
+          if (d > cluster_distances) {
+             cluster_distances = d;
+          }
           pcl::Supervoxel<PointT>::Ptr super_v(new pcl::Supervoxel<PointT>);
           for (int i = 0; i < it->second->voxels_->size(); i++) {
              super_v->voxels_->push_back(it->second->voxels_->points[i]);
@@ -146,6 +154,31 @@ bool ObjectRegionHandler::getCandidateRegion(
        }
     }
 
+    //! oversegment supervoxels
+    /*
+    seed_cloud->clear();
+    seed_normals->clear();
+    this->region_indices_->indices.clear();
+    for (SupervoxelMap::iterator it = supervoxel_clusters_.begin();
+         it != supervoxel_clusters_.end(); it++) {
+       Eigen::Vector4f center = it->second->centroid_.getVector4fMap();
+       center(3) = 1.0f;
+       double dist = pcl::distances::l2(seed_pt, center);
+       if (dist < cluster_distances) {
+
+          int csize = static_cast<int>(seed_cloud->size());
+          for (int i = 0; i < it->second->voxels_->size(); i++) {
+             this->region_indices_->indices.push_back(i + csize);
+          }
+          
+          *seed_cloud += *(it->second->voxels_);
+          *seed_normals += *(it->second->normals_);
+       }
+    }
+
+    std::cout << "SIZE: " << seed_cloud->size()  << "\t"
+              << region_indices_->indices.size()  << "\n";
+    */
     this->kdtree_->setInputCloud(this->in_cloud_);
     this->regionOverSegmentation(seed_cloud, seed_normals,
                                  this->in_cloud_, this->in_normals_);
@@ -582,6 +615,8 @@ void ObjectRegionHandler::getRegionSupervoxels(
     SupervoxelMap &region_supervoxels, pcl::PointCloud<PointT>::Ptr region) {
     if (supervoxel_clusters_.empty() || region_indices_->indices.empty()) {
        ROS_ERROR("SUPERVOXEL OR INDEX ARE EMPTY. \nNO REGION CREATED ...");
+       std::cout << supervoxel_clusters_.size() << "\t"
+                 << region_indices_->indices.size() << "\n";
        return;
     }
     UInt32Map region_cache;

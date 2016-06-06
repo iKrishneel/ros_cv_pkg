@@ -2,7 +2,7 @@
 #include <cuboid_bilateral_symmetric_segmentation/cuboid_bilateral_symmetric_segmentation.h>
 
 CuboidBilateralSymmetricSegmentation::CuboidBilateralSymmetricSegmentation() :
-    min_cluster_size_(50), leaf_size_(0.001f), symmetric_angle_thresh_(45),
+    min_cluster_size_(30), leaf_size_(0.001f), symmetric_angle_thresh_(45),
     neigbor_dist_thresh_(0.01), num_threads_(8) {
     this->occlusion_handler_ = boost::shared_ptr<OcclusionHandler>(
        new OcclusionHandler);
