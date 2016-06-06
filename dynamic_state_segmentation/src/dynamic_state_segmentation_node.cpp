@@ -437,7 +437,7 @@ void DynamicStateSegmentation::regionOverSegmentation(
     pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
     tree->setInputCloud(cloud);
     pcl::EuclideanClusterExtraction<PointT> euclidean_clustering;
-    euclidean_clustering.setClusterTolerance(0.05f);
+    euclidean_clustering.setClusterTolerance(0.01f);
     euclidean_clustering.setMinClusterSize(this->min_cluster_size_);
     euclidean_clustering.setMaxClusterSize(25000);
     euclidean_clustering.setSearchMethod(tree);
