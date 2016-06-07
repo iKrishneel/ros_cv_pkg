@@ -64,6 +64,7 @@ class CollisionCheckGraspPlannar {
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
+    float search_radius_thresh_;
    
  protected:
     void onInit();
@@ -80,7 +81,7 @@ class CollisionCheckGraspPlannar {
     void cloudCB(const sensor_msgs::PointCloud2::ConstPtr &,
                  const jsk_msgs::ClusterPointIndices::ConstPtr &,
                  const jsk_msgs::BoundingBoxArray::ConstPtr &);
-    void getBoundingBoxGraspPoints(std::vector<Eigen::Vector3f> &,
+    void getBoundingBoxGraspPoints(PointCloud::Ptr,
                                    const jsk_msgs::BoundingBox);
     PointT vector3f2PointT(const Eigen::Vector3f,
                            Eigen::Vector3f = Eigen::Vector3f(0, 0, 0));
