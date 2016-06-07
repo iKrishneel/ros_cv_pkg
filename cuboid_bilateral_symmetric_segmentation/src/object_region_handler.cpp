@@ -81,6 +81,7 @@ bool ObjectRegionHandler::getCandidateRegion(
        centroid(3) = 1.0f;
        origin_(3) = 1.0f;
        double dist = pcl::distances::l2(origin_, centroid);
+
        if (dist < distance && it->second->voxels_->size() >
            this->min_cluster_size_ && dist > 0.05f) {
           distance = dist;
@@ -176,14 +177,17 @@ bool ObjectRegionHandler::getCandidateRegion(
        }
     }
 
+    */
+    
     std::cout << "SIZE: " << seed_cloud->size()  << "\t"
               << region_indices_->indices.size()  << "\n";
-    */
+
+    
     this->kdtree_->setInputCloud(this->in_cloud_);
     this->regionOverSegmentation(seed_cloud, seed_normals,
                                  this->in_cloud_, this->in_normals_);
 
-    ROS_INFO("\033[34mEXTRACTING SUPERVOXEL\033[0m");
+    ROS_INFO("\033[34mEXTRACTING SUPERVOXEL: %d\033[0m", seed_cloud->size());
     
     this->getRegionSupervoxels(region_supervoxels, seed_cloud);
     

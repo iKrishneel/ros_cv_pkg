@@ -129,7 +129,7 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
              pnt.z = it->second->centroid_.z;
              sv_norm->push_back(pnt);
           }
-          
+          /*
           sensor_msgs::PointCloud2 ros_cloud4;
           pcl::toROSMsg(*sv_norm, ros_cloud4);
           ros_cloud4.header = planes_msg->header;
@@ -189,13 +189,13 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     
        jsk_msgs::ClusterPointIndices ros_indices;
        ros_indices.cluster_indices = this->convertToROSPointIndices(
-          all_indices, cloud_msg->header);
-       ros_indices.header = cloud_msg->header;
-       this->pub_indices_.publish(ros_indices);
+          all_indices, planes_msg->header);
+       ros_indices.header = planes_msg->header;
     
        sensor_msgs::PointCloud2 ros_cloud;
        pcl::toROSMsg(*(orh->sv_cloud_), ros_cloud);
-       ros_cloud.header = cloud_msg->header;
+       ros_cloud.header = planes_msg->header;
+       this->pub_indices_.publish(ros_indices);
        this->pub_cloud_.publish(ros_cloud);
 
        free(orh);
@@ -243,7 +243,7 @@ void CuboidBilateralSymmetricSegmentation::segmentation(
     ObjectRegionHandler *orh = new ObjectRegionHandler(
        this->min_cluster_size_, num_threads_);
     std::vector<pcl::PointIndices> cluster_indices;
-    orh->doEuclideanClustering(cluster_indices, temp_cloud, labels, 0.01f,
+    orh->doEuclideanClustering(cluster_indices, temp_cloud, labels, 0.005f,
                                this->min_cluster_size_);
 
     if (cluster_indices.empty()) {
