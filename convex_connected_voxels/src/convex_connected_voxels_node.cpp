@@ -36,7 +36,7 @@ void ConvexConnectedVoxels::unsubscribe() {
 
 void ConvexConnectedVoxels::callback(
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
-    const sensor_msgs::PointCloud2::ConstPtr &normal_msg) {
+    const jsk_recognition_msgs::PolygonArray::ConstPtr &poly_msg) {
     pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     pcl::PointCloud<pcl::Normal>::Ptr normals(new pcl::PointCloud<pcl::Normal>);
@@ -45,7 +45,7 @@ void ConvexConnectedVoxels::callback(
     sensor_msgs::PointCloud2 ros_voxels;
     jsk_recognition_msgs::ClusterPointIndices ros_indices;
     this->publishSupervoxel(supervoxel_clusters,
-                            ros_voxels, ros_indices, cloud_msg->header);
+                            ros_voxels, ros_indices, poly_msg->header);
     this->pub_cloud_.publish(ros_voxels);
     this->pub_indices_.publish(ros_indices);
 }

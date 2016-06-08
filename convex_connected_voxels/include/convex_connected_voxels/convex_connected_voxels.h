@@ -48,6 +48,7 @@
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
 #include <jsk_recognition_msgs/PolygonArray.h>
 #include <jsk_recognition_msgs/Int32Stamped.h>
+#include <std_msgs/Header.h>
 
 #include <convex_connected_voxels/supervoxel_segmentation.h>
 
@@ -61,9 +62,9 @@ class ConvexConnectedVoxels: public SupervoxelSegmentation {
     ros::NodeHandle pnh_;
     typedef message_filters::sync_policies::ApproximateTime<
        sensor_msgs::PointCloud2,
-       sensor_msgs::PointCloud2> SyncPolicy;
+       jsk_recognition_msgs::PolygonArray> SyncPolicy;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
-    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
+    message_filters::Subscriber<jsk_recognition_msgs::PolygonArray> sub_normal_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
     ros::Publisher pub_cloud_;
@@ -78,7 +79,7 @@ class ConvexConnectedVoxels: public SupervoxelSegmentation {
     ConvexConnectedVoxels();
     virtual void callback(
        const sensor_msgs::PointCloud2::ConstPtr &,
-       const sensor_msgs::PointCloud2::ConstPtr &);
+       const jsk_recognition_msgs::PolygonArray::ConstPtr &);
     virtual void surfelLevelObjectHypothesis(
        pcl::PointCloud<PointT>::Ptr, pcl::PointCloud<pcl::Normal>::Ptr,
        std::map<uint32_t, pcl::Supervoxel<PointT>::Ptr > &);
