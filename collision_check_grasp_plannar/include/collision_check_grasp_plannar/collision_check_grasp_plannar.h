@@ -31,7 +31,7 @@ class CollisionCheckGraspPlannar {
     typedef pcl::Normal NormalT;
     typedef pcl::PointXYZRGBNormal PointNormalT;
     typedef pcl::PointCloud<PointT> PointCloud;
-
+   
     struct IndicesMap {
        int label;
        int index;
@@ -65,6 +65,7 @@ class CollisionCheckGraspPlannar {
 
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
     float search_radius_thresh_;
+    std_msgs::Header header_;
    
  protected:
     void onInit();
@@ -84,7 +85,7 @@ class CollisionCheckGraspPlannar {
     void getBoundingBoxGraspPoints(PointCloud::Ptr,
                                    const jsk_msgs::BoundingBox);
     PointT vector3f2PointT(const Eigen::Vector3f,
-                           Eigen::Vector3f = Eigen::Vector3f(0, 0, 0));
+                           Eigen::Vector3f = Eigen::Vector3f(255, 0, 0));
     template<class T>
     void getPointNeigbour(std::vector<int> &, const PointT,
                           const T = 8, bool = true);

@@ -1,0 +1,25 @@
+<launch>
+  <arg name="INPUT" default="/camera/depth_registered/points" />
+  <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />
+
+  
+  <node pkg="collision_check_grasp_plannar" type="collision_check_grasp_plannar_node"
+	name="collision_check_grasp_plannar" output="screen" clear_params="false">
+    <remap from="input_cloud" to="/convex_connected_voxels/output/cloud" />
+    <remap from="input_boxes" to="/supervoxel_segmentation_decomposer/boxes" />
+    <remap from="input_indices" to="/convex_connected_voxels/output/indices" />
+
+  </node>
+
+  <!-- <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer" -->
+  <!-- 	name="supervoxel_segmentation_decomposer" output="screen" clear_params="true"> -->
+  <!--   <remap from="~input" to="/convex_connected_voxels/output/cloud" /> -->
+  <!--   <remap from="~target" to="/convex_connected_voxels/output/indices" /> -->
+  <!--   <remap from="~align_planes" to="/multi_plane_estimate/output_refined_polygon" /> -->
+  <!--   <remap from="~align_planes_coefficients" to="/multi_plane_estimate/output_refined_coefficients" /> -->
+  <!--   <param name="align_boxes" value="true" /> -->
+  <!--   <param name="use_pca" value="false" /> -->
+  <!--   <param name="publish_clouds" value="false" /> -->
+  <!--   <param name="publish_tf" value="true" /> -->
+  <!-- </node> -->
+</launch>

@@ -38,6 +38,15 @@ void CollisionCheckGraspPlannar::cloudCB(
     const jsk_msgs::BoundingBoxArray::ConstPtr &boxes_msg) {
     PointCloud::Ptr cloud(new PointCloud);
     pcl::fromROSMsg(*cloud_msg, *cloud);
+
+    this->header_ = boxes_msg->header;
+
+    std::cout << "INDICES: " << indices_msg->cluster_indices.size()  << "\n";
+    std::cout << "BOXES: " << boxes_msg->boxes.size()  << "\n\n";
+    std::clock_t start;
+    double duration;
+    start = std::clock();
+    
     
     std::vector<IndicesMap> indices_map(static_cast<int>(cloud->size()));
     for (int i = 0; i < indices_msg->cluster_indices.size(); i++) {
@@ -56,6 +65,7 @@ void CollisionCheckGraspPlannar::cloudCB(
        static_cast<int>(boxes_msg->boxes.size()));
     std::vector<std::vector<bool> > flag_grasp_points(
        static_cast<int>(boxes_msg->boxes.size()));
+    
     for (int i = 0; i < boxes_msg->boxes.size(); i++) {
        PointCloud::Ptr grasp_points(new PointCloud);
        this->getBoundingBoxGraspPoints(grasp_points, boxes_msg->boxes[i]);
@@ -64,7 +74,7 @@ void CollisionCheckGraspPlannar::cloudCB(
           flag_grasp_points[i].push_back(true);
        }
     }
-
+    
     for (int i = 0; i < all_grasp_points.size(); i++) {
        PointCloud::Ptr grasp_points(new PointCloud);
        grasp_points = all_grasp_points[i];
@@ -114,52 +124,65 @@ void CollisionCheckGraspPlannar::cloudCB(
           }
        }
     }
-
-    PointCloud::Ptr candidate_grasp_points(new PointCloud);
+    
+    PointCloud::Ptr grasp_points(new PointCloud);
     for (int i = 0; i < flag_grasp_points.size(); i++) {
-       for (int j = 0; j < flag_grasp_points[i].size(); j += 2) {
-          if (flag_grasp_points[i][j] && flag_grasp_points[i][j+1]) {
-             candidate_grasp_points->push_back(all_grasp_points[i]->points[j]);
-             candidate_grasp_points->push_back(all_grasp_points[i]->points[j+1]);
+       std::vector<int> adjacency_list;
+       bool is_knn = false;
+       if (!flag_grasp_points[i].empty() && is_knn) {
+          std::vector<int> label_maps;
+          int prev_label = -1;
+          for (int j = 0; j < indices_msg->cluster_indices[
+                  i].indices.size(); j++) {
+             int indx = indices_msg->cluster_indices[i].indices[j];
+             std::vector<int> neigbor_indices;
+             this->getPointNeigbour<int>(neigbor_indices, cloud->points[indx]);
+             for (int k = 1; k < neigbor_indices.size(); k++) {
+                int index = neigbor_indices[k];
+                if (indices_map[index].label != indices_map[indx].label &&
+                    indices_map[index].label != prev_label) {
+                   label_maps.push_back(indices_map[index].label);
+                   prev_label = indices_map[index].label;
+                }
+             }
+          }
+          if (!label_maps.empty()) {
+             std::sort(label_maps.begin(), label_maps.end(), sortVector);
+             prev_label = -1;
+             for (int k = 0; k < label_maps.size(); k++) {
+                if (label_maps[k] != prev_label) {
+                   adjacency_list.push_back(label_maps[k]);
+                   prev_label = label_maps[k];
+                }
+             }
           }
        }
+       if (adjacency_list.empty()) {
+          for (int j = 0; j < flag_grasp_points[i].size(); j += 2) {
+             if (flag_grasp_points[i][j] && flag_grasp_points[i][j+1]) {
+                grasp_points->push_back(all_grasp_points[i]->points[j]);
+                grasp_points->push_back(all_grasp_points[i]->points[j+1]);
+             }
+          }
+       } else {
+          continue;
+       }
     }
-
-
 
     
-    std::vector<std::vector<int> > adjacency_list(
-       static_cast<int>(indices_msg->cluster_indices.size()));
-    for (int i = 0; i < indices_msg->cluster_indices.size(); i++) {
-       std::vector<int> label_maps;
-       int prev_label = -1;
-       for (int j = 0; j < indices_msg->cluster_indices[
-               i].indices.size(); j++) {
-          int indx = indices_msg->cluster_indices[i].indices[j];
-          std::vector<int> neigbor_indices;
-          this->getPointNeigbour<int>(neigbor_indices, cloud->points[indx]);
-          for (int k = 1; k < neigbor_indices.size(); k++) {
-             int index = neigbor_indices[k];
-             if (indices_map[index].label != indices_map[indx].label &&
-                 indices_map[index].label != prev_label) {
-                label_maps.push_back(indices_map[index].label);
-                prev_label = indices_map[index].label;
-             }
-          }
-       }
-       if (!label_maps.empty()) {
-          std::sort(label_maps.begin(), label_maps.end(), sortVector);
-          prev_label = -1;
-          std::vector<int> adj_list;
-          for (int k = 0; k < label_maps.size(); k++) {
-             if (label_maps[k] != prev_label) {
-                adj_list.push_back(label_maps[k]);
-                prev_label = label_maps[k];
-             }
-          }
-          adjacency_list[i] = adj_list;
-       }
-    }
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*grasp_points, ros_cloud);
+    ros_cloud.header = boxes_msg->header;
+    this->pub_cloud_.publish(ros_cloud);
+
+    std::cout << "DONE... " << grasp_points->size()  << "\n";
+    duration = (std::clock() - start) / static_cast<double>(CLOCKS_PER_SEC);
+    std::cout << "printf: "<< duration << "\n";
+    
+    /**
+     * DEBUG
+     */
+    return;
 }
 
 
@@ -173,39 +196,40 @@ void CollisionCheckGraspPlannar::getBoundingBoxGraspPoints(
                                            bounding_box.dimensions.z / 2.0f);
     std::vector<Facets> side_points(NUMBER_OF_SIDE);
     Facets top;
-    top.AA = Eigen::Vector3f(0.0f, -dims(1), dims(2));
-    top.AB = Eigen::Vector3f(0.0f, dims(1), dims(2));
-    top.BB = Eigen::Vector3f(-dims(0), 0.0f, dims(2));
-    top.BA = Eigen::Vector3f(dims(0), 0.0f, dims(2));
+    top.AA = Eigen::Vector3f(0.0f, -dims(1), -dims(2));
+    top.AB = Eigen::Vector3f(0.0f, dims(1), -dims(2));
+    top.BB = Eigen::Vector3f(-dims(0), 0.0f, -dims(2));
+    top.BA = Eigen::Vector3f(dims(0), 0.0f, -dims(2));
     side_points[0] = top;
     
     Facets front;
-    front.AA = Eigen::Vector3f(dims(0), -dims(0), 0.0f);
+    front.AA = Eigen::Vector3f(-dims(0), dims(0), 0.0f);
     front.AB = Eigen::Vector3f(dims(0), dims(0), 0.0f);
-    // front.AA = Eigen::Vector3f(dims(0), 0.0f, dims(2));
-    // front.AB = Eigen::Vector3f(dims(0), 0.0f, -dims(2));
     side_points[1] = front;
     
     Facets right;
-    right.AA = Eigen::Vector3f(-dims(0), dims(1), 0.0f);
+    right.AA = Eigen::Vector3f(dims(0), -dims(1), 0.0f);
     right.AB = Eigen::Vector3f(dims(0), dims(1), 0.0f);
-    // right.BB = Eigen::Vector3f(0.0f, dims(1), -dims(2));
-    // right.BA = Eigen::Vector3f(0.0f, dims(1), dims(2));
     side_points[2] = right;
     
     Facets left;
-    left.AA = Eigen::Vector3f(-dims(0), -dims(1), 0.0f);
-    left.AB = Eigen::Vector3f(dims(0), -dims(1), 0.0f);
-    // left.BB = Eigen::Vector3f(0.0f, -dims(1), -dims(2));
-    // left.BA = Eigen::Vector3f(0.0f, -dims(1), dims(2));
+    left.AA = Eigen::Vector3f(-dims(0), dims(1), 0.0f);
+    left.AB = Eigen::Vector3f(-dims(0), -dims(1), 0.0f);
     side_points[3] = left;
 
-    for (int i = 0; i < NUMBER_OF_SIDE; i++) {
-       box_points->push_back(vector3f2PointT(side_points[i].AA));
-       box_points->push_back(vector3f2PointT(side_points[i].AB));
+    Eigen::Vector3f color[NUMBER_OF_SIDE];
+    color[0] = Eigen::Vector3f(255, 0, 0);
+    color[1] = Eigen::Vector3f(0, 0, 255);
+    color[2] = Eigen::Vector3f(255, 0, 255);
+    color[3] = Eigen::Vector3f(255, 255, 22);
+        
+    
+    for (int i = 0; i < side_points.size(); i++) {
+       box_points->push_back(vector3f2PointT(side_points[i].AA, color[i]));
+       box_points->push_back(vector3f2PointT(side_points[i].AB, color[i]));
        if (i == 0) {
-          box_points->push_back(vector3f2PointT(side_points[i].BB));
-          box_points->push_back(vector3f2PointT(side_points[i].BA));
+          box_points->push_back(vector3f2PointT(side_points[i].BB, color[i]));
+          box_points->push_back(vector3f2PointT(side_points[i].BA, color[i]));
        }
     }
     Eigen::Quaternion<float> quaternion = Eigen::Quaternion<float>(
