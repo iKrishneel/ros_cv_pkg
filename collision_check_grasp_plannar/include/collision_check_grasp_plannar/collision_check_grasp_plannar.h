@@ -18,6 +18,8 @@
 #include <pcl/registration/icp.h>
 
 #include <std_msgs/Header.h>
+#include <geometry_msgs/Pose.h>
+#include <geometry_msgs/PoseArray.h>
 #include <jsk_recognition_msgs/BoundingBox.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
@@ -73,7 +75,7 @@ class CollisionCheckGraspPlannar {
     void unsubscribe();
 
     ros::Publisher pub_cloud_;
-    ros::Publisher pub_edge_;
+    ros::Publisher pub_grasp_;
     ros::Publisher pub_indices_;
     ros::Publisher pub_bbox_;
    
@@ -86,6 +88,7 @@ class CollisionCheckGraspPlannar {
                                    const jsk_msgs::BoundingBox);
     PointT vector3f2PointT(const Eigen::Vector3f,
                            Eigen::Vector3f = Eigen::Vector3f(255, 0, 0));
+    void pointCenter(PointT &, const PointT, const PointT);
     template<class T>
     void getPointNeigbour(std::vector<int> &, const PointT,
                           const T = 8, bool = true);

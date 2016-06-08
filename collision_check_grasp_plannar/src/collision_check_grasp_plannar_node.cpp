@@ -11,7 +11,10 @@ void CollisionCheckGraspPlannar::onInit() {
     this->subscribe();
     this->pub_cloud_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/collision_check_grasp_plannar/output/cloud", 1);
-    
+    this->pub_bbox_ = this->pnh_.advertise<jsk_msgs::BoundingBoxArray>(
+       "/collision_check_grasp_plannar/output/grasp_boxes", 1);
+    this->pub_grasp_ = this->pnh_.advertise<geometry_msgs::PoseArray>(
+       "/collision_check_grasp_plannar/output/grasp_points", 1);
 }
 
 void CollisionCheckGraspPlannar::subscribe() {
@@ -43,9 +46,6 @@ void CollisionCheckGraspPlannar::cloudCB(
 
     std::cout << "INDICES: " << indices_msg->cluster_indices.size()  << "\n";
     std::cout << "BOXES: " << boxes_msg->boxes.size()  << "\n\n";
-    std::clock_t start;
-    double duration;
-    start = std::clock();
     
     
     std::vector<IndicesMap> indices_map(static_cast<int>(cloud->size()));
@@ -61,6 +61,12 @@ void CollisionCheckGraspPlannar::cloudCB(
 
     this->kdtree_->setInputCloud(cloud);
 
+
+    /**
+     * TODO: first build adjacency_list and determine the support
+     * structure, then get grasp points
+     */
+    
     std::vector<PointCloud::Ptr> all_grasp_points(
        static_cast<int>(boxes_msg->boxes.size()));
     std::vector<std::vector<bool> > flag_grasp_points(
@@ -124,7 +130,9 @@ void CollisionCheckGraspPlannar::cloudCB(
           }
        }
     }
-    
+
+    jsk_msgs::BoundingBoxArray bbox_array;
+    geometry_msgs::PoseArray grasp_pose;
     PointCloud::Ptr grasp_points(new PointCloud);
     for (int i = 0; i < flag_grasp_points.size(); i++) {
        std::vector<int> adjacency_list;
@@ -156,13 +164,29 @@ void CollisionCheckGraspPlannar::cloudCB(
              }
           }
        }
+       bool good_bbox = false;
        if (adjacency_list.empty()) {
           for (int j = 0; j < flag_grasp_points[i].size(); j += 2) {
              if (flag_grasp_points[i][j] && flag_grasp_points[i][j+1]) {
                 grasp_points->push_back(all_grasp_points[i]->points[j]);
                 grasp_points->push_back(all_grasp_points[i]->points[j+1]);
+                
+                //! move points to center
+                PointT pt;
+                pointCenter(pt, all_grasp_points[i]->points[j],
+                            all_grasp_points[i]->points[j+1]);
+                pt.r = 0; pt.g = 255; pt.b = 0;
+                grasp_points->push_back(pt);
+
+                geometry_msgs::Pose gpose;
+                gpose.position.x = pt.x;
+                gpose.position.y = pt.y;
+                gpose.position.z = pt.z;
+                gpose.orientation = boxes_msg->boxes[i].pose.orientation;
+                grasp_pose.poses.push_back(gpose);
              }
           }
+          good_bbox = true;
        } else {
           bool is_grasp_pts = true;
           int g_size = all_grasp_points[i]->size() - 1;
@@ -171,38 +195,50 @@ void CollisionCheckGraspPlannar::cloudCB(
              int idx = adjacency_list[j];
              g_size = all_grasp_points[idx]->size() - 1;
              float ncenter_y = all_grasp_points[idx]->points[g_size].y;
-
-             std::cout << ncenter_y << "\t" << center_y  << "\n";
-             
-             if (ncenter_y < center_y) {
+             if (ncenter_y < center_y && ncenter_y < center_y+(
+                    boxes_msg->boxes[i].dimensions.y / 2.0f) + 0.005f) {
                 is_grasp_pts = false;
+                good_bbox = false;
              }
           }
           if (is_grasp_pts) {
+             good_bbox = true;
              for (int j = 0; j < flag_grasp_points[i].size(); j += 2) {
                 if (flag_grasp_points[i][j] && flag_grasp_points[i][j+1]) {
                    grasp_points->push_back(all_grasp_points[i]->points[j]);
                    grasp_points->push_back(all_grasp_points[i]->points[j+1]);
+
+                   PointT pt;
+                   pointCenter(pt, all_grasp_points[i]->points[j],
+                               all_grasp_points[i]->points[j+1]);
+                   pt.r = 0; pt.g = 255; pt.b = 0;
+                   grasp_points->push_back(pt);
+                   
+                   geometry_msgs::Pose gpose;
+                   gpose.position.x = pt.x;
+                   gpose.position.y = pt.y;
+                   gpose.position.z = pt.z;
+                   gpose.orientation = boxes_msg->boxes[i].pose.orientation;
+                   grasp_pose.poses.push_back(gpose);
                 }
              }
           }
        }
+       if (good_bbox) {
+          bbox_array.boxes.push_back(boxes_msg->boxes[i]);
+       }
     }
 
+    bbox_array.header = boxes_msg->header;
+    this->pub_bbox_.publish(bbox_array);
+
+    grasp_pose.header = boxes_msg->header;
+    this->pub_grasp_.publish(grasp_pose);
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*grasp_points, ros_cloud);
     ros_cloud.header = boxes_msg->header;
     this->pub_cloud_.publish(ros_cloud);
-
-    std::cout << "DONE... " << grasp_points->size()  << "\n";
-    duration = (std::clock() - start) / static_cast<double>(CLOCKS_PER_SEC);
-    std::cout << "printf: "<< duration << "\n";
-    
-    /**
-     * DEBUG
-     */
-    return;
 }
 
 
@@ -293,6 +329,13 @@ CollisionCheckGraspPlannar::vector3f2PointT(
     pt.y = vec(1); pt.g = color(1);
     pt.z = vec(2); pt.b = color(2);
     return pt;
+}
+
+void CollisionCheckGraspPlannar::pointCenter(
+    PointT &point, const PointT pt1, const PointT pt2) {
+    point.x = (pt1.x + pt2.x) / 2.0f;
+    point.y = (pt1.y + pt2.y) / 2.0f;
+    point.z = (pt1.z + pt2.z) / 2.0f;
 }
 
 int main(int argc, char *argv[]) {
