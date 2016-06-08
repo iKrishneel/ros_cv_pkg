@@ -128,8 +128,7 @@ void CollisionCheckGraspPlannar::cloudCB(
     PointCloud::Ptr grasp_points(new PointCloud);
     for (int i = 0; i < flag_grasp_points.size(); i++) {
        std::vector<int> adjacency_list;
-       bool is_knn = false;
-       if (!flag_grasp_points[i].empty() && is_knn) {
+       if (!flag_grasp_points[i].empty()) {
           std::vector<int> label_maps;
           int prev_label = -1;
           for (int j = 0; j < indices_msg->cluster_indices[
@@ -165,7 +164,28 @@ void CollisionCheckGraspPlannar::cloudCB(
              }
           }
        } else {
-          continue;
+          bool is_grasp_pts = true;
+          int g_size = all_grasp_points[i]->size() - 1;
+          float center_y = all_grasp_points[i]->points[g_size].y;
+          for (int j = 0; j < adjacency_list.size(); j++) {
+             int idx = adjacency_list[j];
+             g_size = all_grasp_points[idx]->size() - 1;
+             float ncenter_y = all_grasp_points[idx]->points[g_size].y;
+
+             std::cout << ncenter_y << "\t" << center_y  << "\n";
+             
+             if (ncenter_y < center_y) {
+                is_grasp_pts = false;
+             }
+          }
+          if (is_grasp_pts) {
+             for (int j = 0; j < flag_grasp_points[i].size(); j += 2) {
+                if (flag_grasp_points[i][j] && flag_grasp_points[i][j+1]) {
+                   grasp_points->push_back(all_grasp_points[i]->points[j]);
+                   grasp_points->push_back(all_grasp_points[i]->points[j+1]);
+                }
+             }
+          }
        }
     }
 
