@@ -2,7 +2,7 @@
 #include <collision_check_grasp_plannar/collision_check_grasp_plannar.h>
 
 CollisionCheckGraspPlannar::CollisionCheckGraspPlannar() :
-    search_radius_thresh_(0.04), gripper_size_(0.15), end_translation_(0.05) {
+    search_radius_thresh_(0.04), gripper_size_(0.15), end_translation_(0.02) {
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
     this->onInit();
 }
@@ -178,27 +178,22 @@ void CollisionCheckGraspPlannar::cloudCB(
                 // grasp_points->push_back(all_grasp_points[i]->points[j+1]);
                 
                 PointT pt;
-                pointCenter(pt, all_grasp_points[i]->points[j],
-                            all_grasp_points[i]->points[j+1]);
-                pt.r = 0; pt.g = 255; pt.b = 0;
-                grasp_points->push_back(pt);
+                float dist = pointCenter(pt, all_grasp_points[i]->points[j],
+                                         all_grasp_points[i]->points[j+1]);
+                if (dist < this->gripper_size_) {
+                   pt.r = 0; pt.g = 255; pt.b = 0;
+                   grasp_points->push_back(pt);
 
-                direction_index.push_back(j);
+                   direction_index.push_back(j);
                 
-                geometry_msgs::Pose gpose;
-                gpose.position.x = pt.x;
-                gpose.position.y = pt.y;
-                gpose.position.z = pt.z;
-
-                // this->translateGraspPoints(gpose, j);                
-                // pt.x = gpose.position.x;
-                // pt.y = gpose.position.y;
-                // pt.z = gpose.position.z;
-                // pt.r = 255; pt.g = 0; pt.b = 0;
-                // grasp_points->push_back(pt);
+                   geometry_msgs::Pose gpose;
+                   gpose.position.x = pt.x;
+                   gpose.position.y = pt.y;
+                   gpose.position.z = pt.z;
                 
-                gpose.orientation = all_grasp_poses[i].poses[j].orientation;
-                grasp_pose.poses.push_back(gpose);
+                   gpose.orientation = all_grasp_poses[i].poses[j].orientation;
+                   grasp_pose.poses.push_back(gpose);
+                }
              }
           }
           good_bbox = true;
@@ -224,27 +219,23 @@ void CollisionCheckGraspPlannar::cloudCB(
                    // grasp_points->push_back(all_grasp_points[i]->points[j+1]);
 
                    PointT pt;
-                   pointCenter(pt, all_grasp_points[i]->points[j],
+                   float dist = pointCenter(pt, all_grasp_points[i]->points[j],
                                all_grasp_points[i]->points[j+1]);
-                   pt.r = 0; pt.g = 255; pt.b = 0;
-                   grasp_points->push_back(pt);
+                   if (dist < this->gripper_size_) {
+                      pt.r = 0; pt.g = 255; pt.b = 0;
+                      grasp_points->push_back(pt);
 
-                   direction_index.push_back(j);
+                      direction_index.push_back(j);
                    
-                   geometry_msgs::Pose gpose;
-                   gpose.position.x = pt.x;
-                   gpose.position.y = pt.y;
-                   gpose.position.z = pt.z;
-
-                   // this->translateGraspPoints(gpose, j);
-                   // pt.x = gpose.position.x;
-                   // pt.y = gpose.position.y;
-                   // pt.z = gpose.position.z;
-                   // pt.r = 255; pt.g = 0; pt.b = 0;
-                   // grasp_points->push_back(pt);
+                      geometry_msgs::Pose gpose;
+                      gpose.position.x = pt.x;
+                      gpose.position.y = pt.y;
+                      gpose.position.z = pt.z;
                    
-                   gpose.orientation = all_grasp_poses[i].poses[j].orientation;
-                   grasp_pose.poses.push_back(gpose);
+                      gpose.orientation = all_grasp_poses[
+                         i].poses[j].orientation;
+                      grasp_pose.poses.push_back(gpose);
+                   }
                 }
              }
           }
@@ -282,8 +273,6 @@ void CollisionCheckGraspPlannar::cloudCB(
     pcl::transformPointCloud(*grasp_points, *trans_grasp_points,
                              transform_model);
 
-    std::cout << trans_grasp_points->size() << "\t"
-              << direction_index.size()  << "\n";
     for (int i = 0; i < trans_grasp_points->size(); i++) {
        PointT pt = trans_grasp_points->points[i];
        geometry_msgs::Pose pose;
@@ -291,7 +280,6 @@ void CollisionCheckGraspPlannar::cloudCB(
        pose.position.y = pt.y;
        pose.position.z = pt.z;
        this->translateGraspPoints(pose, direction_index[i]);
-
        pt.x = pose.position.x;
        pt.y = pose.position.y;
        pt.z = pose.position.z;
@@ -301,6 +289,12 @@ void CollisionCheckGraspPlannar::cloudCB(
     Eigen::Affine3f inv_transf = transform_model.inverse();
     pcl::transformPointCloud(*trans_grasp_points, *trans_grasp_points,
                              inv_transf);
+
+    for (int i = 0; i < trans_grasp_points->size(); i++) {
+       grasp_pose.poses[i].position.x = trans_grasp_points->points[i].x;
+       grasp_pose.poses[i].position.y = trans_grasp_points->points[i].y;
+       grasp_pose.poses[i].position.z = trans_grasp_points->points[i].z;
+    }
     *grasp_points += *trans_grasp_points;
 
     //! end transform
@@ -471,11 +465,17 @@ CollisionCheckGraspPlannar::vector3f2PointT(
     return pt;
 }
 
-void CollisionCheckGraspPlannar::pointCenter(
+float CollisionCheckGraspPlannar::pointCenter(
     PointT &point, const PointT pt1, const PointT pt2) {
     point.x = (pt1.x + pt2.x) / 2.0f;
     point.y = (pt1.y + pt2.y) / 2.0f;
     point.z = (pt1.z + pt2.z) / 2.0f;
+
+    Eigen::Vector4f point1 = pt1.getVector4fMap();
+    Eigen::Vector4f point2 = pt2.getVector4fMap();
+    point1(3) = 1.0f;
+    point2(3) = 1.0f;
+    return static_cast<float>(pcl::distances::l2(point1, point2));
 }
 
 int main(int argc, char *argv[]) {

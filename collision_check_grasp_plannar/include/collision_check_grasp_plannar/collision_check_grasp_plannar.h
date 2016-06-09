@@ -98,7 +98,7 @@ class CollisionCheckGraspPlannar {
     PointT vector3f2PointT(const Eigen::Vector3f,
                            Eigen::Vector3f = Eigen::Vector3f(255, 0, 0));
     void translateGraspPoints(geometry_msgs::Pose &, const int);
-    void pointCenter(PointT &, const PointT, const PointT);
+    float pointCenter(PointT &, const PointT, const PointT);
     template<class T>
     void getPointNeigbour(std::vector<int> &, const PointT,
                           const T = 8, bool = true);
