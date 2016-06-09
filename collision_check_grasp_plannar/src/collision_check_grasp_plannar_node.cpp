@@ -234,7 +234,6 @@ void CollisionCheckGraspPlannar::cloudCB(
           bbox_array.boxes.push_back(boxes_msg->boxes[i]);
        }
     }
-    
 
     bbox_array.header = boxes_msg->header;
     this->pub_bbox_.publish(bbox_array);
@@ -301,26 +300,7 @@ void CollisionCheckGraspPlannar::getBoundingBoxGraspPoints(
     for (int i = 0; i < side_points.size(); i++) {
        box_points->push_back(vector3f2PointT(side_points[i].AA, color[i]));
        box_points->push_back(vector3f2PointT(side_points[i].AB, color[i]));
-       
-       // tf::Transform transform_bf;
-       // geometry_msgs::Pose pose;
-       // pose.position.x = box_points->points[i].x;
-       // pose.position.y = box_points->points[i].y;
-       // pose.position.z = box_points->points[i].z;
-       // transform_bf.setOrigin(tf::Vector3(pose.position.x, pose.position.y,
-       //                                    pose.position.z));
-       // tf::Quaternion orientation = tf::Quaternion(
-       //    bounding_box.pose.orientation.x, bounding_box.pose.orientation.y,
-       //    bounding_box.pose.orientation.z, bounding_box.pose.orientation.w);
-       // transform_bf.setRotation(orientation * trans_orientation[i]);
-
-       // geometry_msgs::Pose update_pose;
-       // tf::poseTFToMsg(transform_bf, update_pose);
-       // pose_array.poses.push_back(update_pose);
-       // pose_array.poses.push_back(update_pose);
-
-       // trans = transform_bf;
-    }    
+    }
     
     Eigen::Quaternion<float> quaternion = Eigen::Quaternion<float>(
        bounding_box.pose.orientation.w, bounding_box.pose.orientation.x,
@@ -332,7 +312,6 @@ void CollisionCheckGraspPlannar::getBoundingBoxGraspPoints(
        bounding_box.pose.position.z;
     transform.rotate(quaternion);
     pcl::transformPointCloud(*box_points, *box_points, transform);
-
     
     pose_array.poses.clear();
     tf::Transform trans;
@@ -356,13 +335,12 @@ void CollisionCheckGraspPlannar::getBoundingBoxGraspPoints(
 
        trans = transform_bf;
     }
-    
+    /*
     static tf::TransformBroadcaster br;
     br.sendTransform(tf::StampedTransform(trans, header_.stamp,
                                           header_.frame_id,
                                           "top_pose"));
-
-    
+    */
     box_points->push_back(vector3f2PointT(center));
 }
 
