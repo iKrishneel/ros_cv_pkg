@@ -9,7 +9,10 @@
 #include <message_filters/subscriber.h>
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
+
+#include <tf/transform_listener.h>
 #include <tf/transform_broadcaster.h>
+#include <tf_conversions/tf_eigen.h>
 
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/kdtree/kdtree_flann.h>
@@ -69,6 +72,10 @@ class CollisionCheckGraspPlannar {
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
     float search_radius_thresh_;
     std_msgs::Header header_;
+
+    float end_translation_;
+    float gripper_size_;
+    std::vector<std::vector<PointT> > trans_lookup_;
    
  protected:
     void onInit();
@@ -90,6 +97,7 @@ class CollisionCheckGraspPlannar {
                                    const jsk_msgs::BoundingBox);
     PointT vector3f2PointT(const Eigen::Vector3f,
                            Eigen::Vector3f = Eigen::Vector3f(255, 0, 0));
+    void translateGraspPoints(geometry_msgs::Pose &, const int);
     void pointCenter(PointT &, const PointT, const PointT);
     template<class T>
     void getPointNeigbour(std::vector<int> &, const PointT,
