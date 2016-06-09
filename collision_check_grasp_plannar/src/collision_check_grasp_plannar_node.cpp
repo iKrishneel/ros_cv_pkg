@@ -258,37 +258,42 @@ void CollisionCheckGraspPlannar::getBoundingBoxGraspPoints(
                                            bounding_box.dimensions.y / 2.0f,
                                            bounding_box.dimensions.z / 2.0f);
     
-    tf::Quaternion trans_orientation[NUMBER_OF_SIDE];
+    tf::Quaternion trans_orientation[NUMBER_OF_SIDE * 2];
     std::vector<Facets> side_points(NUMBER_OF_SIDE);
     Facets top;
     top.AA = Eigen::Vector3f(0.0f, -dims(1), -dims(2));
     top.AB = Eigen::Vector3f(0.0f, dims(1), -dims(2));
     side_points[0] = top;
     trans_orientation[0].setRPY(M_PI/2, 3* M_PI/2, M_PI/2);
+    trans_orientation[1].setRPY(M_PI/2, 3* M_PI/2, M_PI/2);
     
     Facets top_y;
     top_y.AA = Eigen::Vector3f(-dims(0), 0.0f, -dims(2));
     top_y.AB = Eigen::Vector3f(dims(0), 0.0f, -dims(2));
     side_points[1] = top_y;
-    trans_orientation[1].setRPY(0, 3* M_PI/2, M_PI/2);
+    trans_orientation[2].setRPY(0, 3* M_PI/2, M_PI/2);
+    trans_orientation[3].setRPY(0, 3* M_PI/2, M_PI/2);
     
     Facets front;
     front.AA = Eigen::Vector3f(-dims(0), dims(0), 0.0f);
     front.AB = Eigen::Vector3f(dims(0), dims(0), 0.0f);
     side_points[2] = front;
-    trans_orientation[2].setRPY(M_PI, 0, 3 * M_PI/2);
+    trans_orientation[4].setRPY(M_PI, 0, 3 * M_PI/2);
+    trans_orientation[5].setRPY(M_PI, 0, 3 * M_PI/2);
     
     Facets right;
     right.AA = Eigen::Vector3f(dims(0), -dims(1), 0.0f);
     right.AB = Eigen::Vector3f(dims(0), dims(1), 0.0f);
     side_points[3] = right;
-    trans_orientation[3].setRPY(M_PI, 0, M_PI);
+    trans_orientation[6].setRPY(M_PI, 0, M_PI);
+    trans_orientation[7].setRPY(M_PI, 0, M_PI);
     
     Facets left;
     left.AA = Eigen::Vector3f(-dims(0), dims(1), 0.0f);
     left.AB = Eigen::Vector3f(-dims(0), -dims(1), 0.0f);
     side_points[4] = left;
-    trans_orientation[4].setRPY(M_PI, 0, 0);
+    trans_orientation[8].setRPY(M_PI, 0, 0);
+    trans_orientation[9].setRPY(M_PI, 0, 0);
 
     Eigen::Vector3f color[NUMBER_OF_SIDE];
     color[0] = Eigen::Vector3f(255, 0, 0);
@@ -315,7 +320,7 @@ void CollisionCheckGraspPlannar::getBoundingBoxGraspPoints(
     
     pose_array.poses.clear();
     tf::Transform trans;
-    for (int i = 0; i < side_points.size(); i++) {
+    for (int i = 0; i < box_points->size(); i++) {
        tf::Transform transform_bf;
        geometry_msgs::Pose pose;
        pose.position.x = box_points->points[i].x;
@@ -331,16 +336,17 @@ void CollisionCheckGraspPlannar::getBoundingBoxGraspPoints(
        geometry_msgs::Pose update_pose;
        tf::poseTFToMsg(transform_bf, update_pose);
        pose_array.poses.push_back(update_pose);
-       pose_array.poses.push_back(update_pose);
-
-       trans = transform_bf;
+       
+       if (i == 8) {
+          trans = transform_bf;
+       }
     }
-    /*
+    
     static tf::TransformBroadcaster br;
     br.sendTransform(tf::StampedTransform(trans, header_.stamp,
                                           header_.frame_id,
                                           "top_pose"));
-    */
+    
     box_points->push_back(vector3f2PointT(center));
 }
 
