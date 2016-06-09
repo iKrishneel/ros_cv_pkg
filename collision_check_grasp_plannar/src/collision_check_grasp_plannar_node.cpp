@@ -14,7 +14,7 @@ void CollisionCheckGraspPlannar::onInit() {
     this->pub_bbox_ = this->pnh_.advertise<jsk_msgs::BoundingBoxArray>(
        "/collision_check_grasp_plannar/output/grasp_boxes", 1);
     this->pub_grasp_ = this->pnh_.advertise<geometry_msgs::PoseArray>(
-       "/collision_check_grasp_plannar/output/grasp_points", 1);
+       "/collision_check_grasp_plannar/output/grasp_pose", 1);
 }
 
 void CollisionCheckGraspPlannar::subscribe() {
@@ -228,6 +228,28 @@ void CollisionCheckGraspPlannar::cloudCB(
           bbox_array.boxes.push_back(boxes_msg->boxes[i]);
        }
     }
+
+
+    //! check tf for orientation
+    static tf::TransformBroadcaster br;
+    tf::Transform transform;
+    geometry_msgs::Pose pose = grasp_pose.poses[0];
+    transform.setOrigin(tf::Vector3(pose.position.x, pose.position.y,
+                                    pose.position.z));
+    tf::Quaternion quaternion = tf::Quaternion(
+       pose.orientation.x, pose.orientation.y,
+       pose.orientation.z, pose.orientation.w);
+
+    tf::Quaternion trans_quat;
+    trans_quat.setRPY(0, 3* M_PI/2, M_PI/2);
+    
+    transform.setRotation(quaternion * trans_quat);
+
+    
+    br.sendTransform(tf::StampedTransform(transform, boxes_msg->header.stamp,
+                                          boxes_msg->header.frame_id,
+                                          "top_pose"));
+    
 
     bbox_array.header = boxes_msg->header;
     this->pub_bbox_.publish(bbox_array);
