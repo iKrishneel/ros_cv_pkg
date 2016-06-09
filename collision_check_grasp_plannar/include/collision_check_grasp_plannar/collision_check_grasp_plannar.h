@@ -53,7 +53,7 @@ class CollisionCheckGraspPlannar {
       }
     } sortVector;
 
-#define NUMBER_OF_SIDE 4
+#define NUMBER_OF_SIDE 5
    
  private:
     boost::mutex mutex_;
@@ -86,6 +86,7 @@ class CollisionCheckGraspPlannar {
                  const jsk_msgs::ClusterPointIndices::ConstPtr &,
                  const jsk_msgs::BoundingBoxArray::ConstPtr &);
     void getBoundingBoxGraspPoints(PointCloud::Ptr,
+                                   geometry_msgs::PoseArray &,
                                    const jsk_msgs::BoundingBox);
     PointT vector3f2PointT(const Eigen::Vector3f,
                            Eigen::Vector3f = Eigen::Vector3f(255, 0, 0));

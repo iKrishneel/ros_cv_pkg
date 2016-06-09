@@ -356,12 +356,10 @@ void CollisionCheckGraspPlannar::getBoundingBoxGraspPoints(
 
        trans = transform_bf;
     }
-    
-    static tf::TransformBroadcaster br;
-    br.sendTransform(tf::StampedTransform(trans, header_.stamp,
-                                          header_.frame_id,
-                                          "top_pose"));
-
+    // static tf::TransformBroadcaster br;
+    // br.sendTransform(tf::StampedTransform(trans, header_.stamp,
+    //                                       header_.frame_id,
+    //                                       "top_pose"));
     
     box_points->push_back(vector3f2PointT(center));
 }
