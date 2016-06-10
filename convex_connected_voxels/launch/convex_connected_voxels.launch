@@ -31,7 +31,7 @@
     <remap from="~align_planes" to="/multi_plane_estimate/output_refined_polygon" />
     <remap from="~align_planes_coefficients" to="/multi_plane_estimate/output_refined_coefficients" />
     <param name="align_boxes" value="true" />
-    <param name="use_pca" value="false" />
+    <param name="use_pca" value="true" />
     <param name="publish_clouds" value="false" />
     <param name="publish_tf" value="true" />
   </node>

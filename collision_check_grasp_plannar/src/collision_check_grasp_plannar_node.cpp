@@ -15,6 +15,8 @@ void CollisionCheckGraspPlannar::onInit() {
        "/collision_check_grasp_plannar/output/grasp_boxes", 1);
     this->pub_grasp_ = this->pnh_.advertise<geometry_msgs::PoseArray>(
        "/collision_check_grasp_plannar/output/grasp_pose", 1);
+    this->pub_app_grasp_ = this->pnh_.advertise<geometry_msgs::PoseArray>(
+       "/collision_check_grasp_plannar/output/approach_grasp_pose", 1);
 }
 
 void CollisionCheckGraspPlannar::subscribe() {
@@ -176,6 +178,8 @@ void CollisionCheckGraspPlannar::cloudCB(
              if (flag_grasp_points[i][j] && flag_grasp_points[i][j+1]) {
                 // grasp_points->push_back(all_grasp_points[i]->points[j]);
                 // grasp_points->push_back(all_grasp_points[i]->points[j+1]);
+
+                //! check for occlusion here
                 
                 PointT pt;
                 float dist = pointCenter(pt, all_grasp_points[i]->points[j],
@@ -245,7 +249,6 @@ void CollisionCheckGraspPlannar::cloudCB(
        }
     }
 
-
     //! find trasform
     tf::TransformListener tf_listener;
     tf::StampedTransform transform;
@@ -290,20 +293,28 @@ void CollisionCheckGraspPlannar::cloudCB(
     pcl::transformPointCloud(*trans_grasp_points, *trans_grasp_points,
                              inv_transf);
 
+    geometry_msgs::PoseArray approach_pose = grasp_pose;
     for (int i = 0; i < trans_grasp_points->size(); i++) {
-       grasp_pose.poses[i].position.x = trans_grasp_points->points[i].x;
-       grasp_pose.poses[i].position.y = trans_grasp_points->points[i].y;
-       grasp_pose.poses[i].position.z = trans_grasp_points->points[i].z;
+       approach_pose.poses[i].position.x = trans_grasp_points->points[i].x;
+       approach_pose.poses[i].position.y = trans_grasp_points->points[i].y;
+       approach_pose.poses[i].position.z = trans_grasp_points->points[i].z;
+
+       // grasp_pose.poses[i].position.x = trans_grasp_points->points[i].x;
+       // grasp_pose.poses[i].position.y = trans_grasp_points->points[i].y;
+       // grasp_pose.poses[i].position.z = trans_grasp_points->points[i].z;
+
     }
     *grasp_points += *trans_grasp_points;
 
-    //! end transform
     
     bbox_array.header = boxes_msg->header;
     this->pub_bbox_.publish(bbox_array);
 
     grasp_pose.header = boxes_msg->header;
+    approach_pose.header = boxes_msg->header;
+
     this->pub_grasp_.publish(grasp_pose);
+    this->pub_app_grasp_.publish(approach_pose);
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*grasp_points, ros_cloud);
@@ -333,7 +344,6 @@ void CollisionCheckGraspPlannar::getBoundingBoxGraspPoints(
     trans_orientation[0].setRPY(M_PI/2, 3* M_PI/2, M_PI/2);
     trans_orientation[1].setRPY(M_PI/2, 3* M_PI/2, M_PI/2);
     
-    
     Facets top_y;
     top_y.AA = Eigen::Vector3f(-dims(0), 0.0f, -dims(2));
     top_y.AB = Eigen::Vector3f(dims(0), 0.0f, -dims(2));
@@ -342,8 +352,8 @@ void CollisionCheckGraspPlannar::getBoundingBoxGraspPoints(
     trans_orientation[3].setRPY(0, 3* M_PI/2, M_PI/2);
     
     Facets front;
-    front.AA = Eigen::Vector3f(-dims(0), dims(0), 0.0f);
-    front.AB = Eigen::Vector3f(dims(0), dims(0), 0.0f);
+    front.AA = Eigen::Vector3f(-dims(0), dims(1), 0.0f);
+    front.AB = Eigen::Vector3f(dims(0), dims(1), 0.0f);
     side_points[2] = front;
     trans_orientation[4].setRPY(M_PI, 0, 3 * M_PI/2);
     trans_orientation[5].setRPY(M_PI, 0, 3 * M_PI/2);

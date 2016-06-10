@@ -84,7 +84,7 @@ class CollisionCheckGraspPlannar {
 
     ros::Publisher pub_cloud_;
     ros::Publisher pub_grasp_;
-    ros::Publisher pub_indices_;
+    ros::Publisher pub_app_grasp_;
     ros::Publisher pub_bbox_;
    
  public:
