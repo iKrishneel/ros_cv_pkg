@@ -254,13 +254,17 @@ void CollisionCheckGraspPlannar::cloudCB(
           bbox_array.boxes.push_back(boxes_msg->boxes[i]);
        }
     }
-
+    /*
     //! find trasform
     tf::TransformListener tf_listener;
     tf::StampedTransform transform;
     ros::Time now = ros::Time(0);
-    std::string parent_frame = boxes_msg->header.frame_id;
-    std::string child_frame = "/base_footprint";
+    // std::string parent_frame = boxes_msg->header.frame_id;
+    // std::string child_frame = "/base_footprint";
+
+    std::string child_frame = boxes_msg->header.frame_id;
+    std::string parent_frame = "/base_footprint";
+    
     bool wft_ok = tf_listener.waitForTransform(
        child_frame, parent_frame, now, ros::Duration(2.0f));
     if (!wft_ok) {
@@ -270,6 +274,73 @@ void CollisionCheckGraspPlannar::cloudCB(
     tf_listener.lookupTransform(
        child_frame, parent_frame, now, transform);
     tf::Quaternion tf_quaternion =  transform.getRotation();
+    
+    // ----------
+    geometry_msgs::PoseArray approach_pose = grasp_pose;
+    PointCloud::Ptr temp_points(new PointCloud);
+    for (int i = 0; i < grasp_points->size(); i++) {
+       PointT pt = grasp_points->points[i];
+       
+       Eigen::Affine3f transform_model = Eigen::Affine3f::Identity();
+       transform_model.translation() << pt.x, pt.y, pt.z;
+
+       geometry_msgs::Pose pt_pose = grasp_pose.poses[i];
+       tf::Quaternion pose_quaternion = tf::Quaternion(
+          pt_pose.orientation.w, pt_pose.orientation.x,
+          pt_pose.orientation.y, pt_pose.orientation.z);
+       tf::Quaternion tf_quat = pose_quaternion * tf_quaternion.inverse();
+       Eigen::Quaternion<float> quaternion = Eigen::Quaternion<float>(
+          tf_quat.w(), tf_quat.x(), tf_quat.y(), tf_quat.z());
+       transform_model.rotate(quaternion);
+
+       PointCloud::Ptr trans_grasp_points(new PointCloud);
+       PointCloud::Ptr temp_grasp_pts(new PointCloud);
+       PointCloud::Ptr t_pt(new PointCloud);
+       t_pt->push_back(pt);
+       pcl::transformPointCloud(*t_pt, *trans_grasp_points,
+                                transform_model);
+       pt = trans_grasp_points->points[0];
+
+       geometry_msgs::Pose pose;
+       pose.position.x = pt.x;
+       pose.position.y = pt.y;
+       pose.position.z = pt.z;
+       geometry_msgs::Pose depth_pose = pose;
+       this->translateGraspPoints(pose, depth_pose, direction_index[i]);
+       pt.x = pose.position.x;
+       pt.y = pose.position.y;
+       pt.z = pose.position.z;
+       pt.r = 255; pt.g = 0; pt.b = 0;
+       trans_grasp_points->points[0] = pt;
+
+       PointT pt1;
+       pt1.x = depth_pose.position.x;
+       pt1.y = depth_pose.position.y;
+       pt1.z = depth_pose.position.z;
+       pt1.r = 0; pt1.g = 0; pt1.b = 255;
+       temp_grasp_pts->push_back(pt1);
+
+       Eigen::Affine3f inv_transf = transform_model.inverse();
+       pcl::transformPointCloud(*trans_grasp_points, *trans_grasp_points,
+                                inv_transf);
+       pcl::transformPointCloud(*temp_grasp_pts, *temp_grasp_pts,
+                                inv_transf);
+
+       approach_pose.poses[i].position.x = trans_grasp_points->points[0].x;
+       approach_pose.poses[i].position.y = trans_grasp_points->points[0].y;
+       approach_pose.poses[i].position.z = trans_grasp_points->points[0].z;
+       grasp_pose.poses[i].position.x = temp_grasp_pts->points[0].x;
+       grasp_pose.poses[i].position.y = temp_grasp_pts->points[0].y;
+       grasp_pose.poses[i].position.z = temp_grasp_pts->points[0].z;
+
+       temp_points->push_back(trans_grasp_points->points[0]);
+       temp_points->push_back(temp_grasp_pts->points[0]);
+    }
+    *grasp_points += *temp_points;
+    
+    // ----------
+
+    /*
     Eigen::Affine3f transform_model = Eigen::Affine3f::Identity();
     transform_model.translation() <<
        transform.getOrigin().getX(), transform.getOrigin().getY(),
@@ -278,6 +349,7 @@ void CollisionCheckGraspPlannar::cloudCB(
        tf_quaternion.w(), tf_quaternion.x(),
        tf_quaternion.y(), tf_quaternion.z());
     transform_model.rotate(quaternion);
+    
     PointCloud::Ptr trans_grasp_points(new PointCloud);
     pcl::transformPointCloud(*grasp_points, *trans_grasp_points,
                              transform_model);
@@ -324,15 +396,19 @@ void CollisionCheckGraspPlannar::cloudCB(
     }
     *grasp_points += *trans_grasp_points;
     *grasp_points += *temp_grasp_pts;
+    */
     
     bbox_array.header = boxes_msg->header;
     this->pub_bbox_.publish(bbox_array);
 
     grasp_pose.header = boxes_msg->header;
-    approach_pose.header = boxes_msg->header;
+    // approach_pose.header = boxes_msg->header;
 
     this->pub_grasp_.publish(grasp_pose);
-    this->pub_app_grasp_.publish(approach_pose);
+    // this->pub_app_grasp_.publish(approach_pose);
+    this->pub_app_grasp_.publish(grasp_pose);
+    
+    
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*grasp_points, ros_cloud);
@@ -452,8 +528,8 @@ void CollisionCheckGraspPlannar::translateGraspPoints(
        return;
     }
     if (index == 0 || index == 1) {
-       pose.position.z += (1.0f * this->end_translation_);
-       depth.position.z += (1.0f * -this->grasp_depth_);
+       pose.position.x += (1.0f * this->end_translation_);
+       depth.position.x += (1.0f * -this->grasp_depth_);
     } else if (index == 2 || index == 3) {
        pose.position.z += (1.0f * this->end_translation_);
        depth.position.z += (1.0f * -this->grasp_depth_);
