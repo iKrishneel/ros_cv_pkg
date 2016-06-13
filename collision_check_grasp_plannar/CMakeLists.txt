@@ -88,10 +88,9 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}
 ##     and list every .cfg file to be processed
 
 ## Generate dynamic reconfigure parameters in the 'cfg' folder
-# generate_dynamic_reconfigure_options(
-#   cfg/DynReconf1.cfg
-#   cfg/DynReconf2.cfg
-# )
+generate_dynamic_reconfigure_options(
+  cfg/CollisionCheckGraspPlannar.cfg
+)
 
 ###################################
 ## catkin specific configuration ##
@@ -135,7 +134,7 @@ add_executable(collision_check_grasp_plannar_node src/collision_check_grasp_plan
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-# add_dependencies(collision_check_grasp_plannar_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(collision_check_grasp_plannar_node ${PROJECT_NAME}_gencfg ${PROJECT_NAME}_gencpp)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(collision_check_grasp_plannar_node

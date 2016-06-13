@@ -2,7 +2,8 @@
 #include <collision_check_grasp_plannar/collision_check_grasp_plannar.h>
 
 CollisionCheckGraspPlannar::CollisionCheckGraspPlannar() :
-    search_radius_thresh_(0.04), gripper_size_(0.15), end_translation_(0.02) {
+    search_radius_thresh_(0.04), gripper_size_(0.15),
+    end_translation_(0.02), grasp_depth_(-0.03) {
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
     this->onInit();
 }
@@ -29,6 +30,11 @@ void CollisionCheckGraspPlannar::subscribe() {
                               this->sub_indices_, this->sub_boxes_);
     this->sync_->registerCallback(
        boost::bind(&CollisionCheckGraspPlannar::cloudCB, this, _1, _2, _3));
+
+    dynamic_reconfigure::Server<
+       ccgp::CollisionCheckGraspPlannarConfig>::CallbackType f =
+       boost::bind(&CollisionCheckGraspPlannar::configCB, this, _1, _2);
+    server_.setCallback(f);
 }
 
 void CollisionCheckGraspPlannar::unsubscribe() {
@@ -276,21 +282,34 @@ void CollisionCheckGraspPlannar::cloudCB(
     pcl::transformPointCloud(*grasp_points, *trans_grasp_points,
                              transform_model);
 
+    PointCloud::Ptr temp_grasp_pts(new PointCloud);
     for (int i = 0; i < trans_grasp_points->size(); i++) {
        PointT pt = trans_grasp_points->points[i];
        geometry_msgs::Pose pose;
        pose.position.x = pt.x;
        pose.position.y = pt.y;
        pose.position.z = pt.z;
-       this->translateGraspPoints(pose, direction_index[i]);
+       geometry_msgs::Pose depth_pose = pose;
+       this->translateGraspPoints(pose, depth_pose, direction_index[i]);
        pt.x = pose.position.x;
        pt.y = pose.position.y;
        pt.z = pose.position.z;
        pt.r = 255; pt.g = 0; pt.b = 0;
        trans_grasp_points->points[i] = pt;
+       // temp_grasp_pts->push_back(pt);
+
+       PointT pt1;
+       pt1.x = depth_pose.position.x;
+       pt1.y = depth_pose.position.y;
+       pt1.z = depth_pose.position.z;
+       pt1.r = 0; pt1.g = 0; pt1.b = 255;
+       temp_grasp_pts->push_back(pt1);
     }
+    
     Eigen::Affine3f inv_transf = transform_model.inverse();
     pcl::transformPointCloud(*trans_grasp_points, *trans_grasp_points,
+                             inv_transf);
+    pcl::transformPointCloud(*temp_grasp_pts, *temp_grasp_pts,
                              inv_transf);
 
     geometry_msgs::PoseArray approach_pose = grasp_pose;
@@ -299,13 +318,12 @@ void CollisionCheckGraspPlannar::cloudCB(
        approach_pose.poses[i].position.y = trans_grasp_points->points[i].y;
        approach_pose.poses[i].position.z = trans_grasp_points->points[i].z;
 
-       // grasp_pose.poses[i].position.x = trans_grasp_points->points[i].x;
-       // grasp_pose.poses[i].position.y = trans_grasp_points->points[i].y;
-       // grasp_pose.poses[i].position.z = trans_grasp_points->points[i].z;
-
+       grasp_pose.poses[i].position.x = temp_grasp_pts->points[i].x;
+       grasp_pose.poses[i].position.y = temp_grasp_pts->points[i].y;
+       grasp_pose.poses[i].position.z = temp_grasp_pts->points[i].z;
     }
     *grasp_points += *trans_grasp_points;
-
+    *grasp_points += *temp_grasp_pts;
     
     bbox_array.header = boxes_msg->header;
     this->pub_bbox_.publish(bbox_array);
@@ -428,21 +446,26 @@ void CollisionCheckGraspPlannar::getBoundingBoxGraspPoints(
 }
 
 void CollisionCheckGraspPlannar::translateGraspPoints(
-    geometry_msgs::Pose &pose, const int index) {
+    geometry_msgs::Pose &pose, geometry_msgs::Pose &depth, const int index) {
     if (index < 0) {
        ROS_ERROR("INDEX IS NEGATIVE");
        return;
     }
     if (index == 0 || index == 1) {
        pose.position.z += (1.0f * this->end_translation_);
+       depth.position.z += (1.0f * -this->grasp_depth_);
     } else if (index == 2 || index == 3) {
        pose.position.z += (1.0f * this->end_translation_);
+       depth.position.z += (1.0f * -this->grasp_depth_);
     } else if (index == 4 || index == 5) {
        pose.position.x += (-1.0f * this->end_translation_);
+       depth.position.x += (-1.0f * -this->grasp_depth_);
     } else if (index == 6 || index == 7) {
        pose.position.y += (-1.0f * this->end_translation_);
+       depth.position.y += (-1.0f * -this->grasp_depth_);
     } else if (index == 8 || index == 9) {
        pose.position.y += (1.0f * this->end_translation_);
+       depth.position.y += (1.0f * -this->grasp_depth_);
     }
 }
 
@@ -486,6 +509,14 @@ float CollisionCheckGraspPlannar::pointCenter(
     point1(3) = 1.0f;
     point2(3) = 1.0f;
     return static_cast<float>(pcl::distances::l2(point1, point2));
+}
+
+void CollisionCheckGraspPlannar::configCB(
+    ccgp::CollisionCheckGraspPlannarConfig &config, uint32_t level) {
+    boost::mutex::scoped_lock lock(this->lock_);
+    this->end_translation_ = static_cast<float>(config.approach_translation);
+    this->gripper_size_ = static_cast<float>(config.gripper_size);
+    this->grasp_depth_ = static_cast<float>(config.grasp_depth);
 }
 
 int main(int argc, char *argv[]) {

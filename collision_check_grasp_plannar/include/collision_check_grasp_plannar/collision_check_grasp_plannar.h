@@ -13,6 +13,7 @@
 #include <tf/transform_listener.h>
 #include <tf/transform_broadcaster.h>
 #include <tf_conversions/tf_eigen.h>
+#include <dynamic_reconfigure/server.h>
 
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/kdtree/kdtree_flann.h>
@@ -29,7 +30,10 @@
 #include <jsk_recognition_msgs/ClusterPointIndices.h>
 #include <jsk_recognition_utils/pcl_conversion_util.h>
 
+#include <collision_check_grasp_plannar/CollisionCheckGraspPlannarConfig.h>
+
 namespace jsk_msgs = jsk_recognition_msgs;
+namespace ccgp = collision_check_grasp_plannar;
 
 class CollisionCheckGraspPlannar {
 
@@ -60,6 +64,8 @@ class CollisionCheckGraspPlannar {
    
  private:
     boost::mutex mutex_;
+    boost::mutex lock_;
+   
     ros::NodeHandle pnh_;
     typedef  message_filters::sync_policies::ApproximateTime<
        sensor_msgs::PointCloud2, jsk_msgs::ClusterPointIndices,
@@ -69,12 +75,17 @@ class CollisionCheckGraspPlannar {
     message_filters::Subscriber<jsk_msgs::ClusterPointIndices> sub_indices_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
+    dynamic_reconfigure::Server<
+       ccgp::CollisionCheckGraspPlannarConfig>  server_;
+   
+   
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
     float search_radius_thresh_;
     std_msgs::Header header_;
 
     float end_translation_;
     float gripper_size_;
+    float grasp_depth_;
     std::vector<std::vector<PointT> > trans_lookup_;
    
  protected:
@@ -97,11 +108,14 @@ class CollisionCheckGraspPlannar {
                                    const jsk_msgs::BoundingBox);
     PointT vector3f2PointT(const Eigen::Vector3f,
                            Eigen::Vector3f = Eigen::Vector3f(255, 0, 0));
-    void translateGraspPoints(geometry_msgs::Pose &, const int);
+    void translateGraspPoints(geometry_msgs::Pose &,
+                              geometry_msgs::Pose &, const int);
     float pointCenter(PointT &, const PointT, const PointT);
     template<class T>
     void getPointNeigbour(std::vector<int> &, const PointT,
                           const T = 8, bool = true);
+    void configCB(ccgp::CollisionCheckGraspPlannarConfig &,
+                  uint32_t);
    
 };
 
