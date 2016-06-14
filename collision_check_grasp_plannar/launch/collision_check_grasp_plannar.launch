@@ -1,13 +1,17 @@
 <launch>
   <arg name="INPUT" default="/camera/depth_registered/points" />
   <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />
-
   
+
   <node pkg="collision_check_grasp_plannar" type="collision_check_grasp_plannar_node"
 	name="collision_check_grasp_plannar" output="screen" clear_params="false">
-    <remap from="input_cloud" to="/convex_connected_voxels/output/cloud" />
-    <remap from="input_boxes" to="/supervoxel_segmentation_decomposer/boxes" />
-    <remap from="input_indices" to="/convex_connected_voxels/output/indices" />
+    <remap from="input_cloud" to="/cbss/output/cloud" />
+    <remap from="input_boxes" to="/cbs_segmentation_decomposer/boxes" />
+    <remap from="input_indices" to="/cbss/output/indices" />
+
+    <!-- <remap from="input_cloud" to="/convex_connected_voxels/output/cloud" /> -->
+    <!-- <remap from="input_boxes" to="/supervoxel_segmentation_decomposer/boxes" /> -->
+    <!-- <remap from="input_indices" to="/convex_connected_voxels/output/indices" /> -->
 
   </node>
 
