@@ -4,6 +4,7 @@
   <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />
 
   <arg name="seg_plane" default="false" />
+  <arg name="save_selected_cloud" default="false" />
 
   <!-- <include file="$(find pcl_filter_utils)/launch/pcl_filter_utils.launch"> -->
   <!--   <arg name="cloud" value="$(arg POINTS)"/> -->
@@ -35,4 +36,26 @@
     <param name="publish_clouds" value="false" />
     <param name="publish_tf" value="true" />
   </node>
+
+  <node pkg="jsk_interactive_marker" type="bounding_box_marker" 
+	name="interactive_box_marker" output="screen">
+    <remap from="~bounding_box_array" to="/cbs_segmentation_decomposer/boxes" />
+  </node>
+
+  <group if="$(arg save_selected_cloud)" >
+    <node pkg="jsk_pcl_ros" type="selected_cluster_publisher"
+          name="selected_cluster_publisher" output="screen">
+      <remap from="~input" to="/cbss/output/cloud" />
+      <remap from="~indices" to="/cbss/output/indices" />
+      <remap from="~selected_index" to="/interactive_box_marker/selected_index" />
+      <remap from="~output" to="/selected_pointcloud/output" />
+    </node>
+
+    <node pkg="jsk_pcl_ros" type="transform_pointcloud_in_bounding_box" 
+	  name="save_cloud_in_bounding_box" output="screen">
+      <remap from="~input" to="/cbss/output/cloud" />
+      <remap from="~input_box" to="/interactive_box_marker/selected_box" />
+    </node>
+  </group>
+
 </launch>
