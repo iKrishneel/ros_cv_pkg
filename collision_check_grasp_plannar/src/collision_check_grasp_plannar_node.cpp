@@ -157,7 +157,7 @@ void CollisionCheckGraspPlannar::cloudCB(
                   i].indices.size(); j++) {
              int indx = indices_msg->cluster_indices[i].indices[j];
              std::vector<int> neigbor_indices;
-             this->getPointNeigbour<int>(neigbor_indices, cloud->points[indx]);
+             this->getPointNeigbour<int>(neigbor_indices, cloud->points[indx], 20);
              for (int k = 1; k < neigbor_indices.size(); k++) {
                 int index = neigbor_indices[k];
                 if (indices_map[index].label != indices_map[indx].label &&
@@ -211,14 +211,28 @@ void CollisionCheckGraspPlannar::cloudCB(
           bool is_grasp_pts = true;
           int g_size = all_grasp_points[i]->size() - 1;
           float center_y = all_grasp_points[i]->points[g_size].y;
+          float center_z = all_grasp_points[i]->points[g_size].z;
           for (int j = 0; j < adjacency_list.size(); j++) {
              int idx = adjacency_list[j];
              g_size = all_grasp_points[idx]->size() - 1;
              float ncenter_y = all_grasp_points[idx]->points[g_size].y;
-             if (ncenter_y < center_y && ncenter_y < center_y+(
-                    boxes_msg->boxes[i].dimensions.y / 2.0f) + 0.005f) {
-                is_grasp_pts = false;
-                good_bbox = false;
+             float ncenter_z = all_grasp_points[idx]->points[g_size].z;
+
+
+             std::cout << ncenter_y << "\t" << center_y << "\t"
+                       << center_y - boxes_msg->boxes[i].dimensions.z / 2.0f<< "\n";
+             
+             if (ncenter_y < center_y && ncenter_y < center_y-(
+                    boxes_msg->boxes[i].dimensions.z / 2.0f) + 0.00f) {
+                if ((center_z + boxes_msg->boxes[i].dimensions.y / 2.0f)
+                    > (ncenter_z - boxes_msg->boxes[idx].dimensions.y / 2.0f)) {
+
+                   std::cout <<"BOX IS INTERSECTING.."  << "\n";
+                   is_grasp_pts = false;
+                   good_bbox = false;
+                } else {
+                   std::cout <<"BOX IS NOT INTERSECTING.."  << "\n";
+                }
              }
           }
           if (is_grasp_pts) {
