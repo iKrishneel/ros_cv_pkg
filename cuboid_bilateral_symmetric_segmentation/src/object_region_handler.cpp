@@ -473,7 +473,8 @@ void ObjectRegionHandler::regionOverSegmentation(
     }
     Eigen::Vector4f center;
     pcl::compute3DCentroid<PointT, float>(*region, center);
-    double distance = 0.0;  // compute this as max distace from center
+    double distance = 0.10;  // compute max distace from center
+    center(3) = 1.0f;
     for (int i = 0; i < region->size(); i++) {
        double d = pcl::distances::l2(region->points[i].getVector4fMap(),
                                      center);
@@ -515,8 +516,7 @@ void ObjectRegionHandler::regionOverSegmentation(
        }
     }
 
-    ROS_ERROR("\n INDICES SIZE: %d\n", prob_indices->indices.size());
-    
+    ROS_ERROR("\n INDICES SIZE: %d", prob_indices->indices.size());
     
     bool is_cluster = !true;
     if (is_cluster) {

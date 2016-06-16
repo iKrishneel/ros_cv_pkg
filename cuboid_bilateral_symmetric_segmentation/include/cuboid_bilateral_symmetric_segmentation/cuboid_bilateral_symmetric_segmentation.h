@@ -59,6 +59,8 @@ class CuboidBilateralSymmetricSegmentation:
     float leaf_size_;
     float symmetric_angle_thresh_;
     double neigbor_dist_thresh_;  //! distance for point to be symm
+
+    std::vector<Eigen::Vector4f> symmetric_planes_;
    
     boost::shared_ptr<OcclusionHandler> occlusion_handler_;
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;

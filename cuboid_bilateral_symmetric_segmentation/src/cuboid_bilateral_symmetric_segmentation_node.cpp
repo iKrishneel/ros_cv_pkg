@@ -79,7 +79,8 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
     bool run_type_auto = true;
     if (run_type_auto) {
        ROS_INFO("\nRUNNING CBSS SEGMENTATION");
-    
+
+       this->symmetric_planes_.clear();
        bool label_all = true;
        ObjectRegionHandler *orh = new ObjectRegionHandler(
           this->min_cluster_size_, num_threads_);
@@ -156,11 +157,10 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
              supervoxel_clusters, labels, cloud, planes_msg, coefficients_msg);
           orh->updateObjectRegion(region, labels);
           
-          
-          sensor_msgs::PointCloud2 ros_cloud1;
-          pcl::toROSMsg(*region, ros_cloud1);
-          ros_cloud1.header = planes_msg->header;
-          this->pub_edge_.publish(ros_cloud1);
+          // sensor_msgs::PointCloud2 ros_cloud1;
+          // pcl::toROSMsg(*region, ros_cloud1);
+          // ros_cloud1.header = planes_msg->header;
+          // this->pub_edge_.publish(ros_cloud1);
 
           // rviz
           pcl::PointCloud<PointNormalT>::Ptr symm_normal(
@@ -186,6 +186,17 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        std::cout << "FINISHED NOW PUBLISHING..." << all_indices.size()
                  << "\t" << orh->sv_cloud_->size()  << "\n";
 
+       //! plot all planes
+       pcl::PointCloud<PointT>::Ptr plane_cloud(new pcl::PointCloud<PointT>);
+       pcl::copyPointCloud<PointT, PointT>(*(orh->sv_cloud_), *plane_cloud);
+       std::cout << "NUMBER OF PLANES: " << symmetric_planes_.size() << "\n";
+       for (int i = 0; i < this->symmetric_planes_.size(); i++) {
+          this->plotPlane(plane_cloud, symmetric_planes_[i]);
+       }
+       sensor_msgs::PointCloud2 ros_cloud1;
+       pcl::toROSMsg(*plane_cloud, ros_cloud1);
+       ros_cloud1.header = planes_msg->header;
+       this->pub_edge_.publish(ros_cloud1);
     
        jsk_msgs::ClusterPointIndices ros_indices;
        ros_indices.cluster_indices = this->convertToROSPointIndices(
@@ -629,8 +640,6 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
        *in_normals += *(it->second->normals_);
     }
     this->kdtree_->setInputCloud(in_cloud);
-
-    
     
     ROS_INFO("\033[32m DEBUG: NORMAL ESTIMATED. COMPUTING ENERGY..\033[0m");
     
@@ -677,34 +686,6 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     // *******OPTIMIZE THE CURRENT BEST PLANE**********
     // this->optimizeSymmetricalPlane(plane_coefficient, in_cloud);
     // *****************END***************************
-
-    /*
-    Eigen::Vector4f c_centroid = this->seed_info_.getVector4fMap();
-    Eigen::Vector4f c_normal = this->seed_info_.getNormalVector4fMap();
-    for (int i = 0; i < in_cloud->size(); i++) {
-       Eigen::Vector4f n_centroid = in_cloud->points[i].getVector4fMap();
-       Eigen::Vector4f n_normal = sv_normals->points[i].getNormalVector4fMap();
-       int val = this->seedVoxelConvexityCriteria(c_centroid, c_normal,
-                                                  n_centroid, n_normal, -0.01f);
-       float weight = 0.0f;
-       float ang = std::acos(c_normal.dot(n_normal) /
-                             ((c_normal.norm() * n_normal.norm())));
-       ang *= (180.0/M_PI);
-       if (val == 1) {
-          weight = std::exp(-1.0f * (ang / 360.0f));
-       } else {
-          weight = std::exp(-2.0f * (ang / 30.0f));
-       }
-       float s_weight = symm_potential->points[i].r / 255.0f;
-       weight += s_weight;
-       weight /= 2.0f;
-       weight *= 255.0f;
-       
-       symm_potential->points[i].r = weight * 1.0f;
-       symm_potential->points[i].b = weight * 1.0f;
-       symm_potential->points[i].g = weight * 1.0f;
-    }
-    */
     
     sensor_msgs::PointCloud2 ros_cloud1;
     pcl::toROSMsg(*symm_potential, ros_cloud1);
@@ -719,8 +700,8 @@ void CuboidBilateralSymmetricSegmentation::symmetryBasedObjectHypothesis(
     
     ROS_INFO("\033[32m DEBUG: PUBLISHING RESULT......\033[0m");
     
-    
     this->plotPlane(in_cloud, plane_coefficient);
+    this->symmetric_planes_.push_back(plane_coefficient);
     
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*in_cloud, ros_cloud);
@@ -768,7 +749,6 @@ bool CuboidBilateralSymmetricSegmentation::optimizeSymmetricalPlane(
        icp->setTransformationEpsilon(0.000001);
        pcl::search::KdTree<PointT>::Ptr kdtree(new pcl::search::KdTree<PointT>);
        icp->setSearchMethodTarget(kdtree);
-       
        
        icp->setInputSource(out_cloud);
        icp->setInputTarget(in_cloud);
@@ -1034,7 +1014,6 @@ void CuboidBilateralSymmetricSegmentation::symmetricalShapeMap(
     */
 }
 
-
 bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
     pcl::PointCloud<PointT>::Ptr cloud, pcl::PointCloud<NormalT>::Ptr normals,
     pcl::PointIndices::Ptr labels, const Eigen::Vector4f plane_coefficient) {
@@ -1100,7 +1079,6 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
        ref_match(3) = 0.0f;
        double distance = pcl::distances::l2(ref_pt, ref_match);
 
-
        //! convexity map
        Eigen::Vector4f n_centroid = cloud->points[i].getVector4fMap();
        Eigen::Vector4f n_normal = normals->points[i].getNormalVector4fMap();
@@ -1159,14 +1137,12 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              weight = (weight * c_weight);
              // weight = (weight + c_weight) / 2.0f;
              t_weight = 1.0f - weight;
-
              // std::cout << "\033[34m U-WEIGHT:\033[0m " << weight  << "\n";
           } else {
              weight *= 0.10f;
              weight = (weight * c_weight);
              // weight = (weight + c_weight) / 2.0f;
              t_weight = 1.0f - weight;
-
              // std::cout << "\033[33mV-WEIGHT:\033[0m " << weight  << "\n";
           }
           
@@ -1212,16 +1188,12 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
                    (neigbor_norm.dot(center_norm)) /
                    (neigbor_norm.norm() * center_norm.norm())) / (2 * M_PI);
                 wc = std::exp(-1.0f * wc);
-
-                // wc = 0.90f;
              } else {
 
                 wc = std::acos(
                    (neigbor_norm.dot(center_norm)) /
                    (neigbor_norm.norm() * center_norm.norm())) / (M_PI/3);
                 wc = 1.0f - std::exp(-2.0f * wc);
-                
-                // wc = 0.001f;
              }
              wc = isnan(wc) ? 0.0f : wc;
              // wc *= alpha_thresh;
