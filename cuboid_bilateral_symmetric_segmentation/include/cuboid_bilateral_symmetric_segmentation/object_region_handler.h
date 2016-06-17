@@ -63,7 +63,8 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
                                 const pcl::PointCloud<PointT>::Ptr,
                                 const pcl::PointCloud<NormalT>::Ptr);
     void getRegionSupervoxels(SupervoxelMap &, pcl::PointCloud<PointT>::Ptr);
-    void supervoxelCoplanarityMerge(SupervoxelMap &, AdjacencyList &);
+    void supervoxelCoplanarityMerge(SupervoxelMap &, AdjacencyList &,
+                                    const float = 0.0f, const float = 0.0f);
     void updateSupervoxelClusters(SupervoxelMap &, const uint32_t,
                                   const uint32_t);
     float coplanarityCriteria(const Eigen::Vector4f, const Eigen::Vector4f,

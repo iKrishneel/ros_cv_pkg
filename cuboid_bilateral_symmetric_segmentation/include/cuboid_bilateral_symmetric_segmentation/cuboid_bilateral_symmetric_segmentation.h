@@ -13,6 +13,7 @@
 #include <pcl/common/centroid.h>
 #include <pcl/registration/icp.h>
 #include <pcl/filters/voxel_grid_occlusion_estimation.h>
+#include <pcl/features/principal_curvatures.h>
 
 #include <geometry_msgs/PointStamped.h>
 #include <std_msgs/Header.h>
@@ -133,6 +134,10 @@ class CuboidBilateralSymmetricSegmentation:
                        pcl::PointCloud<NormalT>::Ptr,
                        pcl::PointIndices::Ptr,
                        const Eigen::Vector4f);
+    void filterAndMergeClusters(pcl::PointCloud<PointT>::Ptr,
+                                std::vector<pcl::PointIndices> &,
+                                const jsk_msgs::PolygonArrayConstPtr &,
+                                const ModelCoefficients &);
    
     bool occlusionRegionCheck(const PointT);
     template<class T>

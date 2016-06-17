@@ -2,7 +2,7 @@
 #include <cuboid_bilateral_symmetric_segmentation/cuboid_bilateral_symmetric_segmentation.h>
 
 CuboidBilateralSymmetricSegmentation::CuboidBilateralSymmetricSegmentation() :
-    min_cluster_size_(30), leaf_size_(0.001f), symmetric_angle_thresh_(45),
+    min_cluster_size_(10), leaf_size_(0.001f), symmetric_angle_thresh_(45),
     neigbor_dist_thresh_(0.01), num_threads_(8) {
     this->occlusion_handler_ = boost::shared_ptr<OcclusionHandler>(
        new OcclusionHandler);
@@ -138,7 +138,9 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           this->pub_cloud_.publish(ros_voxels);
           this->pub_indices_.publish(ros_indices);
           // label_all = false;
-          
+
+          std::cout << "Press key to continue ..."  << "\n";
+          getchar();
           /**
            * END DEBUG
            */
@@ -161,7 +163,8 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           // pcl::toROSMsg(*region, ros_cloud1);
           // ros_cloud1.header = planes_msg->header;
           // this->pub_edge_.publish(ros_cloud1);
-
+          
+          
           // rviz
           pcl::PointCloud<PointNormalT>::Ptr symm_normal(
              new pcl::PointCloud<PointNormalT>);
@@ -187,17 +190,22 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
                  << "\t" << orh->sv_cloud_->size()  << "\n";
 
        //! plot all planes
-       pcl::PointCloud<PointT>::Ptr plane_cloud(new pcl::PointCloud<PointT>);
-       pcl::copyPointCloud<PointT, PointT>(*(orh->sv_cloud_), *plane_cloud);
-       std::cout << "NUMBER OF PLANES: " << symmetric_planes_.size() << "\n";
-       for (int i = 0; i < this->symmetric_planes_.size(); i++) {
-          this->plotPlane(plane_cloud, symmetric_planes_[i]);
-       }
-       sensor_msgs::PointCloud2 ros_cloud1;
-       pcl::toROSMsg(*plane_cloud, ros_cloud1);
-       ros_cloud1.header = planes_msg->header;
-       this->pub_edge_.publish(ros_cloud1);
-    
+       // pcl::PointCloud<PointT>::Ptr plane_cloud(new pcl::PointCloud<PointT>);
+       // pcl::copyPointCloud<PointT, PointT>(*(orh->sv_cloud_), *plane_cloud);
+       // std::cout << "NUMBER OF PLANES: " << symmetric_planes_.size() << "\n";
+       // for (int i = 0; i < this->symmetric_planes_.size(); i++) {
+       //    this->plotPlane(plane_cloud, symmetric_planes_[i]);
+       // }
+       // sensor_msgs::PointCloud2 ros_cloud1;
+       // pcl::toROSMsg(*plane_cloud, ros_cloud1);
+       // ros_cloud1.header = planes_msg->header;
+       // this->pub_edge_.publish(ros_cloud1);
+
+       this->filterAndMergeClusters(orh->sv_cloud_, all_indices,
+                                    planes_msg, coefficients_msg);
+       
+       //! -----------
+       
        jsk_msgs::ClusterPointIndices ros_indices;
        ros_indices.cluster_indices = this->convertToROSPointIndices(
           all_indices, planes_msg->header);
@@ -215,6 +223,44 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        pcl::PointIndices::Ptr labels(new pcl::PointIndices);
        this->segmentation(labels, cloud, planes_msg, coefficients_msg);
     }
+}
+
+void CuboidBilateralSymmetricSegmentation::filterAndMergeClusters(
+    pcl::PointCloud<PointT>::Ptr cloud,
+    std::vector<pcl::PointIndices> &all_indices,
+    const jsk_msgs::PolygonArrayConstPtr &planes_msg,
+    const ModelCoefficients &coefficients_msg) {
+    if (cloud->empty() || all_indices.empty()) {
+       ROS_ERROR("EMPTY INPUT. SKIPPING FILTERING AND MERGING");
+       return;
+    }
+    pcl::PointCloud<PointT>::Ptr plane_cloud(new pcl::PointCloud<PointT>);
+    pcl::copyPointCloud<PointT, PointT>(*cloud, *plane_cloud);
+    
+    for (int i = 0; i < all_indices.size(); i++) {
+       pcl::PointCloud<PointT>::Ptr segment_cloud(new pcl::PointCloud<PointT>);
+       segment_cloud->resize(static_cast<int>(cloud->size()));
+       for (int j = 0; j < all_indices[i].indices.size(); j++) {
+          segment_cloud->points[j] = cloud->points[all_indices[i].indices[j]];
+       }
+
+       jsk_msgs::BoundingBox bounding_box;
+       this->fitOriented3DBoundingBox(bounding_box, segment_cloud,
+                                      planes_msg, coefficients_msg);
+       pcl::PointCloud<PointT>::Ptr plane_points(new pcl::PointCloud<PointT>);
+       std::vector<Eigen::Vector4f> plane_coefficients;
+       this->transformBoxCornerPoints(plane_coefficients,
+                                      plane_points, bounding_box);
+       
+       // pcl::PointCloud<NormalT>::Ptr seg_normals(new
+       // pcl::PointCloud<NormalT>);
+       // this->estimateNormals<int>(segment_cloud, seg_normals);
+       this->plotPlane(plane_cloud, symmetric_planes_[i]);
+    }
+    sensor_msgs::PointCloud2 ros_cloud1;
+    pcl::toROSMsg(*plane_cloud, ros_cloud1);
+    ros_cloud1.header = planes_msg->header;
+    this->pub_edge_.publish(ros_cloud1);
 }
 
 void CuboidBilateralSymmetricSegmentation::segmentation(
@@ -1133,7 +1179,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
           weight = std::exp(-1.0f * (angle / 360.0f));
           weight = isnan(weight) ? 0.0f : weight;
           
-          if (angle < 40.0f) {
+          if (angle < 30.0f) {
              weight = (weight * c_weight);
              // weight = (weight + c_weight) / 2.0f;
              t_weight = 1.0f - weight;
@@ -1145,17 +1191,14 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
              t_weight = 1.0f - weight;
              // std::cout << "\033[33mV-WEIGHT:\033[0m " << weight  << "\n";
           }
-          
-          //! add capacities
           graph->add_tweights(i, weight * lambda, t_weight * lambda);
        }
 
-       //! plot
        PointT ptt = cloud->points[i];
        ptt.r = weight * 255.0;
        ptt.b = weight * 255.0;
        ptt.g = weight * 255.0;
-       // energy_map->push_back(ptt);
+
 
        //! plot normal
        symm_normal->push_back(
@@ -1264,7 +1307,7 @@ bool CuboidBilateralSymmetricSegmentation::minCutMaxFlow(
     // pcl::toROSMsg(*energy_map, ros_cloud1);
     pcl::toROSMsg(*symm_normal, ros_cloud1);
     ros_cloud1.header = this->header_;
-    this->pub_normal_.publish(ros_cloud1);
+    // this->pub_normal_.publish(ros_cloud1);
 }
 
 bool CuboidBilateralSymmetricSegmentation::occlusionRegionCheck(
