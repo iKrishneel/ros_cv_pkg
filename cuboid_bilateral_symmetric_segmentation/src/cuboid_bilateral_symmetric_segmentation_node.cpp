@@ -156,8 +156,6 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           pcl::toROSMsg(*symm_normal, ros_cloud3);
           ros_cloud3.header = planes_msg->header;
           this->pub_normal_.publish(ros_cloud3);
-
-
           
           if (!label_all) {
              break;
@@ -238,8 +236,6 @@ void CuboidBilateralSymmetricSegmentation::filterAndMergeClusters(
        ROS_ERROR("EMPTY INPUT. SKIPPING FILTERING AND MERGING");
        return;
     }
-
-    //! create supervoxel
     SupervoxelMap supervoxel_clusters;
     for (int i = 0; i < all_indices.size(); i++) {
        pcl::Supervoxel<PointT>::Ptr superv(new pcl::Supervoxel<PointT>);
@@ -268,13 +264,9 @@ void CuboidBilateralSymmetricSegmentation::filterAndMergeClusters(
        superv->normal_.normal_y = y / (static_cast<float>(icounter));
        superv->normal_.normal_z = z / (static_cast<float>(icounter));
        superv->normal_.curvature = c / (static_cast<float>(icounter));
-       
-       
        supervoxel_clusters[i] = superv;
        
        // TODO(UPDATE SYMMETRIC PLANE):  if result is not improved
-
-       
     }
 
     AdjacencyList adjacency_list;
@@ -301,18 +293,33 @@ void CuboidBilateralSymmetricSegmentation::filterAndMergeClusters(
        }
        std::cout  << "\n";
     }
-
-
     
     this->supervoxelPerceptualGrouping(supervoxel_clusters, adjacency_list,
                                        CBSS_CRITERIA_CONVEX, 1);
 
+    cloud->clear();
+    all_indices.clear();
     for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
          it != supervoxel_clusters.end(); it++) {
-       std::cout << it->second->voxels_->size()  << "\n";
+       const int csize = cloud->size();
+       pcl::PointIndices indices;
+       for (int i = 0; i < it->second->voxels_->size(); i++) {
+          indices.indices.push_back(csize + i);
+          // cloud->push_back(it->second->voxels_->points[i]);
+       }
+       if (!indices.indices.empty()) {
+          all_indices.push_back(indices);
+          *cloud += *(it->second->voxels_);
+       }
+
+       std::cout << "DEBUG: " << cloud->size() << "\t"
+                 << indices.indices.size()  << "\n";
     }
 
-    
+    std::cout << "PRINT: " << cloud->size() << "\t"
+              << all_indices.size()  << "\n";
+
+
     
     pcl::PointCloud<PointT>::Ptr plane_cloud(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*cloud, *plane_cloud);
@@ -447,15 +454,16 @@ void CuboidBilateralSymmetricSegmentation::supervoxelPerceptualGrouping(
     int label = -1;
     AdjacencyList::vertex_iterator i, end;
     for (boost::tie(i, end) = boost::vertices(adjacency_list); i != end; i++) {
+       uint32_t vindex = static_cast<int>(adjacency_list[*i]);
        AdjacencyList::adjacency_iterator ai, a_end;
        boost::tie(ai, a_end) = boost::adjacent_vertices(*i, adjacency_list);
-       uint32_t vindex = static_cast<int>(adjacency_list[*i]);
        UInt32Map::iterator it = voxel_labels.find(vindex);
        if (it->second == -1) {
           voxel_labels[vindex] = ++label;
        }
        bool vertex_has_neigbor = true;
-       if (ai == a_end) {
+       
+       if (ai == a_end || vindex == adjacency_list[*ai]) {
           vertex_has_neigbor = false;
           if (!supervoxel_clusters.at(vindex)->voxels_->empty()) {
              coplanar_supervoxels[vindex] = supervoxel_clusters.at(vindex);
@@ -657,7 +665,7 @@ void CuboidBilateralSymmetricSegmentation::supervoxelAdjacencyList(
           this->getPointNeigbour<int>(neigbor_indices, pt, 8);
           for (int j = 0; j < neigbor_indices.size(); j++) {
              int idx = cloud->points[neigbor_indices[j]].r;
-             if (idx != prev_index && idx != it->first) {
+             if (idx != prev_index /*&& idx != it->first*/) {
                 adj_list.push_back(idx);
                 prev_index = idx;
              }
@@ -695,11 +703,13 @@ void CuboidBilateralSymmetricSegmentation::supervoxelAdjacencyList(
        for (std::vector<uint32_t>::iterator v_iter = it->second.begin();
             v_iter != it->second.end(); v_iter++) {
           AdjacencyList::vertex_descriptor v = label_map.find(*v_iter)->second;
-          AdjacencyList::edge_descriptor edge;
-          bool is_edge = false;
-          boost::tie(edge, is_edge) = boost::add_edge(u, v, neigbor_list);
-          if (is_edge) {
-             neigbor_list[edge] = 1.0f;
+          if (u != v) {
+             AdjacencyList::edge_descriptor edge;
+             bool is_edge = false;
+             boost::tie(edge, is_edge) = boost::add_edge(u, v, neigbor_list);
+             if (is_edge) {
+                neigbor_list[edge] = 1.0f;
+             }
           }
        }
     }
