@@ -2,7 +2,7 @@
 #include <cuboid_bilateral_symmetric_segmentation/cuboid_bilateral_symmetric_segmentation.h>
 
 CuboidBilateralSymmetricSegmentation::CuboidBilateralSymmetricSegmentation() :
-    min_cluster_size_(10), leaf_size_(0.001f), symmetric_angle_thresh_(45),
+    min_cluster_size_(30), leaf_size_(0.001f), symmetric_angle_thresh_(45),
     neigbor_dist_thresh_(0.01), num_threads_(8) {
     this->occlusion_handler_ = boost::shared_ptr<OcclusionHandler>(
        new OcclusionHandler);
@@ -144,6 +144,20 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           /**
            * END DEBUG
            */
+
+
+          // rviz
+          pcl::PointCloud<PointNormalT>::Ptr symm_normal(
+             new pcl::PointCloud<PointNormalT>);
+          symm_normal->push_back(seed_info);
+          symm_normal->push_back(seed_info);
+          symm_normal->push_back(seed_info);
+          sensor_msgs::PointCloud2 ros_cloud3;
+          pcl::toROSMsg(*symm_normal, ros_cloud3);
+          ros_cloud3.header = planes_msg->header;
+          this->pub_normal_.publish(ros_cloud3);
+
+
           
           if (!label_all) {
              break;
@@ -151,7 +165,8 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           
           this->seed_info_ = seed_info;
           if (region->empty()) {
-             return;
+             // return;
+             break;
           }
           
           pcl::PointIndices::Ptr labels(new pcl::PointIndices);
@@ -163,19 +178,6 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
           // pcl::toROSMsg(*region, ros_cloud1);
           // ros_cloud1.header = planes_msg->header;
           // this->pub_edge_.publish(ros_cloud1);
-          
-          
-          // rviz
-          pcl::PointCloud<PointNormalT>::Ptr symm_normal(
-             new pcl::PointCloud<PointNormalT>);
-
-          symm_normal->push_back(seed_info);
-          symm_normal->push_back(seed_info);
-          symm_normal->push_back(seed_info);
-          sensor_msgs::PointCloud2 ros_cloud3;
-          pcl::toROSMsg(*symm_normal, ros_cloud3);
-          ros_cloud3.header = planes_msg->header;
-          this->pub_normal_.publish(ros_cloud3);
 
 
           // std::cout << "Press key to continue ..."  << "\n";
@@ -187,7 +189,8 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        orh->getLabels(all_indices);
     
        std::cout << "FINISHED NOW PUBLISHING..." << all_indices.size()
-                 << "\t" << orh->sv_cloud_->size()  << "\n";
+                 << "\t" << orh->sv_cloud_->size()  << "\t"
+                 << orh->sv_normal_->size() << "\n";
 
        //! plot all planes
        // pcl::PointCloud<PointT>::Ptr plane_cloud(new pcl::PointCloud<PointT>);
@@ -201,8 +204,8 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        // ros_cloud1.header = planes_msg->header;
        // this->pub_edge_.publish(ros_cloud1);
 
-       this->filterAndMergeClusters(orh->sv_cloud_, all_indices,
-                                    planes_msg, coefficients_msg);
+       this->filterAndMergeClusters(orh->sv_cloud_, orh->sv_normal_,
+                                    all_indices, planes_msg, coefficients_msg);
        
        //! -----------
        
@@ -226,17 +229,94 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
 }
 
 void CuboidBilateralSymmetricSegmentation::filterAndMergeClusters(
-    pcl::PointCloud<PointT>::Ptr cloud,
+    pcl::PointCloud<PointT>::Ptr cloud, pcl::PointCloud<NormalT>::Ptr normals,
     std::vector<pcl::PointIndices> &all_indices,
     const jsk_msgs::PolygonArrayConstPtr &planes_msg,
     const ModelCoefficients &coefficients_msg) {
-    if (cloud->empty() || all_indices.empty()) {
+    if (cloud->empty() || all_indices.empty() ||
+       cloud->size() != normals->size()) {
        ROS_ERROR("EMPTY INPUT. SKIPPING FILTERING AND MERGING");
        return;
     }
+
+    //! create supervoxel
+    SupervoxelMap supervoxel_clusters;
+    for (int i = 0; i < all_indices.size(); i++) {
+       pcl::Supervoxel<PointT>::Ptr superv(new pcl::Supervoxel<PointT>);
+       float x = 0.0f;
+       float y = 0.0f;
+       float z = 0.0f;
+       float c = 0.0f;
+       int icounter = 0;
+       for (int j = 0; j < all_indices[i].indices.size(); j++) {
+          int index = all_indices[i].indices[j];
+          superv->voxels_->push_back(cloud->points[index]);
+          superv->normals_->push_back(normals->points[index]);
+
+          x += normals->points[index].normal_x;
+          y += normals->points[index].normal_y;
+          z += normals->points[index].normal_z;
+          c += normals->points[index].curvature;
+          icounter++;
+       }
+       Eigen::Vector4f centroid;
+       pcl::compute3DCentroid<PointT, float>(*(superv->voxels_), centroid);
+       superv->centroid_.x = centroid(0);
+       superv->centroid_.y = centroid(1);
+       superv->centroid_.z = centroid(2);
+       superv->normal_.normal_x = x / (static_cast<float>(icounter));
+       superv->normal_.normal_y = y / (static_cast<float>(icounter));
+       superv->normal_.normal_z = z / (static_cast<float>(icounter));
+       superv->normal_.curvature = c / (static_cast<float>(icounter));
+       
+       
+       supervoxel_clusters[i] = superv;
+       
+       // TODO(UPDATE SYMMETRIC PLANE):  if result is not improved
+
+       
+    }
+
+    AdjacencyList adjacency_list;
+    this->supervoxelAdjacencyList(adjacency_list, supervoxel_clusters);
+
+    std::cout << "\n AdjacentList"  << "\n";
+    AdjacencyList::vertex_iterator i, end;
+    for (boost::tie(i, end) = boost::vertices(adjacency_list); i != end; i++) {
+       AdjacencyList::adjacency_iterator ai, a_end;
+       boost::tie(ai, a_end) = boost::adjacent_vertices(*i, adjacency_list);
+
+       std::cout << adjacency_list[*i]  << "--->";
+
+       Eigen::Vector4f c_plane = symmetric_planes_[adjacency_list[*i]];
+       for (; ai != a_end; ai++) {
+          std::cout << adjacency_list[*ai]  << ", ";
+          
+          Eigen::Vector4f n_plane = symmetric_planes_[adjacency_list[*ai]];
+          float dotp = c_plane.dot(n_plane) /
+             (c_plane.norm() * n_plane.norm());
+          float tetha = std::acos(dotp) * (180/M_PI);
+          std::cout << tetha  << "\t";
+          
+       }
+       std::cout  << "\n";
+    }
+
+
+    
+    this->supervoxelPerceptualGrouping(supervoxel_clusters, adjacency_list,
+                                       CBSS_CRITERIA_CONVEX, 1);
+
+    for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
+         it != supervoxel_clusters.end(); it++) {
+       std::cout << it->second->voxels_->size()  << "\n";
+    }
+
+    
+    
     pcl::PointCloud<PointT>::Ptr plane_cloud(new pcl::PointCloud<PointT>);
     pcl::copyPointCloud<PointT, PointT>(*cloud, *plane_cloud);
-    
+    /*
     for (int i = 0; i < all_indices.size(); i++) {
        pcl::PointCloud<PointT>::Ptr segment_cloud(new pcl::PointCloud<PointT>);
        segment_cloud->resize(static_cast<int>(cloud->size()));
@@ -252,11 +332,10 @@ void CuboidBilateralSymmetricSegmentation::filterAndMergeClusters(
        this->transformBoxCornerPoints(plane_coefficients,
                                       plane_points, bounding_box);
        
-       // pcl::PointCloud<NormalT>::Ptr seg_normals(new
-       // pcl::PointCloud<NormalT>);
-       // this->estimateNormals<int>(segment_cloud, seg_normals);
-       this->plotPlane(plane_cloud, symmetric_planes_[i]);
+
+       // this->plotPlane(plane_cloud, plane_coefficients);
     }
+    */
     sensor_msgs::PointCloud2 ros_cloud1;
     pcl::toROSMsg(*plane_cloud, ros_cloud1);
     ros_cloud1.header = planes_msg->header;
@@ -273,8 +352,12 @@ void CuboidBilateralSymmetricSegmentation::segmentation(
     }
     
     SupervoxelMap supervoxel_clusters;
-    pcl::PointCloud<NormalT>::Ptr sv_normals(new pcl::PointCloud<NormalT>);
-    this->supervoxelDecomposition(supervoxel_clusters, sv_normals, cloud);
+    AdjacencyList adjacency_list;
+    this->supervoxelSegmentation(cloud, supervoxel_clusters, adjacency_list);
+    this->supervoxelPerceptualGrouping(supervoxel_clusters, adjacency_list,
+                                  CBSS_CRITERIA_COPLANNAR,
+                                  this->coplanar_threshold_);
+    
     this->convex_supervoxel_clusters_.clear();
     this->convex_supervoxel_clusters_ = supervoxel_clusters;
     this->symmetryBasedObjectHypothesis(supervoxel_clusters, labels,
@@ -346,26 +429,20 @@ void CuboidBilateralSymmetricSegmentation::segmentation(
     this->pub_cloud_.publish(ros_cloud);
 }
 
-void CuboidBilateralSymmetricSegmentation::supervoxelDecomposition(
-    SupervoxelMap &supervoxel_clusters, pcl::PointCloud<NormalT>::Ptr normals,
-    const pcl::PointCloud<PointT>::Ptr cloud) {
-    if (cloud->empty()) {
-       ROS_ERROR("EMPTY CLOUD FOR SUPERVOXEL");
+void CuboidBilateralSymmetricSegmentation::supervoxelPerceptualGrouping(
+    SupervoxelMap &supervoxel_clusters, AdjacencyList &adjacency_list,
+    const int criteria_type, const float threshold) {
+    if (supervoxel_clusters.empty()) {
+       ROS_ERROR("EMPTY SUPERVOXEL FOR MERGING");
        return;
     }
     SupervoxelMap coplanar_supervoxels;
-    AdjacencyList adjacency_list;
-    this->supervoxelSegmentation(cloud,
-                                 supervoxel_clusters,
-                                 adjacency_list);
     UInt32Map voxel_labels;
     coplanar_supervoxels.clear();
     for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
          it != supervoxel_clusters.end(); it++) {
        voxel_labels[it->first] = -1;
     }
-    
-    // return;
     
     int label = -1;
     AdjacencyList::vertex_iterator i, end;
@@ -403,11 +480,17 @@ void CuboidBilateralSymmetricSegmentation::supervoxelDecomposition(
                n_vindex)->normal_.getNormalVector4fMap();
              Eigen::Vector4f n_centroid = supervoxel_clusters.at(
                 n_vindex)->centroid_.getVector4fMap();
-             float coplanar_criteria = this->coplanarityCriteria(
-                v_centroid, n_centroid, v_normal, n_normal,
-                this->angle_threshold_, this->distance_threshold_);
-             
-             if (coplanar_criteria <= static_cast<float>(coplanar_threshold_)) {
+             float criteria = 0.0;
+
+             if (criteria_type == CBSS_CRITERIA_COPLANNAR) {
+                criteria = this->coplanarityCriteria(
+                   v_centroid, n_centroid, v_normal, n_normal,
+                   this->angle_threshold_, this->distance_threshold_);
+             } else if (criteria_type == CBSS_CRITERIA_CONVEX) {
+                criteria = this->seedVoxelConvexityCriteria(
+                   v_centroid, v_normal, n_centroid, n_normal, -0.01f);
+             }
+             if (criteria < threshold) {
                 boost::remove_edge(e_descriptor, adjacency_list);
              } else {
                 this->updateSupervoxelClusters(supervoxel_clusters,
@@ -444,7 +527,6 @@ void CuboidBilateralSymmetricSegmentation::supervoxelDecomposition(
     }
     supervoxel_clusters.clear();
     supervoxel_clusters = coplanar_supervoxels;
-    
     // SupervoxelMap().swap(coplanar_supervoxels);
 }
 

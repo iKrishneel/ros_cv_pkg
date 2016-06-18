@@ -5,6 +5,8 @@ ObjectRegionHandler::ObjectRegionHandler(const int mc_size, int thread) :
     min_cluster_size_(mc_size), num_threads_(thread), neigbor_size_(5) {
     this->in_cloud_ = pcl::PointCloud<PointT>::Ptr(new pcl::PointCloud<PointT>);
     this->sv_cloud_ = pcl::PointCloud<PointT>::Ptr(new pcl::PointCloud<PointT>);
+    this->sv_normal_ = pcl::PointCloud<NormalT>::Ptr(
+       new pcl::PointCloud<NormalT>);
     this->in_normals_ = pcl::PointCloud<NormalT>::Ptr(
        new pcl::PointCloud<NormalT>);
     this->region_indices_ = pcl::PointIndices::Ptr(new pcl::PointIndices);
@@ -121,13 +123,14 @@ bool ObjectRegionHandler::getCandidateRegion(
     for (int i = 0; i < center_cloud->size(); i++) {
        if (i == seed_index) {
           labels[i] = 1;
+       } else {
+          labels[i] = -1;
        }
-       labels[i] = -1;
     }
     this->kdtree_->setInputCloud(center_cloud);
     this->seedCorrespondingRegion(labels, center_cloud,
                                   center_normals, seed_index);
-
+    
     pcl::PointCloud<PointT>::Ptr seed_cloud(new pcl::PointCloud<PointT>);
     pcl::PointCloud<NormalT>::Ptr seed_normals(new pcl::PointCloud<NormalT>);
     this->region_indices_->indices.clear();
@@ -139,6 +142,9 @@ bool ObjectRegionHandler::getCandidateRegion(
     seed_pt(3) = 1.0f;
     for (SupervoxelMap::iterator it = supervoxel_clusters_.begin();
          it != supervoxel_clusters_.end(); it++) {
+
+       std::cout << labels[icounter]  << ", ";
+       
        if (labels[icounter++] != -1) {
           *seed_cloud += *(it->second->voxels_);
           *seed_normals += *(it->second->normals_);
@@ -156,7 +162,7 @@ bool ObjectRegionHandler::getCandidateRegion(
           this->convex_supervoxel_clusters_[it->first] = super_v;
        }
     }
-
+    
     //! oversegment supervoxels
     /*
     seed_cloud->clear();
@@ -178,12 +184,11 @@ bool ObjectRegionHandler::getCandidateRegion(
           *seed_normals += *(it->second->normals_);
        }
     }
-
     */
-    
-    std::cout << "SIZE: " << seed_cloud->size()  << "\t"
-              << region_indices_->indices.size()  << "\n";
 
+    
+    std::cout << "\nSIZE: " << seed_cloud->size()  << "\t"
+              << region_indices_->indices.size()  << "\n";
     
     this->kdtree_->setInputCloud(this->in_cloud_);
     this->regionOverSegmentation(seed_cloud, seed_normals,
@@ -285,6 +290,7 @@ void ObjectRegionHandler::updateObjectRegion(
        
        seed_region_indices.indices.push_back(i + s_size);
        this->sv_cloud_->push_back(this->in_cloud_->points[indx]);
+       this->sv_normal_->push_back(this->in_normals_->points[indx]);
 
        //! new sv input
        this->in_cloud_->points[indx] = pt;
@@ -376,7 +382,7 @@ void ObjectRegionHandler::seedCorrespondingRegion(
     int neigb_lenght = static_cast<int>(neigbor_indices.size());
     std::vector<int> merge_list(neigb_lenght);
     merge_list[0] = -1;
-
+    
     for (int i = 1; i < neigbor_indices.size(); i++) {
         int index = neigbor_indices[i];
         if (index != parent_index && labels[index] == -1) {
@@ -399,7 +405,6 @@ void ObjectRegionHandler::seedCorrespondingRegion(
            merge_list[i] = -1;
         }
     }
-    
 
     for (int i = 0; i < merge_list.size(); i++) {
        int index = merge_list[i];

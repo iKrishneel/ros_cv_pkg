@@ -92,9 +92,8 @@ class CuboidBilateralSymmetricSegmentation:
                       pcl::PointCloud<PointT>::Ptr,
                       const jsk_msgs::PolygonArrayConstPtr &,
                       const ModelCoefficients &);
-    void supervoxelDecomposition(SupervoxelMap &,
-                                 pcl::PointCloud<NormalT>::Ptr,
-                                 const pcl::PointCloud<PointT>::Ptr);
+    void supervoxelPerceptualGrouping(SupervoxelMap &, AdjacencyList &,
+                                      const int, const float = 0.0f);
     bool mergeNeigboringSupervoxels(SupervoxelMap &, AdjacencyList &,
                                     const int);
     float coplanarityCriteria(const Eigen::Vector4f, const Eigen::Vector4f,
@@ -135,6 +134,7 @@ class CuboidBilateralSymmetricSegmentation:
                        pcl::PointIndices::Ptr,
                        const Eigen::Vector4f);
     void filterAndMergeClusters(pcl::PointCloud<PointT>::Ptr,
+                                pcl::PointCloud<NormalT>::Ptr,
                                 std::vector<pcl::PointIndices> &,
                                 const jsk_msgs::PolygonArrayConstPtr &,
                                 const ModelCoefficients &);
@@ -160,6 +160,11 @@ class CuboidBilateralSymmetricSegmentation:
          return (i < j);
       }
     } sortVector;
+
+    enum {
+       CBSS_CRITERIA_CONVEX,
+       CBSS_CRITERIA_COPLANNAR
+    };
 };
 
 #endif  // _CUBOID_BILATERAL_SYMMETRIC_SEGMENTATION_H_

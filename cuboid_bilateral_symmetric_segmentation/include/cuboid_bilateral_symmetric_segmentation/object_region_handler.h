@@ -89,6 +89,7 @@ class ObjectRegionHandler: public SupervoxelSegmentation {
                                const int = 200000);
    
     pcl::PointCloud<PointT>::Ptr sv_cloud_;
+    pcl::PointCloud<NormalT>::Ptr sv_normal_;
     SupervoxelMap convex_supervoxel_clusters_;
 };
 
