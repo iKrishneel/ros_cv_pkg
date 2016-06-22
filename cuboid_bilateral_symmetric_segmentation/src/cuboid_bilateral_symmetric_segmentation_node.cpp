@@ -201,10 +201,9 @@ void CuboidBilateralSymmetricSegmentation::cloudCB(
        // pcl::toROSMsg(*plane_cloud, ros_cloud1);
        // ros_cloud1.header = planes_msg->header;
        // this->pub_edge_.publish(ros_cloud1);
-
+       
        this->filterAndMergeClusters(orh->sv_cloud_, orh->sv_normal_,
                                     all_indices, planes_msg, coefficients_msg);
-       
        //! -----------
        
        jsk_msgs::ClusterPointIndices ros_indices;
