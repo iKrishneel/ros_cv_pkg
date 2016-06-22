@@ -2,7 +2,7 @@
 #include <cuboid_bilateral_symmetric_segmentation/cuboid_bilateral_symmetric_segmentation.h>
 
 CuboidBilateralSymmetricSegmentation::CuboidBilateralSymmetricSegmentation() :
-    min_cluster_size_(30), leaf_size_(0.001f), symmetric_angle_thresh_(45),
+    min_cluster_size_(10), leaf_size_(0.001f), symmetric_angle_thresh_(45),
     neigbor_dist_thresh_(0.01), num_threads_(8) {
     this->occlusion_handler_ = boost::shared_ptr<OcclusionHandler>(
        new OcclusionHandler);
@@ -272,77 +272,124 @@ void CuboidBilateralSymmetricSegmentation::filterAndMergeClusters(
     AdjacencyList adjacency_list;
     this->supervoxelAdjacencyList(adjacency_list, supervoxel_clusters);
 
+
+
+    //! begin debug
     std::cout << "\n AdjacentList"  << "\n";
     AdjacencyList::vertex_iterator i, end;
     for (boost::tie(i, end) = boost::vertices(adjacency_list); i != end; i++) {
        AdjacencyList::adjacency_iterator ai, a_end;
        boost::tie(ai, a_end) = boost::adjacent_vertices(*i, adjacency_list);
-
        std::cout << adjacency_list[*i]  << "--->";
-
        Eigen::Vector4f c_plane = symmetric_planes_[adjacency_list[*i]];
        for (; ai != a_end; ai++) {
           std::cout << adjacency_list[*ai]  << ", ";
-          
           Eigen::Vector4f n_plane = symmetric_planes_[adjacency_list[*ai]];
           float dotp = c_plane.dot(n_plane) /
              (c_plane.norm() * n_plane.norm());
           float tetha = std::acos(dotp) * (180/M_PI);
           std::cout << tetha  << "\t";
-          
        }
        std::cout  << "\n";
     }
+    //! end debug
     
+    // TODO(ADD): add symmetric plane distance eff
     this->supervoxelPerceptualGrouping(supervoxel_clusters, adjacency_list,
                                        CBSS_CRITERIA_CONVEX, 1);
-
+    
     cloud->clear();
+    normals->clear();
     all_indices.clear();
+    pcl::PointCloud<PointT>::Ptr plane_cloud(new pcl::PointCloud<PointT>);
+    pcl::PointIndices::Ptr label_map(new pcl::PointIndices);
     for (SupervoxelMap::iterator it = supervoxel_clusters.begin();
          it != supervoxel_clusters.end(); it++) {
        const int csize = cloud->size();
        pcl::PointIndices indices;
        for (int i = 0; i < it->second->voxels_->size(); i++) {
           indices.indices.push_back(csize + i);
-          // cloud->push_back(it->second->voxels_->points[i]);
+          label_map->indices.push_back(it->first);
        }
        if (!indices.indices.empty()) {
           all_indices.push_back(indices);
           *cloud += *(it->second->voxels_);
+          *normals += *(it->second->normals_);
+          
+          /*
+          //! update the symmetric plane
+          jsk_msgs::BoundingBox bounding_box;
+          this->fitOriented3DBoundingBox(bounding_box, cloud, planes_msg,
+                                         coefficients_msg);
+          pcl::PointCloud<PointT>::Ptr symm_cloud(new pcl::PointCloud<PointT>);
+          pcl::copyPointCloud<PointT, PointT>(*(it->second->voxels_),
+                                              *symm_cloud);
+          Eigen::Vector4f plane_coef;
+          float energy = 0.0f;
+          this->symmetricalConsistency(plane_coef, energy, symm_cloud,
+                                       it->second->normals_,
+                                       it->second->voxels_, bounding_box);
+          this->plotPlane(plane_cloud, plane_coef);
+          */
        }
-
-       std::cout << "DEBUG: " << cloud->size() << "\t"
-                 << indices.indices.size()  << "\n";
     }
-
-    std::cout << "PRINT: " << cloud->size() << "\t"
-              << all_indices.size()  << "\n";
-
-
-    
-    pcl::PointCloud<PointT>::Ptr plane_cloud(new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointT, PointT>(*cloud, *plane_cloud);
     /*
+    this->kdtree_->setInputCloud(cloud);
     for (int i = 0; i < all_indices.size(); i++) {
-       pcl::PointCloud<PointT>::Ptr segment_cloud(new pcl::PointCloud<PointT>);
-       segment_cloud->resize(static_cast<int>(cloud->size()));
-       for (int j = 0; j < all_indices[i].indices.size(); j++) {
-          segment_cloud->points[j] = cloud->points[all_indices[i].indices[j]];
-       }
+       pcl::PointIndices::Ptr labels(new pcl::PointIndices);
+       pcl::PointIndices::Ptr indices_cache(new pcl::PointIndices);
 
-       jsk_msgs::BoundingBox bounding_box;
-       this->fitOriented3DBoundingBox(bounding_box, segment_cloud,
-                                      planes_msg, coefficients_msg);
-       pcl::PointCloud<PointT>::Ptr plane_points(new pcl::PointCloud<PointT>);
-       std::vector<Eigen::Vector4f> plane_coefficients;
-       this->transformBoxCornerPoints(plane_coefficients,
-                                      plane_points, bounding_box);
+       std::map<int, pcl::PointIndices::Ptr> label_indices_map;
        
-
-       // this->plotPlane(plane_cloud, plane_coefficients);
+       std::vector<int> neigbor_indices;
+       for (int j = 0; j < all_indices[i].indices.size(); j++) {
+          int index = all_indices[i].indices[j];
+          neigbor_indices.clear();
+          this->getPointNeigbour<int>(neigbor_indices, cloud->points[index]);
+          for (int k = 1; k < neigbor_indices.size(); k++) {
+             int idx = neigbor_indices[k];
+             if (label_map->indices[idx] != label_map->indices[index]) {
+                label_indices_map[label_map->indices[
+                      index]]->indices.push_back(idx);
+                
+                // labels->indices.push_back(label_map->indices[idx]);
+                // indices_cache->indices.push_back(idx);
+             }
+          }
+       }
+       if (!label_indices_map.empty()) {
+          for (std::map<int, pcl::PointIndices::Ptr>::iterator it =
+                  label_indices_map.begin(); it != label_indices_map.end();
+               it++) {
+             pcl::PointCloud<PointT>::Ptr t_cloud(new pcl::PointCloud<PointT>);
+             
+             
+          }
+          
+          std::sort(labels->indices.begin(), labels->indices.end(), sortVector);
+          int prev_label = -1;
+          int cur_label = labels->indices[0];
+          pcl::PointCloud<PointT>::Ptr temp_cloud(new pcl::PointCloud<PointT>);
+          for (int k = 0; k < labels->indices.size(); k++) {
+             if (labels->indices[k] != prev_label) {
+                
+             }
+             if (labels->indices[k] == cur_label) {
+                // temp_cloud->push_back(cloud->points[indicOD])
+             }
+          }
+       }
+       
     }
     */
+    
+
+    
+    // pcl::PointCloud<PointT>::Ptr plane_cloud(new pcl::PointCloud<PointT>);
+    // pcl::copyPointCloud<PointT, PointT>(*cloud, *plane_cloud);
+    // for (int i = 0; i < all_indices.size(); i++) {
+    //    this->plotPlane(plane_cloud, this->symmetric_planes_[i]);
+    // }
     sensor_msgs::PointCloud2 ros_cloud1;
     pcl::toROSMsg(*plane_cloud, ros_cloud1);
     ros_cloud1.header = planes_msg->header;
