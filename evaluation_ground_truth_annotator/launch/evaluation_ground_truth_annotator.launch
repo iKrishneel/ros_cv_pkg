@@ -1,0 +1,10 @@
+<launch>
+  <node pkg="evaluation_ground_truth_annotator" type="evaluation_ground_truth_annotator_node"
+	 name="evaluation_ground_truth_annotator" output="screen" clear_params="false">
+    <remap from="input_cloud" to="/cbss/output/cloud" />
+    <remap from="input_indices" to="/cbss/output/indices" />
+
+    <remap from="input_gt_cloud" to="/selected_pointcloud" />
+
+  </node>
+</launch>
