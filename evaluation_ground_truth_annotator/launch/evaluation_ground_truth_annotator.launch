@@ -5,6 +5,12 @@
     <remap from="input_indices" to="/cbss/output/indices" />
 
     <remap from="input_gt_cloud" to="/selected_pointcloud" />
+</node>
 
-  </node>
+ <node pkg="jsk_pcl_ros" type="cluster_point_indices_decomposer"
+       name="segmentation_decomposer" output="screen" clear_params="true">
+    <remap from="~input" to="/output/cloud" />
+    <remap from="~target" to="/output/indices" />
+ </node>
+
 </launch>
