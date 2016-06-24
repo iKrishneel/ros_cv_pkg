@@ -3,12 +3,11 @@
 
 CvAlgorithmEvaluation::CvAlgorithmEvaluation() :
     labels_(0) {
-    this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
     this->marked_cloud_ = PointCloud::Ptr(new PointCloud);
     this->all_indices_.clear();
     this->pnh_.getParam("pcd_path", this->save_path_);
 
-    this->save_path_ = "/home/krishneel/Desktop/acvr-eccv/ground-truth/scene3.pcd";
+    this->save_path_ = "/home/krishneel/Desktop/acvr-eccv/ground-truth/scene1.pcd";
     std::string bag_path = "/home/krishneel/Desktop/acvr-eccv/scene5.bag";
 
     this->onInit();
@@ -101,19 +100,34 @@ void CvAlgorithmEvaluation::cloudCB(
        return;
     }
 
-    int prev_index = 0;
-    std::vector<pcl::PointIndices> all_indices;
-    pcl::PointIndices indices;
+    bool downsample = true;
+    if (downsample) {
+
+       std::cout << "input:" << ground_truth->size()  << "\n";
+       
+       const float leaf_size = 0.004;
+       pcl::VoxelGrid<PointT> vgrid;
+       vgrid.setInputCloud(ground_truth);
+       vgrid.setLeafSize(leaf_size, leaf_size, leaf_size);
+       vgrid.filter(*ground_truth);
+
+       std::cout << "out:" << ground_truth->size()  << "\n";
+    }
+    
+
+    std::vector<pcl::PointIndices> temp_indices(20);
     for (int i = 0; i < ground_truth->size(); i++) {
        PointT pt = ground_truth->points[i];
-       if (pt.r != prev_index) {
-          all_indices.push_back(indices);
-          indices.indices.clear();
-          prev_index++;
-       }
-       indices.indices.push_back(i);
+       temp_indices[static_cast<int>(pt.r)].indices.push_back(i);
     }
 
+    std::vector<pcl::PointIndices> all_indices;
+    for (int i = 0; i < temp_indices.size(); i++) {
+       if (!temp_indices[i].indices.empty()) {
+          all_indices.push_back(temp_indices[i]);
+       }
+    }
+    
     std::vector<pcl::PointIndices> object_indices;
     for (int i = 0; i < indices_msg->cluster_indices.size(); i++) {
        pcl::PointIndices o_indices;
@@ -128,11 +142,13 @@ void CvAlgorithmEvaluation::cloudCB(
     // std::cout << "INFO: " << object_indices.size()  << "\n";
     // std::cout << "INFO: " << all_indices.size()  << "\n";
     // std::cout << "INFO: " << cloud->size()  << "\n";
+
+
     
     this->intersectionUnionCoef(cloud, ground_truth,
                                 object_indices, all_indices);
     
-    /*
+
     jsk_msgs::ClusterPointIndices ros_indices;
     ros_indices.cluster_indices = pcl_conversions::convertToROSPointIndices(
        all_indices, cloud_msg->header);
@@ -142,7 +158,7 @@ void CvAlgorithmEvaluation::cloudCB(
     ros_cloud.header = cloud_msg->header;
     this->pub_indices_.publish(ros_indices);
     this->pub_cloud_.publish(ros_cloud);
-    */
+
 }
 
 void CvAlgorithmEvaluation::intersectionUnionCoef(
@@ -169,14 +185,16 @@ void CvAlgorithmEvaluation::intersectionUnionCoef(
        object_centroid.push_back(centroid);
        object_cloud.push_back(region);
     }
-       
+
+    float true_pos = 0.0f;
+    float false_pos = 0.0f;
+    int icounter = 0;
     for (int i = 0; i < gt_all_indices.size(); i++) {
        PointCloud::Ptr region(new PointCloud);
        for (int j = 0; j < gt_all_indices[i].indices.size() ; j++) {
           int idx = gt_all_indices[i].indices[j];
           region->push_back(gt_cloud->points[idx]);
        }
-       this->kdtree_->setInputCloud(region);
 
        Eigen::Vector4f centroid;
        pcl::compute3DCentroid<PointT, float>(*region, centroid);
@@ -195,11 +213,13 @@ void CvAlgorithmEvaluation::intersectionUnionCoef(
        // std::cout << "\033[31m index: \033[0m"  << c_index << "\n";
        
        if (c_index != -1) {
+          icounter++;
           int match_counter = 0;
+          int unmatch_counter = 0;
           for (int k = 0; k < object_cloud[c_index]->size(); k++) {
              PointT ppt = object_cloud[c_index]->points[k];
              std::vector<int> neigbor_indices;
-             this->getPointNeigbour<int>(neigbor_indices, ppt, 1);
+             this->getPointNeigbour<int>(neigbor_indices, ppt, region, 1);
              Eigen::Vector4f gpt = region->points[
                 neigbor_indices[0]].getVector4fMap();
              gpt(3) = 1.0f;
@@ -207,23 +227,35 @@ void CvAlgorithmEvaluation::intersectionUnionCoef(
              cpt(3) = 1.0f;
              double d = pcl::distances::l2(cpt, gpt);
              // std::cout << "distance: " << d  << "\n";
-             if (d < 0.01) {
+             if (d < 0.005) {
                 match_counter++;
+             } else {
+                unmatch_counter++;
              }
           }
 
 
-          float acc = static_cast<float>(match_counter)/
-             static_cast<float>(region->size());
+          float tp = static_cast<float>(match_counter)/
+             std::max(static_cast<float>(region->size()),
+                      static_cast<float>(match_counter));
 
-          ROS_WARN("ACCUARCY: %3.2f ", acc);
+          float fp = static_cast<float>(unmatch_counter)/
+             std::max(static_cast<float>(object_cloud[c_index]->size()),
+                      static_cast<float>(unmatch_counter));
+
+          true_pos += tp;
+          false_pos += fp;
           
-          std::cout << "Match: " << match_counter << "\t" <<
-             object_cloud[c_index]->size() << "\t"
-                    << region->size()  << "\n";
-
+          // ROS_WARN("ACCUARCY: %3.2f \t  %3.2f", tp, fp);
+          
+          // std::cout << "Match: " << match_counter << "\t" <<
+          //    object_cloud[c_index]->size() << "\t"
+          //           << region->size()  << "\n";
        }
     }
+    ROS_WARN("ACCUARCY: %3.2f \t  %3.2f",
+             true_pos/static_cast<float>(icounter),
+             false_pos/static_cast<float>(icounter));
     std::cout   << "\n";
 
 }
@@ -231,18 +263,20 @@ void CvAlgorithmEvaluation::intersectionUnionCoef(
 template<class T>
 void CvAlgorithmEvaluation::getPointNeigbour(
     std::vector<int> &neigbor_indices, const PointT seed_point,
-    const T K, bool is_knn) {
+    const PointCloud::Ptr cloud, const T K, bool is_knn) {
     if (isnan(seed_point.x) || isnan(seed_point.y) || isnan(seed_point.z)) {
        ROS_ERROR("POINT IS NAN. RETURING VOID IN GET NEIGBOUR");
        return;
     }
     neigbor_indices.clear();
     std::vector<float> point_squared_distance;
+    pcl::KdTreeFLANN<PointT>::Ptr kdtree(new pcl::KdTreeFLANN<PointT>);
+    kdtree->setInputCloud(cloud);
     if (is_knn) {
-       int search_out = this->kdtree_->nearestKSearch(
+       int search_out = kdtree->nearestKSearch(
           seed_point, K, neigbor_indices, point_squared_distance);
     } else {
-       int search_out = this->kdtree_->radiusSearch(
+       int search_out = kdtree->radiusSearch(
           seed_point, K, neigbor_indices, point_squared_distance);
     }
 }
@@ -268,7 +302,7 @@ void CvAlgorithmEvaluation::groundTCB(
     if (ch == 'y') {
        ROS_ERROR("saving the marked cloud: %d", cloud->size());
        std::string save_path = "/home/krishneel/Desktop/acvr-eccv/ground-truth/";
-       std::string name = "scene8.pcd";
+       std::string name = "scene1.pcd";
 
        pcl::io::savePCDFileASCII(save_path + name, *marked_cloud_);
        this->marked_cloud_ = PointCloud::Ptr(new PointCloud);

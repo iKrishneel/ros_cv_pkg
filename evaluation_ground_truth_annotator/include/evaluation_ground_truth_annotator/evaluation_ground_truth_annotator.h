@@ -16,8 +16,7 @@
 #include <pcl/registration/distances.h>
 #include <pcl/common/centroid.h>
 #include <pcl/registration/icp.h>
-#include <pcl/filters/voxel_grid_occlusion_estimation.h>
-#include <pcl/PCLPointCloud2.h>
+#include <pcl/filters/voxel_grid.h>
 
 #include <geometry_msgs/PointStamped.h>
 #include <std_msgs/Header.h>
@@ -50,8 +49,6 @@ class CvAlgorithmEvaluation {
     message_filters::Subscriber<jsk_msgs::ClusterPointIndices> sub_indices_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
-    pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
-
     //! ground truth variables
     PointCloud::Ptr marked_cloud_;
     int labels_;
@@ -79,7 +76,7 @@ class CvAlgorithmEvaluation {
    
     template<class T>
     void getPointNeigbour(std::vector<int> &, const PointT,
-                          const T = 8, bool = true);
+                          const PointCloud::Ptr, const T = 8, bool = true);
    
 };
 
