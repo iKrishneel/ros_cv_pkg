@@ -6,6 +6,8 @@
   <node pkg="handheld_object_registration" type="handheld_object_registration_node"
 	name="handheld_object_registration" output="screen" clear_params="false">
     <remap from="input_cloud" to="$(arg POINTS)" />
+    <remap from="input_normal" to="$(arg POINTS)" />
+
     <remap from="input_point" to="$(arg image)/screenpoint" />
   </node>
   

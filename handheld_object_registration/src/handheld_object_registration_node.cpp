@@ -2,7 +2,7 @@
 #include <handheld_object_registration/handheld_object_registration.h>
 
 HandheldObjectRegistration::HandheldObjectRegistration():
-    num_threads_(16) {
+    num_threads_(16), is_init_(false) {
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
     // this->target_cloud_ = PointCloud::Ptr(new PointCloud);
     // this->target_normals_ = PointNormal::Ptr(new PointNormal);
@@ -21,26 +21,39 @@ void HandheldObjectRegistration::onInit() {
 }
 
 void HandheldObjectRegistration::subscribe() {
+    this->screen_pt_ = this->pnh_.subscribe(
+       "input_point", 1, &HandheldObjectRegistration::screenCB, this);
+   
+   
     this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
-    this->screen_pt_.subscribe(this->pnh_, "input_point", 1);
+    this->sub_normal_.subscribe(this->pnh_, "input_normal", 1);
     this->sync_ = boost::make_shared<message_filters::Synchronizer<
        SyncPolicy> >(100);
-    this->sync_->connectInput(this->sub_cloud_, this->screen_pt_);
+    this->sync_->connectInput(this->sub_cloud_, this->sub_normal_);
     this->sync_->registerCallback(
        boost::bind(&HandheldObjectRegistration::cloudCB, this, _1, _2));
 }
 
 void HandheldObjectRegistration::unsubscribe() {
     this->sub_cloud_.unsubscribe();
-    this->screen_pt_.unsubscribe();
+    this->sub_normal_.unsubscribe();
+}
+
+/**
+ * temp for dev
+ */
+void HandheldObjectRegistration::screenCB(
+    const geometry_msgs::PointStamped::ConstPtr &screen_msg) {
+    this->screen_msg_ = *screen_msg;
+    is_init_ = true;
 }
 
 void HandheldObjectRegistration::cloudCB(
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
-    const geometry_msgs::PointStamped::ConstPtr &screen_msg) {
+    const sensor_msgs::PointCloud2::ConstPtr &normal_msg) {
     PointCloud::Ptr cloud(new PointCloud);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-    if (cloud->empty()) {
+    if (cloud->empty() || !is_init_) {
        ROS_ERROR("-Input cloud is empty in callback");
        return;
     }
@@ -51,7 +64,7 @@ void HandheldObjectRegistration::cloudCB(
 
     PointCloud::Ptr region_cloud(new PointCloud);
     PointNormal::Ptr region_normal(new PointNormal);
-    this->seedRegionGrowing(region_cloud, region_normal, *screen_msg,
+    this->seedRegionGrowing(region_cloud, region_normal, screen_msg_,
                             cloud, normals);
 
     //! delete this later
@@ -77,10 +90,12 @@ void HandheldObjectRegistration::cloudCB(
           new pcl::PointCloud<PointNormalT>);
        this->registrationICP(align_points, transformation, src_points);
 
-       pcl::transformPointCloud(*region_cloud, *cloud, transformation);
+       pcl::PointCloud<PointNormalT>::Ptr tmp_cloud(
+          new pcl::PointCloud<PointNormalT>);
+       pcl::transformPointCloud(*target_points_, *tmp_cloud, transformation);
        
        sensor_msgs::PointCloud2 ros_cloud;
-       pcl::toROSMsg(*cloud, ros_cloud);
+       pcl::toROSMsg(*tmp_cloud, ros_cloud);
        ros_cloud.header = cloud_msg->header;
        this->pub_icp_.publish(ros_cloud);
     }
@@ -98,7 +113,7 @@ void HandheldObjectRegistration::cloudCB(
     this->pub_cloud_.publish(ros_cloud);
 
     std::cout << region_cloud->size()  << "\n";
-    
+    // is_init_ = false;
 }
 
 void HandheldObjectRegistration::registrationICP(
@@ -112,8 +127,8 @@ void HandheldObjectRegistration::registrationICP(
     pcl::IterativeClosestPointWithNormals<PointNormalT, PointNormalT>::Ptr icp(
        new pcl::IterativeClosestPointWithNormals<PointNormalT, PointNormalT>);
     icp->setMaximumIterations(1);
-    icp->setInputSource(src_points);
-    icp->setInputTarget(target_points_);
+    icp->setInputSource(target_points_);
+    icp->setInputTarget(src_points);
     icp->align(*align_points);
     transformation = icp->getFinalTransformation();
 }

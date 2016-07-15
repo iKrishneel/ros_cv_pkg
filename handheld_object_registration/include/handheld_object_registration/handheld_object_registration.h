@@ -34,9 +34,9 @@ class HandheldObjectRegistration {
     boost::mutex lock_;
 
     typedef  message_filters::sync_policies::ApproximateTime<
-       sensor_msgs::PointCloud2, geometry_msgs::PointStamped> SyncPolicy;
+       sensor_msgs::PointCloud2, sensor_msgs::PointCloud2> SyncPolicy;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
-    message_filters::Subscriber<geometry_msgs::PointStamped> screen_pt_;
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
     int num_threads_;
@@ -45,6 +45,8 @@ class HandheldObjectRegistration {
     // PointCloud::Ptr target_cloud_;
     // PointNormal::Ptr target_normals_;
     pcl::PointCloud<PointNormalT>::Ptr target_points_;
+    geometry_msgs::PointStamped screen_msg_;
+    bool is_init_;
    
  protected:
     ros::NodeHandle pnh_;
@@ -54,11 +56,14 @@ class HandheldObjectRegistration {
    
     ros::Publisher pub_cloud_;
     ros::Publisher pub_icp_;
+    ros::Subscriber screen_pt_;
     
  public:
     HandheldObjectRegistration();
     void cloudCB(const sensor_msgs::PointCloud2::ConstPtr &,
-                 const geometry_msgs::PointStamped::ConstPtr &);
+                 const sensor_msgs::PointCloud2::ConstPtr &);
+    void screenCB(const geometry_msgs::PointStamped::ConstPtr &);
+   
     void registrationICP(const pcl::PointCloud<PointNormalT>::Ptr,
                          Eigen::Matrix<float, 4, 4> &,
                          const pcl::PointCloud<PointNormalT>::Ptr);
