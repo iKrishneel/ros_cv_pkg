@@ -18,8 +18,12 @@
 #include <pcl/features/integral_image_normal.h>
 
 #include <geometry_msgs/PointStamped.h>
+#include <sensor_msgs/CameraInfo.h>
+#include <jsk_recognition_msgs/BoundingBoxArray.h>
 #include <jsk_recognition_utils/pcl_conversion_util.h>
 #include <omp.h>
+
+namespace jsk_msgs = jsk_recognition_msgs;
 
 class HandheldObjectRegistration {
 
@@ -34,19 +38,19 @@ class HandheldObjectRegistration {
     boost::mutex lock_;
 
     typedef  message_filters::sync_policies::ApproximateTime<
-       sensor_msgs::PointCloud2, sensor_msgs::PointCloud2> SyncPolicy;
+       sensor_msgs::PointCloud2, sensor_msgs::CameraInfo> SyncPolicy;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
-    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_normal_;
+    message_filters::Subscriber<sensor_msgs::CameraInfo> sub_cinfo_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
     int num_threads_;
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
 
-    // PointCloud::Ptr target_cloud_;
-    // PointNormal::Ptr target_normals_;
     pcl::PointCloud<PointNormalT>::Ptr target_points_;
     geometry_msgs::PointStamped screen_msg_;
     bool is_init_;
+
+    boost::shared_ptr<jsk_msgs::BoundingBox> rendering_cuboid_;
    
  protected:
     ros::NodeHandle pnh_;
@@ -56,18 +60,20 @@ class HandheldObjectRegistration {
    
     ros::Publisher pub_cloud_;
     ros::Publisher pub_icp_;
+    ros::Publisher pub_bbox_;
+   
     ros::Subscriber screen_pt_;
     
  public:
     HandheldObjectRegistration();
     void cloudCB(const sensor_msgs::PointCloud2::ConstPtr &,
-                 const sensor_msgs::PointCloud2::ConstPtr &);
+                 const sensor_msgs::CameraInfo::ConstPtr &);
     void screenCB(const geometry_msgs::PointStamped::ConstPtr &);
    
-    void registrationICP(const pcl::PointCloud<PointNormalT>::Ptr,
+    bool registrationICP(const pcl::PointCloud<PointNormalT>::Ptr,
                          Eigen::Matrix<float, 4, 4> &,
                          const pcl::PointCloud<PointNormalT>::Ptr);
-    void seedRegionGrowing(PointCloud::Ptr, PointNormal::Ptr,
+    bool seedRegionGrowing(PointCloud::Ptr, PointNormal::Ptr,
                            const geometry_msgs::PointStamped,
                            const PointCloud::Ptr, PointNormal::Ptr);
     void seedCorrespondingRegion(int *, const PointCloud::Ptr,

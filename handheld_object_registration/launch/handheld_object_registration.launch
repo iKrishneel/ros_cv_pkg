@@ -1,20 +1,22 @@
 <launch>
   <arg name="POINTS" default="/camera/depth_registered/points" />
-  <arg name="image" default="/camera/rgb/image_rect_color" />
+  <arg name="IMAGE" default="/camera/rgb/image_rect_color" />
+  <arg name="CAMERA_INFO" default="/camera/depth_registered/camera_info" />
+
   <arg name="filter_point" default="/pcl_filter_utils/output/cloud" />
   
   <node pkg="handheld_object_registration" type="handheld_object_registration_node"
 	name="handheld_object_registration" output="screen" clear_params="false">
     <remap from="input_cloud" to="$(arg POINTS)" />
-    <remap from="input_normal" to="$(arg POINTS)" />
+    <remap from="input_cinfo" to="$(arg CAMERA_INFO)" />
 
-    <remap from="input_point" to="$(arg image)/screenpoint" />
+    <remap from="input_point" to="$(arg IMAGE)/screenpoint" />
   </node>
   
 
   <node pkg="image_view2" type="image_view2"
       name="image_view2" output="screen">
-    <remap from="image" to="$(arg image)" />
+    <remap from="image" to="$(arg IMAGE)" />
   </node>
 
 </launch>
