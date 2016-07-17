@@ -2,7 +2,7 @@
 #include <handheld_object_registration/handheld_object_registration.h>
 
 HandheldObjectRegistration::HandheldObjectRegistration():
-    num_threads_(16), is_init_(false) {
+    num_threads_(16), is_init_(false), min_points_size_(100) {
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
     this->target_points_ = pcl::PointCloud<PointNormalT>::Ptr(
        new pcl::PointCloud<PointNormalT>);
@@ -68,10 +68,16 @@ void HandheldObjectRegistration::cloudCB(
     PointCloud::Ptr cloud(new PointCloud);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     if (cloud->empty() || !is_init_) {
-       ROS_ERROR("-Input cloud is empty in callback");
+       ROS_ERROR_ONCE("-Input cloud is empty in callback");
        return;
     }
+    ROS_INFO("\033[34m - Running Callback ... \033[0m");
+    
+    this->camera_info_ = cinfo_msg;
+    this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
     this->kdtree_->setInputCloud(cloud);
+
+    std::cout << "kdtree made"  << "\n";
     
     PointNormal::Ptr normals(new PointNormal);
     this->getNormals(normals, cloud);
@@ -81,6 +87,8 @@ void HandheldObjectRegistration::cloudCB(
     this->seedRegionGrowing(region_cloud, region_normal, screen_msg_,
                             cloud, normals);
 
+    std::cout << "region growing done"  << "\n";
+    
     //! delete this later
     pcl::PointCloud<PointNormalT>::Ptr src_points(
        new pcl::PointCloud<PointNormalT>);
@@ -99,25 +107,47 @@ void HandheldObjectRegistration::cloudCB(
     }
     
     if (!this->target_points_->empty()) {
+
+       std::cout << "updating"  << "\n";
+       
        Eigen::Matrix<float, 4, 4> transformation;
        pcl::PointCloud<PointNormalT>::Ptr align_points(
           new pcl::PointCloud<PointNormalT>);
-       this->registrationICP(align_points, transformation, src_points);
+
+       std::cout << "icp"  << "\n";
+       
+       if (!this->registrationICP(align_points, transformation, src_points)) {
+          ROS_ERROR("- ICP cannot converge.. skipping");
+          return;
+       }
 
        pcl::PointCloud<PointNormalT>::Ptr tmp_cloud(
           new pcl::PointCloud<PointNormalT>);
-       pcl::transformPointCloud(*target_points_, *tmp_cloud, transformation);
+       // PointCloud::Ptr tmp_cloud (new PointCloud);
+       pcl::transformPointCloud(*src_points, *tmp_cloud, transformation);
+
+       // std::cout << "\n " << transformation  << "\n";
+
+       this->modelUpdate(src_points, target_points_, transformation);
+
        
        sensor_msgs::PointCloud2 ros_cloud;
-       pcl::toROSMsg(*tmp_cloud, ros_cloud);
+       // pcl::toROSMsg(*tmp_cloud, ros_cloud);
+       pcl::toROSMsg(*align_points, ros_cloud);
        ros_cloud.header = cloud_msg->header;
        this->pub_icp_.publish(ros_cloud);
+    } else {
+       this->target_points_->clear();
+       *target_points_ = *src_points;
     }
-    this->target_points_->clear();
-    *target_points_ = *src_points;
+
+
+    std::cout << region_cloud->size()  << "\n";
+    ROS_INFO("Done Processing");
     
     sensor_msgs::PointCloud2 *ros_cloud = new sensor_msgs::PointCloud2;
-    pcl::toROSMsg(*region_cloud, *ros_cloud);
+    // pcl::toROSMsg(*region_cloud, *ros_cloud);
+    pcl::toROSMsg(*target_points_, *ros_cloud);
     ros_cloud->header = cloud_msg->header;
     this->pub_cloud_.publish(*ros_cloud);
     
@@ -134,8 +164,105 @@ void HandheldObjectRegistration::cloudCB(
     PointCloud().swap(*region_cloud);
     PointNormal().swap(*region_normal);
     
-    std::cout << region_cloud->size()  << "\n";
     // is_init_ = false;
+}
+
+void HandheldObjectRegistration::modelUpdate(
+    pcl::PointCloud<PointNormalT>::Ptr src_points,
+    pcl::PointCloud<PointNormalT>::Ptr target_points,
+    const Eigen::Matrix<float, 4, 4> transformation) {
+    if (src_points->empty() || target_points->empty()) {
+       ROS_ERROR("Empty input points for update");
+       return;
+    }
+    // TODO(MIN_SIZE_CHECK):
+    
+    pcl::PointCloud<PointNormalT>::Ptr trans_points(
+       new pcl::PointCloud<PointNormalT>);
+    Eigen::Matrix<float, 4, 4> transformation_inv = transformation.inverse();
+    // pcl::transformPointCloud(*src_points, *trans_points,
+    // transformation);
+    
+    pcl::transformPointCloud(*target_points, *trans_points, transformation_inv);
+    
+    cv::Mat src_image;
+    cv::Mat src_depth;
+    cv::Mat src_indices = this->project3DTo2DDepth(
+       src_image, src_depth, src_points/*trans_points*/);
+    
+    //! move it out***
+    cv::Mat target_image;
+    cv::Mat target_depth;
+    cv::Mat target_indices = this->project3DTo2DDepth(
+       target_image, target_depth, trans_points/*target_points*/);
+    
+    const float DISTANCE_THRESH_ = 0.10f;
+    const float ANGLE_THRESH_ = M_PI/3.0f;
+
+    pcl::PointCloud<PointNormalT>::Ptr update_model(
+       new pcl::PointCloud<PointNormalT>);
+    // *update_model += *target_points;
+    *update_model += *trans_points;
+    
+    // update_model->resize(target_points->size() + src_points->size());
+    
+    int icounter = 0;
+    for (int j = 0; j < target_image.rows; j++) {
+       for (int i = 0; i < target_image.cols; i++) {
+          float t_depth = target_depth.at<float>(j, i);
+          float s_depth = src_depth.at<float>(j, i);
+          int s_index = src_indices.at<int>(j, i);
+          int t_index = target_indices.at<int>(j, i);
+
+          //! debug only
+          if (t_index >= static_cast<int>(target_points->size()) ||
+              s_index >= static_cast<int>(src_points->size())) {
+             ROS_ERROR("- index out of size");
+             std::cout << s_index << "\t" << src_points->size()  << "\n";
+             std::cout << t_index << "\t" << target_points->size()  << "\n";
+          }
+          
+          if (s_depth != 0.0f && t_depth != 0.0f) {  //! common points
+             // TODO(FILL PREV NAN):
+             Eigen::Vector4f s_norm = src_points->points[
+                s_index].getNormalVector4fMap();
+             Eigen::Vector4f t_norm = target_points->points[
+                t_index].getNormalVector4fMap();
+             float angle = std::acos(s_norm.dot(t_norm) /
+                                     (s_norm.norm() * t_norm.norm()));
+             float dist = std::abs(t_depth - s_depth);
+             if (dist < DISTANCE_THRESH_ && angle < ANGLE_THRESH_) {
+                //! common point keep previous points
+                // update_model->push_back(target_points->points[t_index]);
+                // update_model->push_back(trans_points->points[t_index]);
+             } else {
+                continue;
+             }
+          } else if (s_depth != 0 && t_depth == 0) {  //! new points
+             // update_model->push_back(trans_points->points[s_index]);
+             update_model->push_back(src_points->points[s_index]);
+          } else if (s_depth == 0 && t_depth != 0) {  //! new points
+             // update_model->push_back(target_points->points[t_index]);
+             // update_model->push_back(trans_points->points[t_index]);
+          }
+       }
+    }
+    this->target_points_->clear();
+    pcl::transformPointCloud(*update_model, *target_points_, transformation);
+    // pcl::copyPointCloud<PointNormalT, PointNormalT>(
+    //    *update_model, *target_points_);
+
+    cv::namedWindow("trans_points", cv::WINDOW_NORMAL);
+    cv::namedWindow("target", cv::WINDOW_NORMAL);
+    cv::imshow("trans_points", src_image);
+    cv::imshow("target", target_image);
+
+    // cv::cvtColor(src_image, src_image, CV_BGR2GRAY);
+    // cv::cvtColor(target_image, target_image, CV_BGR2GRAY);
+    // cv::Mat diff = src_image - target_image;
+    // cv::imshow("diff", diff);
+    
+    cv::waitKey(3);
 }
 
 bool HandheldObjectRegistration::registrationICP(
@@ -148,7 +275,7 @@ bool HandheldObjectRegistration::registrationICP(
     }
     pcl::IterativeClosestPointWithNormals<PointNormalT, PointNormalT>::Ptr icp(
        new pcl::IterativeClosestPointWithNormals<PointNormalT, PointNormalT>);
-    icp->setMaximumIterations(1);
+    icp->setMaximumIterations(5);
     icp->setInputSource(src_points);
     icp->setInputTarget(this->target_points_);
     icp->align(*align_points);
@@ -306,7 +433,91 @@ void HandheldObjectRegistration::getPointNeigbour(
     }
 }
 
+cv::Mat HandheldObjectRegistration::project3DTo2DDepth(
+    cv::Mat &image, cv::Mat &depth_image,
+    const pcl::PointCloud<PointNormalT>::Ptr cloud, const float max_distance) {
+    if (cloud->empty()) {
+       ROS_ERROR("- Empty cloud. Cannot project 3D to 2D depth.");
+       return cv::Mat();
+    }
 
+    cv::Mat object_points = cv::Mat(static_cast<int>(cloud->size()), 3, CV_32F);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(this->num_threads_)
+#endif
+    for (int i = 0; i < cloud->size(); i++) {
+       object_points.at<float>(i, 0) = cloud->points[i].x;
+       object_points.at<float>(i, 1) = cloud->points[i].y;
+       object_points.at<float>(i, 2) = cloud->points[i].z;
+    }
+    float K[9];
+    float R[9];
+    for (int i = 0; i < 9; i++) {
+       K[i] = camera_info_->K[i];
+       R[i] = camera_info_->R[i];
+    }
+
+    cv::Mat camera_matrix = cv::Mat(3, 3, CV_32F, K);
+    cv::Mat rotationMatrix = cv::Mat(3, 3, CV_32F, R);
+    float tvec[3];
+    tvec[0] = camera_info_->P[3];
+    tvec[1] = camera_info_->P[7];
+    tvec[2] = camera_info_->P[11];
+    cv::Mat translation_matrix = cv::Mat(3, 1, CV_32F, tvec);
+    
+    float D[5];
+    for (int i = 0; i < 5; i++) {
+       D[i] = camera_info_->D[i];
+    }
+    cv::Mat distortion_model = cv::Mat(5, 1, CV_32F, D);
+    cv::Mat rvec;
+    cv::Rodrigues(rotationMatrix, rvec);
+    
+    std::vector<cv::Point2f> image_points;
+    cv::projectPoints(object_points, rvec, translation_matrix,
+                      camera_matrix, distortion_model, image_points);
+    image = cv::Mat::zeros(camera_info_->height, camera_info_->width, CV_8UC3);
+    depth_image = cv::Mat::zeros(image.size(), CV_32F);
+    cv::Mat indices = cv::Mat(image.size(), CV_32S);
+    // indices = cv::Scalar(-1);
+    
+    for (int j = 0; j < image.rows; j++) {
+       for (int i = 0; i < image.cols; i++) {
+          indices.at<int>(j, i) = -1;
+       }
+    }
+    
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(this->num_threads_)
+#endif
+    for (int i = 0; i < image_points.size(); i++) {
+       int x = image_points[i].x;
+       int y = image_points[i].y;
+       if (!isnan(x) && !isnan(y) && (x >= 0 && x <= image.cols) &&
+           (y >= 0 && y <= image.rows)) {
+          image.at<cv::Vec3b>(y, x)[2] = cloud->points[i].r;
+          image.at<cv::Vec3b>(y, x)[1] = cloud->points[i].g;
+          image.at<cv::Vec3b>(y, x)[0] = cloud->points[i].b;
+
+          depth_image.at<float>(y, x) = cloud->points[i].z / max_distance;
+          indices.at<int>(y, x) = i;
+       }
+    }
+
+    //! debug
+    /*
+    for (int i = 0; i < indices.rows; i++) {
+       for (int j = 0; j < indices.cols; j++) {
+          int ind = indices.at<int>(i, j);
+          if (ind >= static_cast<int>(cloud->size())) {
+             std::cout << "\033[34m Bigger: " << ind  << "\t" << j
+                       << ", " << i << "\t" << cloud->size() << "\033[0m\n";
+          }
+       }
+    }
+    */
+    return indices;
+}
 
 int main(int argc, char *argv[]) {
     ros::init(argc, argv, "handheld_object_registration");

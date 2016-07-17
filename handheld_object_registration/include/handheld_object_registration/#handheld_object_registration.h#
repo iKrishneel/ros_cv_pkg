@@ -35,6 +35,10 @@ class HandheldObjectRegistration {
     typedef pcl::PointXYZRGBNormal PointNormalT;
     typedef pcl::PointCloud<PointT> PointCloud;
     typedef pcl::PointCloud<NormalT> PointNormal;
+
+    struct Model {
+       
+    };
    
  private:
     boost::mutex mutex_;

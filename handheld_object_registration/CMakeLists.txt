@@ -8,6 +8,8 @@ find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msg
   pcl_conversions dynamic_tf_publisher jsk_recognition_msgs jsk_perception dynamic_reconfigure 
 )
 
+find_package(OpenCV REQUIRED)
+
 find_package(OpenMP)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
@@ -136,7 +138,7 @@ add_executable(handheld_object_registration_node src/handheld_object_registratio
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(handheld_object_registration_node
-  ${catkin_LIBRARIES} ${OpenCV_LIBS}
+  ${catkin_LIBRARIES} ${OpenCV_LIBRARIES}
 )
 
 #############
