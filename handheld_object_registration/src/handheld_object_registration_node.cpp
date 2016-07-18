@@ -2,11 +2,13 @@
 #include <handheld_object_registration/handheld_object_registration.h>
 
 HandheldObjectRegistration::HandheldObjectRegistration():
-    num_threads_(16), is_init_(false), min_points_size_(100) {
+    num_threads_(16), is_init_(false), min_points_size_(100),
+    weight_decay_factor_(0.6f), init_weight_(1.0f) {
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
     this->target_points_ = pcl::PointCloud<PointNormalT>::Ptr(
        new pcl::PointCloud<PointNormalT>);
-
+    this->model_weights_.clear();
+    
     //! temporary
     this->rendering_cuboid_ = boost::shared_ptr<jsk_msgs::BoundingBox>(
        new jsk_msgs::BoundingBox);
@@ -81,7 +83,7 @@ void HandheldObjectRegistration::cloudCB(
     
     PointNormal::Ptr normals(new PointNormal);
     this->getNormals(normals, cloud);
-
+    
     PointCloud::Ptr region_cloud(new PointCloud);
     PointNormal::Ptr region_normal(new PointNormal);
     this->seedRegionGrowing(region_cloud, region_normal, screen_msg_,
@@ -129,7 +131,6 @@ void HandheldObjectRegistration::cloudCB(
        // std::cout << "\n " << transformation  << "\n";
 
        this->modelUpdate(src_points, target_points_, transformation);
-
        
        sensor_msgs::PointCloud2 ros_cloud;
        // pcl::toROSMsg(*tmp_cloud, ros_cloud);
@@ -139,8 +140,12 @@ void HandheldObjectRegistration::cloudCB(
     } else {
        this->target_points_->clear();
        *target_points_ = *src_points;
-    }
 
+       this->model_weights_.resize(static_cast<int>(target_points_->size()));
+       for (int i = 0; i < this->target_points_->size(); i++) {
+          this->model_weights_[i].weight = this->init_weight_;
+       }
+    }
 
     std::cout << region_cloud->size()  << "\n";
     ROS_INFO("Done Processing");
@@ -236,22 +241,43 @@ void HandheldObjectRegistration::modelUpdate(
                 // update_model->push_back(target_points->points[t_index]);
                 // update_model->push_back(trans_points->points[t_index]);
              } else {
-                continue;
+                model_weights_[t_index].weight *= this->weight_decay_factor_;
              }
           } else if (s_depth != 0 && t_depth == 0) {  //! new points
              // update_model->push_back(trans_points->points[s_index]);
              update_model->push_back(src_points->points[s_index]);
+
+             Model m_weight;
+             m_weight.weight = this->init_weight_;
+             this->model_weights_.push_back(m_weight);
           } else if (s_depth == 0 && t_depth != 0) {  //! new points
              // update_model->push_back(target_points->points[t_index]);
              // update_model->push_back(trans_points->points[t_index]);
+             model_weights_[t_index].weight *= this->weight_decay_factor_;
           }
        }
     }
+
+    std::cout << "\033[35m - INFO: \033[0m" << update_model->size()
+              << "\t" << this->model_weights_.size() << "\n";
+
     this->target_points_->clear();
-    pcl::transformPointCloud(*update_model, *target_points_, transformation);
+    std::vector<Model> temp_model_weight;
+    for (int i = 0; i < model_weights_.size(); i++) {
+       if (this->model_weights_[i].weight > 0.5) {
+          target_points_->push_back(update_model->points[i]);
+          temp_model_weight.push_back(this->model_weights_[i]);
+       }
+    }
+    this->model_weights_.clear();
+    this->model_weights_ = temp_model_weight;
+    
+    // pcl::transformPointCloud(*update_model, *target_points_, transformation);
+    pcl::transformPointCloud(*target_points_, *target_points_, transformation);
     // pcl::copyPointCloud<PointNormalT, PointNormalT>(
     //    *update_model, *target_points_);
 
+    
     cv::namedWindow("trans_points", cv::WINDOW_NORMAL);
     cv::namedWindow("target", cv::WINDOW_NORMAL);
     cv::imshow("trans_points", src_image);
@@ -275,7 +301,7 @@ bool HandheldObjectRegistration::registrationICP(
     }
     pcl::IterativeClosestPointWithNormals<PointNormalT, PointNormalT>::Ptr icp(
        new pcl::IterativeClosestPointWithNormals<PointNormalT, PointNormalT>);
-    icp->setMaximumIterations(5);
+    icp->setMaximumIterations(10);
     icp->setInputSource(src_points);
     icp->setInputTarget(this->target_points_);
     icp->align(*align_points);

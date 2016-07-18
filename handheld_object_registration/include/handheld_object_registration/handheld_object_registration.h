@@ -35,6 +35,11 @@ class HandheldObjectRegistration {
     typedef pcl::PointXYZRGBNormal PointNormalT;
     typedef pcl::PointCloud<PointT> PointCloud;
     typedef pcl::PointCloud<NormalT> PointNormal;
+
+    struct Model {
+       PointT point;
+       float weight;
+    };
    
  private:
     boost::mutex mutex_;
@@ -48,9 +53,13 @@ class HandheldObjectRegistration {
 
     int num_threads_;
     int min_points_size_;  //! number of points for update
-    pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
    
+    float weight_decay_factor_;
+    float init_weight_;
+    std::vector<Model> model_weights_;
     pcl::PointCloud<PointNormalT>::Ptr target_points_;
+   
+    pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
     geometry_msgs::PointStamped screen_msg_;
     bool is_init_;
 
