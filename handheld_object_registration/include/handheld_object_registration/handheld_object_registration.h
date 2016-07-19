@@ -107,9 +107,10 @@ class HandheldObjectRegistration {
                             const pcl::PointCloud<PointNormalT>::Ptr,
                             const float = 1.0f);
 
-    void symmetricPlane(float *, const pcl::PointCloud<PointNormalT>::Ptr,
-                        const float = 0.025f);
-   
+    void symmetricPlane(float *, pcl::PointCloud<PointNormalT>::Ptr,
+                        const float = 0.02f);
+    void plotPlane(pcl::PointCloud<PointNormalT>::Ptr, const Eigen::Vector4f,
+                   const Eigen::Vector3f = Eigen::Vector3f(255, 0, 0));
 };
 
 

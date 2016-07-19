@@ -117,16 +117,20 @@ void HandheldObjectRegistration::cloudCB(
 
     float equation[4];
     this->symmetricPlane(equation, src_points);
-
+    
     double duration = (std::clock() - start) /
        static_cast<double>(CLOCKS_PER_SEC);
     std::cout << "printf: " << duration <<'\n';
+
+    sensor_msgs::PointCloud2 ros_cloud1;
+    pcl::toROSMsg(*src_points, ros_cloud1);
+    ros_cloud1.header = cloud_msg->header;
+    this->pub_icp_.publish(ros_cloud1);
+    
     return;
     /**
      * DEBUG
      */
-
-    
 
     
     if (!this->target_points_->empty()) {
@@ -194,7 +198,7 @@ void HandheldObjectRegistration::cloudCB(
 }
 
 void HandheldObjectRegistration::symmetricPlane(
-    float *equation, const pcl::PointCloud<PointNormalT>::Ptr in_cloud,
+    float *equation, pcl::PointCloud<PointNormalT>::Ptr in_cloud,
     const float leaf_size) {
     if (in_cloud->empty()) {
        ROS_ERROR("Input size are not equal");
@@ -207,14 +211,21 @@ void HandheldObjectRegistration::symmetricPlane(
     voxel_grid.setLeafSize(leaf_size, leaf_size, leaf_size);
     voxel_grid.filter(*region_points);
 
+    in_cloud->clear();
+    *in_cloud = *region_points;
+
+
+    const int bin_dims = 6;
+    const float bin_angles = static_cast<float>(M_PI/bin_dims);
+    std::vector<float> histogram(bin_dims);
+    for (int i = 0; i < bin_dims; i++) {
+       histogram[i] = 0;
+    }
+    // std::vector<std::vector<Eigen::Vector4f> > equations(bin_dims);
     //! compute the symmetric
-    // std::vector<Eigen::Vector4f> symmetric_planes;
+
     std::vector<std::vector<float> > symmetric_planes;
-    
-    
     const float ANGLE_THRESH_ = M_PI/6;
-    Eigen::Vector4f average = Eigen::Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
-    int icounter = 0;
     
     for (int i = 0; i < region_points->size(); i++) {
        Eigen::Vector4f point1 = region_points->points[i].getVector4fMap();
@@ -253,45 +264,60 @@ void HandheldObjectRegistration::symmetricPlane(
           
           if (angle < ANGLE_THRESH_) {
              norm_s(3) = d;
-             // symmetric_planes.push_back(norm_s);
-             /*
-             std::vector<float> s_info;
-             s_info.push_back(norm_s(0));
-             s_info.push_back(norm_s(1));
-             s_info.push_back(norm_s(2));
-             s_info.push_back(d);
-             symmetric_planes.push_back(s_info);
-             */
-             average += norm_s;
-             icounter++;
+
+             Eigen::Vector3f direct = point1.head<3>() - point2.head<3>();
+             Eigen::Vector3f reference = Eigen::Vector3f(1.0f, 0.0f, 0.0f);
+             float angl = std::acos(reference.normalized().dot(
+                                    direct.normalized()));
+
+             int bin = std::floor(angl/bin_angles);
+             histogram[bin]++;
+             // equations[bin].push_back(norm_s);
+             
+             std::cout << "angle: " << angle * (180.0 / M_PI)  << "\t"
+                       << angl * (180.0 / M_PI) << "\t" << bin << "\n";
+             
+          } else {
+             std::cout << "\033[31mangle: " << angle * (180.0 / M_PI)
+                       << "\033[0m \n";
           }
        }
-       // TODO(NOT WORKING): 
-       double a = pcl::getAngle3D(
-          region_points->points[i].getVector4fMap(),
-          region_points->points[min_index].getVector4fMap()) * (180.0 / M_PI);       
-       
-       std::cout << "min dist: " << min_dist << "\t"
-                 << min_tetha * (180.0/M_PI) << "\t" << a  << "\n";
-    }
-    if (icounter > 0) {
-       average /= static_cast<float>(icounter);
-    }
-    std::cout << average  << "\n";
-    
-    /*
-    float kernel_bandwidth = 30.0f;
-    MeanShift *msp = new MeanShift();
-    std::vector<std::vector<float> > shifted_points = msp->cluster(
-       symmetric_planes, kernel_bandwidth);
+       // TODO(NOT WORKING):
 
-    std::cout << "done" << shifted_points.size() << "\t"
-              << symmetric_planes.size() << "\n";
-    
-    for (int i = 0; i < shifted_points.size(); i++) {
-       std::cout << shifted_points[i].size()  << "\n";
+
+       std::cout << "min dist: " << min_dist << "\t"
+                 << min_tetha * (180.0/M_PI) << "\n";
     }
-    */
+
+    int max_val = 0;
+    int max_ind = -1;
+    for (int i = 0; i < bin_dims; i++) {
+       if (histogram[i] > max_val) {
+          max_val = histogram[i];
+          max_ind = i;
+       }
+    }
+
+    float a = 0;
+    float b = 0;
+    float c = 0;
+    float d = 0;
+    // for (int i = 0; i < equations[max_ind].size(); i++) {
+    //    a += equations[max_ind][i](0);
+    //    b += equations[max_ind][i](1);
+    //    c += equations[max_ind][i](2);
+    //    d += equations[max_ind][i](3);
+    // }
+    // float esize = static_cast<float>(equations[max_ind].size());
+    // a /= esize;
+    // b /= esize;
+    // c /= esize;
+    // d /= esize;
+
+    std::cout << a <<"\t" << b << "\t" << c << "\t" << d  << "\n";
+
+    // Eigen::Vector4f param = Eigen::Vector4f(a, b, c, d);
+    // this->plotPlane(in_cloud, param);
 }
 
 void HandheldObjectRegistration::modelUpdate(
@@ -665,6 +691,34 @@ cv::Mat HandheldObjectRegistration::project3DTo2DDepth(
     }
     */
     return indices;
+}
+
+
+/**
+ * DEGUB ONE
+ */
+void HandheldObjectRegistration::plotPlane(
+    pcl::PointCloud<PointNormalT>::Ptr cloud, const Eigen::Vector4f param,
+    const Eigen::Vector3f color) {
+    Eigen::Vector3f center = Eigen::Vector3f(param(3)/param(0), 0, 0);
+    Eigen::Vector3f normal = param.head<3>();
+    float coef = normal.dot(center);
+    float x = coef / normal(0);
+    float y = coef / normal(1);
+    float z = coef / normal(2);
+    Eigen::Vector3f point_x = Eigen::Vector3f(x, 0.0f, 0.0f);
+    Eigen::Vector3f point_y = Eigen::Vector3f(0.0f, y, 0.0f) - point_x;
+    Eigen::Vector3f point_z = Eigen::Vector3f(0.0f, 0.0f, z) - point_x;
+    for (float y = -1.0f; y < 1.0f; y += 0.01f) {
+       for (float x = -1.0f; x < 1.0f; x += 0.01f) {
+         PointNormalT pt;
+         pt.x = point_x(0) + point_y(0) * x + point_z(0) * y;
+         pt.y = point_x(1) + point_y(1) * x + point_z(1) * y;
+         pt.z = point_x(2) + point_y(2) * x + point_z(2) * y;
+         pt.g = 255;
+         cloud->push_back(pt);
+      }
+    }
 }
 
 int main(int argc, char *argv[]) {
