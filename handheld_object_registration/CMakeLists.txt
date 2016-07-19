@@ -130,7 +130,10 @@ include_directories(
 # add_dependencies(handheld_object_registration ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
-add_executable(handheld_object_registration_node src/handheld_object_registration_node.cpp)
+add_executable(handheld_object_registration_node 
+  src/handheld_object_registration_node.cpp
+  src/mean_shift_clustering.cpp
+)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above

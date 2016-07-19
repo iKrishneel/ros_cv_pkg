@@ -11,18 +11,18 @@
 
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/kdtree/kdtree_flann.h>
-// #include <pcl/features/normal_3d_omp.h>
 #include <pcl/registration/distances.h>
 #include <pcl/common/centroid.h>
 #include <pcl/registration/icp.h>
-// #include <pcl/filters/voxel_grid_occlusion_estimation.h>
-// #include <pcl/features/principal_curvatures.h>
+#include <pcl/filters/voxel_grid.h>
 #include <pcl/features/integral_image_normal.h>
 
 #include <geometry_msgs/PointStamped.h>
 #include <sensor_msgs/CameraInfo.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
 #include <jsk_recognition_utils/pcl_conversion_util.h>
+
+#include <handheld_object_registration/mean_shift_clustering.h>
 
 #include <opencv2/opencv.hpp>
 
@@ -106,6 +106,9 @@ class HandheldObjectRegistration {
     cv::Mat project3DTo2DDepth(cv::Mat &, cv::Mat &,
                             const pcl::PointCloud<PointNormalT>::Ptr,
                             const float = 1.0f);
+
+    void symmetricPlane(float *, const pcl::PointCloud<PointNormalT>::Ptr,
+                        const float = 0.025f);
    
 };
 

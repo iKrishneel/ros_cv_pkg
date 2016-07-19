@@ -90,7 +90,7 @@ void HandheldObjectRegistration::cloudCB(
                             cloud, normals);
 
     std::cout << "region growing done"  << "\n";
-    
+
     //! delete this later
     pcl::PointCloud<PointNormalT>::Ptr src_points(
        new pcl::PointCloud<PointNormalT>);
@@ -107,6 +107,27 @@ void HandheldObjectRegistration::cloudCB(
        pt.normal_z = region_normal->points[i].normal_z;
        src_points->push_back(pt);
     }
+    
+
+    /**
+     * DEBUG
+     */
+    std::clock_t start;
+    start = std::clock();
+
+    float equation[4];
+    this->symmetricPlane(equation, src_points);
+
+    double duration = (std::clock() - start) /
+       static_cast<double>(CLOCKS_PER_SEC);
+    std::cout << "printf: " << duration <<'\n';
+    return;
+    /**
+     * DEBUG
+     */
+
+    
+
     
     if (!this->target_points_->empty()) {
 
@@ -170,6 +191,107 @@ void HandheldObjectRegistration::cloudCB(
     PointNormal().swap(*region_normal);
     
     // is_init_ = false;
+}
+
+void HandheldObjectRegistration::symmetricPlane(
+    float *equation, const pcl::PointCloud<PointNormalT>::Ptr in_cloud,
+    const float leaf_size) {
+    if (in_cloud->empty()) {
+       ROS_ERROR("Input size are not equal");
+       return;
+    }
+    pcl::PointCloud<PointNormalT>::Ptr region_points(
+       new pcl::PointCloud<PointNormalT>);
+    pcl::VoxelGrid<PointNormalT> voxel_grid;
+    voxel_grid.setInputCloud(in_cloud);
+    voxel_grid.setLeafSize(leaf_size, leaf_size, leaf_size);
+    voxel_grid.filter(*region_points);
+
+    //! compute the symmetric
+    // std::vector<Eigen::Vector4f> symmetric_planes;
+    std::vector<std::vector<float> > symmetric_planes;
+    
+    
+    const float ANGLE_THRESH_ = M_PI/6;
+    Eigen::Vector4f average = Eigen::Vector4f(0.0f, 0.0f, 0.0f, 0.0f);
+    int icounter = 0;
+    
+    for (int i = 0; i < region_points->size(); i++) {
+       Eigen::Vector4f point1 = region_points->points[i].getVector4fMap();
+       Eigen::Vector4f norm1 = region_points->points[i].getNormalVector4fMap();
+       point1(3) = 0.0f;
+       norm1(3) = 0.0f;
+
+       float min_dist = FLT_MAX;
+       float min_tetha = 2 * M_PI;
+       int min_index = -1;
+       for (int j = i + 1; j < region_points->size(); j++) {
+          Eigen::Vector4f point2 = region_points->points[j].getVector4fMap();
+          Eigen::Vector4f norm2 = region_points->points[
+             j].getNormalVector4fMap();
+          point2(3) = 0.0f;
+          norm2(3) = 0.0f;
+          double d = pcl::distances::l2(point1, point2);
+          Eigen::Vector4f norm_s = (point1 - point2)/(d);
+          float dist_s = ((point1 - point2).dot(norm_s))/2.0f;
+          
+          //! reflection about above point
+          Eigen::Vector4f point_r = point1 - 2 * norm_s *
+             (point1.dot(norm_s) - d);
+          Eigen::Vector4f norm_r = norm1 - 2 * norm_s * (norm_s.dot(norm1));
+          norm_r(3) = 0.0f;
+          
+          //! correspondance
+          float angle = std::acos(norm_r.dot(norm1)/(
+                                     norm_r.norm() * norm1.norm()));
+
+          if (d < min_dist) {
+             min_dist = d;
+             min_tetha = angle;
+             min_index = j;
+          }
+          
+          if (angle < ANGLE_THRESH_) {
+             norm_s(3) = d;
+             // symmetric_planes.push_back(norm_s);
+             /*
+             std::vector<float> s_info;
+             s_info.push_back(norm_s(0));
+             s_info.push_back(norm_s(1));
+             s_info.push_back(norm_s(2));
+             s_info.push_back(d);
+             symmetric_planes.push_back(s_info);
+             */
+             average += norm_s;
+             icounter++;
+          }
+       }
+       // TODO(NOT WORKING): 
+       double a = pcl::getAngle3D(
+          region_points->points[i].getVector4fMap(),
+          region_points->points[min_index].getVector4fMap()) * (180.0 / M_PI);       
+       
+       std::cout << "min dist: " << min_dist << "\t"
+                 << min_tetha * (180.0/M_PI) << "\t" << a  << "\n";
+    }
+    if (icounter > 0) {
+       average /= static_cast<float>(icounter);
+    }
+    std::cout << average  << "\n";
+    
+    /*
+    float kernel_bandwidth = 30.0f;
+    MeanShift *msp = new MeanShift();
+    std::vector<std::vector<float> > shifted_points = msp->cluster(
+       symmetric_planes, kernel_bandwidth);
+
+    std::cout << "done" << shifted_points.size() << "\t"
+              << symmetric_planes.size() << "\n";
+    
+    for (int i = 0; i < shifted_points.size(); i++) {
+       std::cout << shifted_points[i].size()  << "\n";
+    }
+    */
 }
 
 void HandheldObjectRegistration::modelUpdate(
