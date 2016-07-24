@@ -109,75 +109,75 @@ void HandheldObjectRegistration::cloudCB(
     }
     
 
-    /**
-     * DEBUG
-     */
-    std::clock_t start;
-    start = std::clock();
+    // /**
+    //  * DEBUG
+    //  */
+    // std::clock_t start;
+    // start = std::clock();
 
-    float equation[4];
-    this->symmetricPlane(equation, src_points);
+    // float equation[4];
+    // this->symmetricPlane(equation, src_points);
     
-    double duration = (std::clock() - start) /
-       static_cast<double>(CLOCKS_PER_SEC);
-    std::cout << "printf: " << duration <<'\n';
+    // double duration = (std::clock() - start) /
+    //    static_cast<double>(CLOCKS_PER_SEC);
+    // std::cout << "printf: " << duration <<'\n';
 
-    sensor_msgs::PointCloud2 ros_cloud1;
-    pcl::toROSMsg(*src_points, ros_cloud1);
-    ros_cloud1.header = cloud_msg->header;
-    this->pub_icp_.publish(ros_cloud1);
+    // sensor_msgs::PointCloud2 ros_cloud1;
+    // pcl::toROSMsg(*src_points, ros_cloud1);
+    // ros_cloud1.header = cloud_msg->header;
+    // this->pub_icp_.publish(ros_cloud1);
     
-    return;
-    /**
-     * DEBUG
-     */
+    // return;
+    // /**
+    //  * DEBUG
+    //  */
 
     
-    if (!this->target_points_->empty()) {
+    // if (!this->target_points_->empty()) {
 
-       std::cout << "updating"  << "\n";
+    //    std::cout << "updating"  << "\n";
        
-       Eigen::Matrix<float, 4, 4> transformation;
-       pcl::PointCloud<PointNormalT>::Ptr align_points(
-          new pcl::PointCloud<PointNormalT>);
+    //    Eigen::Matrix<float, 4, 4> transformation;
+    //    pcl::PointCloud<PointNormalT>::Ptr align_points(
+    //       new pcl::PointCloud<PointNormalT>);
 
-       std::cout << "icp"  << "\n";
+    //    std::cout << "icp"  << "\n";
        
-       if (!this->registrationICP(align_points, transformation, src_points)) {
-          ROS_ERROR("- ICP cannot converge.. skipping");
-          return;
-       }
+    //    if (!this->registrationICP(align_points, transformation, src_points)) {
+    //       ROS_ERROR("- ICP cannot converge.. skipping");
+    //       return;
+    //    }
 
-       pcl::PointCloud<PointNormalT>::Ptr tmp_cloud(
-          new pcl::PointCloud<PointNormalT>);
-       // PointCloud::Ptr tmp_cloud (new PointCloud);
-       pcl::transformPointCloud(*src_points, *tmp_cloud, transformation);
+    //    pcl::PointCloud<PointNormalT>::Ptr tmp_cloud(
+    //       new pcl::PointCloud<PointNormalT>);
+    //    // PointCloud::Ptr tmp_cloud (new PointCloud);
+    //    pcl::transformPointCloud(*src_points, *tmp_cloud, transformation);
 
-       // std::cout << "\n " << transformation  << "\n";
+    //    // std::cout << "\n " << transformation  << "\n";
 
-       this->modelUpdate(src_points, target_points_, transformation);
+    //    this->modelUpdate(src_points, target_points_, transformation);
        
-       sensor_msgs::PointCloud2 ros_cloud;
-       // pcl::toROSMsg(*tmp_cloud, ros_cloud);
-       pcl::toROSMsg(*align_points, ros_cloud);
-       ros_cloud.header = cloud_msg->header;
-       this->pub_icp_.publish(ros_cloud);
-    } else {
-       this->target_points_->clear();
-       *target_points_ = *src_points;
+    //    sensor_msgs::PointCloud2 ros_cloud;
+    //    // pcl::toROSMsg(*tmp_cloud, ros_cloud);
+    //    pcl::toROSMsg(*align_points, ros_cloud);
+    //    ros_cloud.header = cloud_msg->header;
+    //    this->pub_icp_.publish(ros_cloud);
+    // } else {
+    //    this->target_points_->clear();
+    //    *target_points_ = *src_points;
 
-       this->model_weights_.resize(static_cast<int>(target_points_->size()));
-       for (int i = 0; i < this->target_points_->size(); i++) {
-          this->model_weights_[i].weight = this->init_weight_;
-       }
-    }
+    //    this->model_weights_.resize(static_cast<int>(target_points_->size()));
+    //    for (int i = 0; i < this->target_points_->size(); i++) {
+    //       this->model_weights_[i].weight = this->init_weight_;
+    //    }
+    // }
 
     std::cout << region_cloud->size()  << "\n";
     ROS_INFO("Done Processing");
     
     sensor_msgs::PointCloud2 *ros_cloud = new sensor_msgs::PointCloud2;
-    // pcl::toROSMsg(*region_cloud, *ros_cloud);
-    pcl::toROSMsg(*target_points_, *ros_cloud);
+    pcl::toROSMsg(*region_cloud, *ros_cloud);
+    // pcl::toROSMsg(*target_points_, *ros_cloud);
     ros_cloud->header = cloud_msg->header;
     this->pub_cloud_.publish(*ros_cloud);
     
@@ -215,17 +215,17 @@ void HandheldObjectRegistration::symmetricPlane(
     *in_cloud = *region_points;
 
 
-    const int bin_dims = 6;
+    const int bin_dims = 9;
     const float bin_angles = static_cast<float>(M_PI/bin_dims);
     std::vector<float> histogram(bin_dims);
     for (int i = 0; i < bin_dims; i++) {
        histogram[i] = 0;
     }
-    // std::vector<std::vector<Eigen::Vector4f> > equations(bin_dims);
+    std::vector<std::vector<Eigen::Vector4f> > equations(bin_dims);
     //! compute the symmetric
 
     std::vector<std::vector<float> > symmetric_planes;
-    const float ANGLE_THRESH_ = M_PI/6;
+    const float ANGLE_THRESH_ = M_PI/8;
     
     for (int i = 0; i < region_points->size(); i++) {
        Eigen::Vector4f point1 = region_points->points[i].getVector4fMap();
@@ -266,27 +266,26 @@ void HandheldObjectRegistration::symmetricPlane(
              norm_s(3) = d;
 
              Eigen::Vector3f direct = point1.head<3>() - point2.head<3>();
-             Eigen::Vector3f reference = Eigen::Vector3f(1.0f, 0.0f, 0.0f);
-             float angl = std::acos(reference.normalized().dot(
-                                    direct.normalized()));
+             float angl = std::acos(point1.head<3>().normalized().dot(
+                                       direct.normalized()));
 
+             // std::cout << "angle: " << angle * (180.0 / M_PI)  << "\t"
+             //           << angl * (180.0 / M_PI)  << "\n";
+             
              int bin = std::floor(angl/bin_angles);
              histogram[bin]++;
-             // equations[bin].push_back(norm_s);
+             equations[bin].push_back(norm_s);
              
-             std::cout << "angle: " << angle * (180.0 / M_PI)  << "\t"
-                       << angl * (180.0 / M_PI) << "\t" << bin << "\n";
+             // std::cout << "angle: " << angle * (180.0 / M_PI)  << "\t"
+             //           << angl * (180.0 / M_PI) << "\t" << bin << "\n";
              
-          } else {
-             std::cout << "\033[31mangle: " << angle * (180.0 / M_PI)
-                       << "\033[0m \n";
           }
+          
+          // else {
+          //    std::cout << "\033[31mangle: " << angle * (180.0 / M_PI)
+          //              << "\033[0m \n";
+          // }
        }
-       // TODO(NOT WORKING):
-
-
-       std::cout << "min dist: " << min_dist << "\t"
-                 << min_tetha * (180.0/M_PI) << "\n";
     }
 
     int max_val = 0;
@@ -296,28 +295,32 @@ void HandheldObjectRegistration::symmetricPlane(
           max_val = histogram[i];
           max_ind = i;
        }
+       std::cout << histogram[i]  << "\n";
     }
+    std::cout   << "\n";
+    // return;
+    
 
     float a = 0;
     float b = 0;
     float c = 0;
     float d = 0;
-    // for (int i = 0; i < equations[max_ind].size(); i++) {
-    //    a += equations[max_ind][i](0);
-    //    b += equations[max_ind][i](1);
-    //    c += equations[max_ind][i](2);
-    //    d += equations[max_ind][i](3);
-    // }
-    // float esize = static_cast<float>(equations[max_ind].size());
-    // a /= esize;
-    // b /= esize;
-    // c /= esize;
-    // d /= esize;
+    for (int i = 0; i < equations[max_ind].size(); i++) {
+       a += equations[max_ind][i](0);
+       b += equations[max_ind][i](1);
+       c += equations[max_ind][i](2);
+       d += equations[max_ind][i](3);
+    }
+    float esize = static_cast<float>(equations[max_ind].size());
+    a /= esize;
+    b /= esize;
+    c /= esize;
+    d /= esize;
 
     std::cout << a <<"\t" << b << "\t" << c << "\t" << d  << "\n";
 
-    // Eigen::Vector4f param = Eigen::Vector4f(a, b, c, d);
-    // this->plotPlane(in_cloud, param);
+    Eigen::Vector4f param = Eigen::Vector4f(a, b, c, d);
+    this->plotPlane(in_cloud, param);
 }
 
 void HandheldObjectRegistration::modelUpdate(
