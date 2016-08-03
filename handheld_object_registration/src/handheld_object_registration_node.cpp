@@ -112,22 +112,22 @@ void HandheldObjectRegistration::cloudCB(
     // /**
     //  * DEBUG
     //  */
-    // std::clock_t start;
-    // start = std::clock();
+    std::clock_t start;
+    start = std::clock();
 
-    // float equation[4];
-    // this->symmetricPlane(equation, src_points);
+    float equation[4];
+    this->symmetricPlane(equation, src_points);
     
-    // double duration = (std::clock() - start) /
-    //    static_cast<double>(CLOCKS_PER_SEC);
-    // std::cout << "printf: " << duration <<'\n';
+    double duration = (std::clock() - start) /
+       static_cast<double>(CLOCKS_PER_SEC);
+    std::cout << "printf: " << duration <<'\n';
 
-    // sensor_msgs::PointCloud2 ros_cloud1;
-    // pcl::toROSMsg(*src_points, ros_cloud1);
-    // ros_cloud1.header = cloud_msg->header;
-    // this->pub_icp_.publish(ros_cloud1);
+    sensor_msgs::PointCloud2 ros_cloud1;
+    pcl::toROSMsg(*src_points, ros_cloud1);
+    ros_cloud1.header = cloud_msg->header;
+    this->pub_icp_.publish(ros_cloud1);
     
-    // return;
+    return;
     // /**
     //  * DEBUG
     //  */
@@ -214,18 +214,23 @@ void HandheldObjectRegistration::symmetricPlane(
     in_cloud->clear();
     *in_cloud = *region_points;
 
-
-    const int bin_dims = 9;
+    const int bin_dims = 18;
     const float bin_angles = static_cast<float>(M_PI/bin_dims);
+    const float ANGLE_THRESH_ = M_PI/8;
+    const float DISTANCE_THRESH_ = 0.10f;
+    
     std::vector<float> histogram(bin_dims);
     for (int i = 0; i < bin_dims; i++) {
        histogram[i] = 0;
     }
+    
     std::vector<std::vector<Eigen::Vector4f> > equations(bin_dims);
     //! compute the symmetric
 
     std::vector<std::vector<float> > symmetric_planes;
-    const float ANGLE_THRESH_ = M_PI/8;
+
+    std::cout << "\033[32m NUMBER OF POINTS:  \033[0m"
+              << region_points->size()  << "\n";
     
     for (int i = 0; i < region_points->size(); i++) {
        Eigen::Vector4f point1 = region_points->points[i].getVector4fMap();
@@ -233,15 +238,13 @@ void HandheldObjectRegistration::symmetricPlane(
        point1(3) = 0.0f;
        norm1(3) = 0.0f;
 
-       float min_dist = FLT_MAX;
-       float min_tetha = 2 * M_PI;
-       int min_index = -1;
        for (int j = i + 1; j < region_points->size(); j++) {
           Eigen::Vector4f point2 = region_points->points[j].getVector4fMap();
           Eigen::Vector4f norm2 = region_points->points[
              j].getNormalVector4fMap();
           point2(3) = 0.0f;
           norm2(3) = 0.0f;
+          
           double d = pcl::distances::l2(point1, point2);
           Eigen::Vector4f norm_s = (point1 - point2)/(d);
           float dist_s = ((point1 - point2).dot(norm_s))/2.0f;
@@ -253,16 +256,13 @@ void HandheldObjectRegistration::symmetricPlane(
           norm_r(3) = 0.0f;
           
           //! correspondance
-          float angle = std::acos(norm_r.dot(norm1)/(
-                                     norm_r.norm() * norm1.norm()));
-
-          if (d < min_dist) {
-             min_dist = d;
-             min_tetha = angle;
-             min_index = j;
-          }
+          float angle = std::acos(norm_r.dot(norm2)/(
+                                     norm_r.norm() * norm2.norm()));
+          double dist_r = pcl::distances::l2(point2, point_r);
           
-          if (angle < ANGLE_THRESH_) {
+          // std::cout << "\t\033[32m :  " << dist_r  <<  "\033[0m" << "\n";
+          
+          if (angle < ANGLE_THRESH_ && dist_r < DISTANCE_THRESH_) {
              norm_s(3) = d;
 
              Eigen::Vector3f direct = point1.head<3>() - point2.head<3>();
@@ -287,6 +287,9 @@ void HandheldObjectRegistration::symmetricPlane(
           // }
        }
     }
+
+    std::cout << "\033[34m NUMBER OF SYMMETRIC PLANES:  \033[0m"
+              << histogram.size()  << "\n";
 
     int max_val = 0;
     int max_ind = -1;
@@ -558,7 +561,6 @@ void HandheldObjectRegistration::seedCorrespondingRegion(
     }
 }
 
-
 int HandheldObjectRegistration::seedVoxelConvexityCriteria(
     Eigen::Vector4f seed_point, Eigen::Vector4f seed_normal,
     Eigen::Vector4f c_centroid, Eigen::Vector4f n_centroid,
@@ -704,14 +706,14 @@ void HandheldObjectRegistration::plotPlane(
     pcl::PointCloud<PointNormalT>::Ptr cloud, const Eigen::Vector4f param,
     const Eigen::Vector3f color) {
     Eigen::Vector3f center = Eigen::Vector3f(param(3)/param(0), 0, 0);
-    Eigen::Vector3f normal = param.head<3>();
-    float coef = normal.dot(center);
-    float x = coef / normal(0);
-    float y = coef / normal(1);
-    float z = coef / normal(2);
-    Eigen::Vector3f point_x = Eigen::Vector3f(x, 0.0f, 0.0f);
-    Eigen::Vector3f point_y = Eigen::Vector3f(0.0f, y, 0.0f) - point_x;
-    Eigen::Vector3f point_z = Eigen::Vector3f(0.0f, 0.0f, z) - point_x;
+    // Eigen::Vector3f normal = param.head<3>();
+    // float coef = normal.dot(center);
+    // float x = coef / normal(0);
+    // float y = coef / normal(1);
+    // float z = coef / normal(2);
+    Eigen::Vector3f point_x = Eigen::Vector3f(param(3)/param(0), 0.0f, 0.0f);
+    Eigen::Vector3f point_y = Eigen::Vector3f(-param(2), 0, param(0));
+    Eigen::Vector3f point_z = Eigen::Vector3f(-param(1), param(0), 0);
     for (float y = -1.0f; y < 1.0f; y += 0.01f) {
        for (float x = -1.0f; x < 1.0f; x += 0.01f) {
          PointNormalT pt;
