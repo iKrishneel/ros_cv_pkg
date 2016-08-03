@@ -11,22 +11,18 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <cv_bridge/cv_bridge.h>
 
-#include <opencv2/core/core.hpp>
-// #include <opencv2/features2d/features2d.hpp>
-// #include <opencv2/nonfree/features2d.hpp>
-#include <opencv2/highgui/highgui.hpp>
-// #include <opencv2/nonfree/nonfree.hpp>
-#include <opencv2/opencv.hpp>
-#include <opencv2/video/video.hpp>
-#include <opencv2/video/background_segm.hpp>
-
-#include <boost/thread/mutex.hpp>
-
 #include <geometry_msgs/PolygonStamped.h>
 #include <jsk_recognition_msgs/Rect.h>
 
 #include <omp.h>
 #include <ros_cmt_tracker/CMT.h>
+
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/opencv.hpp>
+#include <opencv2/video/video.hpp>
+#include <opencv2/video/background_segm.hpp>
+#include <boost/thread/mutex.hpp>
 
 class ROSCMTTracker: public CMT {
 
@@ -35,6 +31,9 @@ class ROSCMTTracker: public CMT {
     int block_size_;
     bool tracker_init_;
     bool object_init_;
+
+    int frame_counter_;
+    int down_size_;
    
  protected:
 

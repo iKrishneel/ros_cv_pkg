@@ -2,7 +2,8 @@
 #include <ros_cmt_tracker/ros_cmt_tracker.h>
 
 ROSCMTTracker::ROSCMTTracker():
-    block_size_(10), tracker_init_(false), object_init_(false) {
+    block_size_(10), tracker_init_(false), object_init_(false),
+    frame_counter_(0), down_size_(2) {
     this->onInit();
 }
 
@@ -39,10 +40,13 @@ void ROSCMTTracker::callback(const sensor_msgs::Image::ConstPtr &image_msg) {
        return;
     }
     cv::Mat image = cv_ptr->image;
-    cv::Point2f init_tl = cv::Point2f(this->screen_rect_.x,
-                                      this->screen_rect_.y);
-    cv::Point2f init_br = cv::Point2f(init_tl.x + this->screen_rect_.width,
-                                        init_tl.y + this->screen_rect_.height);
+    cv::resize(image, image, cv::Size(image.cols/down_size_,
+                                      image.rows/down_size_));
+    cv::Point2f init_tl = cv::Point2f(this->screen_rect_.x / this->down_size_,
+                                      this->screen_rect_.y / this->down_size_);
+    cv::Point2f init_br = cv::Point2f(
+       init_tl.x + (this->screen_rect_.width / this->down_size_),
+       init_tl.y + (this->screen_rect_.height / this->down_size_));
     cv::Mat im_gray;
     cv::Mat img = image.clone();
     cv::cvtColor(image, im_gray, CV_RGB2GRAY);
@@ -57,13 +61,36 @@ void ROSCMTTracker::callback(const sensor_msgs::Image::ConstPtr &image_msg) {
     }
     cv::Scalar color = cv::Scalar(0, 255, 0);
     
+    // cv::rectangle(img, this->boundingbox, cv::Scalar(255, 0, 0), 3);
+    //! save the roi
+    bool generate_dataset = false;
+    std::string s_path = "/home/krishneel/Desktop/mbzirc/track-data/";
+    if (this->boundingbox.width > 16 && this->boundingbox.height > 16 &&
+       generate_dataset) {
+       
+       std::ostringstream convert;
+       convert << frame_counter_;
+       std::string save_path = (s_path + "positive/image_" +
+                                convert.str() + ".jpg");
+       
+       cv::Mat roi = image(this->boundingbox).clone();
+       cv::imwrite(save_path, roi);
+
+       //! remove region and save frame for negative
+       cv::rectangle(image, this->boundingbox, cv::Scalar(0, 0, 0), -1);
+       save_path = (s_path + "negative/image_" + convert.str() + ".jpg");
+       cv::imwrite(save_path, image);
+       std::cout << "Saving: " << save_path  << "\n";
+       
+       this->frame_counter_++;
+    }
+    //! end save roi
+
     cv::line(img, this->topLeft,  this->topRight, color, 3);
     cv::line(img, this->topRight, this->bottomRight, color, 3);
     cv::line(img, this->bottomRight, this->bottomLeft, color, 3);
     cv::line(img, this->bottomLeft, this->topLeft, color, 3);
-
-    // cv::rectangle(img, this->boundingbox, cv::Scalar(255, 0, 0), 3);
-
+    
     cv_bridge::CvImagePtr pub_msg(new cv_bridge::CvImage);
     pub_msg->header = image_msg->header;
     pub_msg->encoding = sensor_msgs::image_encodings::BGR8;
