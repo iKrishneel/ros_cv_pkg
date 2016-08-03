@@ -22,8 +22,6 @@
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
 #include <jsk_recognition_utils/pcl_conversion_util.h>
 
-#include <handheld_object_registration/mean_shift_clustering.h>
-
 #include <opencv2/opencv.hpp>
 
 namespace jsk_msgs = jsk_recognition_msgs;

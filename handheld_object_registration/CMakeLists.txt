@@ -132,7 +132,6 @@ include_directories(
 ## Declare a C++ executable
 add_executable(handheld_object_registration_node 
   src/handheld_object_registration_node.cpp
-  src/mean_shift_clustering.cpp
 )
 
 ## Add cmake target dependencies of the executable
