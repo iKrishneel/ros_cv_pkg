@@ -109,9 +109,8 @@ void HandheldObjectRegistration::cloudCB(
     }
     
 
-    // /**
-    //  * DEBUG
-    //  */
+    /**
+     * DEBUG
     std::clock_t start;
     start = std::clock();
 
@@ -128,56 +127,55 @@ void HandheldObjectRegistration::cloudCB(
     this->pub_icp_.publish(ros_cloud1);
     
     return;
-    // /**
-    //  * DEBUG
-    //  */
+    * DEBUG
+    */
 
     
-    // if (!this->target_points_->empty()) {
+    if (!this->target_points_->empty()) {
 
-    //    std::cout << "updating"  << "\n";
+       std::cout << "updating"  << "\n";
        
-    //    Eigen::Matrix<float, 4, 4> transformation;
-    //    pcl::PointCloud<PointNormalT>::Ptr align_points(
-    //       new pcl::PointCloud<PointNormalT>);
+       Eigen::Matrix<float, 4, 4> transformation;
+       pcl::PointCloud<PointNormalT>::Ptr align_points(
+          new pcl::PointCloud<PointNormalT>);
 
-    //    std::cout << "icp"  << "\n";
+       std::cout << "icp"  << "\n";
        
-    //    if (!this->registrationICP(align_points, transformation, src_points)) {
-    //       ROS_ERROR("- ICP cannot converge.. skipping");
-    //       return;
-    //    }
+       if (!this->registrationICP(align_points, transformation, src_points)) {
+          ROS_ERROR("- ICP cannot converge.. skipping");
+          return;
+       }
 
-    //    pcl::PointCloud<PointNormalT>::Ptr tmp_cloud(
-    //       new pcl::PointCloud<PointNormalT>);
-    //    // PointCloud::Ptr tmp_cloud (new PointCloud);
-    //    pcl::transformPointCloud(*src_points, *tmp_cloud, transformation);
+       pcl::PointCloud<PointNormalT>::Ptr tmp_cloud(
+          new pcl::PointCloud<PointNormalT>);
+       // PointCloud::Ptr tmp_cloud (new PointCloud);
+       pcl::transformPointCloud(*src_points, *tmp_cloud, transformation);
 
-    //    // std::cout << "\n " << transformation  << "\n";
+       // std::cout << "\n " << transformation  << "\n";
 
-    //    this->modelUpdate(src_points, target_points_, transformation);
+       // this->modelUpdate(src_points, target_points_, transformation);
        
-    //    sensor_msgs::PointCloud2 ros_cloud;
-    //    // pcl::toROSMsg(*tmp_cloud, ros_cloud);
-    //    pcl::toROSMsg(*align_points, ros_cloud);
-    //    ros_cloud.header = cloud_msg->header;
-    //    this->pub_icp_.publish(ros_cloud);
-    // } else {
-    //    this->target_points_->clear();
-    //    *target_points_ = *src_points;
+       sensor_msgs::PointCloud2 ros_cloud;
+       // pcl::toROSMsg(*tmp_cloud, ros_cloud);
+       pcl::toROSMsg(*align_points, ros_cloud);
+       ros_cloud.header = cloud_msg->header;
+       this->pub_icp_.publish(ros_cloud);
+    } else {
+       this->target_points_->clear();
+       *target_points_ = *src_points;
 
-    //    this->model_weights_.resize(static_cast<int>(target_points_->size()));
-    //    for (int i = 0; i < this->target_points_->size(); i++) {
-    //       this->model_weights_[i].weight = this->init_weight_;
-    //    }
-    // }
+       this->model_weights_.resize(static_cast<int>(target_points_->size()));
+       for (int i = 0; i < this->target_points_->size(); i++) {
+          this->model_weights_[i].weight = this->init_weight_;
+       }
+    }
 
     std::cout << region_cloud->size()  << "\n";
     ROS_INFO("Done Processing");
     
     sensor_msgs::PointCloud2 *ros_cloud = new sensor_msgs::PointCloud2;
-    pcl::toROSMsg(*region_cloud, *ros_cloud);
-    // pcl::toROSMsg(*target_points_, *ros_cloud);
+    // pcl::toROSMsg(*region_cloud, *ros_cloud);
+    pcl::toROSMsg(*target_points_, *ros_cloud);
     ros_cloud->header = cloud_msg->header;
     this->pub_cloud_.publish(*ros_cloud);
     
@@ -480,9 +478,40 @@ bool HandheldObjectRegistration::registrationICP(
     icp->setMaximumIterations(10);
     icp->setInputSource(src_points);
     icp->setInputTarget(this->target_points_);
+
+    //! getting the correspondances
+    pcl::registration::CorrespondenceEstimation<PointNormalT,
+                                                PointNormalT>::Ptr
+       correspond_estimation(new pcl::registration::CorrespondenceEstimation<
+                             PointNormalT, PointNormalT>);
+    correspond_estimation->setInputSource(src_points);
+    correspond_estimation->setInputTarget(this->target_points_);
+
+    icp->setCorrespondenceEstimation(correspond_estimation);
     icp->align(*align_points);
     transformation = icp->getFinalTransformation();
 
+    boost::shared_ptr<pcl::Correspondences> correspondences(
+       new pcl::Correspondences);
+    correspond_estimation->determineCorrespondences(*correspondences);
+
+    ROS_INFO("PRINTING CORRESPONDENCES");
+
+    float fitness = icp->getFitnessScore();
+    for (int i = 0; i < correspondences->size(); i++) {
+       int query = correspondences->operator[](i).index_query;  //! source
+       int match = correspondences->operator[](i).index_match;  //! target
+       float distance = correspondences->operator[](i).distance;
+
+       if (distance > fitness) {
+          align_points->points[query].r = 0;
+          align_points->points[query].b = 0;
+          align_points->points[query].g = 0;
+       }
+    }
+
+    
+    
     std::cout << "has converged:" << icp->hasConverged() << " score: "
               << icp->getFitnessScore() << std::endl;
 

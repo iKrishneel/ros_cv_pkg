@@ -16,6 +16,7 @@
 #include <pcl/registration/icp.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/features/integral_image_normal.h>
+#include <pcl/registration/correspondence_estimation.h>
 
 #include <geometry_msgs/PointStamped.h>
 #include <sensor_msgs/CameraInfo.h>
@@ -33,7 +34,7 @@ class HandheldObjectRegistration {
     typedef pcl::PointXYZRGBNormal PointNormalT;
     typedef pcl::PointCloud<PointT> PointCloud;
     typedef pcl::PointCloud<NormalT> PointNormal;
-
+   
     struct Model {
        PointT point;
        float weight;
