@@ -57,6 +57,7 @@ class HandheldObjectRegistration {
     float init_weight_;
     std::vector<Model> model_weights_;
     pcl::PointCloud<PointNormalT>::Ptr target_points_;
+    pcl::PointCloud<PointNormalT>::Ptr prev_points_;
    
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
     geometry_msgs::PointStamped screen_msg_;

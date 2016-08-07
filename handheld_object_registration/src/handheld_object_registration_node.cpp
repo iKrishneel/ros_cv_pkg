@@ -7,6 +7,8 @@ HandheldObjectRegistration::HandheldObjectRegistration():
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
     this->target_points_ = pcl::PointCloud<PointNormalT>::Ptr(
        new pcl::PointCloud<PointNormalT>);
+    this->prev_points_ = pcl::PointCloud<PointNormalT>::Ptr(
+       new pcl::PointCloud<PointNormalT>);
     this->model_weights_.clear();
     
     //! temporary
@@ -146,14 +148,18 @@ void HandheldObjectRegistration::cloudCB(
           return;
        }
 
+       // Eigen::Matrix4f transformation_inv = transformation.inverse();
+       pcl::transformPointCloud(*target_points_, *target_points_,
+                                transformation);
+       
+       /*
        pcl::PointCloud<PointNormalT>::Ptr tmp_cloud(
           new pcl::PointCloud<PointNormalT>);
-       // PointCloud::Ptr tmp_cloud (new PointCloud);
+       PointCloud::Ptr tmp_cloud (new PointCloud);
        pcl::transformPointCloud(*src_points, *tmp_cloud, transformation);
-
-       // std::cout << "\n " << transformation  << "\n";
-
-       // this->modelUpdate(src_points, target_points_, transformation);
+       */
+       
+       this->modelUpdate(src_points, target_points_, transformation);
        
        sensor_msgs::PointCloud2 ros_cloud;
        // pcl::toROSMsg(*tmp_cloud, ros_cloud);
@@ -170,6 +176,9 @@ void HandheldObjectRegistration::cloudCB(
        }
     }
 
+    this->prev_points_->clear();
+    pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points, *prev_points_);
+    
     std::cout << region_cloud->size()  << "\n";
     ROS_INFO("Done Processing");
     
@@ -185,6 +194,7 @@ void HandheldObjectRegistration::cloudCB(
     rviz_bbox->header = cloud_msg->header;
     this->pub_bbox_.publish(*rviz_bbox);
 
+    
     delete ros_cloud;
     delete rviz_bbox;
     pcl::PointCloud<PointNormalT>().swap(*src_points);
@@ -194,6 +204,266 @@ void HandheldObjectRegistration::cloudCB(
     
     // is_init_ = false;
 }
+
+
+void HandheldObjectRegistration::modelUpdate(
+    pcl::PointCloud<PointNormalT>::Ptr src_points,
+    pcl::PointCloud<PointNormalT>::Ptr target_points,
+    const Eigen::Matrix<float, 4, 4> transformation) {
+    if (src_points->empty() || target_points->empty()) {
+       ROS_ERROR("Empty input points for update");
+       return;
+    }
+    // TODO(MIN_SIZE_CHECK):
+    
+    pcl::PointCloud<PointNormalT>::Ptr trans_points(
+       new pcl::PointCloud<PointNormalT>);
+    // Eigen::Matrix<float, 4, 4> transformation_inv = transformation.inverse();
+    // pcl::transformPointCloud(*src_points, *trans_points,
+    // transformation);
+    // pcl::transformPointCloud(*target_points, *trans_points,
+    //    transformation_inv);
+    
+    cv::Mat src_image;
+    cv::Mat src_depth;
+    cv::Mat src_indices = this->project3DTo2DDepth(
+       src_image, src_depth, src_points/*trans_points*/);
+    
+    //! move it out***
+    cv::Mat target_image;
+    cv::Mat target_depth;
+    cv::Mat target_indices = this->project3DTo2DDepth(
+       target_image, target_depth, target_points);
+
+    cv::Mat depth_im = cv::Mat::zeros(src_depth.size(), CV_32F);
+    // cv::absdiff(src_depth, target_depth, depth_im);
+
+    pcl::PointCloud<PointNormalT>::Ptr update_model(
+       new pcl::PointCloud<PointNormalT>);
+    pcl::copyPointCloud<PointNormalT, PointNormalT>(
+       *target_points, *update_model);
+    
+    for (int j = 0; j < src_depth.rows; j++) {
+       for (int i = 0; i < src_depth.cols; i++) {
+          float t_depth = target_depth.at<float>(j, i);
+          float s_depth = src_depth.at<float>(j, i);
+          int s_index = src_indices.at<int>(j, i);
+          int t_index = target_indices.at<int>(j, i);
+          
+          if ((t_index < static_cast<int>(target_points->size()) &&
+               t_index != -1) || (s_index < static_cast<int>(src_points->size())
+                                  && s_index != -1)) {
+             
+             if (s_index == -1 && t_index != -1) {
+                //! keep this point
+                // update_model->push_back(target_points->points[t_index]);
+             
+             } else if (s_index != -1 && t_index != -1) {
+                //! replace target with src
+                update_model->points[t_index] = src_points->points[s_index];
+             } else if (s_index != -1 && t_index == -1) {
+                //! probably new point
+                update_model->push_back(src_points->points[s_index]);
+             }
+             
+          
+             float diff = src_depth.at<float>(j, i) -
+                target_depth.at<float>(j, i);
+
+             // std::cout << "diff: " << diff << "\t"
+             //           << src_depth.at<float>(j, i) << "\t"
+             //           << target_depth.at<float>(j, i) << "\n";
+          
+             if (std::fabs(diff) > 0.01f)  {
+                depth_im.at<float>(j, i) = 1.0f;
+             }
+             
+          }
+          // else {
+          //    ROS_ERROR("- index out of size");
+          //    std::cout << s_index << "\t" << src_points->size()  << "\n";
+          //    std::cout << t_index << "\t" << target_points->size()  << "\n";
+          // }
+          
+       }
+    }
+
+    target_points->clear();
+    pcl::copyPointCloud<PointNormalT, PointNormalT>(
+       *update_model, *target_points);
+    pcl::PointCloud<PointNormalT>().swap(*update_model);
+    
+    cv::imshow("src_points", src_image);
+    cv::imshow("target_points", target_image);
+    cv::imshow("depth", depth_im);
+    cv::waitKey(3);
+
+    return;
+
+
+    
+    
+    const float DISTANCE_THRESH_ = 0.10f;
+    const float ANGLE_THRESH_ = M_PI/3.0f;
+
+    // pcl::PointCloud<PointNormalT>::Ptr update_model(
+    //    new pcl::PointCloud<PointNormalT>);
+    // *update_model += *target_points;
+    *update_model += *trans_points;
+    
+    // update_model->resize(target_points->size() + src_points->size());
+    
+    int icounter = 0;
+    for (int j = 0; j < target_image.rows; j++) {
+       for (int i = 0; i < target_image.cols; i++) {
+          float t_depth = target_depth.at<float>(j, i);
+          float s_depth = src_depth.at<float>(j, i);
+          int s_index = src_indices.at<int>(j, i);
+          int t_index = target_indices.at<int>(j, i);
+
+          //! debug only
+          if (t_index >= static_cast<int>(target_points->size()) ||
+              s_index >= static_cast<int>(src_points->size())) {
+             ROS_ERROR("- index out of size");
+             std::cout << s_index << "\t" << src_points->size()  << "\n";
+             std::cout << t_index << "\t" << target_points->size()  << "\n";
+          }
+          
+          if (s_depth != 0.0f && t_depth != 0.0f) {  //! common points
+             // TODO(FILL PREV NAN):
+             Eigen::Vector4f s_norm = src_points->points[
+                s_index].getNormalVector4fMap();
+             Eigen::Vector4f t_norm = target_points->points[
+                t_index].getNormalVector4fMap();
+             float angle = std::acos(s_norm.dot(t_norm) /
+                                     (s_norm.norm() * t_norm.norm()));
+             float dist = std::abs(t_depth - s_depth);
+             if (dist < DISTANCE_THRESH_ && angle < ANGLE_THRESH_) {
+                //! common point keep previous points
+                // update_model->push_back(target_points->points[t_index]);
+                // update_model->push_back(trans_points->points[t_index]);
+             } else {
+                model_weights_[t_index].weight *= this->weight_decay_factor_;
+             }
+          } else if (s_depth != 0 && t_depth == 0) {  //! new points
+             // update_model->push_back(trans_points->points[s_index]);
+             update_model->push_back(src_points->points[s_index]);
+
+             Model m_weight;
+             m_weight.weight = this->init_weight_;
+             this->model_weights_.push_back(m_weight);
+          } else if (s_depth == 0 && t_depth != 0) {  //! new points
+             // update_model->push_back(target_points->points[t_index]);
+             // update_model->push_back(trans_points->points[t_index]);
+             model_weights_[t_index].weight *= this->weight_decay_factor_;
+          }
+       }
+    }
+
+    std::cout << "\033[35m - INFO: \033[0m" << update_model->size()
+              << "\t" << this->model_weights_.size() << "\n";
+
+    this->target_points_->clear();
+    std::vector<Model> temp_model_weight;
+    for (int i = 0; i < model_weights_.size(); i++) {
+       if (this->model_weights_[i].weight > 0.5) {
+          target_points_->push_back(update_model->points[i]);
+          temp_model_weight.push_back(this->model_weights_[i]);
+       }
+    }
+    this->model_weights_.clear();
+    this->model_weights_ = temp_model_weight;
+    
+    // pcl::transformPointCloud(*update_model, *target_points_, transformation);
+    pcl::transformPointCloud(*target_points_, *target_points_, transformation);
+    // pcl::copyPointCloud<PointNormalT, PointNormalT>(
+    //    *update_model, *target_points_);
+
+    
+    cv::namedWindow("trans_points", cv::WINDOW_NORMAL);
+    cv::namedWindow("target", cv::WINDOW_NORMAL);
+    cv::imshow("trans_points", src_image);
+    cv::imshow("target", target_image);
+
+    // cv::cvtColor(src_image, src_image, CV_BGR2GRAY);
+    // cv::cvtColor(target_image, target_image, CV_BGR2GRAY);
+    // cv::Mat diff = src_image - target_image;
+    // cv::imshow("diff", diff);
+    
+    cv::waitKey(3);
+}
+
+bool HandheldObjectRegistration::registrationICP(
+    const pcl::PointCloud<PointNormalT>::Ptr align_points,
+    Eigen::Matrix<float, 4, 4> &transformation,
+    const pcl::PointCloud<PointNormalT>::Ptr src_points) {
+    if (src_points->empty()) {
+       ROS_ERROR("- ICP failed. Incorrect inputs sizes ");
+       return false;
+    }
+    pcl::IterativeClosestPointWithNormals<PointNormalT, PointNormalT>::Ptr icp(
+       new pcl::IterativeClosestPointWithNormals<PointNormalT, PointNormalT>);
+    icp->setMaximumIterations(10);
+    icp->setRANSACOutlierRejectionThreshold(0.5);
+    // icp->setInputSource(src_points);
+    icp->setInputSource(this->prev_points_);
+    // icp->setInputTarget(this->target_points_);
+    icp->setInputTarget(src_points);
+
+    //! getting the correspondances
+    pcl::registration::CorrespondenceEstimation<PointNormalT,
+                                                PointNormalT>::Ptr
+       correspond_estimation(new pcl::registration::CorrespondenceEstimation<
+                             PointNormalT, PointNormalT>);
+    // correspond_estimation->setInputSource(src_points);
+    correspond_estimation->setInputSource(this->prev_points_);
+    // correspond_estimation->setInputTarget(this->target_points_);
+    correspond_estimation->setInputTarget(src_points);
+
+    icp->setCorrespondenceEstimation(correspond_estimation);
+    icp->align(*align_points);
+    transformation = icp->getFinalTransformation();
+    
+    boost::shared_ptr<pcl::Correspondences> correspondences(
+       new pcl::Correspondences);
+    correspond_estimation->determineCorrespondences(*correspondences);
+
+    ROS_INFO("PRINTING CORRESPONDENCES");
+
+    align_points->clear();
+    *align_points = *src_points;
+    float fitness = icp->getFitnessScore();
+
+/*
+    std::cout << "\033[33m INFO:  \033[0m" << correspondences->size()
+              << "\t"  << align_points->size()  << "\n";
+    
+    for (int i = 0; i < correspondences->size(); i++) {
+       int query = correspondences->operator[](i).index_query;  //! source
+       int match = correspondences->operator[](i).index_match;  //! target
+       float distance = correspondences->operator[](i).distance;
+       
+       if (distance > 0.0005) {
+
+          std::cout << "\033[35mDEBUG:  \033[0m" << query << ", "
+                    << match << "\t" << distance  << "\n";
+          
+           this->target_points_->push_back(align_points->points[query]);
+          
+          align_points->points[query].r = 0;
+          align_points->points[query].b = 0;
+          align_points->points[query].g = 0;
+       }
+    }
+*/
+    std::cout << "\t\t" << icp->getRANSACOutlierRejectionThreshold() << "\n";
+    
+    std::cout << "has converged:" << icp->hasConverged() << " score: "
+              << icp->getFitnessScore() << std::endl;
+
+    return (icp->hasConverged() == 1) ? true : false;
+}
+
 
 void HandheldObjectRegistration::symmetricPlane(
     float *equation, pcl::PointCloud<PointNormalT>::Ptr in_cloud,
@@ -345,179 +615,6 @@ void HandheldObjectRegistration::symmetricPlane(
 
     return;
 }
-
-void HandheldObjectRegistration::modelUpdate(
-    pcl::PointCloud<PointNormalT>::Ptr src_points,
-    pcl::PointCloud<PointNormalT>::Ptr target_points,
-    const Eigen::Matrix<float, 4, 4> transformation) {
-    if (src_points->empty() || target_points->empty()) {
-       ROS_ERROR("Empty input points for update");
-       return;
-    }
-    // TODO(MIN_SIZE_CHECK):
-    
-    pcl::PointCloud<PointNormalT>::Ptr trans_points(
-       new pcl::PointCloud<PointNormalT>);
-    Eigen::Matrix<float, 4, 4> transformation_inv = transformation.inverse();
-    // pcl::transformPointCloud(*src_points, *trans_points,
-    // transformation);
-    
-    pcl::transformPointCloud(*target_points, *trans_points, transformation_inv);
-    
-    cv::Mat src_image;
-    cv::Mat src_depth;
-    cv::Mat src_indices = this->project3DTo2DDepth(
-       src_image, src_depth, src_points/*trans_points*/);
-    
-    //! move it out***
-    cv::Mat target_image;
-    cv::Mat target_depth;
-    cv::Mat target_indices = this->project3DTo2DDepth(
-       target_image, target_depth, trans_points/*target_points*/);
-    
-    const float DISTANCE_THRESH_ = 0.10f;
-    const float ANGLE_THRESH_ = M_PI/3.0f;
-
-    pcl::PointCloud<PointNormalT>::Ptr update_model(
-       new pcl::PointCloud<PointNormalT>);
-    // *update_model += *target_points;
-    *update_model += *trans_points;
-    
-    // update_model->resize(target_points->size() + src_points->size());
-    
-    int icounter = 0;
-    for (int j = 0; j < target_image.rows; j++) {
-       for (int i = 0; i < target_image.cols; i++) {
-          float t_depth = target_depth.at<float>(j, i);
-          float s_depth = src_depth.at<float>(j, i);
-          int s_index = src_indices.at<int>(j, i);
-          int t_index = target_indices.at<int>(j, i);
-
-          //! debug only
-          if (t_index >= static_cast<int>(target_points->size()) ||
-              s_index >= static_cast<int>(src_points->size())) {
-             ROS_ERROR("- index out of size");
-             std::cout << s_index << "\t" << src_points->size()  << "\n";
-             std::cout << t_index << "\t" << target_points->size()  << "\n";
-          }
-          
-          if (s_depth != 0.0f && t_depth != 0.0f) {  //! common points
-             // TODO(FILL PREV NAN):
-             Eigen::Vector4f s_norm = src_points->points[
-                s_index].getNormalVector4fMap();
-             Eigen::Vector4f t_norm = target_points->points[
-                t_index].getNormalVector4fMap();
-             float angle = std::acos(s_norm.dot(t_norm) /
-                                     (s_norm.norm() * t_norm.norm()));
-             float dist = std::abs(t_depth - s_depth);
-             if (dist < DISTANCE_THRESH_ && angle < ANGLE_THRESH_) {
-                //! common point keep previous points
-                // update_model->push_back(target_points->points[t_index]);
-                // update_model->push_back(trans_points->points[t_index]);
-             } else {
-                model_weights_[t_index].weight *= this->weight_decay_factor_;
-             }
-          } else if (s_depth != 0 && t_depth == 0) {  //! new points
-             // update_model->push_back(trans_points->points[s_index]);
-             update_model->push_back(src_points->points[s_index]);
-
-             Model m_weight;
-             m_weight.weight = this->init_weight_;
-             this->model_weights_.push_back(m_weight);
-          } else if (s_depth == 0 && t_depth != 0) {  //! new points
-             // update_model->push_back(target_points->points[t_index]);
-             // update_model->push_back(trans_points->points[t_index]);
-             model_weights_[t_index].weight *= this->weight_decay_factor_;
-          }
-       }
-    }
-
-    std::cout << "\033[35m - INFO: \033[0m" << update_model->size()
-              << "\t" << this->model_weights_.size() << "\n";
-
-    this->target_points_->clear();
-    std::vector<Model> temp_model_weight;
-    for (int i = 0; i < model_weights_.size(); i++) {
-       if (this->model_weights_[i].weight > 0.5) {
-          target_points_->push_back(update_model->points[i]);
-          temp_model_weight.push_back(this->model_weights_[i]);
-       }
-    }
-    this->model_weights_.clear();
-    this->model_weights_ = temp_model_weight;
-    
-    // pcl::transformPointCloud(*update_model, *target_points_, transformation);
-    pcl::transformPointCloud(*target_points_, *target_points_, transformation);
-    // pcl::copyPointCloud<PointNormalT, PointNormalT>(
-    //    *update_model, *target_points_);
-
-    
-    cv::namedWindow("trans_points", cv::WINDOW_NORMAL);
-    cv::namedWindow("target", cv::WINDOW_NORMAL);
-    cv::imshow("trans_points", src_image);
-    cv::imshow("target", target_image);
-
-    // cv::cvtColor(src_image, src_image, CV_BGR2GRAY);
-    // cv::cvtColor(target_image, target_image, CV_BGR2GRAY);
-    // cv::Mat diff = src_image - target_image;
-    // cv::imshow("diff", diff);
-    
-    cv::waitKey(3);
-}
-
-bool HandheldObjectRegistration::registrationICP(
-    const pcl::PointCloud<PointNormalT>::Ptr align_points,
-    Eigen::Matrix<float, 4, 4> &transformation,
-    const pcl::PointCloud<PointNormalT>::Ptr src_points) {
-    if (src_points->empty()) {
-       ROS_ERROR("- ICP failed. Incorrect inputs sizes ");
-       return false;
-    }
-    pcl::IterativeClosestPointWithNormals<PointNormalT, PointNormalT>::Ptr icp(
-       new pcl::IterativeClosestPointWithNormals<PointNormalT, PointNormalT>);
-    icp->setMaximumIterations(10);
-    icp->setInputSource(src_points);
-    icp->setInputTarget(this->target_points_);
-
-    //! getting the correspondances
-    pcl::registration::CorrespondenceEstimation<PointNormalT,
-                                                PointNormalT>::Ptr
-       correspond_estimation(new pcl::registration::CorrespondenceEstimation<
-                             PointNormalT, PointNormalT>);
-    correspond_estimation->setInputSource(src_points);
-    correspond_estimation->setInputTarget(this->target_points_);
-
-    icp->setCorrespondenceEstimation(correspond_estimation);
-    icp->align(*align_points);
-    transformation = icp->getFinalTransformation();
-
-    boost::shared_ptr<pcl::Correspondences> correspondences(
-       new pcl::Correspondences);
-    correspond_estimation->determineCorrespondences(*correspondences);
-
-    ROS_INFO("PRINTING CORRESPONDENCES");
-
-    float fitness = icp->getFitnessScore();
-    for (int i = 0; i < correspondences->size(); i++) {
-       int query = correspondences->operator[](i).index_query;  //! source
-       int match = correspondences->operator[](i).index_match;  //! target
-       float distance = correspondences->operator[](i).distance;
-
-       if (distance > fitness) {
-          align_points->points[query].r = 0;
-          align_points->points[query].b = 0;
-          align_points->points[query].g = 0;
-       }
-    }
-
-    
-    
-    std::cout << "has converged:" << icp->hasConverged() << " score: "
-              << icp->getFitnessScore() << std::endl;
-
-    return (icp->hasConverged() == 1) ? true : false;
-}
-
 
 bool HandheldObjectRegistration::seedRegionGrowing(
     PointCloud::Ptr out_cloud, PointNormal::Ptr out_normals,
@@ -710,42 +807,53 @@ cv::Mat HandheldObjectRegistration::project3DTo2DDepth(
     depth_image = cv::Mat::zeros(image.size(), CV_32F);
     cv::Mat indices = cv::Mat(image.size(), CV_32S);
     // indices = cv::Scalar(-1);
+
+    cv::Mat flag = cv::Mat(image.size(), CV_32S);
     
     for (int j = 0; j < image.rows; j++) {
        for (int i = 0; i < image.cols; i++) {
           indices.at<int>(j, i) = -1;
+
+          flag.at<int>(j, i) = 0;
        }
     }
     
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(this->num_threads_)
-#endif
+// #ifdef _OPENMP
+// #pragma omp parallel for num_threads(this->num_threads_)
+// #endif
+    
     for (int i = 0; i < image_points.size(); i++) {
        int x = image_points[i].x;
        int y = image_points[i].y;
        if (!isnan(x) && !isnan(y) && (x >= 0 && x <= image.cols) &&
            (y >= 0 && y <= image.rows)) {
-          image.at<cv::Vec3b>(y, x)[2] = cloud->points[i].r;
-          image.at<cv::Vec3b>(y, x)[1] = cloud->points[i].g;
-          image.at<cv::Vec3b>(y, x)[0] = cloud->points[i].b;
 
-          depth_image.at<float>(y, x) = cloud->points[i].z / max_distance;
-          indices.at<int>(y, x) = i;
-       }
-    }
+          //! occlusion points
+          if (flag.at<int>(y, x) == 1) {
+             int prev_ind = indices.at<int>(y, x);
+             float prev_depth = cloud->points[prev_ind].z;
+             float curr_depth = cloud->points[i].z;
+             if (curr_depth < prev_depth && curr_depth > 0.0f &&
+                 !isnan(curr_depth)) {
+                image.at<cv::Vec3b>(y, x)[2] = cloud->points[i].r;
+                image.at<cv::Vec3b>(y, x)[1] = cloud->points[i].g;
+                image.at<cv::Vec3b>(y, x)[0] = cloud->points[i].b;
 
-    //! debug
-    /*
-    for (int i = 0; i < indices.rows; i++) {
-       for (int j = 0; j < indices.cols; j++) {
-          int ind = indices.at<int>(i, j);
-          if (ind >= static_cast<int>(cloud->size())) {
-             std::cout << "\033[34m Bigger: " << ind  << "\t" << j
-                       << ", " << i << "\t" << cloud->size() << "\033[0m\n";
+                depth_image.at<float>(y, x) = cloud->points[i].z / max_distance;
+                indices.at<int>(y, x) = i;
+             }
+          } else {
+             flag.at<int>(y, x) = 1;
+             image.at<cv::Vec3b>(y, x)[2] = cloud->points[i].r;
+             image.at<cv::Vec3b>(y, x)[1] = cloud->points[i].g;
+             image.at<cv::Vec3b>(y, x)[0] = cloud->points[i].b;
+             
+             depth_image.at<float>(y, x) = cloud->points[i].z / max_distance;
+             indices.at<int>(y, x) = i;
           }
        }
     }
-    */
+    
     return indices;
 }
 
