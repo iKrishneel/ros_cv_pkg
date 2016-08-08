@@ -92,14 +92,26 @@ void HandheldObjectRegistration::cloudCB(
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
     this->kdtree_->setInputCloud(cloud);
 
-    std::cout << "kdtree constructed"  << "\n";
-    
     PointNormal::Ptr normals(new PointNormal);
     this->getNormals(normals, cloud);
-    
     PointCloud::Ptr region_cloud(new PointCloud);
     PointNormal::Ptr region_normal(new PointNormal);
-    this->seedRegionGrowing(region_cloud, region_normal, screen_msg_,
+
+    int seed_index  = screen_msg_.point.x + (640 * screen_msg_.point.y);
+    PointT seed_point = cloud->points[seed_index];
+    if (this->pose_flag_) {
+       seed_point.x = pose_msg_->pose.position.x;
+       seed_point.y = pose_msg_->pose.position.y;
+       seed_point.z = pose_msg_->pose.position.z;
+       
+       std::cout << seed_point  << "\n";
+       std::cout << pose_msg_->pose.position.x << ", " <<
+          pose_msg_->pose.position.y << ", " <<
+          pose_msg_->pose.position.z << "\n";
+
+    }
+    
+    this->seedRegionGrowing(region_cloud, region_normal, seed_point,
                             cloud, normals);
 
     std::cout << "region growing done"  << "\n";
@@ -120,7 +132,7 @@ void HandheldObjectRegistration::cloudCB(
        pt.normal_z = region_normal->points[i].normal_z;
        src_points->push_back(pt);
     }
-    
+
 
     /**
      * DEBUG
@@ -198,7 +210,7 @@ void HandheldObjectRegistration::cloudCB(
        pcl::transformPointCloud(*src_points, *tmp_cloud, transformation);
        */
        
-       //! this->modelUpdate(src_points, target_points_, transformation);
+       this->modelUpdate(src_points, target_points_, transformation);
        
        sensor_msgs::PointCloud2 ros_cloud;
        // pcl::toROSMsg(*tmp_cloud, ros_cloud);
@@ -443,7 +455,9 @@ bool HandheldObjectRegistration::registrationICP(
     pcl::IterativeClosestPointWithNormals<PointNormalT, PointNormalT>::Ptr icp(
        new pcl::IterativeClosestPointWithNormals<PointNormalT, PointNormalT>);
     icp->setMaximumIterations(10);
-    icp->setRANSACOutlierRejectionThreshold(0.05);
+    icp->setRANSACOutlierRejectionThreshold(0.005);
+    icp->setRANSACIterations(1000);
+    
     // icp->setMaxCorrespondenceDistance(1e-5);
        
     // icp->setInputSource(src_points);
@@ -681,18 +695,20 @@ void HandheldObjectRegistration::symmetricPlane(
 
 bool HandheldObjectRegistration::seedRegionGrowing(
     PointCloud::Ptr out_cloud, PointNormal::Ptr out_normals,
-    const geometry_msgs::PointStamped point,
-    const PointCloud::Ptr cloud, PointNormal::Ptr normals) {
+    const PointT seed_point, const PointCloud::Ptr cloud,
+    PointNormal::Ptr normals) {
     if (cloud->empty() || normals->size() != cloud->size()) {
        ROS_ERROR("- Region growing failed. Incorrect inputs sizes ");
        return false;
     }
-    int seed_index  = point.point.x + (640 * point.point.y);
-    PointT seed_point = cloud->points[seed_index];
     if (isnan(seed_point.x) || isnan(seed_point.y) || isnan(seed_point.z)) {
        ROS_ERROR("- Seed Point is Nan. Skipping");
        return false;
     }
+    
+    std::vector<int> neigbor_indices;
+    this->getPointNeigbour<int>(neigbor_indices, seed_point, 1);
+    int seed_index = neigbor_indices[0];
     
     const int in_dim = static_cast<int>(cloud->size());
     int *labels = reinterpret_cast<int*>(malloc(sizeof(int) * in_dim));
@@ -726,9 +742,8 @@ void HandheldObjectRegistration::seedCorrespondingRegion(
        seed_index].getNormalVector4fMap();
    
     std::vector<int> neigbor_indices;
-    this->getPointNeigbour<int>(neigbor_indices, cloud,
-                                cloud->points[parent_index],
-                                18);
+    this->getPointNeigbour<int>(neigbor_indices,
+                                cloud->points[parent_index], 18);
 
     int neigb_lenght = static_cast<int>(neigbor_indices.size());
     std::vector<int> merge_list(neigb_lenght);
@@ -805,9 +820,9 @@ void HandheldObjectRegistration::getNormals(
 
 template<class T>
 void HandheldObjectRegistration::getPointNeigbour(
-    std::vector<int> &neigbor_indices, const PointCloud::Ptr cloud,
+    std::vector<int> &neigbor_indices,
     const PointT seed_point, const T K, bool is_knn) {
-    if (cloud->empty() || isnan(seed_point.x) ||
+    if (isnan(seed_point.x) ||
         isnan(seed_point.y) || isnan(seed_point.z)) {
        ROS_ERROR("THE CLOUD IS EMPTY. RETURING VOID IN GET NEIGBOUR");
        return;

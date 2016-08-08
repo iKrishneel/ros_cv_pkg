@@ -101,8 +101,8 @@ class HandheldObjectRegistration {
                      const Eigen::Matrix<float, 4, 4>);
       
     bool seedRegionGrowing(PointCloud::Ptr, PointNormal::Ptr,
-                           const geometry_msgs::PointStamped,
-                           const PointCloud::Ptr, PointNormal::Ptr);
+                           const PointT, const PointCloud::Ptr,
+                           PointNormal::Ptr);
     void seedCorrespondingRegion(int *, const PointCloud::Ptr,
                                  const PointNormal::Ptr, const int, const int);
     int seedVoxelConvexityCriteria(Eigen::Vector4f, Eigen::Vector4f,
@@ -111,7 +111,6 @@ class HandheldObjectRegistration {
     void getNormals(PointNormal::Ptr, const PointCloud::Ptr);
     template<class T>
     void getPointNeigbour(std::vector<int> &,
-                          const PointCloud::Ptr,
                           const PointT, const T = 8, bool = true);
     cv::Mat project3DTo2DDepth(cv::Mat &, cv::Mat &,
                             const pcl::PointCloud<PointNormalT>::Ptr,
