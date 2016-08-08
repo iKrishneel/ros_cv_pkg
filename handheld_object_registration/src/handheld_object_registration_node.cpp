@@ -3,7 +3,7 @@
 
 HandheldObjectRegistration::HandheldObjectRegistration():
     num_threads_(16), is_init_(false), min_points_size_(100),
-    weight_decay_factor_(0.6f), init_weight_(1.0f) {
+    weight_decay_factor_(0.6f), init_weight_(1.0f), pose_flag_(false) {
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
     this->target_points_ = pcl::PointCloud<PointNormalT>::Ptr(
        new pcl::PointCloud<PointNormalT>);
@@ -41,7 +41,8 @@ void HandheldObjectRegistration::onInit() {
 void HandheldObjectRegistration::subscribe() {
     this->screen_pt_ = this->pnh_.subscribe(
        "input_point", 1, &HandheldObjectRegistration::screenCB, this);
-   
+    this->pf_pose_ = this->pnh_.subscribe(
+       "input_pose", 1, &HandheldObjectRegistration::poseCB, this);
    
     this->sub_cloud_.subscribe(this->pnh_, "input_cloud", 1);
     this->sub_cinfo_.subscribe(this->pnh_, "input_cinfo", 1);
@@ -66,6 +67,16 @@ void HandheldObjectRegistration::screenCB(
     is_init_ = true;
 }
 
+/**
+ * temp here:: later move to cloudCB
+ */
+void HandheldObjectRegistration::poseCB(
+    const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
+    this->pose_msg_ = pose_msg;
+    this->pose_flag_ = true;
+}
+
+
 void HandheldObjectRegistration::cloudCB(
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
     const sensor_msgs::CameraInfo::ConstPtr &cinfo_msg) {
@@ -81,7 +92,7 @@ void HandheldObjectRegistration::cloudCB(
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
     this->kdtree_->setInputCloud(cloud);
 
-    std::cout << "kdtree made"  << "\n";
+    std::cout << "kdtree constructed"  << "\n";
     
     PointNormal::Ptr normals(new PointNormal);
     this->getNormals(normals, cloud);
@@ -132,6 +143,58 @@ void HandheldObjectRegistration::cloudCB(
     * DEBUG
     */
 
+
+    /**
+     * update to current tracker pose
+     */
+    if (this->pose_flag_) {
+       std::clock_t start;
+       double duration;
+       start = std::clock();
+
+       
+       geometry_msgs::PoseStamped::ConstPtr pose_msg = pose_msg_;
+       Eigen::Affine3f transform_model = Eigen::Affine3f::Identity();
+       transform_model.translation() << pose_msg->pose.position.x,
+          pose_msg->pose.position.y, pose_msg->pose.position.z;
+       Eigen::Quaternion<float> pf_quat = Eigen::Quaternion<float>(
+          pose_msg->pose.orientation.w, pose_msg->pose.orientation.x,
+          pose_msg->pose.orientation.y, pose_msg->pose.orientation.z);
+       transform_model.rotate(pf_quat);
+
+       if (!this->prev_points_->empty()) {
+          pcl::PointCloud<PointNormalT>::Ptr tmp_cloud(
+             new pcl::PointCloud<PointNormalT>);
+
+          Eigen::Affine3f trans = transform_model * prev_transform_.inverse();
+          
+          pcl::transformPointCloud(*prev_points_, *tmp_cloud, trans);
+
+
+          duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
+          std::cout<<"\t\t\tprintf: "<< duration <<'\n';
+          
+          
+          sensor_msgs::PointCloud2 ros_cloud;
+          pcl::toROSMsg(*tmp_cloud, ros_cloud);
+          ros_cloud.header = cloud_msg->header;
+          this->pub_icp_.publish(ros_cloud);
+          this->pose_flag_ = false;
+       }
+       prev_transform_ = transform_model;
+    } else {
+       ROS_WARN("NOT SET");
+    }
+
+
+    this->prev_points_->clear();
+    pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points, *prev_points_);
+    return;
+    
+    /**
+     * END
+     */
+    
     
     if (!this->target_points_->empty()) {
 
@@ -159,7 +222,7 @@ void HandheldObjectRegistration::cloudCB(
        pcl::transformPointCloud(*src_points, *tmp_cloud, transformation);
        */
        
-       this->modelUpdate(src_points, target_points_, transformation);
+       //! this->modelUpdate(src_points, target_points_, transformation);
        
        sensor_msgs::PointCloud2 ros_cloud;
        // pcl::toROSMsg(*tmp_cloud, ros_cloud);
@@ -404,7 +467,9 @@ bool HandheldObjectRegistration::registrationICP(
     pcl::IterativeClosestPointWithNormals<PointNormalT, PointNormalT>::Ptr icp(
        new pcl::IterativeClosestPointWithNormals<PointNormalT, PointNormalT>);
     icp->setMaximumIterations(10);
-    icp->setRANSACOutlierRejectionThreshold(0.5);
+    icp->setRANSACOutlierRejectionThreshold(0.05);
+    // icp->setMaxCorrespondenceDistance(1e-5);
+       
     // icp->setInputSource(src_points);
     icp->setInputSource(this->prev_points_);
     // icp->setInputTarget(this->target_points_);
@@ -434,34 +499,56 @@ bool HandheldObjectRegistration::registrationICP(
     *align_points = *src_points;
     float fitness = icp->getFitnessScore();
 
-/*
+
     std::cout << "\033[33m INFO:  \033[0m" << correspondences->size()
               << "\t"  << align_points->size()  << "\n";
-    
+
+    float outlier_counter = 0.0f;
     for (int i = 0; i < correspondences->size(); i++) {
        int query = correspondences->operator[](i).index_query;  //! source
        int match = correspondences->operator[](i).index_match;  //! target
-       float distance = correspondences->operator[](i).distance;
-       
-       if (distance > 0.0005) {
+       if (correspondences->operator[](i).distance > 0.005) {
 
-          std::cout << "\033[35mDEBUG:  \033[0m" << query << ", "
-                    << match << "\t" << distance  << "\n";
+          // std::cout << "\033[35mDEBUG:  \033[0m" << query << ", "
+          //           << match << "\t" << distance  << "\n";
           
-           this->target_points_->push_back(align_points->points[query]);
-          
-          align_points->points[query].r = 0;
-          align_points->points[query].b = 0;
-          align_points->points[query].g = 0;
+          // this->target_points_->push_back(align_points->points[query]);
+          // align_points->points[query].r = 0;
+          // align_points->points[query].b = 0;
+          // align_points->points[query].g = 0;
+
+          outlier_counter += 1.0f;
        }
     }
-*/
-    std::cout << "\t\t" << icp->getRANSACOutlierRejectionThreshold() << "\n";
+
+    const float OUTLIER_THRESH_ = 0.05f;
+    bool is_converged = (icp->hasConverged() == 1) ? true : false;
+    float outlier_ratio = outlier_counter / static_cast<float>(
+       correspondences->size());
+    if (outlier_ratio > OUTLIER_THRESH_ && is_converged) {
+       is_converged = false;
+    }
+    
+    std::cout << "\033[34m OUTLIER RATION: " <<
+       outlier_ratio << "\033[0m\n";
     
     std::cout << "has converged:" << icp->hasConverged() << " score: "
               << icp->getFitnessScore() << std::endl;
+    std::cout << "\033[32mMax correspondence: " <<
+       icp ->getMaxCorrespondenceDistance() << "\033[0m\n";
+    
+    return is_converged;
+}
 
-    return (icp->hasConverged() == 1) ? true : false;
+bool HandheldObjectRegistration::checkRegistrationFailure(
+    const pcl::PointCloud<PointNormalT>::Ptr aligned_points,
+    const pcl::PointCloud<PointNormalT>::Ptr prev_points) {
+    if (aligned_points->empty() || prev_points->empty()) {
+       ROS_ERROR("EMPTY INPUT.. REGISTRATION CHECK FAILED");
+       return false;
+    }
+
+    
 }
 
 
@@ -835,6 +922,8 @@ cv::Mat HandheldObjectRegistration::project3DTo2DDepth(
              float curr_depth = cloud->points[i].z;
              if (curr_depth < prev_depth && curr_depth > 0.0f &&
                  !isnan(curr_depth)) {
+                // TODO(NORMAL CHECK):  if normal deviates more
+                // reject
                 image.at<cv::Vec3b>(y, x)[2] = cloud->points[i].r;
                 image.at<cv::Vec3b>(y, x)[1] = cloud->points[i].g;
                 image.at<cv::Vec3b>(y, x)[0] = cloud->points[i].b;

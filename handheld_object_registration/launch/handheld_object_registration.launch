@@ -11,6 +11,8 @@
     <remap from="input_cinfo" to="$(arg CAMERA_INFO)" />
 
     <remap from="input_point" to="$(arg IMAGE)/screenpoint" />
+    <remap from="input_pose" to="/particle_filter_tracker/track_result_pose" />
+
   </node>
   
 

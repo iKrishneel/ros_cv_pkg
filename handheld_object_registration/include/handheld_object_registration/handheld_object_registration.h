@@ -22,7 +22,6 @@
 #include <sensor_msgs/CameraInfo.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
 #include <jsk_recognition_utils/pcl_conversion_util.h>
-
 #include <opencv2/opencv.hpp>
 
 namespace jsk_msgs = jsk_recognition_msgs;
@@ -65,6 +64,15 @@ class HandheldObjectRegistration {
 
     boost::shared_ptr<jsk_msgs::BoundingBox> rendering_cuboid_;
     sensor_msgs::CameraInfo::ConstPtr camera_info_;
+
+    /**
+     * temp variable for dev
+     */
+    geometry_msgs::PoseStamped::ConstPtr pose_msg_;
+    ros::Subscriber screen_pt_;
+    ros::Subscriber pf_pose_;
+    bool pose_flag_;
+    Eigen::Affine3f prev_transform_;
    
  protected:
     ros::NodeHandle pnh_;
@@ -75,17 +83,19 @@ class HandheldObjectRegistration {
     ros::Publisher pub_cloud_;
     ros::Publisher pub_icp_;
     ros::Publisher pub_bbox_;
-   
-    ros::Subscriber screen_pt_;
     
  public:
     HandheldObjectRegistration();
     void cloudCB(const sensor_msgs::PointCloud2::ConstPtr &,
                  const sensor_msgs::CameraInfo::ConstPtr &);
     void screenCB(const geometry_msgs::PointStamped::ConstPtr &);
+    void poseCB(const geometry_msgs::PoseStamped::ConstPtr &);
+   
     bool registrationICP(const pcl::PointCloud<PointNormalT>::Ptr,
                          Eigen::Matrix<float, 4, 4> &,
                          const pcl::PointCloud<PointNormalT>::Ptr);
+    bool checkRegistrationFailure(const pcl::PointCloud<PointNormalT>::Ptr,
+                                  const pcl::PointCloud<PointNormalT>::Ptr);
     void modelUpdate(pcl::PointCloud<PointNormalT>::Ptr,
                      pcl::PointCloud<PointNormalT>::Ptr,
                      const Eigen::Matrix<float, 4, 4>);

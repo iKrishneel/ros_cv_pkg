@@ -5,8 +5,8 @@ project(handheld_object_registration)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msgs std_srvs geometry_msgs roscpp rospy sensor_msgs message_filters message_runtime jsk_pcl_ros 
-  pcl_conversions dynamic_tf_publisher jsk_recognition_msgs jsk_perception dynamic_reconfigure 
-)
+  pcl_conversions dynamic_tf_publisher jsk_recognition_msgs jsk_perception dynamic_reconfigure cv_bridge
+ )
 
 find_package(OpenCV REQUIRED)
 
@@ -134,6 +134,10 @@ add_executable(handheld_object_registration_node
   src/handheld_object_registration_node.cpp
 )
 
+add_executable(object_model_annotation_node 
+  src/object_model_annotation_node.cpp)
+
+
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 # add_dependencies(handheld_object_registration_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
@@ -142,6 +146,10 @@ add_executable(handheld_object_registration_node
 target_link_libraries(handheld_object_registration_node
   ${catkin_LIBRARIES} ${OpenCV_LIBRARIES}
 )
+
+
+target_link_libraries(object_model_annotation_node 
+  ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
 
 #############
 ## Install ##
