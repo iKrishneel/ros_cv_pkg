@@ -147,12 +147,8 @@ void HandheldObjectRegistration::cloudCB(
     /**
      * update to current tracker pose
      */
+    Eigen::Affine3f tracker_transform = Eigen::Affine3f::Identity();
     if (this->pose_flag_) {
-       std::clock_t start;
-       double duration;
-       start = std::clock();
-
-       
        geometry_msgs::PoseStamped::ConstPtr pose_msg = pose_msg_;
        Eigen::Affine3f transform_model = Eigen::Affine3f::Identity();
        transform_model.translation() << pose_msg->pose.position.x,
@@ -161,36 +157,16 @@ void HandheldObjectRegistration::cloudCB(
           pose_msg->pose.orientation.w, pose_msg->pose.orientation.x,
           pose_msg->pose.orientation.y, pose_msg->pose.orientation.z);
        transform_model.rotate(pf_quat);
-
        if (!this->prev_points_->empty()) {
-          pcl::PointCloud<PointNormalT>::Ptr tmp_cloud(
-             new pcl::PointCloud<PointNormalT>);
-
-          Eigen::Affine3f trans = transform_model * prev_transform_.inverse();
-          
-          pcl::transformPointCloud(*prev_points_, *tmp_cloud, trans);
-
-
-          duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
-          std::cout<<"\t\t\tprintf: "<< duration <<'\n';
-          
-          
-          sensor_msgs::PointCloud2 ros_cloud;
-          pcl::toROSMsg(*tmp_cloud, ros_cloud);
-          ros_cloud.header = cloud_msg->header;
-          this->pub_icp_.publish(ros_cloud);
+          tracker_transform = transform_model * prev_transform_.inverse();
+          pcl::transformPointCloud(*prev_points_,
+                                   *prev_points_, tracker_transform);
           this->pose_flag_ = false;
        }
        prev_transform_ = transform_model;
     } else {
        ROS_WARN("NOT SET");
     }
-
-
-    this->prev_points_->clear();
-    pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points, *prev_points_);
-    return;
-    
     /**
      * END
      */
@@ -211,7 +187,7 @@ void HandheldObjectRegistration::cloudCB(
           return;
        }
 
-       // Eigen::Matrix4f transformation_inv = transformation.inverse();
+       transformation =  transformation * tracker_transform.matrix();
        pcl::transformPointCloud(*target_points_, *target_points_,
                                 transformation);
        
