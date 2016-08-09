@@ -37,10 +37,10 @@ class HandheldObjectRegistration {
     typedef pcl::PointXYZRGBNormal PointNormalT;
     typedef pcl::PointCloud<PointT> PointCloud;
     typedef pcl::PointCloud<NormalT> PointNormal;
-   
-    struct Model {
-       PointT point;
-       float weight;
+
+    struct CandidateIndices {
+       int source_index;
+       int target_index;
     };
    
  private:
@@ -58,7 +58,9 @@ class HandheldObjectRegistration {
    
     float weight_decay_factor_;
     float init_weight_;
-    std::vector<Model> model_weights_;
+   
+    PointCloud::Ptr input_cloud_;
+    PointNormal::Ptr input_normals_;
     pcl::PointCloud<PointNormalT>::Ptr target_points_;
     pcl::PointCloud<PointNormalT>::Ptr prev_points_;
    
@@ -121,7 +123,14 @@ class HandheldObjectRegistration {
     cv::Mat project3DTo2DDepth(cv::Mat &, cv::Mat &,
                             const pcl::PointCloud<PointNormalT>::Ptr,
                             const float = 1.0f);
-
+    void features2D(std::vector<cv::KeyPoint> &, cv::cuda::GpuMat &,
+                   const cv::Mat);
+    void featureBasedTransformation(std::vector<CandidateIndices> &,
+                                    const PointCloud::Ptr,
+                                    const PointNormal::Ptr,
+                                    const cv::Mat, const cv::Mat);
+   
+   
     void symmetricPlane(float *, pcl::PointCloud<PointNormalT>::Ptr,
                         const float = 0.02f);
     void plotPlane(pcl::PointCloud<PointNormalT>::Ptr, const Eigen::Vector4f,

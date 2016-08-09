@@ -9,8 +9,9 @@ HandheldObjectRegistration::HandheldObjectRegistration():
        new pcl::PointCloud<PointNormalT>);
     this->prev_points_ = pcl::PointCloud<PointNormalT>::Ptr(
        new pcl::PointCloud<PointNormalT>);
-    this->model_weights_.clear();
-
+    this->input_cloud_ = PointCloud::Ptr(new PointCloud);
+    this->input_normals_ = PointNormal::Ptr(new PointNormal);
+    
     this->orb_gpu_ = cv::cuda::ORB::create(500, 1.10f, 4, 31, 0, 2,
                                            cv::ORB::HARRIS_SCORE, 20);
      
@@ -89,6 +90,7 @@ void HandheldObjectRegistration::cloudCB(
        ROS_ERROR_ONCE("-Input cloud is empty in callback");
        return;
     }
+
     ROS_INFO("\033[34m - Running Callback ... \033[0m");
     
     this->camera_info_ = cinfo_msg;
@@ -97,6 +99,12 @@ void HandheldObjectRegistration::cloudCB(
 
     PointNormal::Ptr normals(new PointNormal);
     this->getNormals(normals, cloud);
+
+    this->input_cloud_->clear();
+    pcl::copyPointCloud<PointT, PointT>(*cloud, *input_cloud_);
+    this->input_normals_->clear();
+    pcl::copyPointCloud<NormalT, NormalT>(*normals, *input_normals_);
+    
     PointCloud::Ptr region_cloud(new PointCloud);
     PointNormal::Ptr region_normal(new PointNormal);
 
@@ -223,15 +231,11 @@ void HandheldObjectRegistration::cloudCB(
     } else {
        this->target_points_->clear();
        *target_points_ = *src_points;
-
-       this->model_weights_.resize(static_cast<int>(target_points_->size()));
-       for (int i = 0; i < this->target_points_->size(); i++) {
-          this->model_weights_[i].weight = this->init_weight_;
-       }
     }
 
     this->prev_points_->clear();
-    // pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points, *prev_points_);
+    // pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points,
+    // *prev_points_);
     pcl::copyPointCloud<PointNormalT, PointNormalT>(
        *target_points_, *prev_points_);
     
@@ -273,11 +277,6 @@ void HandheldObjectRegistration::modelUpdate(
     
     pcl::PointCloud<PointNormalT>::Ptr trans_points(
        new pcl::PointCloud<PointNormalT>);
-    // Eigen::Matrix<float, 4, 4> transformation_inv = transformation.inverse();
-    // pcl::transformPointCloud(*src_points, *trans_points,
-    // transformation);
-    // pcl::transformPointCloud(*target_points, *trans_points,
-    //    transformation_inv);
     
     cv::Mat src_image;
     cv::Mat src_depth;
@@ -290,60 +289,76 @@ void HandheldObjectRegistration::modelUpdate(
     cv::Mat target_indices = this->project3DTo2DDepth(
        target_image, target_depth, target_points);
 
+    //!  Feature check
+    std::vector<CandidateIndices> candidate_indices;
+    this->featureBasedTransformation(
+       candidate_indices, this->input_cloud_, this->input_normals_,
+       src_image, target_image);
 
+    //! compute transformation
+    if (candidate_indices.size() < 8) {
+       //! use only ICP
+    } else {
+       for (int i = 0; i < candidate_indices.size(); i++) {
+          int src_index = candidate_indices[i].source_index;
+          int tgt_index = candidate_indices[i].target_index;
+          if (src_index != -1 && tgt_index != -1) {
+             Eigen::Vector4f src_point = this->input_cloud_->points[
+                src_index].getVector4fMap();
+             Eigen::Vector4f tgt_point = this->input_cloud_->points[
+                tgt_index].getVector4fMap();
+             Eigen::Vector4f translation = tgt_point - src_point;
+             src_point = src_point.normalized();
+             tgt_point = tgt_point.normalized();
+             translation(3) = 1.0f;
 
-    /**
-     * Feature check
-     */
+             float cos_tetha = src_point.dot(tgt_point);
+             Eigen::Vector3f c = src_point.head<3>().cross(tgt_point.head<3>());
+             float sin_tetha = c.norm();
+             
+             Eigen::Matrix4f axis_skew;
+             axis_skew(0, 0) = 0.0f;
+             axis_skew(0, 1) = c(2)/sin_tetha;
+             axis_skew(0, 2) = -c(1)/sin_tetha;
+             
+             axis_skew(1, 0) = -c(2)/sin_tetha;
+             axis_skew(1, 1) = 0.0f;
+             axis_skew(1, 2) = c(0)/sin_tetha;
 
-    std::clock_t start;
-    start = std::clock();
+             axis_skew(2, 0) = c(1)/sin_tetha;
+             axis_skew(2, 1) = -c(0)/sin_tetha;
+             axis_skew(2, 2) = 0.0f;
+
+             axis_skew(0, 3) = 0.0f;
+             axis_skew(1, 3) = 0.0f;
+             axis_skew(2, 3) = 0.0f;
+             axis_skew(3, 3) = 1.0f;
+
+             axis_skew(3, 0) = 0.0f;
+             axis_skew(3, 1) = 0.0f;
+             axis_skew(3, 2) = 0.0f;
+
+             Eigen::Matrix4f trans = Eigen::Matrix4f::Identity();
+             trans(0, 3) = translation(0);
+             trans(1, 3) = translation(1);
+             trans(2, 3) = translation(2);
+             Eigen::Matrix4f Rodrigues = trans + (sin_tetha * axis_skew) +
+                ((1.0f - cos_tetha) * (axis_skew * axis_skew));
+
+             std::cout << src_point  << "\n ---- \n";
+             std::cout << tgt_point  << "\n----\n";
+             
+             std::cout << Rodrigues  << "\n";
+             return;
+             
+             
+          }
+       }
+    }
     
-    cv::cuda::GpuMat d_src_img(src_image);
-    cv::cuda::GpuMat d_tgt_img(target_image);
-    cv::cuda::cvtColor(d_src_img, d_src_img, CV_BGR2GRAY);
-    cv::cuda::cvtColor(d_tgt_img, d_tgt_img, CV_BGR2GRAY);
     
-    std::vector<cv::KeyPoint> d_src_keypoints;
-    std::vector<cv::KeyPoint> d_tgt_keypoints;
-    cv::cuda::GpuMat d_src_desc;
-    orb_gpu_->detectAndCompute(d_src_img, cv::cuda::GpuMat(),
-                              d_src_keypoints, d_src_desc, false);
-    cv::cuda::GpuMat d_tgt_desc;
-    orb_gpu_->detectAndCompute(d_tgt_img, cv::cuda::GpuMat(),
-                              d_tgt_keypoints, d_tgt_desc, false);
-
-    cv::Ptr<cv::cuda::DescriptorMatcher> matcher =
-       cv::cuda::DescriptorMatcher::createBFMatcher(cv::NORM_HAMMING);
-    std::vector<cv::DMatch> matches;
-    matcher->match(d_src_desc, d_tgt_desc, matches);
-
-
-    
-    double duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
-    std::cout << "\t\t printf: " << duration <<'\n';
-    
-        
-    // cv::drawKeypoints(src_image, d_src_keypoints, src_image,
-    // cv::Scalar(0, 255, 0));
-    
-    cv::Mat img_matches;
-    cv::drawMatches(src_image, d_src_keypoints, target_image, d_tgt_keypoints,
-                    matches, img_matches);
-    
-    cv::imshow("matching", img_matches);
-
-    // cv::waitKey(3);
-    // return;
-    
-
-
-
-
-
-
-
-
+    cv::waitKey(3);
+    return;
 
 
     
@@ -411,98 +426,83 @@ void HandheldObjectRegistration::modelUpdate(
     cv::waitKey(3);
 
     return;
+}
 
-
+void HandheldObjectRegistration::featureBasedTransformation(
+    std::vector<CandidateIndices> &candidate_indices,
+    const PointCloud::Ptr cloud, const PointNormal::Ptr normals,
+    const cv::Mat src_image, const cv::Mat target_image) {
+    candidate_indices.clear();
+    if (cloud->empty() || src_image.empty() || target_image.empty() ||
+        src_image.size() != target_image.size()) {
+       ROS_ERROR("EMPTY INPUT FOR FEATUREBASEDTRANSFORM(.)");
+       return;
+    }
+    std::vector<cv::KeyPoint> src_keypoints;
+    cv::cuda::GpuMat d_src_desc;
+    this->features2D(src_keypoints, d_src_desc, src_image);
     
+    cv::cuda::GpuMat d_tgt_desc;
+    std::vector<cv::KeyPoint> tgt_keypoints;
+    this->features2D(tgt_keypoints, d_tgt_desc, target_image);
     
-    const float DISTANCE_THRESH_ = 0.10f;
-    const float ANGLE_THRESH_ = M_PI/3.0f;
+    cv::Ptr<cv::cuda::DescriptorMatcher> matcher =
+       cv::cuda::DescriptorMatcher::createBFMatcher(cv::NORM_HAMMING);
+    std::vector<cv::DMatch> matches;
+    matcher->match(d_src_desc, d_tgt_desc, matches);
 
-    // pcl::PointCloud<PointNormalT>::Ptr update_model(
-    //    new pcl::PointCloud<PointNormalT>);
-    // *update_model += *target_points;
-    *update_model += *trans_points;
-    
-    // update_model->resize(target_points->size() + src_points->size());
-    
-    int icounter = 0;
-    for (int j = 0; j < target_image.rows; j++) {
-       for (int i = 0; i < target_image.cols; i++) {
-          float t_depth = target_depth.at<float>(j, i);
-          float s_depth = src_depth.at<float>(j, i);
-          int s_index = src_indices.at<int>(j, i);
-          int t_index = target_indices.at<int>(j, i);
+    const float ANGLE_THRESH_ = M_PI / 6.0f;
+    std::vector<bool> matches_flag(static_cast<int>(matches.size()));
+    candidate_indices.resize(matches.size());
 
-          //! debug only
-          if (t_index >= static_cast<int>(target_points->size()) ||
-              s_index >= static_cast<int>(src_points->size())) {
-             ROS_ERROR("- index out of size");
-             std::cout << s_index << "\t" << src_points->size()  << "\n";
-             std::cout << t_index << "\t" << target_points->size()  << "\n";
-          }
-          
-          if (s_depth != 0.0f && t_depth != 0.0f) {  //! common points
-             // TODO(FILL PREV NAN):
-             Eigen::Vector4f s_norm = src_points->points[
-                s_index].getNormalVector4fMap();
-             Eigen::Vector4f t_norm = target_points->points[
-                t_index].getNormalVector4fMap();
-             float angle = std::acos(s_norm.dot(t_norm) /
-                                     (s_norm.norm() * t_norm.norm()));
-             float dist = std::abs(t_depth - s_depth);
-             if (dist < DISTANCE_THRESH_ && angle < ANGLE_THRESH_) {
-                //! common point keep previous points
-                // update_model->push_back(target_points->points[t_index]);
-                // update_model->push_back(trans_points->points[t_index]);
-             } else {
-                model_weights_[t_index].weight *= this->weight_decay_factor_;
-             }
-          } else if (s_depth != 0 && t_depth == 0) {  //! new points
-             // update_model->push_back(trans_points->points[s_index]);
-             update_model->push_back(src_points->points[s_index]);
+// TODO(PARALLEL): OMP
+    for (int i = 0; i < matches.size(); i++) {
+       cv::Point2f src_pt = src_keypoints[matches[i].queryIdx].pt;
+       cv::Point2f tgt_pt = tgt_keypoints[matches[i].trainIdx].pt;
+       int src_index = static_cast<int>(src_pt.x) + (
+          src_image.cols * static_cast<int>(src_pt.y));
+       int tgt_index = static_cast<int>(tgt_pt.x) + (
+          target_image.cols * static_cast<int>(tgt_pt.y));
+       Eigen::Vector4f src_point = cloud->points[
+          src_index].getVector4fMap();
+       Eigen::Vector4f tgt_point = cloud->points[
+          tgt_index].getVector4fMap();
+       Eigen::Vector4f src_normal = normals->points[
+          src_index].getNormalVector4fMap();
+       Eigen::Vector4f tgt_normal = normals->points[
+          tgt_index].getNormalVector4fMap();
 
-             Model m_weight;
-             m_weight.weight = this->init_weight_;
-             this->model_weights_.push_back(m_weight);
-          } else if (s_depth == 0 && t_depth != 0) {  //! new points
-             // update_model->push_back(target_points->points[t_index]);
-             // update_model->push_back(trans_points->points[t_index]);
-             model_weights_[t_index].weight *= this->weight_decay_factor_;
-          }
+       float angle = std::acos((src_normal.dot(tgt_normal)) / (
+                                  src_normal.norm() * tgt_normal.norm()));
+       if (angle < ANGLE_THRESH_) {
+          matches_flag[i] = true;
+          candidate_indices[i].source_index = src_index;
+          candidate_indices[i].target_index = tgt_index;
+       } else {
+          matches_flag[i] = false;
+          candidate_indices[i].source_index = -1;
+          candidate_indices[i].target_index = -1;
        }
     }
+    
+    cv::Mat img_matches;
+    cv::drawMatches(src_image, src_keypoints, target_image,  tgt_keypoints,
+                    matches, img_matches);
+    cv::imshow("matching", img_matches);
+}
 
-    std::cout << "\033[35m - INFO: \033[0m" << update_model->size()
-              << "\t" << this->model_weights_.size() << "\n";
 
-    this->target_points_->clear();
-    std::vector<Model> temp_model_weight;
-    for (int i = 0; i < model_weights_.size(); i++) {
-       if (this->model_weights_[i].weight > 0.5) {
-          target_points_->push_back(update_model->points[i]);
-          temp_model_weight.push_back(this->model_weights_[i]);
-       }
+void HandheldObjectRegistration::features2D(
+    std::vector<cv::KeyPoint> &keypoints,
+    cv::cuda::GpuMat &d_descriptor, const cv::Mat image) {
+    keypoints.clear();
+    if (image.empty()) {
+       return;
     }
-    this->model_weights_.clear();
-    this->model_weights_ = temp_model_weight;
-    
-    // pcl::transformPointCloud(*update_model, *target_points_, transformation);
-    pcl::transformPointCloud(*target_points_, *target_points_, transformation);
-    // pcl::copyPointCloud<PointNormalT, PointNormalT>(
-    //    *update_model, *target_points_);
-
-    
-    cv::namedWindow("trans_points", cv::WINDOW_NORMAL);
-    cv::namedWindow("target", cv::WINDOW_NORMAL);
-    cv::imshow("trans_points", src_image);
-    cv::imshow("target", target_image);
-
-    // cv::cvtColor(src_image, src_image, CV_BGR2GRAY);
-    // cv::cvtColor(target_image, target_image, CV_BGR2GRAY);
-    // cv::Mat diff = src_image - target_image;
-    // cv::imshow("diff", diff);
-    
-    cv::waitKey(3);
+    cv::cuda::GpuMat d_image(image);
+    cv::cuda::cvtColor(d_image, d_image, CV_BGR2GRAY);
+    orb_gpu_->detectAndCompute(d_image, cv::cuda::GpuMat(),
+                              keypoints, d_descriptor, false);
 }
 
 bool HandheldObjectRegistration::registrationICP(

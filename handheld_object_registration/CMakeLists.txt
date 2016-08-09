@@ -4,8 +4,7 @@ project(handheld_object_registration)
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
-find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msgs std_srvs geometry_msgs roscpp rospy sensor_msgs message_filters message_runtime jsk_pcl_ros 
-  pcl_conversions dynamic_tf_publisher jsk_recognition_msgs jsk_perception dynamic_reconfigure cv_bridge
+find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msgs std_srvs geometry_msgs roscpp rospy sensor_msgs message_filters message_runtime jsk_pcl_ros pcl_conversions dynamic_tf_publisher jsk_recognition_msgs jsk_perception dynamic_reconfigure cv_bridge
  )
 
 find_package(OpenCV REQUIRED)
