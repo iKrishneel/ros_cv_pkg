@@ -10,7 +10,10 @@ HandheldObjectRegistration::HandheldObjectRegistration():
     this->prev_points_ = pcl::PointCloud<PointNormalT>::Ptr(
        new pcl::PointCloud<PointNormalT>);
     this->model_weights_.clear();
-    
+
+    this->orb_gpu_ = cv::cuda::ORB::create(500, 1.10f, 4, 31, 0, 2,
+                                           cv::ORB::HARRIS_SCORE, 20);
+     
     //! temporary
     this->rendering_cuboid_ = boost::shared_ptr<jsk_msgs::BoundingBox>(
        new jsk_msgs::BoundingBox);
@@ -228,7 +231,9 @@ void HandheldObjectRegistration::cloudCB(
     }
 
     this->prev_points_->clear();
-    pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points, *prev_points_);
+    // pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points, *prev_points_);
+    pcl::copyPointCloud<PointNormalT, PointNormalT>(
+       *target_points_, *prev_points_);
     
     std::cout << region_cloud->size()  << "\n";
     ROS_INFO("Done Processing");
@@ -244,7 +249,6 @@ void HandheldObjectRegistration::cloudCB(
     rviz_bbox->boxes.push_back(*rendering_cuboid_);
     rviz_bbox->header = cloud_msg->header;
     this->pub_bbox_.publish(*rviz_bbox);
-
     
     delete ros_cloud;
     delete rviz_bbox;
@@ -286,6 +290,63 @@ void HandheldObjectRegistration::modelUpdate(
     cv::Mat target_indices = this->project3DTo2DDepth(
        target_image, target_depth, target_points);
 
+
+
+    /**
+     * Feature check
+     */
+
+    std::clock_t start;
+    start = std::clock();
+    
+    cv::cuda::GpuMat d_src_img(src_image);
+    cv::cuda::GpuMat d_tgt_img(target_image);
+    cv::cuda::cvtColor(d_src_img, d_src_img, CV_BGR2GRAY);
+    cv::cuda::cvtColor(d_tgt_img, d_tgt_img, CV_BGR2GRAY);
+    
+    std::vector<cv::KeyPoint> d_src_keypoints;
+    std::vector<cv::KeyPoint> d_tgt_keypoints;
+    cv::cuda::GpuMat d_src_desc;
+    orb_gpu_->detectAndCompute(d_src_img, cv::cuda::GpuMat(),
+                              d_src_keypoints, d_src_desc, false);
+    cv::cuda::GpuMat d_tgt_desc;
+    orb_gpu_->detectAndCompute(d_tgt_img, cv::cuda::GpuMat(),
+                              d_tgt_keypoints, d_tgt_desc, false);
+
+    cv::Ptr<cv::cuda::DescriptorMatcher> matcher =
+       cv::cuda::DescriptorMatcher::createBFMatcher(cv::NORM_HAMMING);
+    std::vector<cv::DMatch> matches;
+    matcher->match(d_src_desc, d_tgt_desc, matches);
+
+
+    
+    double duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
+    std::cout << "\t\t printf: " << duration <<'\n';
+    
+        
+    // cv::drawKeypoints(src_image, d_src_keypoints, src_image,
+    // cv::Scalar(0, 255, 0));
+    
+    cv::Mat img_matches;
+    cv::drawMatches(src_image, d_src_keypoints, target_image, d_tgt_keypoints,
+                    matches, img_matches);
+    
+    cv::imshow("matching", img_matches);
+
+    // cv::waitKey(3);
+    // return;
+    
+
+
+
+
+
+
+
+
+
+
+    
     cv::Mat depth_im = cv::Mat::zeros(src_depth.size(), CV_32F);
     // cv::absdiff(src_depth, target_depth, depth_im);
 

@@ -22,7 +22,11 @@
 #include <sensor_msgs/CameraInfo.h>
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
 #include <jsk_recognition_utils/pcl_conversion_util.h>
+
 #include <opencv2/opencv.hpp>
+#include <opencv2/cudaarithm.hpp>
+#include <opencv2/cudafeatures2d.hpp>
+#include <opencv2/cudaimgproc.hpp>
 
 namespace jsk_msgs = jsk_recognition_msgs;
 
@@ -68,6 +72,8 @@ class HandheldObjectRegistration {
     /**
      * temp variable for dev
      */
+    cv::Ptr<cv::cuda::ORB> orb_gpu_;
+   
     geometry_msgs::PoseStamped::ConstPtr pose_msg_;
     ros::Subscriber screen_pt_;
     ros::Subscriber pf_pose_;
