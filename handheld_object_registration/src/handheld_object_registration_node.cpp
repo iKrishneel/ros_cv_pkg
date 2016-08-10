@@ -299,6 +299,13 @@ void HandheldObjectRegistration::modelUpdate(
     if (candidate_indices.size() < 8) {
        //! use only ICP
     } else {
+
+       std::clock_t start;
+       start = std::clock();
+       
+       float energy = FLT_MAX;
+       Eigen::Matrix3f rotation;
+       Eigen::Vector3f transl;
        for (int i = 0; i < candidate_indices.size(); i++) {
           int src_index = candidate_indices[i].source_index;
           int tgt_index = candidate_indices[i].target_index;
@@ -316,7 +323,7 @@ void HandheldObjectRegistration::modelUpdate(
              Eigen::Vector3f c = src_point.head<3>().cross(tgt_point.head<3>());
              float sin_tetha = c.norm();
              
-             Eigen::Matrix4f axis_skew;
+             Eigen::Matrix3f axis_skew;
              axis_skew(0, 0) = 0.0f;
              axis_skew(0, 1) = c(2)/sin_tetha;
              axis_skew(0, 2) = -c(1)/sin_tetha;
@@ -329,31 +336,43 @@ void HandheldObjectRegistration::modelUpdate(
              axis_skew(2, 1) = -c(0)/sin_tetha;
              axis_skew(2, 2) = 0.0f;
 
-             axis_skew(0, 3) = 0.0f;
-             axis_skew(1, 3) = 0.0f;
-             axis_skew(2, 3) = 0.0f;
-             axis_skew(3, 3) = 1.0f;
-
-             axis_skew(3, 0) = 0.0f;
-             axis_skew(3, 1) = 0.0f;
-             axis_skew(3, 2) = 0.0f;
-
-             Eigen::Matrix4f trans = Eigen::Matrix4f::Identity();
-             trans(0, 3) = translation(0);
-             trans(1, 3) = translation(1);
-             trans(2, 3) = translation(2);
-             Eigen::Matrix4f Rodrigues = trans + (sin_tetha * axis_skew) +
+             Eigen::Matrix3f identity = Eigen::Matrix3f::Identity();
+             Eigen::Matrix3f Rodrigues = identity + (sin_tetha * axis_skew) +
                 ((1.0f - cos_tetha) * (axis_skew * axis_skew));
 
-             std::cout << src_point  << "\n ---- \n";
-             std::cout << tgt_point  << "\n----\n";
-             
-             std::cout << Rodrigues  << "\n";
-             return;
-             
-             
+
+             for (int j = 0; j < candidate_indices.size(); j++) {
+                src_index = candidate_indices[j].source_index;
+                tgt_index = candidate_indices[j].target_index;
+
+                Eigen::Vector3f src_pt = this->input_cloud_->points[
+                   src_index].getVector3fMap();
+                Eigen::Vector3f tgt_pt = this->input_cloud_->points[
+                   tgt_index].getVector3fMap();
+
+                Eigen::Vector3f diff = tgt_pt - (
+                   Rodrigues * src_pt  + translation.head<3>());
+                
+                float sum = diff(0) * diff(0) + diff(1) * diff(1) +
+                   diff(2) * diff(2);
+                if (sum < energy) {
+                   energy = sum;
+                   rotation = Rodrigues;
+                   transl = translation.head<3>();
+                   
+                }
+             }
           }
        }
+
+       double duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
+       std::cout<<"\t\t printf: "<< duration <<'\n';
+       
+       
+       std::cout << "Energy: " << energy  << "\n";
+       std::cout << rotation  << "\n";
+       std::cout << transl  << "\n------------\n";
+       
     }
     
     
