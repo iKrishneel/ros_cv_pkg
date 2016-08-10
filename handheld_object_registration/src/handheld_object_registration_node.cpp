@@ -84,6 +84,15 @@ void HandheldObjectRegistration::poseCB(
 void HandheldObjectRegistration::cloudCB(
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
     const sensor_msgs::CameraInfo::ConstPtr &cinfo_msg) {
+
+    std::clock_t start;
+    double duration;
+    start = std::clock();
+
+    struct timeval istart, iend;
+    gettimeofday(&istart, NULL);
+    
+    
     PointCloud::Ptr cloud(new PointCloud);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     if (cloud->empty() || !is_init_) {
@@ -144,7 +153,15 @@ void HandheldObjectRegistration::cloudCB(
        src_points->push_back(pt);
     }
 
-
+    //! timer
+    duration = (std::clock() - start) / static_cast<double>(CLOCKS_PER_SEC);
+    start = std::clock();
+    
+    gettimeofday(&iend, NULL);
+    double delta = ((iend.tv_sec  - istart.tv_sec) * 1000000u +
+             iend.tv_usec - istart.tv_usec) / 1.e6;
+    ROS_ERROR("TIME: %3.4f, %3.6f", duration, delta);
+    
     /**
      * DEBUG
     std::clock_t start;
@@ -188,7 +205,7 @@ void HandheldObjectRegistration::cloudCB(
        }
        prev_transform_ = transform_model;
     } else {
-       ROS_WARN("NOT SET");
+       ROS_WARN("TRACKER NOT SET");
     }
     /**
      * END
@@ -199,27 +216,22 @@ void HandheldObjectRegistration::cloudCB(
 
        std::cout << "updating"  << "\n";
        
-       Eigen::Matrix<float, 4, 4> transformation;
+       Eigen::Matrix<float, 4, 4> transformation = Eigen::Matrix<
+          float, 4, 4>::Identity();
        pcl::PointCloud<PointNormalT>::Ptr align_points(
           new pcl::PointCloud<PointNormalT>);
 
+       /*
        std::cout << "icp"  << "\n";
-       
        if (!this->registrationICP(align_points, transformation, src_points)) {
           ROS_ERROR("- ICP cannot converge.. skipping");
           return;
        }
-
+       */
        transformation =  transformation * tracker_transform.matrix();
-       // pcl::transformPointCloud(*target_points_, *target_points_,
+       //! pcl::transformPointCloud(*target_points_, *target_points_,
        //                          transformation);
        
-       /*
-       pcl::PointCloud<PointNormalT>::Ptr tmp_cloud(
-          new pcl::PointCloud<PointNormalT>);
-       PointCloud::Ptr tmp_cloud (new PointCloud);
-       pcl::transformPointCloud(*src_points, *tmp_cloud, transformation);
-       */
        
        this->modelUpdate(src_points, target_points_, transformation);
        
@@ -241,6 +253,11 @@ void HandheldObjectRegistration::cloudCB(
     
     std::cout << region_cloud->size()  << "\n";
     ROS_INFO("Done Processing");
+
+    duration = (std::clock() - start) / static_cast<double>(CLOCKS_PER_SEC);
+    ROS_WARN("TIME: %3.4f", duration);
+    
+
     
     sensor_msgs::PointCloud2 *ros_cloud = new sensor_msgs::PointCloud2;
     // pcl::toROSMsg(*region_cloud, *ros_cloud);
@@ -268,12 +285,13 @@ void HandheldObjectRegistration::cloudCB(
 void HandheldObjectRegistration::modelUpdate(
     pcl::PointCloud<PointNormalT>::Ptr src_points,
     pcl::PointCloud<PointNormalT>::Ptr target_points,
-    const Eigen::Matrix<float, 4, 4> transformation) {
+    const Eigen::Matrix<float, 4, 4> transs) {
     if (src_points->empty() || target_points->empty()) {
        ROS_ERROR("Empty input points for update");
        return;
     }
     // TODO(MIN_SIZE_CHECK):
+    ROS_INFO("\033[33m PROJECTION TO 2D \033[0m");
     
     pcl::PointCloud<PointNormalT>::Ptr trans_points(
        new pcl::PointCloud<PointNormalT>);
@@ -290,11 +308,15 @@ void HandheldObjectRegistration::modelUpdate(
        target_image, target_depth, target_points);
 
     //!  Feature check
+    ROS_INFO("\033[33m EXTRACTING 2D FEATURES \033[0m");
+    
     std::vector<CandidateIndices> candidate_indices;
     this->featureBasedTransformation(
        candidate_indices, target_points, target_indices, target_image,
        src_points, src_indices, src_image);
 
+    ROS_INFO("\033[33m COMPUTING TRANSFORMATION \033[0m");
+    
     //! compute transformation
     Eigen::Matrix4f transform_matrix = Eigen::Matrix4f::Identity();
     if (candidate_indices.size() < 8) {
@@ -320,21 +342,30 @@ void HandheldObjectRegistration::modelUpdate(
              target_cloud->push_back(pt);
           }
        }
-
        if (!src_cloud->empty() || !target_cloud->empty()) {
           pcl::registration::TransformationEstimationSVD<
              PointT, PointT> transformation_estimation;
           transformation_estimation.estimateRigidTransformation(
              *target_cloud, *src_cloud, transform_matrix);
-          
-          std::cout << transform_matrix  << "\n";
        }
-       
-       pcl::transformPointCloud(*src_points, *src_points, transform_matrix);
-
+       pcl::transformPointCloud(*target_points, *target_points,
+                                transform_matrix);
     }
-    
-    
+/*    
+    ROS_INFO("\033[33m ICP \033[0m");
+    //! go icp registration
+    pcl::PointCloud<PointNormalT>::Ptr align_points(
+       new pcl::PointCloud<PointNormalT>);
+    Eigen::Matrix<float, 4, 4> transformation;
+    if (!this->registrationICP(align_points, transformation,
+                               src_points, target_points)) {
+       ROS_ERROR("- ICP cannot converge.. skipping");
+       return;
+    }
+
+    target_points->clear();
+    *target_points = *align_points;
+    */
     cv::waitKey(3);
     return;
 
@@ -432,7 +463,7 @@ void HandheldObjectRegistration::featureBasedTransformation(
     std::vector<cv::DMatch> matches;
     matcher->match(d_src_desc, d_tgt_desc, matches);
 
-    const float ANGLE_THRESH_ = M_PI / 6.0f;
+    const float ANGLE_THRESH_ = std::cos(M_PI / 3.0f);
     std::vector<bool> matches_flag(static_cast<int>(matches.size()));
     candidate_indices.resize(matches.size());
 
@@ -445,16 +476,14 @@ void HandheldObjectRegistration::featureBasedTransformation(
                                            static_cast<int>(tgt_pt.x));
        int tgt_index = target_indices.at<int>(static_cast<int>(tgt_pt.y),
                                               static_cast<int>(tgt_pt.x));
-       // std::cout << tgt_index  << "\t" << src_index << "\n";
-
        if (tgt_index != -1 && src_index != -1) {
           Eigen::Vector4f src_normal = src_points->points[
              src_index].getNormalVector4fMap();
           Eigen::Vector4f tgt_normal = target_points->points[
              tgt_index].getNormalVector4fMap();
 
-          float angle = std::acos((src_normal.dot(tgt_normal)) / (
-                                     src_normal.norm() * tgt_normal.norm()));
+          float angle = (src_normal.dot(tgt_normal)) / (
+             src_normal.norm() * tgt_normal.norm());
           if (angle < ANGLE_THRESH_) {
              matches_flag[i] = true;
              candidate_indices[i].source_index = src_index;
@@ -468,12 +497,10 @@ void HandheldObjectRegistration::featureBasedTransformation(
           }
        }
     }
-    
     cv::Mat img_matches;
     cv::drawMatches(src_image, src_keypoints, target_image,  tgt_keypoints,
                     good_matches, img_matches);
     cv::imshow("matching", img_matches);
-    
 }
 
 
@@ -493,9 +520,10 @@ void HandheldObjectRegistration::features2D(
 bool HandheldObjectRegistration::registrationICP(
     const pcl::PointCloud<PointNormalT>::Ptr align_points,
     Eigen::Matrix<float, 4, 4> &transformation,
-    const pcl::PointCloud<PointNormalT>::Ptr src_points) {
-    if (src_points->empty()) {
-       ROS_ERROR("- ICP failed. Incorrect inputs sizes ");
+    const pcl::PointCloud<PointNormalT>::Ptr src_points,
+    const pcl::PointCloud<PointNormalT>::Ptr target_points) {
+    if (src_points->empty() || target_points->empty()) {
+       ROS_ERROR("- ICP FAILED. INCORRECT INPUT SIZE ");
        return false;
     }
     pcl::IterativeClosestPointWithNormals<PointNormalT, PointNormalT>::Ptr icp(
@@ -503,23 +531,18 @@ bool HandheldObjectRegistration::registrationICP(
     icp->setMaximumIterations(10);
     icp->setRANSACOutlierRejectionThreshold(0.005);
     icp->setRANSACIterations(1000);
-    
     // icp->setMaxCorrespondenceDistance(1e-5);
        
-    // icp->setInputSource(src_points);
-    icp->setInputSource(this->prev_points_);
-    // icp->setInputTarget(this->target_points_);
-    icp->setInputTarget(src_points);
+    icp->setInputSource(src_points);
+    icp->setInputTarget(target_points);
 
     //! getting the correspondances
     pcl::registration::CorrespondenceEstimation<PointNormalT,
                                                 PointNormalT>::Ptr
        correspond_estimation(new pcl::registration::CorrespondenceEstimation<
                              PointNormalT, PointNormalT>);
-    // correspond_estimation->setInputSource(src_points);
-    correspond_estimation->setInputSource(this->prev_points_);
-    // correspond_estimation->setInputTarget(this->target_points_);
-    correspond_estimation->setInputTarget(src_points);
+    correspond_estimation->setInputSource(src_points);
+    correspond_estimation->setInputTarget(target_points);
 
     icp->setCorrespondenceEstimation(correspond_estimation);
     icp->align(*align_points);
@@ -529,13 +552,11 @@ bool HandheldObjectRegistration::registrationICP(
        new pcl::Correspondences);
     correspond_estimation->determineCorrespondences(*correspondences);
 
+    /*
     ROS_INFO("PRINTING CORRESPONDENCES");
-
     align_points->clear();
     *align_points = *src_points;
     float fitness = icp->getFitnessScore();
-
-
     std::cout << "\033[33m INFO:  \033[0m" << correspondences->size()
               << "\t"  << align_points->size()  << "\n";
 
@@ -556,7 +577,7 @@ bool HandheldObjectRegistration::registrationICP(
           outlier_counter += 1.0f;
        }
     }
-
+   
     const float OUTLIER_THRESH_ = 0.05f;
     bool is_converged = (icp->hasConverged() == 1) ? true : false;
     float outlier_ratio = outlier_counter / static_cast<float>(
@@ -567,13 +588,14 @@ bool HandheldObjectRegistration::registrationICP(
     
     std::cout << "\033[34m OUTLIER RATION: " <<
        outlier_ratio << "\033[0m\n";
+    */
     
     std::cout << "has converged:" << icp->hasConverged() << " score: "
               << icp->getFitnessScore() << std::endl;
-    std::cout << "\033[32mMax correspondence: " <<
-       icp ->getMaxCorrespondenceDistance() << "\033[0m\n";
+    // std::cout << "\033[32mMax correspondence: " <<
+    //    icp ->getMaxCorrespondenceDistance() << "\033[0m\n";
     
-    return is_converged;
+    return (icp->hasConverged());
 }
 
 bool HandheldObjectRegistration::checkRegistrationFailure(
@@ -804,8 +826,6 @@ void HandheldObjectRegistration::seedCorrespondingRegion(
         if (index != parent_index && labels[index] == -1) {
             Eigen::Vector4f parent_pt = cloud->points[
                 parent_index].getVector4fMap();
-            // Eigen::Vector4f parent_norm = normals->points[
-            //     parent_index].getNormalVector4fMap();
             Eigen::Vector4f child_pt = cloud->points[index].getVector4fMap();
             Eigen::Vector4f child_norm = normals->points[
                 index].getNormalVector4fMap();

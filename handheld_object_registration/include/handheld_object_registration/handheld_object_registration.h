@@ -102,6 +102,7 @@ class HandheldObjectRegistration {
    
     bool registrationICP(const pcl::PointCloud<PointNormalT>::Ptr,
                          Eigen::Matrix<float, 4, 4> &,
+                         const pcl::PointCloud<PointNormalT>::Ptr,
                          const pcl::PointCloud<PointNormalT>::Ptr);
     bool checkRegistrationFailure(const pcl::PointCloud<PointNormalT>::Ptr,
                                   const pcl::PointCloud<PointNormalT>::Ptr);
