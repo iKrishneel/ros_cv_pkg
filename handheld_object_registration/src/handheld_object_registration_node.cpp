@@ -211,8 +211,8 @@ void HandheldObjectRegistration::cloudCB(
        }
 
        transformation =  transformation * tracker_transform.matrix();
-       pcl::transformPointCloud(*target_points_, *target_points_,
-                                transformation);
+       // pcl::transformPointCloud(*target_points_, *target_points_,
+       //                          transformation);
        
        /*
        pcl::PointCloud<PointNormalT>::Ptr tmp_cloud(
@@ -224,8 +224,8 @@ void HandheldObjectRegistration::cloudCB(
        this->modelUpdate(src_points, target_points_, transformation);
        
        sensor_msgs::PointCloud2 ros_cloud;
-       // pcl::toROSMsg(*tmp_cloud, ros_cloud);
-       pcl::toROSMsg(*align_points, ros_cloud);
+       pcl::toROSMsg(*src_points, ros_cloud);
+       // pcl::toROSMsg(*align_points, ros_cloud);
        ros_cloud.header = cloud_msg->header;
        this->pub_icp_.publish(ros_cloud);
     } else {
@@ -292,16 +292,13 @@ void HandheldObjectRegistration::modelUpdate(
     //!  Feature check
     std::vector<CandidateIndices> candidate_indices;
     this->featureBasedTransformation(
-       candidate_indices, this->input_cloud_, this->input_normals_,
-       src_image, target_image);
+       candidate_indices, target_points, target_indices, target_image,
+       src_points, src_indices, src_image);
 
     //! compute transformation
     if (candidate_indices.size() < 8) {
        //! use only ICP
     } else {
-
-       std::clock_t start;
-       start = std::clock();
        
        float energy = FLT_MAX;
        Eigen::Matrix3f rotation;
@@ -310,18 +307,20 @@ void HandheldObjectRegistration::modelUpdate(
           int src_index = candidate_indices[i].source_index;
           int tgt_index = candidate_indices[i].target_index;
           if (src_index != -1 && tgt_index != -1) {
-             Eigen::Vector4f src_point = this->input_cloud_->points[
-                src_index].getVector4fMap();
-             Eigen::Vector4f tgt_point = this->input_cloud_->points[
-                tgt_index].getVector4fMap();
-             Eigen::Vector4f translation = tgt_point - src_point;
+             Eigen::Vector3f src_point = src_points->points[
+                src_index].getVector3fMap();
+             Eigen::Vector3f tgt_point = target_points->points[
+                tgt_index].getVector3fMap();
+             Eigen::Vector3f translation = tgt_point - src_point;
              src_point = src_point.normalized();
              tgt_point = tgt_point.normalized();
-             translation(3) = 1.0f;
 
              float cos_tetha = src_point.dot(tgt_point);
-             Eigen::Vector3f c = src_point.head<3>().cross(tgt_point.head<3>());
+             Eigen::Vector3f c = tgt_point.cross(src_point);
              float sin_tetha = c.norm();
+
+             std::cout << c  << "\n\n";
+             std::cout << "SIN: " << sin_tetha  << "\n";
              
              Eigen::Matrix3f axis_skew;
              axis_skew(0, 0) = 0.0f;
@@ -340,39 +339,65 @@ void HandheldObjectRegistration::modelUpdate(
              Eigen::Matrix3f Rodrigues = identity + (sin_tetha * axis_skew) +
                 ((1.0f - cos_tetha) * (axis_skew * axis_skew));
 
-
+             float sum = 0.0f;
              for (int j = 0; j < candidate_indices.size(); j++) {
                 src_index = candidate_indices[j].source_index;
                 tgt_index = candidate_indices[j].target_index;
 
-                Eigen::Vector3f src_pt = this->input_cloud_->points[
+                Eigen::Vector3f src_pt = src_points->points[
                    src_index].getVector3fMap();
-                Eigen::Vector3f tgt_pt = this->input_cloud_->points[
+                Eigen::Vector3f tgt_pt = target_points->points[
                    tgt_index].getVector3fMap();
 
                 Eigen::Vector3f diff = tgt_pt - (
-                   Rodrigues * src_pt  + translation.head<3>());
+                   Rodrigues * src_pt  + translation);
                 
-                float sum = diff(0) * diff(0) + diff(1) * diff(1) +
+                sum += diff(0) * diff(0) + diff(1) * diff(1) +
                    diff(2) * diff(2);
-                if (sum < energy) {
-                   energy = sum;
-                   rotation = Rodrigues;
-                   transl = translation.head<3>();
-                   
-                }
              }
+             if (sum < energy) {
+                energy = sum;
+                rotation = Rodrigues;
+                transl = translation;
+             }
+
+             std::cout << src_points->points[src_index] << "\n";
+             std::cout << src_point  << "\n----\n";
+             std::cout << target_points->points[tgt_index] << "\n";
+             std::cout << tgt_point  << "\n----\n";
+             std::cout << translation  << "\n----\n";
+
+             std::cout << Rodrigues  << "\n";
+             
+             return;
           }
        }
-
-       double duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
-       std::cout<<"\t\t printf: "<< duration <<'\n';
        
        
        std::cout << "Energy: " << energy  << "\n";
        std::cout << rotation  << "\n";
        std::cout << transl  << "\n------------\n";
+
+       Eigen::Matrix<float, 4, 4> full_transform =
+          Eigen::Matrix<float, 4, 4>::Identity();
        
+       for (int i = 0; i < 3; i++) {
+          for (int j = 0; j < 3; j++) {
+             full_transform(i, j) = rotation(i, j);
+          }
+       }
+       full_transform(0, 3) = transl(0);
+       full_transform(1, 3) = transl(1);
+       full_transform(2, 3) = transl(2);
+
+       
+       pcl::transformPointCloud(*src_points, *src_points, full_transform);
+       // pcl::transformPointCloud(*target_points_, *target_points_,
+       // transformation);
+       
+       
+       std::cout << full_transform  << "\n---\n";
+       std::cout << transformation.inverse()  << "\n";
     }
     
     
@@ -449,11 +474,14 @@ void HandheldObjectRegistration::modelUpdate(
 
 void HandheldObjectRegistration::featureBasedTransformation(
     std::vector<CandidateIndices> &candidate_indices,
-    const PointCloud::Ptr cloud, const PointNormal::Ptr normals,
-    const cv::Mat src_image, const cv::Mat target_image) {
+    const pcl::PointCloud<PointNormalT>::Ptr target_points,
+    const cv::Mat target_indices, const cv::Mat target_image,
+    const pcl::PointCloud<PointNormalT>::Ptr src_points,
+    const cv::Mat src_indices, const cv::Mat src_image) {
     candidate_indices.clear();
-    if (cloud->empty() || src_image.empty() || target_image.empty() ||
-        src_image.size() != target_image.size()) {
+    if (src_points->empty() || src_image.empty() || src_indices.empty() ||
+        target_points->empty() || target_image.empty() ||
+        target_indices.empty()) {
        ROS_ERROR("EMPTY INPUT FOR FEATUREBASEDTRANSFORM(.)");
        return;
     }
@@ -474,40 +502,44 @@ void HandheldObjectRegistration::featureBasedTransformation(
     std::vector<bool> matches_flag(static_cast<int>(matches.size()));
     candidate_indices.resize(matches.size());
 
-// TODO(PARALLEL): OMP
+    // TODO(PARALLEL): OMP
+    std::vector<cv::DMatch> good_matches;
     for (int i = 0; i < matches.size(); i++) {
        cv::Point2f src_pt = src_keypoints[matches[i].queryIdx].pt;
        cv::Point2f tgt_pt = tgt_keypoints[matches[i].trainIdx].pt;
-       int src_index = static_cast<int>(src_pt.x) + (
-          src_image.cols * static_cast<int>(src_pt.y));
-       int tgt_index = static_cast<int>(tgt_pt.x) + (
-          target_image.cols * static_cast<int>(tgt_pt.y));
-       Eigen::Vector4f src_point = cloud->points[
-          src_index].getVector4fMap();
-       Eigen::Vector4f tgt_point = cloud->points[
-          tgt_index].getVector4fMap();
-       Eigen::Vector4f src_normal = normals->points[
-          src_index].getNormalVector4fMap();
-       Eigen::Vector4f tgt_normal = normals->points[
-          tgt_index].getNormalVector4fMap();
+       int src_index = src_indices.at<int>(static_cast<int>(tgt_pt.y),
+                                           static_cast<int>(tgt_pt.x));
+       int tgt_index = target_indices.at<int>(static_cast<int>(tgt_pt.y),
+                                              static_cast<int>(tgt_pt.x));
+       // std::cout << tgt_index  << "\t" << src_index << "\n";
 
-       float angle = std::acos((src_normal.dot(tgt_normal)) / (
-                                  src_normal.norm() * tgt_normal.norm()));
-       if (angle < ANGLE_THRESH_) {
-          matches_flag[i] = true;
-          candidate_indices[i].source_index = src_index;
-          candidate_indices[i].target_index = tgt_index;
-       } else {
-          matches_flag[i] = false;
-          candidate_indices[i].source_index = -1;
-          candidate_indices[i].target_index = -1;
+       if (tgt_index != -1 && src_index != -1) {
+          Eigen::Vector4f src_normal = src_points->points[
+             src_index].getNormalVector4fMap();
+          Eigen::Vector4f tgt_normal = target_points->points[
+             tgt_index].getNormalVector4fMap();
+
+          float angle = std::acos((src_normal.dot(tgt_normal)) / (
+                                     src_normal.norm() * tgt_normal.norm()));
+          if (angle < ANGLE_THRESH_) {
+             matches_flag[i] = true;
+             candidate_indices[i].source_index = src_index;
+             candidate_indices[i].target_index = tgt_index;
+
+             good_matches.push_back(matches[i]);
+          } else {
+             matches_flag[i] = false;
+             candidate_indices[i].source_index = -1;
+             candidate_indices[i].target_index = -1;
+          }
        }
     }
     
     cv::Mat img_matches;
     cv::drawMatches(src_image, src_keypoints, target_image,  tgt_keypoints,
-                    matches, img_matches);
+                    good_matches, img_matches);
     cv::imshow("matching", img_matches);
+    
 }
 
 

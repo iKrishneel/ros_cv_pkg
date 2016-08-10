@@ -126,9 +126,15 @@ class HandheldObjectRegistration {
     void features2D(std::vector<cv::KeyPoint> &, cv::cuda::GpuMat &,
                    const cv::Mat);
     void featureBasedTransformation(std::vector<CandidateIndices> &,
-                                    const PointCloud::Ptr,
-                                    const PointNormal::Ptr,
+                                    const pcl::PointCloud<PointNormalT>::Ptr,
+                                    const cv::Mat, const cv::Mat,
+                                    const pcl::PointCloud<PointNormalT>::Ptr,
                                     const cv::Mat, const cv::Mat);
+   
+                                    // const pcl::PointCloud<PointNormalT>::Ptr,
+                                    // const cv::Mat, const PointCloud::Ptr,
+                                    // const PointNormal::Ptr, const cv::Mat,
+                                    // const cv::Mat);
    
    
     void symmetricPlane(float *, pcl::PointCloud<PointNormalT>::Ptr,
