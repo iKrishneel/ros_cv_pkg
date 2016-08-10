@@ -12,8 +12,8 @@ HandheldObjectRegistration::HandheldObjectRegistration():
     this->input_cloud_ = PointCloud::Ptr(new PointCloud);
     this->input_normals_ = PointNormal::Ptr(new PointNormal);
     
-    this->orb_gpu_ = cv::cuda::ORB::create(500, 1.10f, 4, 31, 0, 2,
-                                           cv::ORB::HARRIS_SCORE, 20);
+    this->orb_gpu_ = cv::cuda::ORB::create(1000, 1.20f, 8, 11, 0, 2,
+                                           cv::ORB::HARRIS_SCORE, 31, true);
      
     //! temporary
     this->rendering_cuboid_ = boost::shared_ptr<jsk_msgs::BoundingBox>(
@@ -85,13 +85,8 @@ void HandheldObjectRegistration::cloudCB(
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
     const sensor_msgs::CameraInfo::ConstPtr &cinfo_msg) {
 
-    std::clock_t start;
-    double duration;
-    start = std::clock();
-
-    struct timeval istart, iend;
-    gettimeofday(&istart, NULL);
-    
+    struct timeval timer_start, timer_end;
+    gettimeofday(&timer_start, NULL);
     
     PointCloud::Ptr cloud(new PointCloud);
     pcl::fromROSMsg(*cloud_msg, *cloud);
@@ -152,15 +147,6 @@ void HandheldObjectRegistration::cloudCB(
        pt.normal_z = region_normal->points[i].normal_z;
        src_points->push_back(pt);
     }
-
-    //! timer
-    duration = (std::clock() - start) / static_cast<double>(CLOCKS_PER_SEC);
-    start = std::clock();
-    
-    gettimeofday(&iend, NULL);
-    double delta = ((iend.tv_sec  - istart.tv_sec) * 1000000u +
-             iend.tv_usec - istart.tv_usec) / 1.e6;
-    ROS_ERROR("TIME: %3.4f, %3.6f", duration, delta);
     
     /**
      * DEBUG
@@ -199,7 +185,7 @@ void HandheldObjectRegistration::cloudCB(
        transform_model.rotate(pf_quat);
        if (!this->prev_points_->empty()) {
           tracker_transform = transform_model * prev_transform_.inverse();
-          pcl::transformPointCloud(*prev_points_,
+          pcl::transformPointCloudWithNormals(*prev_points_,
                                    *prev_points_, tracker_transform);
           this->pose_flag_ = false;
        }
@@ -229,7 +215,7 @@ void HandheldObjectRegistration::cloudCB(
        }
        */
        transformation =  transformation * tracker_transform.matrix();
-       //! pcl::transformPointCloud(*target_points_, *target_points_,
+       //! pcl::transformPointCloudWithNormals(*target_points_, *target_points_,
        //                          transformation);
        
        
@@ -246,17 +232,19 @@ void HandheldObjectRegistration::cloudCB(
     }
 
     this->prev_points_->clear();
-    // pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points,
-    // *prev_points_);
-    pcl::copyPointCloud<PointNormalT, PointNormalT>(
-       *target_points_, *prev_points_);
+    pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points,
+                                                    *prev_points_);
+    // pcl::copyPointCloud<PointNormalT, PointNormalT>(
+    //    *target_points_, *prev_points_);
     
     std::cout << region_cloud->size()  << "\n";
     ROS_INFO("Done Processing");
 
-    duration = (std::clock() - start) / static_cast<double>(CLOCKS_PER_SEC);
-    ROS_WARN("TIME: %3.4f", duration);
-    
+    //! timer
+    gettimeofday(&timer_end, NULL);
+    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+             timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
+    ROS_ERROR("TIME: %3.6f", delta);
 
     
     sensor_msgs::PointCloud2 *ros_cloud = new sensor_msgs::PointCloud2;
@@ -305,16 +293,29 @@ void HandheldObjectRegistration::modelUpdate(
     cv::Mat target_image;
     cv::Mat target_depth;
     cv::Mat target_indices = this->project3DTo2DDepth(
-       target_image, target_depth, target_points);
+       target_image, target_depth, this->prev_points_/*target_points*/);
 
+    
     //!  Feature check
     ROS_INFO("\033[33m EXTRACTING 2D FEATURES \033[0m");
+
+    //! timer start
+    struct timeval timer_start, timer_end;
+    gettimeofday(&timer_start, NULL);
     
     std::vector<CandidateIndices> candidate_indices;
     this->featureBasedTransformation(
-       candidate_indices, target_points, target_indices, target_image,
-       src_points, src_indices, src_image);
+       candidate_indices, this->prev_points_, target_indices,
+       target_image, src_points, src_indices, src_image);
 
+
+    //! timer end
+    gettimeofday(&timer_end, NULL);
+    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
+    ROS_ERROR("\033[34mprojection: %3.6f \033[0m", delta);
+
+    
     ROS_INFO("\033[33m COMPUTING TRANSFORMATION \033[0m");
     
     //! compute transformation
@@ -334,7 +335,7 @@ void HandheldObjectRegistration::modelUpdate(
           int tgt_index = candidate_indices[i].target_index;
           if (src_index != -1 && tgt_index != -1) {
              PointNormalT spt = src_points->points[src_index];
-             PointNormalT tpt = target_points->points[tgt_index];
+             PointNormalT tpt = this->prev_points_->points[tgt_index];
              PointT pt;
              pt.x = spt.x; pt.y = spt.y; pt.z = spt.z;
              src_cloud->push_back(pt);
@@ -348,17 +349,17 @@ void HandheldObjectRegistration::modelUpdate(
           transformation_estimation.estimateRigidTransformation(
              *target_cloud, *src_cloud, transform_matrix);
        }
-       pcl::transformPointCloud(*target_points, *target_points,
-                                transform_matrix);
+       pcl::transformPointCloudWithNormals(*target_points, *target_points,
+                                           transform_matrix);
     }
-/*    
+    /*
     ROS_INFO("\033[33m ICP \033[0m");
-    //! go icp registration
+    //! do icp registration
     pcl::PointCloud<PointNormalT>::Ptr align_points(
        new pcl::PointCloud<PointNormalT>);
     Eigen::Matrix<float, 4, 4> transformation;
     if (!this->registrationICP(align_points, transformation,
-                               src_points, target_points)) {
+                               target_points, src_points)) {
        ROS_ERROR("- ICP cannot converge.. skipping");
        return;
     }
@@ -450,10 +451,12 @@ void HandheldObjectRegistration::featureBasedTransformation(
        ROS_ERROR("EMPTY INPUT FOR FEATUREBASEDTRANSFORM(.)");
        return;
     }
+    
     std::vector<cv::KeyPoint> src_keypoints;
     cv::cuda::GpuMat d_src_desc;
     this->features2D(src_keypoints, d_src_desc, src_image);
-    
+
+    // TODO(CACHE): reuse
     cv::cuda::GpuMat d_tgt_desc;
     std::vector<cv::KeyPoint> tgt_keypoints;
     this->features2D(tgt_keypoints, d_tgt_desc, target_image);
@@ -461,7 +464,17 @@ void HandheldObjectRegistration::featureBasedTransformation(
     cv::Ptr<cv::cuda::DescriptorMatcher> matcher =
        cv::cuda::DescriptorMatcher::createBFMatcher(cv::NORM_HAMMING);
     std::vector<cv::DMatch> matches;
-    matcher->match(d_src_desc, d_tgt_desc, matches);
+    // matcher->match(d_src_desc, d_tgt_desc, matches);
+
+    std::vector<std::vector<cv::DMatch> > knn_matches;
+    matcher->knnMatch(d_src_desc, d_tgt_desc, knn_matches, 2);
+
+    for (int i = 0; i < knn_matches.size(); i++) {
+       if ((knn_matches[i][0].distance / knn_matches[i][1].distance)
+             < 0.8f) {
+          matches.push_back(knn_matches[i][0]);
+       }
+    }
 
     const float ANGLE_THRESH_ = std::cos(M_PI / 3.0f);
     std::vector<bool> matches_flag(static_cast<int>(matches.size()));
@@ -477,25 +490,26 @@ void HandheldObjectRegistration::featureBasedTransformation(
        int tgt_index = target_indices.at<int>(static_cast<int>(tgt_pt.y),
                                               static_cast<int>(tgt_pt.x));
        if (tgt_index != -1 && src_index != -1) {
-          Eigen::Vector4f src_normal = src_points->points[
-             src_index].getNormalVector4fMap();
-          Eigen::Vector4f tgt_normal = target_points->points[
-             tgt_index].getNormalVector4fMap();
-
-          float angle = (src_normal.dot(tgt_normal)) / (
-             src_normal.norm() * tgt_normal.norm());
-          if (angle < ANGLE_THRESH_) {
+          // Eigen::Vector4f src_normal = src_points->points[
+          //    src_index].getNormalVector4fMap();
+          // Eigen::Vector4f tgt_normal = target_points->points[
+          //    tgt_index].getNormalVector4fMap();
+          // float angle = (src_normal.dot(tgt_normal)) / (
+          //    src_normal.norm() * tgt_normal.norm());
+          // if (angle > ANGLE_THRESH_)
+          {
              matches_flag[i] = true;
              candidate_indices[i].source_index = src_index;
              candidate_indices[i].target_index = tgt_index;
 
              good_matches.push_back(matches[i]);
-          } else {
+          }
+       } else {
              matches_flag[i] = false;
              candidate_indices[i].source_index = -1;
              candidate_indices[i].target_index = -1;
-          }
        }
+       // } //! endif
     }
     cv::Mat img_matches;
     cv::drawMatches(src_image, src_keypoints, target_image,  tgt_keypoints,
@@ -512,6 +526,9 @@ void HandheldObjectRegistration::features2D(
        return;
     }
     cv::cuda::GpuMat d_image(image);
+    // cv::Ptr<cv::cuda::Filter> gauss = cv::cuda::createGaussianFilter(
+    //    d_image.type(), -1, cv::Size(3, 3), 1);
+    // gauss->apply(d_image, d_image);
     cv::cuda::cvtColor(d_image, d_image, CV_BGR2GRAY);
     orb_gpu_->detectAndCompute(d_image, cv::cuda::GpuMat(),
                               keypoints, d_descriptor, false);
@@ -965,7 +982,6 @@ cv::Mat HandheldObjectRegistration::project3DTo2DDepth(
 // #ifdef _OPENMP
 // #pragma omp parallel for num_threads(this->num_threads_)
 // #endif
-    
     for (int i = 0; i < image_points.size(); i++) {
        int x = image_points[i].x;
        int y = image_points[i].y;
