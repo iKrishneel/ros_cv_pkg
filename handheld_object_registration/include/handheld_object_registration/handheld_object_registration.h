@@ -17,6 +17,7 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/features/integral_image_normal.h>
 #include <pcl/registration/correspondence_estimation.h>
+#include <pcl/registration/transformation_estimation_svd.h>
 
 #include <geometry_msgs/PointStamped.h>
 #include <sensor_msgs/CameraInfo.h>

@@ -296,108 +296,42 @@ void HandheldObjectRegistration::modelUpdate(
        src_points, src_indices, src_image);
 
     //! compute transformation
+    Eigen::Matrix4f transform_matrix = Eigen::Matrix4f::Identity();
     if (candidate_indices.size() < 8) {
        //! use only ICP
     } else {
-       
        float energy = FLT_MAX;
        Eigen::Matrix3f rotation;
        Eigen::Vector3f transl;
+
+       PointCloud::Ptr src_cloud(new PointCloud);
+       PointCloud::Ptr target_cloud(new PointCloud);
+       
        for (int i = 0; i < candidate_indices.size(); i++) {
           int src_index = candidate_indices[i].source_index;
           int tgt_index = candidate_indices[i].target_index;
           if (src_index != -1 && tgt_index != -1) {
-             Eigen::Vector3f src_point = src_points->points[
-                src_index].getVector3fMap();
-             Eigen::Vector3f tgt_point = target_points->points[
-                tgt_index].getVector3fMap();
-             Eigen::Vector3f translation = tgt_point - src_point;
-             src_point = src_point.normalized();
-             tgt_point = tgt_point.normalized();
-
-             float cos_tetha = src_point.dot(tgt_point);
-             Eigen::Vector3f c = tgt_point.cross(src_point);
-             float sin_tetha = c.norm();
-
-             std::cout << c  << "\n\n";
-             std::cout << "SIN: " << sin_tetha  << "\n";
-             
-             Eigen::Matrix3f axis_skew;
-             axis_skew(0, 0) = 0.0f;
-             axis_skew(0, 1) = c(2)/sin_tetha;
-             axis_skew(0, 2) = -c(1)/sin_tetha;
-             
-             axis_skew(1, 0) = -c(2)/sin_tetha;
-             axis_skew(1, 1) = 0.0f;
-             axis_skew(1, 2) = c(0)/sin_tetha;
-
-             axis_skew(2, 0) = c(1)/sin_tetha;
-             axis_skew(2, 1) = -c(0)/sin_tetha;
-             axis_skew(2, 2) = 0.0f;
-
-             Eigen::Matrix3f identity = Eigen::Matrix3f::Identity();
-             Eigen::Matrix3f Rodrigues = identity + (sin_tetha * axis_skew) +
-                ((1.0f - cos_tetha) * (axis_skew * axis_skew));
-
-             float sum = 0.0f;
-             for (int j = 0; j < candidate_indices.size(); j++) {
-                src_index = candidate_indices[j].source_index;
-                tgt_index = candidate_indices[j].target_index;
-
-                Eigen::Vector3f src_pt = src_points->points[
-                   src_index].getVector3fMap();
-                Eigen::Vector3f tgt_pt = target_points->points[
-                   tgt_index].getVector3fMap();
-
-                Eigen::Vector3f diff = tgt_pt - (
-                   Rodrigues * src_pt  + translation);
-                
-                sum += diff(0) * diff(0) + diff(1) * diff(1) +
-                   diff(2) * diff(2);
-             }
-             if (sum < energy) {
-                energy = sum;
-                rotation = Rodrigues;
-                transl = translation;
-             }
-
-             std::cout << src_points->points[src_index] << "\n";
-             std::cout << src_point  << "\n----\n";
-             std::cout << target_points->points[tgt_index] << "\n";
-             std::cout << tgt_point  << "\n----\n";
-             std::cout << translation  << "\n----\n";
-
-             std::cout << Rodrigues  << "\n";
-             
-             return;
+             PointNormalT spt = src_points->points[src_index];
+             PointNormalT tpt = target_points->points[tgt_index];
+             PointT pt;
+             pt.x = spt.x; pt.y = spt.y; pt.z = spt.z;
+             src_cloud->push_back(pt);
+             pt.x = tpt.x; pt.y = tpt.y; pt.z = tpt.z;
+             target_cloud->push_back(pt);
           }
        }
-       
-       
-       std::cout << "Energy: " << energy  << "\n";
-       std::cout << rotation  << "\n";
-       std::cout << transl  << "\n------------\n";
 
-       Eigen::Matrix<float, 4, 4> full_transform =
-          Eigen::Matrix<float, 4, 4>::Identity();
-       
-       for (int i = 0; i < 3; i++) {
-          for (int j = 0; j < 3; j++) {
-             full_transform(i, j) = rotation(i, j);
-          }
+       if (!src_cloud->empty() || !target_cloud->empty()) {
+          pcl::registration::TransformationEstimationSVD<
+             PointT, PointT> transformation_estimation;
+          transformation_estimation.estimateRigidTransformation(
+             *target_cloud, *src_cloud, transform_matrix);
+          
+          std::cout << transform_matrix  << "\n";
        }
-       full_transform(0, 3) = transl(0);
-       full_transform(1, 3) = transl(1);
-       full_transform(2, 3) = transl(2);
+       
+       pcl::transformPointCloud(*src_points, *src_points, transform_matrix);
 
-       
-       pcl::transformPointCloud(*src_points, *src_points, full_transform);
-       // pcl::transformPointCloud(*target_points_, *target_points_,
-       // transformation);
-       
-       
-       std::cout << full_transform  << "\n---\n";
-       std::cout << transformation.inverse()  << "\n";
     }
     
     
