@@ -352,7 +352,7 @@ void HandheldObjectRegistration::modelUpdate(
        pcl::transformPointCloudWithNormals(*target_points, *target_points,
                                            transform_matrix);
     }
-    /*
+    
     ROS_INFO("\033[33m ICP \033[0m");
     //! do icp registration
     pcl::PointCloud<PointNormalT>::Ptr align_points(
@@ -366,7 +366,7 @@ void HandheldObjectRegistration::modelUpdate(
 
     target_points->clear();
     *target_points = *align_points;
-    */
+
     cv::waitKey(3);
     return;
 
