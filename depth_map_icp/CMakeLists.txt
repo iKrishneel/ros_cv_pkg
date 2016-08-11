@@ -122,6 +122,11 @@ include_directories(
   include ${catkin_INCLUDE_DIRS}
 )
 
+
+SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_LIST_DIR}/cmake)
+include(cmake/CudaComputeTargetFlags.cmake)
+APPEND_TARGET_ARCH_FLAGS()
+
 ## Declare a C++ library
 # add_library(depth_map_icp
 #   )
@@ -139,6 +144,7 @@ cuda_add_executable(depth_map_icp_node
   src/cuda/estimate_combined.cu  
   src/cuda/icp.cu  
   src/cuda/pyrdown.cu
+  src/cuda/device_memory.cpp
 )
 
 ## Add cmake target dependencies of the executable

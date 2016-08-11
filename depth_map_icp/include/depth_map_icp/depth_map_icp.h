@@ -10,6 +10,8 @@
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
 
+#include <depth_map_icp/ICPOdometry.h>
+
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <boost/thread/mutex.hpp>
