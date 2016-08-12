@@ -307,19 +307,12 @@ void HandheldObjectRegistration::modelUpdate(
     this->featureBasedTransformation(
        candidate_indices, this->prev_points_, target_indices,
        target_image, src_points, src_indices, src_image);
-
-
-    //! timer end
-    gettimeofday(&timer_end, NULL);
-    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
-                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
-    ROS_ERROR("\033[34mprojection: %3.6f \033[0m", delta);
-
     
     ROS_INFO("\033[33m COMPUTING TRANSFORMATION \033[0m");
     
     //! compute transformation
     Eigen::Matrix4f transform_matrix = Eigen::Matrix4f::Identity();
+
     if (candidate_indices.size() < 8) {
        //! use only ICP
     } else {
@@ -349,15 +342,21 @@ void HandheldObjectRegistration::modelUpdate(
           transformation_estimation.estimateRigidTransformation(
              *target_cloud, *src_cloud, transform_matrix);
        }
+
+       //! uncomment this for 2D transform
        pcl::transformPointCloudWithNormals(*target_points, *target_points,
                                            transform_matrix);
     }
     
+    //! timer end
+    gettimeofday(&timer_end, NULL);
+    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
+    ROS_ERROR("\033[34mprojection: %3.6f \033[0m", delta);
+
+    
+    
     ROS_INFO("\033[33m ICP \033[0m");
-
-
-    //! timer start
-    gettimeofday(&timer_start, NULL);
 
     // --> change name
     //! project the target points
@@ -365,46 +364,100 @@ void HandheldObjectRegistration::modelUpdate(
                                               target_points);
 
 
-    const int SEARCH_WSIZE = 15;
+    const int SEARCH_WSIZE = 8;
+    const float ICP_DIST_THRESH = 0.05f;
+    cv::Mat debug_im = cv::Mat::zeros(src_image.size(), CV_8UC3);
+    
+    pcl::Correspondences correspondences;
     for (int j = 0; j < src_image.rows; j++) {
        for (int i = 0; i < src_image.cols; i++) {
-          int src_index = src_indices.at<int>(j, i);
           int model_index = target_indices.at<int>(j, i);
           if (model_index != -1) {
-             Eigen::Vector4f model_pt = target_points->points[
-                model_index].getVector4fMap();
-
-             //! search
-             double min_dsm = std::numeric_limits<double>::max();
-             int min_ism = -1;
-             for (int k = 0; k < SEARCH_WSIZE; k++) {
-                for (int l = 0; l < SEARCH_WSIZE; l++) {
-                   
+             pcl::Correspondence corr;
+             int x = i - (SEARCH_WSIZE/2);
+             int y = j - (SEARCH_WSIZE/2);
+             if (this->conditionROI(x, y, SEARCH_WSIZE,
+                                    SEARCH_WSIZE, src_image.size())) {
+                Eigen::Vector4f model_pt = target_points->points[
+                   model_index].getVector4fMap();
+                double min_dsm = std::numeric_limits<double>::max();
+                int min_ism = -1;
+                for (int l = y; l < y + SEARCH_WSIZE; l++) {
+                   for (int k = x; k < x + SEARCH_WSIZE; k++) {
+                      int src_index = src_indices.at<int>(l, k);
+                      Eigen::Vector4f src_pt = src_points->points[
+                         src_index].getVector4fMap();
+                      double dsm = pcl::distances::l2(src_pt, model_pt);
+                      if (dsm < min_dsm && !isnan(dsm)) {
+                         min_dsm = dsm;
+                         min_ism = src_index;
+                      }
+                   }
                 }
+                if (min_ism != -1) {
+                   if (min_dsm < ICP_DIST_THRESH) {
+                      corr.index_match = min_ism;
+                      corr.index_query = model_index;
+                      correspondences.push_back(corr);
+                      
+                      // cv::circle(debug_im, cv::Point(i, j), 3,
+                      //            cv::Scalar(0, 0, 255), -1);
+                   }
+                }
+                // else {
+                //    cv::circle(debug_im, cv::Point(i, j), 3,
+                //               cv::Scalar(0, 255, 0), -1);
+                // }
              }
-             // std::cout << "MIN: " << min_ism << ", " << min_dsm   << "\n";
           }
        }
     }
+
+    PointCloud::Ptr src_cloud(new PointCloud);
+    PointCloud::Ptr target_cloud(new PointCloud);
+
+    pcl::copyPointCloud<PointNormalT, PointT>(*src_points, *src_cloud);
+    pcl::copyPointCloud<PointNormalT, PointT>(*target_points, *target_cloud);
+
+    
+    //! timer start
+    gettimeofday(&timer_start, NULL);
+    
+    Eigen::Matrix4f icp_trans = Eigen::Matrix4f::Identity();
+    pcl::registration::TransformationEstimationPointToPlaneLLS<
+       PointNormalT, PointNormalT> transformation_estimation;
+    transformation_estimation.estimateRigidTransformation(
+       *target_points, *src_points, correspondences, icp_trans);
+    // transformation_estimation.estimateRigidTransformation(
+    //    *target_cloud, *src_cloud, correspondences, icp_trans);
 
     //! timer end
     gettimeofday(&timer_end, NULL);
     delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
              timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
     ROS_ERROR("\033[34mTransform: %3.6f \033[0m", delta);
+
+
+    //! timer start
+    gettimeofday(&timer_start, NULL);
     
-    return;
+    pcl::transformPointCloudWithNormals(*target_points, *target_points,
+                                        icp_trans);
+
+    //! timer end
+    gettimeofday(&timer_end, NULL);
+    delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+             timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
+    ROS_ERROR("\033[34mTransform: %3.6f \033[0m", delta);
 
 
-
-
-
-
-
+    std::cout << icp_trans  << "\n";
+    std::cout << "Size: " << correspondences.size()  << "\n";
+    
+    cv::imshow("debug", debug_im);
     
     
-
-    
+    /*
     //! do icp registration
     pcl::PointCloud<PointNormalT>::Ptr align_points(
        new pcl::PointCloud<PointNormalT>);
@@ -417,9 +470,21 @@ void HandheldObjectRegistration::modelUpdate(
 
     target_points->clear();
     *target_points = *align_points;
+    */
 
+    
     cv::waitKey(3);
     return;
+
+
+
+
+
+
+
+
+
+    
 
     /**
      * UPDATING VIA REGISTRATION
@@ -1097,6 +1162,24 @@ void HandheldObjectRegistration::plotPlane(
          cloud->push_back(pt);
       }
     }
+}
+
+bool HandheldObjectRegistration::conditionROI(
+    int x, int y, int width, int height, const cv::Size image_size) {
+    if (x > image_size.width || y > image_size.height) {
+       return false;
+    }
+    
+    x = (x < 0) ? 0 : x;
+    y = (y < 0) ? 0 : y;
+    x = (x > image_size.width) ? image_size.width : x;
+    y = (y > image_size.height) ? image_size.height : y;
+    width = (width + x > image_size.width) ?
+       (width - ((width + x) - image_size.width)) : width;
+    height = (height + y > image_size.height) ?
+       (height - ((height + y) - image_size.height)) : height;
+
+    return true;
 }
 
 int main(int argc, char *argv[]) {

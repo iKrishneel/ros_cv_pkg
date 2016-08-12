@@ -17,7 +17,9 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/features/integral_image_normal.h>
 #include <pcl/registration/correspondence_estimation.h>
+
 #include <pcl/registration/transformation_estimation_svd.h>
+#include <pcl/registration/transformation_estimation_point_to_plane_lls.h>
 
 #include <geometry_msgs/PointStamped.h>
 #include <sensor_msgs/CameraInfo.h>
@@ -138,6 +140,8 @@ class HandheldObjectRegistration {
                         const float = 0.02f);
     void plotPlane(pcl::PointCloud<PointNormalT>::Ptr, const Eigen::Vector4f,
                    const Eigen::Vector3f = Eigen::Vector3f(255, 0, 0));
+
+    bool conditionROI(int, int, int, int, const cv::Size);
 };
 
 
