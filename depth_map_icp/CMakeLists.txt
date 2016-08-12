@@ -123,9 +123,9 @@ include_directories(
 )
 
 
-SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_LIST_DIR}/cmake)
-include(cmake/CudaComputeTargetFlags.cmake)
-APPEND_TARGET_ARCH_FLAGS()
+# SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_LIST_DIR}/cmake)
+# include(cmake/CudaComputeTargetFlags.cmake)
+# APPEND_TARGET_ARCH_FLAGS()
 
 ## Declare a C++ library
 # add_library(depth_map_icp
