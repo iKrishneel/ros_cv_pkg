@@ -1,6 +1,6 @@
 <launch>
   <arg name="image" default="/camera/rgb/image_rect_color" />
-  <arg name="depth" default="/camera/depth_registered/image_raw" />
+  <arg name="depth" default="/camera/depth_registered/hw_registered/image_rect_raw" />
   <node pkg="depth_map_icp" type="depth_map_icp_node" name="depth_map_icp" 
 	output="screen" >
     <remap from="depth" to="$(arg depth)"/>

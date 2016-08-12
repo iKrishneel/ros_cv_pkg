@@ -23,7 +23,7 @@ class DepthMapICP {
     boost::mutex lock_;
 
     bool is_init_;
-    cv::Mat prev_depth_;
+    cv::Mat1w prev_depth_;
    
  protected:
     void onInit();
