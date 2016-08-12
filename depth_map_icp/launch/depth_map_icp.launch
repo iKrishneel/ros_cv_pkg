@@ -1,9 +1,11 @@
 <launch>
   <arg name="image" default="/camera/rgb/image_rect_color" />
   <arg name="depth" default="/camera/depth_registered/hw_registered/image_rect_raw" />
+  <arg name="points" default="/camera/depth_registered/points" />
   <node pkg="depth_map_icp" type="depth_map_icp_node" name="depth_map_icp" 
 	output="screen" >
-    <remap from="depth" to="$(arg depth)"/>
+    <remap from="input_depth" to="$(arg depth)"/>
+    <remap from="input_cloud" to="$(arg points)"/>
   </node>
   <!-- <node pkg="image_view" type="image_view" -->
   <!-- 	name="image_view" output="screen"> -->
