@@ -7,9 +7,11 @@
 #include <message_filters/sync_policies/approximate_time.h>
 
 #include <sensor_msgs/Image.h>
+#include <sensor_msgs/PointCloud2.h>
 #include <cv_bridge/cv_bridge.h>
 #include <sensor_msgs/image_encodings.h>
-
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/common/transforms.h>
 #include <depth_map_icp/ICPOdometry.h>
 
 #include <opencv2/opencv.hpp>
@@ -18,10 +20,19 @@
 
 class DepthMapICP {
 
+    typedef pcl::PointXYZRGB PointT;
+    typedef pcl::PointCloud<PointT> PointCloud;
+
  private:
     boost::mutex mutex_;
     boost::mutex lock_;
 
+    typedef  message_filters::sync_policies::ApproximateTime<
+       sensor_msgs::PointCloud2, sensor_msgs::Image> SyncPolicy;
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_cloud_;
+    message_filters::Subscriber<sensor_msgs::Image> sub_depth_;
+    boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_; 
+   
     bool is_init_;
     cv::Mat1w prev_depth_;
    
@@ -31,13 +42,12 @@ class DepthMapICP {
     void unsubscribe();
 
     ros::NodeHandle pnh_;
-    ros::Publisher pub_depth_;
-    ros::Subscriber sub_depth_;
-   
+    ros::Publisher pub_cloud_;
    
  public:
     DepthMapICP();
-    void depthCB(const sensor_msgs::Image::ConstPtr &);
+    void depthCB(const sensor_msgs::PointCloud2::ConstPtr &,
+                 const sensor_msgs::Image::ConstPtr &);
 };
 
 

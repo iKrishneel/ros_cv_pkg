@@ -354,6 +354,57 @@ void HandheldObjectRegistration::modelUpdate(
     }
     
     ROS_INFO("\033[33m ICP \033[0m");
+
+
+    //! timer start
+    gettimeofday(&timer_start, NULL);
+
+    // --> change name
+    //! project the target points
+    target_indices = this->project3DTo2DDepth(target_image, target_depth,
+                                              target_points);
+
+
+    const int SEARCH_WSIZE = 15;
+    for (int j = 0; j < src_image.rows; j++) {
+       for (int i = 0; i < src_image.cols; i++) {
+          int src_index = src_indices.at<int>(j, i);
+          int model_index = target_indices.at<int>(j, i);
+          if (model_index != -1) {
+             Eigen::Vector4f model_pt = target_points->points[
+                model_index].getVector4fMap();
+
+             //! search
+             double min_dsm = std::numeric_limits<double>::max();
+             int min_ism = -1;
+             for (int k = 0; k < SEARCH_WSIZE; k++) {
+                for (int l = 0; l < SEARCH_WSIZE; l++) {
+                   
+                }
+             }
+             // std::cout << "MIN: " << min_ism << ", " << min_dsm   << "\n";
+          }
+       }
+    }
+
+    //! timer end
+    gettimeofday(&timer_end, NULL);
+    delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+             timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
+    ROS_ERROR("\033[34mTransform: %3.6f \033[0m", delta);
+    
+    return;
+
+
+
+
+
+
+
+    
+    
+
+    
     //! do icp registration
     pcl::PointCloud<PointNormalT>::Ptr align_points(
        new pcl::PointCloud<PointNormalT>);
@@ -370,8 +421,9 @@ void HandheldObjectRegistration::modelUpdate(
     cv::waitKey(3);
     return;
 
-
-    
+    /**
+     * UPDATING VIA REGISTRATION
+     */
     cv::Mat depth_im = cv::Mat::zeros(src_depth.size(), CV_32F);
     // cv::absdiff(src_depth, target_depth, depth_im);
 
