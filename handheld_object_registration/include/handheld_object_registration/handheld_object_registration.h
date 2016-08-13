@@ -144,7 +144,7 @@ class HandheldObjectRegistration {
     template<class T>
     void getPointNeigbour(std::vector<int> &,
                           const PointT, const T = 8, bool = true);
-    cv::Mat project3DTo2DDepth(cv::Mat &, cv::Mat &,
+    cv::Mat project3DTo2DDepth(ProjectionMap &, cv::Mat &, cv::Mat &,
                             const pcl::PointCloud<PointNormalT>::Ptr,
                             const float = 1.0f);
     void features2D(std::vector<cv::KeyPoint> &, cv::cuda::GpuMat &,

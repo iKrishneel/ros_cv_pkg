@@ -15,6 +15,14 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 
 
+find_package(CUDA REQUIRED)
+include(FindCUDA)
+
+set(CUDA_NVCC_FLAGS 
+  --generate-code arch=compute_50,code=sm_50
+  --generate-code arch=compute_52,code=sm_52
+)
+
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
 ## See http://ros.org/doc/api/catkin/html/user_guide/setup_dot_py.html
@@ -129,12 +137,14 @@ include_directories(
 # add_dependencies(handheld_object_registration ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
-add_executable(handheld_object_registration_node 
+cuda_add_executable(handheld_object_registration_node 
   src/handheld_object_registration_node.cpp
+  src/cuda/world_to_image_projection.cu
 )
 
 add_executable(object_model_annotation_node 
-  src/object_model_annotation_node.cpp)
+  src/object_model_annotation_node.cpp
+)
 
 
 ## Add cmake target dependencies of the executable
