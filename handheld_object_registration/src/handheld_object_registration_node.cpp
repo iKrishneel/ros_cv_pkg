@@ -284,24 +284,11 @@ void HandheldObjectRegistration::modelUpdate(
     ROS_INFO("\033[33m PROJECTION TO 2D \033[0m");
 
     ProjectionMap src_projection;
-    
-    cv::Mat src_image;
-    cv::Mat src_depth;
-    cv::Mat src_indices;
-    
-    this->project3DTo2DDepth(src_projection,
-                             src_image, src_depth, src_points);
+    this->project3DTo2DDepth(src_projection, src_points);
 
     //! move it out***
-
     ProjectionMap target_projection;
-    
-    cv::Mat target_image;
-    cv::Mat target_depth;
-    cv::Mat target_indices;
-    
-    this->project3DTo2DDepth(target_projection, target_image,
-                             target_depth, this->prev_points_);
+    this->project3DTo2DDepth(target_projection, this->prev_points_);
     
     //!  Feature check
     ROS_INFO("\033[33m EXTRACTING 2D FEATURES \033[0m");
@@ -366,10 +353,7 @@ void HandheldObjectRegistration::modelUpdate(
 
     // --> change name
     //! project the target points
-    target_indices = this->project3DTo2DDepth(target_projection,
-                                              target_image, target_depth,
-                                              target_points);
-
+    this->project3DTo2DDepth(target_projection, target_points);
 
     const int SEARCH_WSIZE = 8;
     const float ICP_DIST_THRESH = 0.05f;
@@ -423,12 +407,11 @@ void HandheldObjectRegistration::modelUpdate(
        }
     }
 
-    PointCloud::Ptr src_cloud(new PointCloud);
-    PointCloud::Ptr target_cloud(new PointCloud);
+    // PointCloud::Ptr src_cloud(new PointCloud);
+    // PointCloud::Ptr target_cloud(new PointCloud);
 
-    pcl::copyPointCloud<PointNormalT, PointT>(*src_points, *src_cloud);
-    pcl::copyPointCloud<PointNormalT, PointT>(*target_points, *target_cloud);
-
+    // pcl::copyPointCloud<PointNormalT, PointT>(*src_points, *src_cloud);
+    // pcl::copyPointCloud<PointNormalT, PointT>(*target_points, *target_cloud);
     
     //! timer start
     gettimeofday(&timer_start, NULL);
@@ -1029,13 +1012,12 @@ void HandheldObjectRegistration::getPointNeigbour(
     }
 }
 
-cv::Mat HandheldObjectRegistration::project3DTo2DDepth(
+bool HandheldObjectRegistration::project3DTo2DDepth(
     ProjectionMap &projection_map,
-    cv::Mat &image, cv::Mat &depth_image,
     const pcl::PointCloud<PointNormalT>::Ptr cloud, const float max_distance) {
     if (cloud->empty()) {
        ROS_ERROR("- Empty cloud. Cannot project 3D to 2D depth.");
-       return cv::Mat();
+       return false;
     }
     cv::Mat object_points = cv::Mat(static_cast<int>(cloud->size()), 3, CV_32F);
 #ifdef _OPENMP
@@ -1073,8 +1055,9 @@ cv::Mat HandheldObjectRegistration::project3DTo2DDepth(
     cv::projectPoints(object_points, rvec, translation_matrix,
                       camera_matrix, distortion_model, image_points);
     
-    image = cv::Mat::zeros(camera_info_->height, camera_info_->width, CV_8UC3);
-    depth_image = cv::Mat::zeros(image.size(), CV_32F);
+    cv::Mat image = cv::Mat::zeros(camera_info_->height,
+                                   camera_info_->width, CV_8UC3);
+    cv::Mat depth_image = cv::Mat::zeros(image.size(), CV_32F);
     cv::Mat indices = cv::Mat(image.size(), CV_32S);
     
     cv::Mat flag = cv::Mat(image.size(), CV_32S);
@@ -1131,9 +1114,6 @@ cv::Mat HandheldObjectRegistration::project3DTo2DDepth(
     int width = max_x - min_x;
     int height = max_y - min_y;
     cv::Rect rect(min_x, min_y, width, height);
-    // cv::Mat im_roi = image;  // (rect).clone();
-    // cv::Mat de_roi = depth_image;  // (rect).clone();
-    // cv::Mat in_roi = indices;  // (rect).clone();
     
     this->conditionROI(min_x, min_y, width, height, image.size());
     projection_map.x = min_x;
@@ -1144,7 +1124,7 @@ cv::Mat HandheldObjectRegistration::project3DTo2DDepth(
     projection_map.depth = depth_image;
     projection_map.indices = indices;
     
-    return indices;
+    return true;
 }
 
 
