@@ -26,6 +26,8 @@
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
 #include <jsk_recognition_utils/pcl_conversion_util.h>
 
+#include <handheld_object_registration/data_structure.h>
+
 #include <opencv2/opencv.hpp>
 #include <opencv2/cudaarithm.hpp>
 #include <opencv2/cudafeatures2d.hpp>
@@ -41,10 +43,28 @@ class HandheldObjectRegistration {
     typedef pcl::PointCloud<PointT> PointCloud;
     typedef pcl::PointCloud<NormalT> PointNormal;
 
+   /*
     struct CandidateIndices {
        int source_index;
        int target_index;
     };
+
+    struct ProjectionMap {
+       int x;
+       int y;
+       int height;
+       int width;
+       cv::Mat rgb;
+       cv::Mat indices;
+       cv::Mat depth;
+       ProjectionMap(int i = -1, int j = -1, int w = -1, int h = -1,
+                     cv::Mat image = cv::Mat(),
+                     cv::Mat indices_im = cv::Mat(),
+                     cv::Mat depth_im = cv::Mat()) :
+          x(i), y(j), width(w), height(h), rgb(image),
+          indices(indices_im), depth(depth_im) {}
+    };
+   */
    
  private:
     boost::mutex mutex_;

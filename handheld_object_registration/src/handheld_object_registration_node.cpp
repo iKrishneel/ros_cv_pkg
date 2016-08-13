@@ -281,13 +281,10 @@ void HandheldObjectRegistration::modelUpdate(
     // TODO(MIN_SIZE_CHECK):
     ROS_INFO("\033[33m PROJECTION TO 2D \033[0m");
     
-    pcl::PointCloud<PointNormalT>::Ptr trans_points(
-       new pcl::PointCloud<PointNormalT>);
-    
     cv::Mat src_image;
     cv::Mat src_depth;
     cv::Mat src_indices = this->project3DTo2DDepth(
-       src_image, src_depth, src_points/*trans_points*/);
+       src_image, src_depth, src_points);
     
     //! move it out***
     cv::Mat target_image;
@@ -473,17 +470,11 @@ void HandheldObjectRegistration::modelUpdate(
     */
 
     
-    cv::waitKey(3);
-    return;
-
-
-
-
-
-
-
-
-
+    // cv::waitKey(3);
+    // return;
+    
+    // target_indices = this->project3DTo2DDepth(target_image, target_depth,
+    //                                           target_points);
     
 
     /**
@@ -1095,7 +1086,11 @@ cv::Mat HandheldObjectRegistration::project3DTo2DDepth(
           flag.at<int>(j, i) = 0;
        }
     }
-    
+
+    int min_x = std::numeric_limits<int>::max();
+    int min_y = std::numeric_limits<int>::max();
+    int max_x = 0;
+    int max_y = 0;
 // #ifdef _OPENMP
 // #pragma omp parallel for num_threads(this->num_threads_)
 // #endif
@@ -1130,8 +1125,25 @@ cv::Mat HandheldObjectRegistration::project3DTo2DDepth(
              depth_image.at<float>(y, x) = cloud->points[i].z / max_distance;
              indices.at<int>(y, x) = i;
           }
+          min_x = (x < min_x) ? x : min_x;
+          min_y = (y < min_y) ? y : min_y;
+          max_x = (x > max_x) ? x : max_x;
+          max_y = (y > max_y) ? y : max_y;
        }
     }
+
+    struct timeval timer_start, timer_end;
+    gettimeofday(&timer_start, NULL);
+        
+    int width = max_x - min_x;
+    int height = max_y - min_y;
+    cv::Rect rect(min_x, min_y, width, height);
+    cv::Mat im_roi = image(rect).clone();
+    cv::Mat de_roi = depth_image(rect).clone();
+    cv::Mat in_roi = indices(rect).clone();
+    
+    this->conditionROI(min_x, min_y, width, height, image.size());
+    ProjectionMap proj_map(min_x, min_y, width, height, im_roi, de_roi, in_roi);
     
     return indices;
 }
