@@ -410,8 +410,15 @@ void HandheldObjectRegistration::modelUpdate(
     //!------------------------
 
     gettimeofday(&timer_start, NULL);
-    estimatedCorrespondences(src_points, src_projection,
-                              target_points, target_projection);
+    
+    if (allocateCopyDataToGPU(true, src_points, src_projection,
+                              target_points, target_projection)) {
+       estimatedCorrespondences(true, src_points, src_projection,
+                                target_points, target_projection);
+           
+    }
+    // estimatedCorrespondences(false, src_points, src_projection,
+    //                          target_points, target_projection);
 
     //! timer end
     gettimeofday(&timer_end, NULL);

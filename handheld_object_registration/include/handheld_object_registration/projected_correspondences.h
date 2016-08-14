@@ -52,7 +52,14 @@ void findCorrespondencesGPU(Correspondence *,
                             const int, const int,
                             const int, const int);
 
-void estimatedCorrespondences(const pcl::PointCloud<PointTYPE>::Ptr,
+bool allocateCopyDataToGPU(bool,
+                           const pcl::PointCloud<PointTYPE>::Ptr,
+                           const ProjectionMap &,
+                           const pcl::PointCloud<PointTYPE>::Ptr,
+                           const ProjectionMap &);
+   
+void estimatedCorrespondences(bool,
+                              const pcl::PointCloud<PointTYPE>::Ptr,
                               const ProjectionMap &,
                               const pcl::PointCloud<PointTYPE>::Ptr,
                               const ProjectionMap &);
