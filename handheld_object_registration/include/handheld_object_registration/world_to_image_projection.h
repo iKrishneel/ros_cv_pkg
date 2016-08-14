@@ -11,7 +11,7 @@
 #include <cublas.h>
 #include <cublas_v2.h>
 
-#include <handheld_object_registration/data_structure.h>
+// #include <handheld_object_registration/data_structure.h>
 #include <opencv2/opencv.hpp>
 
 

@@ -292,10 +292,6 @@ void HandheldObjectRegistration::modelUpdate(
     
     //!  Feature check
     ROS_INFO("\033[33m EXTRACTING 2D FEATURES \033[0m");
-
-    //! timer start
-    struct timeval timer_start, timer_end;
-    gettimeofday(&timer_start, NULL);
     
     std::vector<CandidateIndices> candidate_indices;
     this->featureBasedTransformation(candidate_indices,
@@ -341,15 +337,11 @@ void HandheldObjectRegistration::modelUpdate(
                                            transform_matrix);
     }
     
-    
-    //! timer end
-    gettimeofday(&timer_end, NULL);
-    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
-                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
-    ROS_ERROR("\033[34mprojection: %3.6f \033[0m", delta);
-
-    
     ROS_INFO("\033[33m ICP \033[0m");
+
+    //! timer start
+    struct timeval timer_start, timer_end;
+    gettimeofday(&timer_start, NULL);
 
     // --> change name
     //! project the target points
@@ -407,11 +399,40 @@ void HandheldObjectRegistration::modelUpdate(
        }
     }
 
-    // PointCloud::Ptr src_cloud(new PointCloud);
-    // PointCloud::Ptr target_cloud(new PointCloud);
+    //! timer end
+    gettimeofday(&timer_end, NULL);
+    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
+    ROS_ERROR("\033[34m CPU : %3.6f \033[0m", delta);
 
-    // pcl::copyPointCloud<PointNormalT, PointT>(*src_points, *src_cloud);
-    // pcl::copyPointCloud<PointNormalT, PointT>(*target_points, *target_cloud);
+
+
+    //!------------------------
+
+    gettimeofday(&timer_start, NULL);
+    estimatedCorrespondences(src_points, src_projection,
+                              target_points, target_projection);
+
+    //! timer end
+    gettimeofday(&timer_end, NULL);
+    delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+             timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
+    
+    ROS_ERROR("\033[34m GPU: %3.6f \033[0m", delta);
+
+    return;
+    
+    //!------------------------
+
+
+
+
+
+
+
+
+    
+
     
     //! timer start
     gettimeofday(&timer_start, NULL);
@@ -421,8 +442,6 @@ void HandheldObjectRegistration::modelUpdate(
        PointNormalT, PointNormalT> transformation_estimation;
     transformation_estimation.estimateRigidTransformation(
        *target_points, *src_points, correspondences, icp_trans);
-    // transformation_estimation.estimateRigidTransformation(
-    //    *target_cloud, *src_cloud, correspondences, icp_trans);
 
     //! timer end
     gettimeofday(&timer_end, NULL);

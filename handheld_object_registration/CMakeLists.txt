@@ -23,6 +23,8 @@ set(CUDA_NVCC_FLAGS
   --generate-code arch=compute_52,code=sm_52
 )
 
+find_package(PCL 1.7 REQUIRED)
+
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
 ## See http://ros.org/doc/api/catkin/html/user_guide/setup_dot_py.html
@@ -139,7 +141,8 @@ include_directories(
 ## Declare a C++ executable
 cuda_add_executable(handheld_object_registration_node 
   src/handheld_object_registration_node.cpp
-  src/cuda/world_to_image_projection.cu
+  #src/cuda/world_to_image_projection.cu
+  src/cuda/projected_correspondences.cu
 )
 
 add_executable(object_model_annotation_node 
@@ -153,12 +156,12 @@ add_executable(object_model_annotation_node
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(handheld_object_registration_node
-  ${catkin_LIBRARIES} ${OpenCV_LIBRARIES}
+  ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} 
 )
 
 
 target_link_libraries(object_model_annotation_node 
-  ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
+  ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${PCL_LIBRARIES})
 
 #############
 ## Install ##

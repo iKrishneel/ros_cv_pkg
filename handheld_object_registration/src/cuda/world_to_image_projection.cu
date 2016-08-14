@@ -20,3 +20,5 @@ __host__ __device__ __align__(16)
     return ((a % b) != 0) ? (a / b + 1) : (a / b);
 }
 
+
+
