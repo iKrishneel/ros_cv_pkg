@@ -26,6 +26,7 @@
 #include <jsk_recognition_msgs/BoundingBoxArray.h>
 #include <jsk_recognition_utils/pcl_conversion_util.h>
 
+#include <handheld_object_registration/transformation.h>
 #include <handheld_object_registration/projected_correspondences.h>
 
 #include <opencv2/opencv.hpp>

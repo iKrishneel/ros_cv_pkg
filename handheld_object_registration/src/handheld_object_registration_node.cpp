@@ -144,6 +144,53 @@ void HandheldObjectRegistration::cloudCB(
        pt.normal_z = region_normal->points[i].normal_z;
        src_points->push_back(pt);
     }
+
+
+    /**
+     * TEST FOR CU TRANSFORM
+     */
+    for (int i = 0; i < 5; i++) {
+       PointNormalT pt = src_points->points[i];
+       std::cout << pt  << "\n";
+    }
+
+    Eigen::Matrix4f transf = Eigen::Matrix4f::Identity();
+    transf(0, 3) = 2;
+    transf(1, 3) = 2;
+    transf(2, 3) = 2;
+    struct timeval itimer_start, itimer_end;
+    gettimeofday(&itimer_start, NULL);
+    transformPointCloudWithNormalsGPU(src_points, transf);
+
+    gettimeofday(&itimer_end, NULL);
+    double idelta = ((itimer_end.tv_sec  - itimer_start.tv_sec) * 1000000u +
+                    itimer_end.tv_usec - itimer_start.tv_usec) / 1.e6;
+    ROS_ERROR("TIME: %3.6f", idelta);
+    
+    std::cout << "GPU"  << "\n";
+    for (int i = 0; i < 5; i++) {
+       PointNormalT pt = src_points->points[i];
+       std::cout << pt  << "\n";
+    }
+
+    return;
+    // size_t isize = src_points->size() * 12;
+    // float *data = reinterpret_cast<float*>(std::malloc(sizeof(float) * isize));
+    // std::memcpy(src_points->points.data(), data, sizeof(float) * isize);
+
+    // for (int i = 0; i < isize; i+=12) {
+    //    PointNormalT pt = src_points->points[i/12];
+    //    std::cout << pt  << "\n";
+    //    // for (int j = 0; j < 9; j++) {
+    //    //    std::cout << data[j+i] << " ";
+    //    // }
+    //    // std::cout << "\n";
+    //    // std::cout << pt.getVector4fMap()  << "\n\n";
+    //    // std::cout << pt.getNormalVector4fMap()  << "\n";
+    // }
+
+    exit(-1);
+    return; 
     
     /**
      * DEBUG

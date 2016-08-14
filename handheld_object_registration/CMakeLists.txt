@@ -143,6 +143,7 @@ cuda_add_executable(handheld_object_registration_node
   src/handheld_object_registration_node.cpp
   #src/cuda/world_to_image_projection.cu
   src/cuda/projected_correspondences.cu
+  src/cuda/transformation.cu
 )
 
 add_executable(object_model_annotation_node 
