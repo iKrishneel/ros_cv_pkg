@@ -66,10 +66,8 @@ void findCorrespondencesGPU(Correspondence * correspondences,
                             cuMat<float, NUMBER_OF_ELEMENTS> *d_src_points,
                             int *d_src_indices,
                             cuMat<float, NUMBER_OF_ELEMENTS> *d_model_points,
-                            // cuMat<int, 2> *d_model_indices,
-                            int *d_model_indices,
-                            const int im_width, const int im_height,
-                            const int model_size, const int wsize) {
+                            int *d_model_indices, const int im_width,
+                            const int im_height, const int wsize) {
     int t_idx = threadIdx.x + blockIdx.x * blockDim.x;
     int t_idy = threadIdx.y + blockIdx.y * blockDim.y;
     int offset = t_idx + t_idy * blockDim.x * gridDim.x;
@@ -120,9 +118,6 @@ void findCorrespondencesGPU(Correspondence * correspondences,
 }
 
 
-
-
-
 //! global memory allocations ----
 int *d_src_indices;
 int *d_model_indices;
@@ -145,7 +140,7 @@ bool allocateCopyDataToGPU(
     const int TGT_SIZE = target_projection.width * target_projection.height;
     cuMat<float, NUMBER_OF_ELEMENTS> model_points[TGT_SIZE];
 
-    const int SRC_SIZE = IMAGE_SIZE;
+    const int SRC_SIZE = IMAGE_WIDTH * IMAGE_HEIGHT;
     cuMat<float, NUMBER_OF_ELEMENTS> src_points[SRC_SIZE];
     int src_indices[SRC_SIZE];
     int model_indices[SRC_SIZE];
@@ -220,7 +215,7 @@ void estimatedCorrespondences(
     
     // const int SRC_SIZE = src_projection.indices.rows *
     //    src_projection.indices.cols;
-    const int SRC_SIZE = IMAGE_SIZE;
+    const int SRC_SIZE = IMAGE_WIDTH * IMAGE_HEIGHT;
     cuMat<float, NUMBER_OF_ELEMENTS> src_points[SRC_SIZE];
     int src_indices[SRC_SIZE];
     int model_indices[SRC_SIZE];
@@ -277,20 +272,20 @@ void estimatedCorrespondences(
                   cudaMemcpyHostToDevice);
     }
     */
+    
     Correspondence *d_correspondences;
     cudaMalloc(reinterpret_cast<void**>(&d_correspondences),
                sizeof(Correspondence) * icounter);
 
         
-    dim3 block_size(cuDivUp(target_projection.indices.cols, GRID_SIZE),
-                    cuDivUp(target_projection.indices.rows, GRID_SIZE));
+    dim3 block_size(cuDivUp(IMAGE_WIDTH, GRID_SIZE),
+                    cuDivUp(IMAGE_HEIGHT, GRID_SIZE));
     dim3 grid_size(GRID_SIZE, GRID_SIZE);
     
     findCorrespondencesGPU<<<block_size, grid_size>>>(
        d_correspondences, d_src_points, d_src_indices, d_model_points,
        d_model_indices, src_projection.indices.cols,
-       src_projection.indices.rows,
-       target_projection.width * target_projection.height, 20);
+       src_projection.indices.rows, 20);
 
 
     Correspondence *correspondences = reinterpret_cast<Correspondence*>(
@@ -307,6 +302,7 @@ void estimatedCorrespondences(
        }
     }
     */
+    
     // cudaFree(d_src_indices);
     // cudaFree(d_src_points);
     cudaFree(d_correspondences);

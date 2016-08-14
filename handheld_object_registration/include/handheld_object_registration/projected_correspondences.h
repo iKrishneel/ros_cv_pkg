@@ -32,7 +32,9 @@ __host__ __device__ struct Correspondence {
 
 #define GRID_SIZE 16
 #define DISTANCE_THRESH  0.05f
-#define IMAGE_SIZE 640 * 480
+
+#define IMAGE_WIDTH 640
+#define IMAGE_HEIGHT 480
 
 const int NUMBER_OF_ELEMENTS = 3;
 
@@ -45,12 +47,8 @@ __host__ __device__ __align__(16)
 __global__ __forceinline__
 void findCorrespondencesGPU(Correspondence *,
                             cuMat<float, NUMBER_OF_ELEMENTS> *,
-                            int *,
-                            cuMat<float, NUMBER_OF_ELEMENTS> *,
-                            // cuMat<int, 2> *,
-                            int *,
-                            const int, const int,
-                            const int, const int);
+                            int *, cuMat<float, NUMBER_OF_ELEMENTS> *,
+                            int *, const int, const int, const int);
 
 bool allocateCopyDataToGPU(bool,
                            const pcl::PointCloud<PointTYPE>::Ptr,
