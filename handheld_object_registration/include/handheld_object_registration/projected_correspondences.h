@@ -13,13 +13,12 @@
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
+#include <pcl/registration/correspondence_estimation.h>
 
 #include <handheld_object_registration/data_structure.h>
 #include <opencv2/opencv.hpp>
 
-
 typedef pcl::PointXYZRGBNormal PointTYPE;
-
 
 template<class T, int N> struct __align__(16) cuMat{
     T data[N];
@@ -28,6 +27,7 @@ template<class T, int N> struct __align__(16) cuMat{
 __host__ __device__ struct Correspondence {
     int query_index;
     int match_index;
+    float distance;
 };
 
 #define GRID_SIZE 16
@@ -41,8 +41,6 @@ const int NUMBER_OF_ELEMENTS = 3;
 void cudaAssert(cudaError_t, char *, int, bool = true);
 __host__ __device__ __align__(16)
     int cuDivUp(int, int);
-// __host__ __device__ __forceinline__
-// void cuConditionROI(cuRect *, int, int);
 
 __global__ __forceinline__
 void findCorrespondencesGPU(Correspondence *,
@@ -56,11 +54,7 @@ bool allocateCopyDataToGPU(bool,
                            const pcl::PointCloud<PointTYPE>::Ptr,
                            const ProjectionMap &);
    
-void estimatedCorrespondences(bool,
-                              const pcl::PointCloud<PointTYPE>::Ptr,
-                              const ProjectionMap &,
-                              const pcl::PointCloud<PointTYPE>::Ptr,
-                              const ProjectionMap &);
+void estimatedCorrespondences(pcl::Correspondences &, float &);
 
 void cudaGlobalAllocFree();
 

@@ -16,7 +16,7 @@
 #include <pcl/registration/icp.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/features/integral_image_normal.h>
-#include <pcl/registration/correspondence_estimation.h>
+// #include <pcl/registration/correspondence_estimation.h>
 
 #include <pcl/registration/transformation_estimation_svd.h>
 #include <pcl/registration/transformation_estimation_point_to_plane_lls.h>
@@ -43,29 +43,6 @@ class HandheldObjectRegistration {
     typedef pcl::PointCloud<PointT> PointCloud;
     typedef pcl::PointCloud<NormalT> PointNormal;
 
-   /*
-    struct CandidateIndices {
-       int source_index;
-       int target_index;
-    };
-
-    struct ProjectionMap {
-       int x;
-       int y;
-       int height;
-       int width;
-       cv::Mat rgb;
-       cv::Mat indices;
-       cv::Mat depth;
-       ProjectionMap(int i = -1, int j = -1, int w = -1, int h = -1,
-                     cv::Mat image = cv::Mat(),
-                     cv::Mat indices_im = cv::Mat(),
-                     cv::Mat depth_im = cv::Mat()) :
-          x(i), y(j), width(w), height(h), rgb(image),
-          indices(indices_im), depth(depth_im) {}
-    };
-   */
-   
  private:
     boost::mutex mutex_;
     boost::mutex lock_;

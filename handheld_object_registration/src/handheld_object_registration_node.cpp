@@ -385,26 +385,19 @@ void HandheldObjectRegistration::modelUpdate(
                       corr.index_match = min_ism;
                       corr.index_query = model_index;
                       correspondences.push_back(corr);
-                      
-                      // cv::circle(debug_im, cv::Point(i, j), 3,
-                      //            cv::Scalar(0, 0, 255), -1);
                    }
                 }
-                // else {
-                //    cv::circle(debug_im, cv::Point(i, j), 3,
-                //               cv::Scalar(0, 255, 0), -1);
-                // }
              }
           }
        }
     }
 
+    
     //! timer end
     gettimeofday(&timer_end, NULL);
     double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
                     timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
     ROS_ERROR("\033[34m CPU : %3.6f \033[0m", delta);
-
 
 
     //!------------------------
@@ -413,12 +406,28 @@ void HandheldObjectRegistration::modelUpdate(
     
     if (allocateCopyDataToGPU(true, src_points, src_projection,
                               target_points, target_projection)) {
-       estimatedCorrespondences(true, src_points, src_projection,
-                                target_points, target_projection);
-           
+       pcl::Correspondences correspondences;
+       float energy;
+       estimatedCorrespondences(correspondences, energy);
+
+       std::cout << "ENERGY _ INIT:  " << energy  << "\n";
+       
+       Eigen::Matrix4f icp_trans = Eigen::Matrix4f::Identity();
+       pcl::registration::TransformationEstimationPointToPlaneLLS<
+          PointNormalT, PointNormalT> transformation_estimation;
+       transformation_estimation.estimateRigidTransformation(
+          *target_points, *src_points, correspondences, icp_trans);
+       pcl::transformPointCloudWithNormals(*target_points, *target_points,
+                                           icp_trans);
+       
+       allocateCopyDataToGPU(false, src_points, src_projection,
+                             target_points, target_projection);
+       correspondences.clear();
+       estimatedCorrespondences(correspondences, energy);
+
+       std::cout << "ENERGY _ SECOND:  " << energy  << "\n";
     }
-    // estimatedCorrespondences(false, src_points, src_projection,
-    //                          target_points, target_projection);
+    
 
     //! timer end
     gettimeofday(&timer_end, NULL);
@@ -430,13 +439,6 @@ void HandheldObjectRegistration::modelUpdate(
     return;
     
     //!------------------------
-
-
-
-
-
-
-
 
     
 
@@ -450,12 +452,16 @@ void HandheldObjectRegistration::modelUpdate(
     transformation_estimation.estimateRigidTransformation(
        *target_points, *src_points, correspondences, icp_trans);
 
+    std::cout << "\n" << icp_trans  << "\n";
+    
     //! timer end
     gettimeofday(&timer_end, NULL);
     delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
              timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
     ROS_ERROR("\033[34mTransform: %3.6f \033[0m", delta);
 
+    return;
+    
 
     //! timer start
     gettimeofday(&timer_start, NULL);

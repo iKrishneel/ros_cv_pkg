@@ -99,7 +99,7 @@ void findCorrespondencesGPU(Correspondence * correspondences,
                    src_pt[2] = d_src_points[src_index].data[2];
                    float dist = cuEuclideanDistance(src_pt, model_pt, 3);
                    
-                   if (dist < min_dsm) {
+                   if (dist < min_dsm && !isnan(dist)) {
                       min_dsm = dist;
                       min_ism = src_index;
                    }
@@ -109,6 +109,7 @@ void findCorrespondencesGPU(Correspondence * correspondences,
           if (min_ism != -1 && min_dsm < DISTANCE_THRESH) {
              correspondences[model_index].query_index = model_index;
              correspondences[model_index].match_index = min_ism;
+             correspondences[model_index].distance = min_dsm;
           } else {
              correspondences[model_index].query_index = -1;
              correspondences[model_index].match_index = -1;
@@ -123,7 +124,7 @@ int *d_src_indices;
 int *d_model_indices;
 cuMat<float, NUMBER_OF_ELEMENTS> *d_src_points;
 cuMat<float, NUMBER_OF_ELEMENTS> *d_model_points;
-int icounter;
+int icounter = 0;
 //! -----------------------------
 
 
@@ -197,86 +198,15 @@ bool allocateCopyDataToGPU(
     return true;
 }
 
-
-void estimatedCorrespondences(
-    bool allocate_src,
-    const pcl::PointCloud<PointTYPE>::Ptr source_points,
-    const ProjectionMap &src_projection,
-    const pcl::PointCloud<PointTYPE>::Ptr target_points,
-    const ProjectionMap &target_projection) {
-    if (source_points->empty() || target_points->empty() || icounter == 0) {
-       printf("\033[31m EMPTY POINTCLOUD FOR CORRESPONDENCES \033[0m\n");
+void estimatedCorrespondences(pcl::Correspondences &corr, float &energy) {
+    if (icounter == 0) {
+       printf("\033[31m DATA NOT ALLOCATED \033[0m\n");
        return;
     }
-    
-    /*
-    const int TGT_SIZE = target_projection.width * target_projection.height;
-    cuMat<float, NUMBER_OF_ELEMENTS> model_points[TGT_SIZE];
-    
-    // const int SRC_SIZE = src_projection.indices.rows *
-    //    src_projection.indices.cols;
-    const int SRC_SIZE = IMAGE_WIDTH * IMAGE_HEIGHT;
-    cuMat<float, NUMBER_OF_ELEMENTS> src_points[SRC_SIZE];
-    int src_indices[SRC_SIZE];
-    int model_indices[SRC_SIZE];
-
-    int icounter = 0;
-    for (int j = 0; j < target_projection.indices.rows; j++) {
-       for (int i = 0; i < target_projection.indices.cols; i++) {
-          int index = target_projection.indices.at<int>(j, i);
-          if (index != -1) {
-             model_points[index].data[0] = target_points->points[index].x;
-             model_points[index].data[1] = target_points->points[index].y;
-             model_points[index].data[2] = target_points->points[index].z;
-             icounter++;
-          }
-          int idx = i + (j * src_projection.indices.cols);
-          model_indices[idx] = index;
-
-          if (allocate_src) {
-             index = -1;
-             index = src_projection.indices.at<int>(j, i);
-          
-             if (index != -1) {
-                src_points[index].data[0] = source_points->points[index].x;
-                src_points[index].data[1] = source_points->points[index].y;
-                src_points[index].data[2] = source_points->points[index].z;
-             }
-             src_indices[idx] = index;
-          }
-       }
-    }
-
-    size_t TMP_SIZE = TGT_SIZE * sizeof(cuMat<float, 3>);
-    cuMat<float, NUMBER_OF_ELEMENTS> *d_model_points;
-    cudaMalloc(reinterpret_cast<void**>(&d_model_points), TMP_SIZE);
-    cudaMemcpy(d_model_points, model_points, TMP_SIZE, cudaMemcpyHostToDevice);
-
-    size_t TIP_SIZE = SRC_SIZE * sizeof(int);
-    int *d_model_indices;
-    cudaMalloc(reinterpret_cast<void**>(&d_model_indices), TIP_SIZE);
-    cudaMemcpy(d_model_indices, model_indices, TIP_SIZE,
-               cudaMemcpyHostToDevice);
-
-
-    if (allocate_src) {
-       size_t SMP_SIZE = SRC_SIZE * sizeof(cuMat<float, 3>);
-       // cuMat<float, NUMBER_OF_ELEMENTS> *d_src_points;
-       cudaMalloc(reinterpret_cast<void**>(&d_src_points), SMP_SIZE);
-       cudaMemcpy(d_src_points, src_points, SMP_SIZE, cudaMemcpyHostToDevice);
-
-       size_t SIP_SIZE = SRC_SIZE * sizeof(int);
-       //! int *d_src_indices;
-       cudaMalloc(reinterpret_cast<void**>(&d_src_indices), SIP_SIZE);
-       cudaMemcpy(d_src_indices, src_indices, SIP_SIZE,
-                  cudaMemcpyHostToDevice);
-    }
-    */
     
     Correspondence *d_correspondences;
     cudaMalloc(reinterpret_cast<void**>(&d_correspondences),
                sizeof(Correspondence) * icounter);
-
         
     dim3 block_size(cuDivUp(IMAGE_WIDTH, GRID_SIZE),
                     cuDivUp(IMAGE_HEIGHT, GRID_SIZE));
@@ -284,34 +214,39 @@ void estimatedCorrespondences(
     
     findCorrespondencesGPU<<<block_size, grid_size>>>(
        d_correspondences, d_src_points, d_src_indices, d_model_points,
-       d_model_indices, src_projection.indices.cols,
-       src_projection.indices.rows, 20);
-
+       d_model_indices, IMAGE_WIDTH, IMAGE_HEIGHT, 20);
 
     Correspondence *correspondences = reinterpret_cast<Correspondence*>(
        std::malloc(sizeof(Correspondence) * icounter));
     cudaMemcpy(correspondences, d_correspondences,
                sizeof(Correspondence) * icounter, cudaMemcpyDeviceToHost);
 
-    /*
+    int image_size = IMAGE_WIDTH * IMAGE_WIDTH;
+    corr.resize(icounter);
+    energy = 0.0f;
     for (int i = 0; i < icounter; i++) {
-       if (correspondences[i].query_index != -1 &&
-           correspondences[i].match_index != -1) {
-          std::cout << correspondences[i].query_index << "\t"
-                    << correspondences[i].match_index << "\n";
+       if ((correspondences[i].query_index > -1 &&
+           correspondences[i].query_index < image_size) &&
+           (correspondences[i].match_index > -1 &&
+            correspondences[i].match_index < image_size)) {
+          corr[i].index_query = correspondences[i].query_index;
+          corr[i].index_match = correspondences[i].match_index;
+
+          energy += correspondences[i].distance;
+
+          // std::cout << correspondences[i].distance  << "\n";
+          // std::cout << correspondences[i].query_index << "\t"
+          //           << correspondences[i].match_index << "\n";
        }
     }
-    */
+
+    energy /= static_cast<float>(icounter);
     
-    // cudaFree(d_src_indices);
-    // cudaFree(d_src_points);
     cudaFree(d_correspondences);
     cudaFree(d_model_points);
     cudaFree(d_model_indices);
-
-    // std::cout << "EXITING..."  << "\n";
-    // exit(-1);
 }
+
 
 void cudaGlobalAllocFree() {
     cudaFree(d_src_indices);
