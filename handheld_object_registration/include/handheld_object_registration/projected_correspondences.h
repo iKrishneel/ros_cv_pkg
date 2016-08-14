@@ -23,8 +23,6 @@ typedef pcl::PointXYZRGBNormal PointTYPE;
 
 template<class T, int N> struct __align__(16) cuMat{
     T data[N];
-    // int width;
-    // int height;
 };
 
 __host__ __device__ struct Correspondence {
@@ -34,6 +32,7 @@ __host__ __device__ struct Correspondence {
 
 #define GRID_SIZE 16
 #define DISTANCE_THRESH  0.05f
+#define IMAGE_SIZE 640 * 480
 
 const int NUMBER_OF_ELEMENTS = 3;
 
@@ -57,6 +56,9 @@ void estimatedCorrespondences(const pcl::PointCloud<PointTYPE>::Ptr,
                               const ProjectionMap &,
                               const pcl::PointCloud<PointTYPE>::Ptr,
                               const ProjectionMap &);
+
+void cudaGlobalAllocFree();
+
 
 
 #endif /* _PROJECTED_CORRESPONDENCES_H_ */
