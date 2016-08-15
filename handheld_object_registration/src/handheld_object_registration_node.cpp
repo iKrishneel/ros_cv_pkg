@@ -422,32 +422,30 @@ void HandheldObjectRegistration::modelUpdate(
                               target_points, target_projection)) {
        float energy;
        estimatedCorrespondences(correspondences, energy);
-
+       
        std::cout << "ENERGY _ INIT:  " << energy  << "\n";
        std::cout << "CORRESPONDENCE SIZE: " << correspondences.size()  << "\n";
-
+       
        pcl::registration::TransformationEstimationPointToPlaneLLS<
           PointNormalT, PointNormalT> transformation_estimation;
        transformation_estimation.estimateRigidTransformation(
           *target_points, *src_points, correspondences, icp_trans);
-
        transformPointCloudWithNormalsGPU(target_points, target_points,
                                          icp_trans);
-       
-       // pcl::transformPointCloudWithNormals(*target_points, *target_points,
-       //                                     icp_trans);
-       
+       /*
        allocateCopyDataToGPU(false, src_points, src_projection,
                              target_points, target_projection);
        correspondences.clear();
        estimatedCorrespondences(correspondences, energy);
 
        std::cout << "ENERGY _ SECOND:  " << energy  << "\n";
+       */
     }
     
-    //! std::cout << "\n" << icp_trans  << "\n";
+    std::cout << "\n" << icp_trans  << "\n";
     
-    transformPointCloudWithNormalsGPU(target_points, target_points, icp_trans);
+    // transformPointCloudWithNormalsGPU(target_points, target_points,
+    //                                   icp_trans);
     
     //! timer end
     gettimeofday(&timer_end, NULL);
