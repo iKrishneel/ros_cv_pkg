@@ -48,13 +48,15 @@ void findCorrespondencesGPU(Correspondence *,
                             int *, cuMat<float, NUMBER_OF_ELEMENTS> *,
                             int *, const int, const int, const int);
 
-bool allocateCopyDataToGPU(bool,
+bool allocateCopyDataToGPU(pcl::Correspondences &, float &, bool,
                            const pcl::PointCloud<PointTYPE>::Ptr,
                            const ProjectionMap &,
                            const pcl::PointCloud<PointTYPE>::Ptr,
                            const ProjectionMap &);
    
-void estimatedCorrespondences(pcl::Correspondences &, float &);
+void estimatedCorrespondences(pcl::Correspondences &, float &,
+                              const pcl::PointCloud<PointTYPE>::Ptr,
+                              const pcl::PointCloud<PointTYPE>::Ptr);
 
 void cudaGlobalAllocFree();
 

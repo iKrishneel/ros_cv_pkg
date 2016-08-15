@@ -332,8 +332,10 @@ void HandheldObjectRegistration::modelUpdate(
           transformation_estimation.estimateRigidTransformation(
              *target_cloud, *src_cloud, transform_matrix);
        }
-       // pcl::transformPointCloudWithNormals(*target_points, *target_points,
-       //                                     transform_matrix);
+       /*
+       pcl::transformPointCloudWithNormals(*target_points, *target_points,
+                                           transform_matrix);
+       */
        // TODO(ADD) : correspondances
        transformPointCloudWithNormalsGPU(target_points, target_points,
                                          transform_matrix);
@@ -345,9 +347,8 @@ void HandheldObjectRegistration::modelUpdate(
     // --> change name
     //! project the target points
     this->project3DTo2DDepth(target_projection, target_points);
-
     /*
-    const int SEARCH_WSIZE = 20;
+    const int SEARCH_WSIZE = 8;
     const float ICP_DIST_THRESH = 0.05f;
     cv::Mat debug_im = cv::Mat::zeros(src_projection.rgb.size(), CV_8UC3);
     float cpu_energy = 0.0;
@@ -393,11 +394,7 @@ void HandheldObjectRegistration::modelUpdate(
           }
        }
     }
-    //! timer end
-    gettimeofday(&timer_end, NULL);
-    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
-                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
-    ROS_ERROR("\033[34m CPU : %3.6f \033[0m", delta);
+
     std::cout << "cpu energy: " << cpu_energy /
        static_cast<float>(cpu_correspondences.size()) << "\n";
 
@@ -410,28 +407,21 @@ void HandheldObjectRegistration::modelUpdate(
     std::cout << "------\n" << "CPU TRANS:"  << "\n";
     std::cout << "CPU SIZE: " << cpu_correspondences.size()  << "\n";
     std::cout << cpu_trans  << "\n-------------\n";
-    */
     //!------------------------
+    */
 
-    
-    struct timeval timer_start, timer_end;
-    gettimeofday(&timer_start, NULL);
-
-    std::cout << "computing on cuda...."  << "\n";
     
     Eigen::Matrix4f icp_trans = Eigen::Matrix4f::Identity();
     pcl::Correspondences correspondences;
-
-    bool data_copied = allocateCopyDataToGPU(true, src_points, src_projection,
+    float energy;
+    bool data_copied = allocateCopyDataToGPU(correspondences, energy,
+                                             true, src_points, src_projection,
                                              target_points, target_projection);
-
-    std::cout << "copied data to cuda.."  << "\n";
-    
     if (data_copied) {
-       float energy;
-       estimatedCorrespondences(correspondences, energy);
+       estimatedCorrespondences(correspondences, energy,
+                                src_points, target_points);
        
-       std::cout << "ENERGY _ INIT:  " << energy  << "\n";
+       std::cout << "ENERGY INITIAL:  " << energy  << "\n";
        std::cout << "CORRESPONDENCE SIZE: " << correspondences.size()  << "\n";
 
        if (correspondences.size() > 7) {
@@ -439,13 +429,31 @@ void HandheldObjectRegistration::modelUpdate(
              PointNormalT, PointNormalT> transformation_estimation;
           transformation_estimation.estimateRigidTransformation(
              *target_points, *src_points, correspondences, icp_trans);
+          /*
+          std::ofstream outfile1("correspondences1.txt", std::ios::out);
+          for (int i = 0; i < correspondences.size(); i++) {
+             int x = correspondences[i].index_query;
+             int y = correspondences[i].index_match;
 
-          std::cout << "computing transformation...."  << "\n";
-       
+             int xx = cpu_correspondences[i].index_query;
+             int yy = cpu_correspondences[i].index_match;
+             
+             
+             outfile1 << x << " " << y << " " <<
+                "\t" << xx << " " << yy << "\t\t" <<
+                target_points->points[x].x << " " <<
+                target_points->points[x].y << " " <<
+                target_points->points[x].z << "\t " <<
+                src_points->points[x].x << " " <<
+                src_points->points[x].y << " " <<
+                src_points->points[x].z << " " << "\n";
+          }
+
+          outfile1.close();
+          */
+
           transformPointCloudWithNormalsGPU(target_points, target_points,
                                             icp_trans);
-
-          std::cout << "transformation on  gpu"  << "\n";
        }
        
        /*
@@ -458,20 +466,60 @@ void HandheldObjectRegistration::modelUpdate(
        */
     }
     
+    // transformPointCloudWithNormalsGPU(target_points, target_points,
+    //                                   cpu_trans);
+    
+
+    /*
+//! ONLY FOR DEGUBING
+    std::ofstream outfile("correspondences.txt", std::ios::out);
+    float ifitness = 0.0;
+    for (int i = 0; i < correspondences.size(); i++) {
+       
+       PointNormalT tpt = target_points->points[correspondences[i].index_query];
+       PointNormalT spt = src_points->points[correspondences[i].index_match];
+
+       if (isnan(spt.x) || isnan(spt.y) || isnan(spt.z)) {
+          std::cout << spt  << "\n";
+          ROS_ERROR("SRC NAN POINT AT: %d", correspondences[i].index_match);
+       }
+       if (isnan(tpt.x) || isnan(tpt.y) || isnan(tpt.z)) {
+          std::cout << tpt  << "\n";
+          ROS_ERROR("TAG NAN POINT AT: %d", correspondences[i].index_match);
+       }
+       
+       double d = pcl::distances::l2(
+          tpt.getVector4fMap(), spt.getVector4fMap());
+
+       if (d > 10.0) {
+          outfile << d << "\n" << tpt << "\n" << spt << "\n\n";
+       } else {
+          outfile << d << "\n";
+       }
+       
+       if (isnan(d)) {
+          ROS_ERROR("DISTANCE IS NAN");
+       }
+       ifitness += d;
+    }
+    outfile.close();
+    
+    std::cout << "FITNESS: " << ifitness / (
+       static_cast<double>(correspondences.size()))<< "\n";
+
     std::cout << "\n" << icp_trans  << "\n";
     
-    // transformPointCloudWithNormalsGPU(target_points, target_points,
-    //                                   icp_trans);
+    if (isnan(icp_trans(0, 0))) {
+       std::exit(-1);
+    }
+    */
     
-    //! timer end
-    gettimeofday(&timer_end, NULL);
-    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
-             timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
-    ROS_ERROR("\033[34mTransformNORMALS: %3.6f \033[0m", delta);
-    
-    std::cout << "Size: " << correspondences.size()  << "\n";
-    
-    
+
+    //! END DEBUGING
+
+
+
+
     
     // cv::waitKey(3);
     // return;
