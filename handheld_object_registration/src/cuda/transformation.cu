@@ -78,7 +78,8 @@ void transformPointCloudWithNormalsGPU(
        return;
     }
 
-    std::cout << "\033[35m IN POINT SIZE: \033[0m"  << in_cloud->size() << "\n";
+    // std::cout << "\033[35m IN POINT SIZE: \033[0m"
+    //           << in_cloud->size() << "\n";
     
     float *transform_vector = reinterpret_cast<float*>(
        std::malloc(sizeof(float) * 16));
@@ -93,10 +94,6 @@ void transformPointCloudWithNormalsGPU(
                cudaMemcpyHostToDevice);
     
     const int IN_SIZE = in_cloud->size() * ELEMENTS;
-    // float *data = reinterpret_cast<float*>(
-    //    std::malloc(sizeof(float) * IN_SIZE));
-    // std::memcpy(in_cloud->points.data(), data, sizeof(float) * IN_SIZE);
-
     float *d_data;
     cudaMalloc(reinterpret_cast<void**>(&d_data),
                IN_SIZE * sizeof(float));
@@ -109,8 +106,8 @@ void transformPointCloudWithNormalsGPU(
     cudaMalloc(reinterpret_cast<void**>(&d_points_out),
                IN_SIZE * sizeof(float));
     
-    dim3 block_size(icuDivUp(128, GRID_SIZE),
-                    icuDivUp(96, GRID_SIZE));
+    dim3 block_size(icuDivUp(640, GRID_SIZE),
+                    icuDivUp(480, GRID_SIZE));
     dim3 grid_size(GRID_SIZE, GRID_SIZE);
     
     transformationKernel<<<block_size, grid_size>>>(

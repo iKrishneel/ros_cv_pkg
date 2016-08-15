@@ -313,7 +313,6 @@ void HandheldObjectRegistration::modelUpdate(
        PointCloud::Ptr src_cloud(new PointCloud);
        PointCloud::Ptr target_cloud(new PointCloud);
 
-       std::cout << candidate_indices.size()  << "\n";
        for (int i = 0; i < candidate_indices.size(); i++) {
           int src_index = candidate_indices[i].source_index;
           int tgt_index = candidate_indices[i].target_index;
@@ -333,15 +332,15 @@ void HandheldObjectRegistration::modelUpdate(
           transformation_estimation.estimateRigidTransformation(
              *target_cloud, *src_cloud, transform_matrix);
        }
-       pcl::transformPointCloudWithNormals(*target_points, *target_points,
-                                           transform_matrix);
+       // pcl::transformPointCloudWithNormals(*target_points, *target_points,
+       //                                     transform_matrix);
+       // TODO(ADD) : correspondances
+       transformPointCloudWithNormalsGPU(target_points, target_points,
+                                         transform_matrix);
     }
     
     ROS_INFO("\033[33m ICP \033[0m");
 
-    //! timer start
-    struct timeval timer_start, timer_end;
-    gettimeofday(&timer_start, NULL);
 
     // --> change name
     //! project the target points
@@ -414,24 +413,41 @@ void HandheldObjectRegistration::modelUpdate(
     */
     //!------------------------
 
+    
+    struct timeval timer_start, timer_end;
     gettimeofday(&timer_start, NULL);
 
+    std::cout << "computing on cuda...."  << "\n";
+    
     Eigen::Matrix4f icp_trans = Eigen::Matrix4f::Identity();
     pcl::Correspondences correspondences;
-    if (allocateCopyDataToGPU(true, src_points, src_projection,
-                              target_points, target_projection)) {
+
+    bool data_copied = allocateCopyDataToGPU(true, src_points, src_projection,
+                                             target_points, target_projection);
+
+    std::cout << "copied data to cuda.."  << "\n";
+    
+    if (data_copied) {
        float energy;
        estimatedCorrespondences(correspondences, energy);
        
        std::cout << "ENERGY _ INIT:  " << energy  << "\n";
        std::cout << "CORRESPONDENCE SIZE: " << correspondences.size()  << "\n";
+
+       if (correspondences.size() > 7) {
+          pcl::registration::TransformationEstimationPointToPlaneLLS<
+             PointNormalT, PointNormalT> transformation_estimation;
+          transformation_estimation.estimateRigidTransformation(
+             *target_points, *src_points, correspondences, icp_trans);
+
+          std::cout << "computing transformation...."  << "\n";
        
-       pcl::registration::TransformationEstimationPointToPlaneLLS<
-          PointNormalT, PointNormalT> transformation_estimation;
-       transformation_estimation.estimateRigidTransformation(
-          *target_points, *src_points, correspondences, icp_trans);
-       transformPointCloudWithNormalsGPU(target_points, target_points,
-                                         icp_trans);
+          transformPointCloudWithNormalsGPU(target_points, target_points,
+                                            icp_trans);
+
+          std::cout << "transformation on  gpu"  << "\n";
+       }
+       
        /*
        allocateCopyDataToGPU(false, src_points, src_projection,
                              target_points, target_projection);
