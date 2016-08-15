@@ -259,10 +259,10 @@ void estimatedCorrespondences(pcl::Correspondences &corr,
        }
     }
 
-    energy /= static_cast<float>(icounter);
+    energy /= static_cast<float>(corr.size());
 
-    cudaFree(d_src_indices);
-    cudaFree(d_src_points);
+    // cudaFree(d_src_indices);
+    // cudaFree(d_src_points);
     cudaFree(d_correspondences);
     cudaFree(d_model_points);
     cudaFree(d_model_indices);

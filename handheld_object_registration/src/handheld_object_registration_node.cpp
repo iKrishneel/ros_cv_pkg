@@ -347,11 +347,10 @@ void HandheldObjectRegistration::modelUpdate(
     //! project the target points
     this->project3DTo2DDepth(target_projection, target_points);
 
-
+    /*
     const int SEARCH_WSIZE = 20;
     const float ICP_DIST_THRESH = 0.05f;
     cv::Mat debug_im = cv::Mat::zeros(src_projection.rgb.size(), CV_8UC3);
-    /*
     float cpu_energy = 0.0;
     pcl::Correspondences cpu_correspondences;
     for (int j = target_projection.y; j < target_projection.y +
@@ -395,9 +394,6 @@ void HandheldObjectRegistration::modelUpdate(
           }
        }
     }
-
-
-    
     //! timer end
     gettimeofday(&timer_end, NULL);
     double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
@@ -435,74 +431,31 @@ void HandheldObjectRegistration::modelUpdate(
        transformation_estimation.estimateRigidTransformation(
           *target_points, *src_points, correspondences, icp_trans);
 
+       transformPointCloudWithNormalsGPU(target_points, target_points,
+                                         icp_trans);
        
        // pcl::transformPointCloudWithNormals(*target_points, *target_points,
        //                                     icp_trans);
-
        
-       // allocateCopyDataToGPU(false, src_points, src_projection,
-       //                       target_points, target_projection);
-       // correspondences.clear();
-       // estimatedCorrespondences(correspondences, energy);
+       allocateCopyDataToGPU(false, src_points, src_projection,
+                             target_points, target_projection);
+       correspondences.clear();
+       estimatedCorrespondences(correspondences, energy);
 
-       // std::cout << "ENERGY _ SECOND:  " << energy  << "\n";
+       std::cout << "ENERGY _ SECOND:  " << energy  << "\n";
     }
-
     
-    // pcl::transformPointCloudWithNormals(*target_points, *target_points,
-    //                                     icp_trans);
-
+    //! std::cout << "\n" << icp_trans  << "\n";
+    
+    transformPointCloudWithNormalsGPU(target_points, target_points, icp_trans);
+    
     //! timer end
     gettimeofday(&timer_end, NULL);
     double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
              timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
-    
-    ROS_ERROR("\033[34m GPU: %3.6f \033[0m", delta);
-    std::cout << "\n" << icp_trans  << "\n";
-    // return;
-    
-    //!------------------------
-
-    
-    //! timer start
-    /*
-    gettimeofday(&timer_start, NULL);
-    
-    Eigen::Matrix4f icp_trans = Eigen::Matrix4f::Identity();
-    pcl::registration::TransformationEstimationPointToPlaneLLS<
-       PointNormalT, PointNormalT> transformation_estimation;
-    transformation_estimation.estimateRigidTransformation(
-       *target_points, *src_points, correspondences, icp_trans);
-
-    
-    //! timer end
-    gettimeofday(&timer_end, NULL);
-    delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
-             timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
-    ROS_ERROR("\033[34mTransform: %3.6f \033[0m", delta);
-
-    */
-    
-    //! timer start
-    gettimeofday(&timer_start, NULL);
-
-    // DELETE
-
-    // pcl::transformPointCloudWithNormals(*target_points, *target_points,
-    //                                     icp_trans);
-    
-    transformPointCloudWithNormalsGPU(target_points, target_points, icp_trans);
-
-    
-    //! timer end
-    gettimeofday(&timer_end, NULL);
-    delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
-             timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
     ROS_ERROR("\033[34mTransformNORMALS: %3.6f \033[0m", delta);
     
     std::cout << "Size: " << correspondences.size()  << "\n";
-    
-    cv::imshow("debug", debug_im);
     
     
     
