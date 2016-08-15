@@ -62,20 +62,24 @@ void transformationKernel(float *d_points_out,
           d_transform[10] * d_points[offset + 6];
     }
 
-    if (offset  == 0) {
-       printf("%3.4f, %3.4f, %3.4f\n",
-              d_points_out[offset + 0], d_points_out[offset + 1],
-          d_points_out[offset + 2]);
-    }
+    // if (offset  == 0) {
+    //    printf("GPU : %3.4f, %3.4f, %3.4f\n",
+    //           d_points_out[offset + 0], d_points_out[offset + 1],
+    //       d_points_out[offset + 2]);
+    // }
 }
 
 void transformPointCloudWithNormalsGPU(
     pcl::PointCloud<PointTYPE>::Ptr in_cloud,
+    pcl::PointCloud<PointTYPE>::Ptr out_cloud,
     const Eigen::Matrix4f in_transform) {
     if (in_cloud->empty()) {
        printf("\033[31m EMPTY POINTCLOUD FOR TRANSFORMATION \033[0m\n");
        return;
     }
+
+    std::cout << "\033[35m IN POINT SIZE: \033[0m"  << in_cloud->size() << "\n";
+    
     float *transform_vector = reinterpret_cast<float*>(
        std::malloc(sizeof(float) * 16));
     for (int i = 0; i < 4; i++) {
@@ -105,22 +109,22 @@ void transformPointCloudWithNormalsGPU(
     cudaMalloc(reinterpret_cast<void**>(&d_points_out),
                IN_SIZE * sizeof(float));
     
-    dim3 block_size(icuDivUp(640, GRID_SIZE),
-                    icuDivUp(480, GRID_SIZE));
+    dim3 block_size(icuDivUp(128, GRID_SIZE),
+                    icuDivUp(96, GRID_SIZE));
     dim3 grid_size(GRID_SIZE, GRID_SIZE);
-
-    std::cout << block_size.x << ", " << block_size.y  << "\n";
-
     
     transformationKernel<<<block_size, grid_size>>>(
        d_points_out, d_data, d_transform, IN_SIZE);
     
-    in_cloud->points.clear();
-    cudaMemcpy(in_cloud->points.data(), d_points_out,
+    out_cloud->height = in_cloud->height;
+    out_cloud->width = in_cloud->width;
+    out_cloud->header = in_cloud->header;
+    out_cloud->resize(in_cloud->size());
+    
+    cudaMemcpy(out_cloud->points.data(), d_points_out,
                IN_SIZE * sizeof(float),
                cudaMemcpyDeviceToHost);
-    
-    
+
     // cuMat<float, ELEMENTS> *points = reinterpret_cast<cuMat<float, ELEMENTS>*>(
     //    std::malloc(sizeof(cuMat<float, ELEMENTS>) * IN_SIZE));
     // for (int i = 0; i < IN_SIZE; i++) {
@@ -132,8 +136,6 @@ void transformPointCloudWithNormalsGPU(
     //    points[i].data[5] = in_cloud->points[i].normal_z;
     // }
 
-    
-    
     
     free(transform_vector);
     cudaFree(d_transform);

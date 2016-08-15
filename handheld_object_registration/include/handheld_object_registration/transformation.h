@@ -18,6 +18,7 @@ typedef pcl::PointXYZRGBNormal PointTYPE;
 #define GRID_SIZE 16
 
 void transformPointCloudWithNormalsGPU(pcl::PointCloud<PointTYPE>::Ptr,
+                                       pcl::PointCloud<PointTYPE>::Ptr,
                                        const Eigen::Matrix4f);
    
 
