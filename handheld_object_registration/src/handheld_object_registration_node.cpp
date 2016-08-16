@@ -336,11 +336,40 @@ void HandheldObjectRegistration::modelUpdate(
     }
     
     ROS_INFO("\033[33m ICP \033[0m");
+    
+
+    /**
+     * FOR REGISTRATION USE PCL ICP
+     */
+
+    pcl::PointCloud<PointNormalT>::Ptr aligned_points(
+       new pcl::PointCloud<PointNormalT>);
+    Eigen::Matrix<float, 4, 4> icp_transformation;
+    this->registrationICP(aligned_points, icp_transformation,
+                          target_points, src_points);
+
+    //! update the target model
+    target_points->clear();
+    *target_points = *aligned_points;
+    *target_points += *src_points;
+
+    this->project3DTo2DDepth(target_projection, target_points);
+
+    cv::imshow("target", target_projection.rgb);
+    cv::waitKey(3);
+    
+    return;
+    /**
+     * END CPU ICP
+     */
+    
 
 
+
+    
     // --> change name
     //! project the target points
-    // this->project3DTo2DDepth(target_projection, target_points);
+
     /*
     const int SEARCH_WSIZE = 8;
     const float ICP_DIST_THRESH = 0.05f;
@@ -436,6 +465,8 @@ void HandheldObjectRegistration::modelUpdate(
     }
 
     *target_points += *src_points;
+
+
     
     // transformPointCloudWithNormalsGPU(target_points, target_points,
     //                                   cpu_trans);
@@ -621,7 +652,7 @@ void HandheldObjectRegistration::features2D(
 }
 
 bool HandheldObjectRegistration::registrationICP(
-    const pcl::PointCloud<PointNormalT>::Ptr align_points,
+    pcl::PointCloud<PointNormalT>::Ptr align_points,
     Eigen::Matrix<float, 4, 4> &transformation,
     const pcl::PointCloud<PointNormalT>::Ptr src_points,
     const pcl::PointCloud<PointNormalT>::Ptr target_points) {
@@ -1120,6 +1151,67 @@ bool HandheldObjectRegistration::project3DTo2DDepth(
     projection_map.indices = indices;
     
     return true;
+}
+
+
+void HandheldObjectRegistration::projectedPointPairs(
+    PointPairMap &point_pair_map,
+    const pcl::PointCloud<PointNormalT>::Ptr src_points,
+    const pcl::PointCloud<PointNormalT>::Ptr target_points,
+    const float max_distance) {
+    if (src_points->empty() || target_points->empty()) {
+       ROS_ERROR("- Empty cloud. Cannot project 3D to 2D depth.");
+       return;
+    }
+    cv::Mat s_points = cv::Mat(static_cast<int>(src_points->size()), 3, CV_32F);
+    cv::Mat t_points = cv::Mat(static_cast<int>(
+                                  target_points->size()), 3, CV_32F);
+    int size = (s_points.rows >= t_points.rows) ? s_points.rows : t_points.rows;
+    for (int i = 0; i < size; i++) {
+       if (i < s_points.rows) {
+          s_points.at<float>(i, 0) = src_points->points[i].x;
+          s_points.at<float>(i, 1) = src_points->points[i].y;
+          s_points.at<float>(i, 2) = src_points->points[i].z;
+       }
+       if (i < t_points.rows) {
+          t_points.at<float>(i, 0) = target_points->points[i].x;
+          t_points.at<float>(i, 1) = target_points->points[i].y;
+          t_points.at<float>(i, 2) = target_points->points[i].z;
+       }
+    }
+ 
+    //! set only one TODO 
+    float K[9];
+    float R[9];
+    for (int i = 0; i < 9; i++) {
+       K[i] = camera_info_->K[i];
+       R[i] = camera_info_->R[i];
+    }
+
+    cv::Mat camera_matrix = cv::Mat(3, 3, CV_32F, K);
+    cv::Mat rotation_matrix = cv::Mat(3, 3, CV_32F, R);
+    float tvec[3];
+    tvec[0] = camera_info_->P[3];
+    tvec[1] = camera_info_->P[7];
+    tvec[2] = camera_info_->P[11];
+    cv::Mat translation_matrix = cv::Mat(3, 1, CV_32F, tvec);
+    
+    float D[5];
+    for (int i = 0; i < 5; i++) {
+       D[i] = camera_info_->D[i];
+    }
+    cv::Mat distortion_model = cv::Mat(5, 1, CV_32F, D);
+    cv::Mat rvec;
+    cv::Rodrigues(rotation_matrix, rvec);
+
+    //! projection
+    std::vector<cv::Point2f> src_image_points;
+    cv::projectPoints(s_points, rvec, translation_matrix,
+                      camera_matrix, distortion_model, src_image_points);
+    std::vector<cv::Point2f> target_image_points;
+    cv::projectPoints(s_points, rvec, translation_matrix,
+                      camera_matrix, distortion_model, target_image_points);
+
 }
 
 

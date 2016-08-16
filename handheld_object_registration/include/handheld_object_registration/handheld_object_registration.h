@@ -44,6 +44,18 @@ class HandheldObjectRegistration {
     typedef pcl::PointCloud<PointT> PointCloud;
     typedef pcl::PointCloud<NormalT> PointNormal;
 
+    struct RayInfo {
+       cv::Point2i query_index2D;
+       cv::Point2i match_index2D;
+       PointNormalT query_point3D;
+       PointNormalT match_point3D;
+    };
+
+    struct PointPairs {
+       std::vector<RayInfo> point_pairs;
+    };
+    typedef std::vector<PointPairs> PointPairMap;
+   
  private:
     boost::mutex mutex_;
     boost::mutex lock_;
@@ -100,7 +112,7 @@ class HandheldObjectRegistration {
     void screenCB(const geometry_msgs::PointStamped::ConstPtr &);
     void poseCB(const geometry_msgs::PoseStamped::ConstPtr &);
    
-    bool registrationICP(const pcl::PointCloud<PointNormalT>::Ptr,
+    bool registrationICP(pcl::PointCloud<PointNormalT>::Ptr,
                          Eigen::Matrix<float, 4, 4> &,
                          const pcl::PointCloud<PointNormalT>::Ptr,
                          const pcl::PointCloud<PointNormalT>::Ptr);
@@ -125,6 +137,11 @@ class HandheldObjectRegistration {
     bool project3DTo2DDepth(ProjectionMap &,
                             const pcl::PointCloud<PointNormalT>::Ptr,
                             const float = 1.0f);
+    void projectedPointPairs(PointPairMap &,
+                             const pcl::PointCloud<PointNormalT>::Ptr,
+                             const pcl::PointCloud<PointNormalT>::Ptr,
+                             const float);
+   
     void features2D(std::vector<cv::KeyPoint> &, cv::cuda::GpuMat &,
                    const cv::Mat);
     void featureBasedTransformation(std::vector<CandidateIndices> &,
