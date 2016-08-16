@@ -301,6 +301,7 @@ bool allocateCopyDataToGPU(
 
     energy /= static_cast<float>(match_counter);
 
+    free(correspondences);
     cudaFree(d_src_indices);
     cudaFree(d_src_points);
     cudaFree(d_correspondences);

@@ -204,13 +204,6 @@ void HandheldObjectRegistration::cloudCB(
        pcl::PointCloud<PointNormalT>::Ptr align_points(
           new pcl::PointCloud<PointNormalT>);
 
-       /*
-       std::cout << "icp"  << "\n";
-       if (!this->registrationICP(align_points, transformation, src_points)) {
-          ROS_ERROR("- ICP cannot converge.. skipping");
-          return;
-       }
-       */
        transformation =  transformation * tracker_transform.matrix();
        //! pcl::transformPointCloudWithNormals(*target_points_, *target_points_,
        //                          transformation);
@@ -281,7 +274,7 @@ void HandheldObjectRegistration::modelUpdate(
     }
     
     // TODO(MIN_SIZE_CHECK):
-    // ROS_INFO("\033[33m PROJECTION TO 2D \033[0m");
+    ROS_INFO("\033[33m PROJECTION TO 2D \033[0m");
     
     ProjectionMap src_projection;
     this->project3DTo2DDepth(src_projection, src_points);
@@ -292,7 +285,7 @@ void HandheldObjectRegistration::modelUpdate(
     
     
     //!  Feature check
-    // ROS_INFO("\033[33m EXTRACTING 2D FEATURES \033[0m");
+    ROS_INFO("\033[33m EXTRACTING 2D FEATURES \033[0m");
 
     std::vector<CandidateIndices> candidate_indices;
     this->featureBasedTransformation(candidate_indices,
@@ -302,7 +295,7 @@ void HandheldObjectRegistration::modelUpdate(
                                      src_points, src_projection.indices,
                                      src_projection.rgb);
     
-    // ROS_INFO("\033[33m COMPUTING TRANSFORMATION \033[0m");
+    ROS_INFO("\033[33m COMPUTING TRANSFORMATION \033[0m");
     
     //! compute transformation
     Eigen::Matrix4f transform_matrix = Eigen::Matrix4f::Identity();
@@ -342,7 +335,7 @@ void HandheldObjectRegistration::modelUpdate(
                                          transform_matrix);
     }
     
-    // ROS_INFO("\033[33m ICP \033[0m");
+    ROS_INFO("\033[33m ICP \033[0m");
 
 
     // --> change name
@@ -442,6 +435,7 @@ void HandheldObjectRegistration::modelUpdate(
        }
     }
 
+    *target_points += *src_points;
     
     // transformPointCloudWithNormalsGPU(target_points, target_points,
     //                                   cpu_trans);
@@ -638,8 +632,8 @@ bool HandheldObjectRegistration::registrationICP(
     pcl::IterativeClosestPointWithNormals<PointNormalT, PointNormalT>::Ptr icp(
        new pcl::IterativeClosestPointWithNormals<PointNormalT, PointNormalT>);
     icp->setMaximumIterations(10);
-    icp->setRANSACOutlierRejectionThreshold(0.005);
-    icp->setRANSACIterations(1000);
+    icp->setRANSACOutlierRejectionThreshold(0.05);
+    icp->setRANSACIterations(100);
     // icp->setMaxCorrespondenceDistance(1e-5);
        
     icp->setInputSource(src_points);
