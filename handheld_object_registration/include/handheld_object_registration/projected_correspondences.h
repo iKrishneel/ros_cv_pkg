@@ -3,6 +3,7 @@
 #ifndef _PROJECTED_CORRESPONDENCES_H_
 #define _PROJECTED_CORRESPONDENCES_H_
 
+#include <omp.h>
 #include <stdio.h>
 #include <math.h>
 

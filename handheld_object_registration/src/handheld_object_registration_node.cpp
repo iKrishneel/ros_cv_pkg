@@ -281,7 +281,7 @@ void HandheldObjectRegistration::modelUpdate(
     }
     
     // TODO(MIN_SIZE_CHECK):
-    ROS_INFO("\033[33m PROJECTION TO 2D \033[0m");
+    // ROS_INFO("\033[33m PROJECTION TO 2D \033[0m");
 
     ProjectionMap src_projection;
     this->project3DTo2DDepth(src_projection, src_points);
@@ -291,7 +291,7 @@ void HandheldObjectRegistration::modelUpdate(
     this->project3DTo2DDepth(target_projection, this->prev_points_);
     
     //!  Feature check
-    ROS_INFO("\033[33m EXTRACTING 2D FEATURES \033[0m");
+    // ROS_INFO("\033[33m EXTRACTING 2D FEATURES \033[0m");
     
     std::vector<CandidateIndices> candidate_indices;
     this->featureBasedTransformation(candidate_indices,
@@ -301,7 +301,7 @@ void HandheldObjectRegistration::modelUpdate(
                                      src_points, src_projection.indices,
                                      src_projection.rgb);
     
-    ROS_INFO("\033[33m COMPUTING TRANSFORMATION \033[0m");
+    // ROS_INFO("\033[33m COMPUTING TRANSFORMATION \033[0m");
     
     //! compute transformation
     Eigen::Matrix4f transform_matrix = Eigen::Matrix4f::Identity();
@@ -341,12 +341,12 @@ void HandheldObjectRegistration::modelUpdate(
                                          transform_matrix);
     }
     
-    ROS_INFO("\033[33m ICP \033[0m");
+    // ROS_INFO("\033[33m ICP \033[0m");
 
 
     // --> change name
     //! project the target points
-    this->project3DTo2DDepth(target_projection, target_points);
+    // this->project3DTo2DDepth(target_projection, target_points);
     /*
     const int SEARCH_WSIZE = 8;
     const float ICP_DIST_THRESH = 0.05f;
@@ -418,40 +418,15 @@ void HandheldObjectRegistration::modelUpdate(
                                              true, src_points, src_projection,
                                              target_points, target_projection);
     if (data_copied) {
-       estimatedCorrespondences(correspondences, energy,
-                                src_points, target_points);
        
-       std::cout << "ENERGY INITIAL:  " << energy  << "\n";
-       std::cout << "CORRESPONDENCE SIZE: " << correspondences.size()  << "\n";
+       std::cout << "ENERGY LEVEL:  " << energy  << "\n";
+       // std::cout << "CORRESPONDENCE SIZE: " << correspondences.size()  << "\n";
 
        if (correspondences.size() > 7) {
           pcl::registration::TransformationEstimationPointToPlaneLLS<
              PointNormalT, PointNormalT> transformation_estimation;
           transformation_estimation.estimateRigidTransformation(
              *target_points, *src_points, correspondences, icp_trans);
-          /*
-          std::ofstream outfile1("correspondences1.txt", std::ios::out);
-          for (int i = 0; i < correspondences.size(); i++) {
-             int x = correspondences[i].index_query;
-             int y = correspondences[i].index_match;
-
-             int xx = cpu_correspondences[i].index_query;
-             int yy = cpu_correspondences[i].index_match;
-             
-             
-             outfile1 << x << " " << y << " " <<
-                "\t" << xx << " " << yy << "\t\t" <<
-                target_points->points[x].x << " " <<
-                target_points->points[x].y << " " <<
-                target_points->points[x].z << "\t " <<
-                src_points->points[x].x << " " <<
-                src_points->points[x].y << " " <<
-                src_points->points[x].z << " " << "\n";
-          }
-
-          outfile1.close();
-          */
-
           transformPointCloudWithNormalsGPU(target_points, target_points,
                                             icp_trans);
        }
@@ -469,56 +444,6 @@ void HandheldObjectRegistration::modelUpdate(
     // transformPointCloudWithNormalsGPU(target_points, target_points,
     //                                   cpu_trans);
     
-
-    /*
-//! ONLY FOR DEGUBING
-    std::ofstream outfile("correspondences.txt", std::ios::out);
-    float ifitness = 0.0;
-    for (int i = 0; i < correspondences.size(); i++) {
-       
-       PointNormalT tpt = target_points->points[correspondences[i].index_query];
-       PointNormalT spt = src_points->points[correspondences[i].index_match];
-
-       if (isnan(spt.x) || isnan(spt.y) || isnan(spt.z)) {
-          std::cout << spt  << "\n";
-          ROS_ERROR("SRC NAN POINT AT: %d", correspondences[i].index_match);
-       }
-       if (isnan(tpt.x) || isnan(tpt.y) || isnan(tpt.z)) {
-          std::cout << tpt  << "\n";
-          ROS_ERROR("TAG NAN POINT AT: %d", correspondences[i].index_match);
-       }
-       
-       double d = pcl::distances::l2(
-          tpt.getVector4fMap(), spt.getVector4fMap());
-
-       if (d > 10.0) {
-          outfile << d << "\n" << tpt << "\n" << spt << "\n\n";
-       } else {
-          outfile << d << "\n";
-       }
-       
-       if (isnan(d)) {
-          ROS_ERROR("DISTANCE IS NAN");
-       }
-       ifitness += d;
-    }
-    outfile.close();
-    
-    std::cout << "FITNESS: " << ifitness / (
-       static_cast<double>(correspondences.size()))<< "\n";
-
-    std::cout << "\n" << icp_trans  << "\n";
-    
-    if (isnan(icp_trans(0, 0))) {
-       std::exit(-1);
-    }
-    */
-    
-
-    //! END DEBUGING
-
-
-
 
     
     // cv::waitKey(3);
