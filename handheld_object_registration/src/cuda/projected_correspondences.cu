@@ -177,6 +177,9 @@ bool allocateCopyDataToGPU(
     int src_indices[SRC_SIZE];
     int model_indices[SRC_SIZE];
 
+// #ifdef _OPENMP
+// #pragma omp parallel for num_threads(16) collapse(2)
+// #endif
     
     for (int j = 0; j < target_projection.indices.rows; j++) {
        for (int i = 0; i < target_projection.indices.cols; i++) {
@@ -251,7 +254,7 @@ bool allocateCopyDataToGPU(
     
     findCorrespondencesGPU<<<block_size, grid_size>>>(
        d_correspondences, d_src_points, d_src_indices, d_model_points,
-       d_model_indices, IMAGE_WIDTH, IMAGE_HEIGHT, 40);
+       d_model_indices, IMAGE_WIDTH, IMAGE_HEIGHT, target_projection.height);
 
     Correspondence *correspondences = reinterpret_cast<Correspondence*>(
        std::malloc(sizeof(Correspondence) * image_size));
@@ -273,7 +276,6 @@ bool allocateCopyDataToGPU(
           int src_index = correspondences[i].match_index;
           PointTYPE model_pt = target_points->points[model_index];
           PointTYPE src_pt = source_points->points[src_index];
-
           
           if (!isnan(model_pt.x) && !isnan(model_pt.y) && !isnan(model_pt.z) &&
               !isnan(src_pt.x) && !isnan(src_pt.y) && !isnan(src_pt.z)

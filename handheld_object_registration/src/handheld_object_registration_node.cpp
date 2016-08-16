@@ -282,7 +282,7 @@ void HandheldObjectRegistration::modelUpdate(
     
     // TODO(MIN_SIZE_CHECK):
     // ROS_INFO("\033[33m PROJECTION TO 2D \033[0m");
-
+    
     ProjectionMap src_projection;
     this->project3DTo2DDepth(src_projection, src_points);
 
@@ -290,9 +290,10 @@ void HandheldObjectRegistration::modelUpdate(
     ProjectionMap target_projection;
     this->project3DTo2DDepth(target_projection, this->prev_points_);
     
+    
     //!  Feature check
     // ROS_INFO("\033[33m EXTRACTING 2D FEATURES \033[0m");
-    
+
     std::vector<CandidateIndices> candidate_indices;
     this->featureBasedTransformation(candidate_indices,
                                      this->prev_points_,
@@ -410,36 +411,37 @@ void HandheldObjectRegistration::modelUpdate(
     //!------------------------
     */
 
+    const float ENERGY_THRESH = 0.0005;
+    const int MAX_ITER = 0;
     
     Eigen::Matrix4f icp_trans = Eigen::Matrix4f::Identity();
     pcl::Correspondences correspondences;
     float energy;
-    bool data_copied = allocateCopyDataToGPU(correspondences, energy,
-                                             true, src_points, src_projection,
-                                             target_points, target_projection);
-    if (data_copied) {
-       
-       std::cout << "ENERGY LEVEL:  " << energy  << "\n";
-       // std::cout << "CORRESPONDENCE SIZE: " << correspondences.size()  << "\n";
+    int icounter = 0;
+    bool copy_src = true;
+    while (true) {
+       bool data_copied = allocateCopyDataToGPU(
+          correspondences, energy, copy_src, src_points,
+          src_projection, target_points, target_projection);
+       if (data_copied) {
+          std::cout << "ENERGY LEVEL:  " << energy  << "\n";
 
-       if (correspondences.size() > 7) {
-          pcl::registration::TransformationEstimationPointToPlaneLLS<
-             PointNormalT, PointNormalT> transformation_estimation;
-          transformation_estimation.estimateRigidTransformation(
-             *target_points, *src_points, correspondences, icp_trans);
-          transformPointCloudWithNormalsGPU(target_points, target_points,
-                                            icp_trans);
+          if (correspondences.size() > 7) {
+             pcl::registration::TransformationEstimationPointToPlaneLLS<
+                PointNormalT, PointNormalT> transformation_estimation;
+             transformation_estimation.estimateRigidTransformation(
+                *target_points, *src_points, correspondences, icp_trans);
+             transformPointCloudWithNormalsGPU(target_points, target_points,
+                                               icp_trans);
+          }
        }
-       
-       /*
-       allocateCopyDataToGPU(false, src_points, src_projection,
-                             target_points, target_projection);
-       correspondences.clear();
-       estimatedCorrespondences(correspondences, energy);
+       copy_src = true;
 
-       std::cout << "ENERGY _ SECOND:  " << energy  << "\n";
-       */
+       if (icounter++ > MAX_ITER || energy < ENERGY_THRESH) {
+          break;
+       }
     }
+
     
     // transformPointCloudWithNormalsGPU(target_points, target_points,
     //                                   cpu_trans);
@@ -554,27 +556,28 @@ void HandheldObjectRegistration::featureBasedTransformation(
     std::vector<std::vector<cv::DMatch> > knn_matches;
     matcher->knnMatch(d_src_desc, d_tgt_desc, knn_matches, 2);
 
+    const float ANGLE_THRESH_ = std::cos(M_PI / 3.0f);
+    
     for (int i = 0; i < knn_matches.size(); i++) {
-       if ((knn_matches[i][0].distance / knn_matches[i][1].distance)
-             < 0.8f) {
+       if ((knn_matches[i][0].distance / knn_matches[i][1].distance) < 0.8f) {
           matches.push_back(knn_matches[i][0]);
        }
     }
-
-    const float ANGLE_THRESH_ = std::cos(M_PI / 3.0f);
     std::vector<bool> matches_flag(static_cast<int>(matches.size()));
     candidate_indices.resize(matches.size());
-
+    
     // TODO(PARALLEL): OMP
 
     std::vector<cv::DMatch> good_matches;
     for (int i = 0; i < matches.size(); i++) {
        cv::Point2f src_pt = src_keypoints[matches[i].queryIdx].pt;
        cv::Point2f tgt_pt = tgt_keypoints[matches[i].trainIdx].pt;
-       int src_index = src_indices.at<int>(static_cast<int>(tgt_pt.y),
-                                           static_cast<int>(tgt_pt.x));
+       
+       int src_index = src_indices.at<int>(static_cast<int>(src_pt.y),
+                                           static_cast<int>(src_pt.x));
        int tgt_index = target_indices.at<int>(static_cast<int>(tgt_pt.y),
                                               static_cast<int>(tgt_pt.x));
+       
        if (tgt_index != -1 && src_index != -1) {
           // Eigen::Vector4f src_normal = src_points->points[
           //    src_index].getNormalVector4fMap();
@@ -597,10 +600,13 @@ void HandheldObjectRegistration::featureBasedTransformation(
        }
        // } //! endif
     }
-    cv::Mat img_matches;
-    cv::drawMatches(src_image, src_keypoints, target_image,  tgt_keypoints,
-                    good_matches, img_matches);
-    cv::imshow("matching", img_matches);
+    // cv::Mat img_matches;
+    // cv::drawMatches(src_image, src_keypoints, target_image,  tgt_keypoints,
+    //                 good_matches, img_matches);
+    // cv::imshow("matching", img_matches);
+
+    // cv::waitKey(3);
+    
 }
 
 
