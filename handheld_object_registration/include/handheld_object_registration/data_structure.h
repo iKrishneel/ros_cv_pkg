@@ -18,6 +18,8 @@ struct ProjectionMap {
     cv::Mat rgb;
     cv::Mat indices;
     cv::Mat depth;
+    std::vector<bool> visibility_flag;
+   
     ProjectionMap(int i = -1, int j = -1, int w = -1, int h = -1,
                   cv::Mat image = cv::Mat(),
                   cv::Mat indices_im = cv::Mat(),

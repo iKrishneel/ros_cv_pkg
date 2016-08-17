@@ -16,7 +16,7 @@
 #include <pcl/registration/icp.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/features/integral_image_normal.h>
-// #include <pcl/registration/correspondence_estimation.h>
+#include <pcl/registration/default_convergence_criteria.h>
 
 #include <pcl/registration/transformation_estimation_svd.h>
 #include <pcl/registration/transformation_estimation_point_to_plane_lls.h>
@@ -44,18 +44,6 @@ class HandheldObjectRegistration {
     typedef pcl::PointCloud<PointT> PointCloud;
     typedef pcl::PointCloud<NormalT> PointNormal;
 
-    struct RayInfo {
-       cv::Point2i query_index2D;
-       cv::Point2i match_index2D;
-       PointNormalT query_point3D;
-       PointNormalT match_point3D;
-    };
-
-    struct PointPairs {
-       std::vector<RayInfo> point_pairs;
-    };
-    typedef std::vector<PointPairs> PointPairMap;
-   
  private:
     boost::mutex mutex_;
     boost::mutex lock_;
@@ -76,6 +64,7 @@ class HandheldObjectRegistration {
     PointNormal::Ptr input_normals_;
     pcl::PointCloud<PointNormalT>::Ptr target_points_;
     pcl::PointCloud<PointNormalT>::Ptr prev_points_;
+    std::vector<float> point_weights_;
    
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
     geometry_msgs::PointStamped screen_msg_;
@@ -116,12 +105,18 @@ class HandheldObjectRegistration {
                          Eigen::Matrix<float, 4, 4> &,
                          const pcl::PointCloud<PointNormalT>::Ptr,
                          const pcl::PointCloud<PointNormalT>::Ptr);
-    bool checkRegistrationFailure(const pcl::PointCloud<PointNormalT>::Ptr,
-                                  const pcl::PointCloud<PointNormalT>::Ptr);
+    float checkRegistrationFitness(const ProjectionMap,
+                                   const pcl::PointCloud<PointNormalT>::Ptr,
+                                   const ProjectionMap,
+                                   const pcl::PointCloud<PointNormalT>::Ptr);
     void modelUpdate(pcl::PointCloud<PointNormalT>::Ptr,
                      pcl::PointCloud<PointNormalT>::Ptr,
                      const Eigen::Matrix<float, 4, 4>);
-      
+    void modelVoxelUpdate(const pcl::PointCloud<PointNormalT>::Ptr,
+                          const ProjectionMap,
+                          const pcl::PointCloud<PointNormalT>::Ptr,
+                          const ProjectionMap);
+   
     bool seedRegionGrowing(PointCloud::Ptr, PointNormal::Ptr,
                            const PointT, const PointCloud::Ptr,
                            PointNormal::Ptr);
@@ -137,11 +132,6 @@ class HandheldObjectRegistration {
     bool project3DTo2DDepth(ProjectionMap &,
                             const pcl::PointCloud<PointNormalT>::Ptr,
                             const float = 1.0f);
-    void projectedPointPairs(PointPairMap &,
-                             const pcl::PointCloud<PointNormalT>::Ptr,
-                             const pcl::PointCloud<PointNormalT>::Ptr,
-                             const float);
-   
     void features2D(std::vector<cv::KeyPoint> &, cv::cuda::GpuMat &,
                    const cv::Mat);
     void featureBasedTransformation(std::vector<CandidateIndices> &,
