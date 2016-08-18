@@ -46,7 +46,8 @@
           name="selected_cloud_downsampler"
           args="standalone pcl/VoxelGrid"
           output="screen" clear_params="false">
-      <remap from="~input" to="/object_model/output/cloud" />
+      <!-- <remap from="~input" to="/object_model/output/cloud" /> -->
+      <remap from="~input" to="/particle_filter_update/output/template" />
       <param name="filter_limit_min" value="$(arg voxel_grid_filter_limit_min)" />
       <param name="filter_limit_max" value="$(arg voxel_grid_filter_limit_max)" />
       <param name="filter_limit_field_name" value="$(arg voxel_grid_filter_field_name)" />

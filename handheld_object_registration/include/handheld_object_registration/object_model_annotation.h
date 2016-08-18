@@ -21,9 +21,6 @@
 #include <pcl/point_types.h>
 #include <pcl/common/common.h>
 #include <pcl/common/transforms.h>
-// #include <pcl/filters/filter.h>
-// #include <pcl/io/pcd_io.h>
-// #include <pcl/filters/extract_indices.h>
 #include <pcl/segmentation/extract_clusters.h>
 #include <pcl/filters/passthrough.h>
 #include <pcl/registration/distances.h>
@@ -35,7 +32,6 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/opencv.hpp>
 #include <boost/thread/mutex.hpp>
-
 
 class ObjectModelAnnotation {
  private:

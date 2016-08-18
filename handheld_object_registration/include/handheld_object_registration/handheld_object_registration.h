@@ -36,6 +36,8 @@
 
 namespace jsk_msgs = jsk_recognition_msgs;
 
+#define HISTORY_WINDOW 5
+
 class HandheldObjectRegistration {
 
     typedef pcl::PointXYZRGB PointT;
@@ -44,6 +46,11 @@ class HandheldObjectRegistration {
     typedef pcl::PointCloud<PointT> PointCloud;
     typedef pcl::PointCloud<NormalT> PointNormal;
 
+    struct Weights {
+       float weight[HISTORY_WINDOW];
+    };
+    typedef std::vector<Weights> VoxelWeights;
+   
  private:
     boost::mutex mutex_;
     boost::mutex lock_;
@@ -65,6 +72,7 @@ class HandheldObjectRegistration {
     pcl::PointCloud<PointNormalT>::Ptr target_points_;
     pcl::PointCloud<PointNormalT>::Ptr prev_points_;
     std::vector<float> point_weights_;
+    VoxelWeights voxel_weights_;
    
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
     geometry_msgs::PointStamped screen_msg_;
@@ -83,6 +91,10 @@ class HandheldObjectRegistration {
     ros::Subscriber pf_pose_;
     bool pose_flag_;
     Eigen::Affine3f prev_transform_;
+
+    int pub_counter_;
+   
+    std::vector<PointT> motion_hisotry_;
    
  protected:
     ros::NodeHandle pnh_;
@@ -93,6 +105,7 @@ class HandheldObjectRegistration {
     ros::Publisher pub_cloud_;
     ros::Publisher pub_icp_;
     ros::Publisher pub_bbox_;
+    ros::Publisher pub_templ_;
     
  public:
     HandheldObjectRegistration();
@@ -110,8 +123,7 @@ class HandheldObjectRegistration {
                                    const ProjectionMap,
                                    const pcl::PointCloud<PointNormalT>::Ptr);
     void modelUpdate(pcl::PointCloud<PointNormalT>::Ptr,
-                     pcl::PointCloud<PointNormalT>::Ptr,
-                     const Eigen::Matrix<float, 4, 4>);
+                     pcl::PointCloud<PointNormalT>::Ptr);
     void modelVoxelUpdate(const pcl::PointCloud<PointNormalT>::Ptr,
                           const ProjectionMap,
                           const pcl::PointCloud<PointNormalT>::Ptr,

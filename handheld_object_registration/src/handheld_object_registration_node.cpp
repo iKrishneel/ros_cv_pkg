@@ -14,7 +14,10 @@ HandheldObjectRegistration::HandheldObjectRegistration():
     
     this->orb_gpu_ = cv::cuda::ORB::create(1000, 1.20f, 8, 11, 0, 2,
                                            cv::ORB::HARRIS_SCORE, 31, true);
-     
+    this->voxel_weights_.clear();
+    this->prev_transform_ = Eigen::Affine3f::Identity();
+    this->pub_counter_ = 0;
+    
     //! temporary
     this->rendering_cuboid_ = boost::shared_ptr<jsk_msgs::BoundingBox>(
        new jsk_msgs::BoundingBox);
@@ -38,6 +41,8 @@ void HandheldObjectRegistration::onInit() {
        "/handheld_object_registration/output/cloud", 1);
     this->pub_icp_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
        "/handheld_object_registration/output/icp", 1);
+    this->pub_templ_ = this->pnh_.advertise<sensor_msgs::PointCloud2>(
+       "/handheld_object_registration/output/template", 1);
     this->pub_bbox_ = this->pnh_.advertise<jsk_msgs::BoundingBoxArray>(
        "/handheld_object_registration/output/render_box", 1);
 }
@@ -172,21 +177,54 @@ void HandheldObjectRegistration::cloudCB(
      */
     Eigen::Affine3f tracker_transform = Eigen::Affine3f::Identity();
     if (this->pose_flag_) {
+
+       ROS_INFO("\033[34m - MOTION ... \033[0m");
+       
+       
        geometry_msgs::PoseStamped::ConstPtr pose_msg = pose_msg_;
        Eigen::Affine3f transform_model = Eigen::Affine3f::Identity();
-       transform_model.translation() << pose_msg->pose.position.x,
-          pose_msg->pose.position.y, pose_msg->pose.position.z;
+
+       transform_model.translation() <<
+          pose_msg->pose.position.x,
+          pose_msg->pose.position.y,
+          pose_msg->pose.position.z;
        Eigen::Quaternion<float> pf_quat = Eigen::Quaternion<float>(
           pose_msg->pose.orientation.w, pose_msg->pose.orientation.x,
           pose_msg->pose.orientation.y, pose_msg->pose.orientation.z);
        transform_model.rotate(pf_quat);
+
+
+       if (pub_counter_ == 29 || pub_counter_ == 0) {
+          std::cout << transform_model.matrix()  << "\n-------\n";
+       }
+       
+       
+       PointT motion;
+       if (!motion_hisotry_.empty()) {
+          int size = motion_hisotry_.size() - 1;
+          motion.x = pose_msg->pose.position.x - motion_hisotry_[size].x;
+          motion.y = pose_msg->pose.position.y - motion_hisotry_[size].y;
+          motion.z = pose_msg->pose.position.z - motion_hisotry_[size].z;
+       }
+       
+       PointT pt;
+       pt.x = pose_msg->pose.position.x;
+       pt.y = pose_msg->pose.position.y;
+       pt.z = pose_msg->pose.position.z;
+
        if (!this->prev_points_->empty()) {
-          tracker_transform = transform_model * prev_transform_.inverse();
+          tracker_transform =  transform_model * prev_transform_.inverse();
           pcl::transformPointCloudWithNormals(*prev_points_,
                                    *prev_points_, tracker_transform);
+          
+          pcl::transformPointCloudWithNormals(*target_points_,
+                                              *target_points_,
+                                              tracker_transform);
           this->pose_flag_ = false;
        }
-       prev_transform_ = transform_model;
+       
+       this->prev_transform_ = transform_model;
+       motion_hisotry_.push_back(pt);
     } else {
        ROS_WARN("TRACKER NOT SET");
     }
@@ -196,23 +234,12 @@ void HandheldObjectRegistration::cloudCB(
     
     
     if (!this->target_points_->empty()) {
-
        std::cout << "updating"  << "\n";
-       
-       Eigen::Matrix<float, 4, 4> transformation = Eigen::Matrix<
-          float, 4, 4>::Identity();
-       pcl::PointCloud<PointNormalT>::Ptr align_points(
-          new pcl::PointCloud<PointNormalT>);
-
-       transformation =  transformation * tracker_transform.matrix();
-       pcl::transformPointCloudWithNormals(*target_points_, *target_points_,
-                                           transformation);
 
        struct timeval timer_start, timer_end;
        gettimeofday(&timer_start, NULL);
-
        
-       this->modelUpdate(src_points, target_points_, transformation);
+       // this->modelUpdate(src_points, target_points_);
 
        //! timer
        gettimeofday(&timer_end, NULL);
@@ -228,30 +255,45 @@ void HandheldObjectRegistration::cloudCB(
        this->pub_icp_.publish(ros_cloud);
     } else {
        this->target_points_->clear();
-       *target_points_ = *src_points;
+       // *target_points_ = *src_points;
+       pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points,
+                                                       *target_points_);
 
        this->point_weights_.clear();
        this->point_weights_.resize(static_cast<int>(target_points_->size()));
+
+       this->voxel_weights_.clear();
+       this->voxel_weights_.resize(static_cast<int>(target_points_->size()));
        for (int i = 0; i < target_points_->size(); i++) {
           point_weights_[i] = this->init_weight_;
+          int j = 0;
+          this->voxel_weights_[i].weight[j] = this->init_weight_;
+          for (j = 1; j < HISTORY_WINDOW; j++) {
+             this->voxel_weights_[i].weight[j] = -1;
+          }
        }
     }
 
     this->prev_points_->clear();
     pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points,
                                                     *prev_points_);
-    // pcl::copyPointCloud<PointNormalT, PointNormalT>(
-    //    *target_points_, *prev_points_);
     
-    std::cout << region_cloud->size() << "\t" << target_points_->size()  << "\n";
+    std::cout << region_cloud->size() << "\t"
+              << target_points_->size()  << "\n";
     ROS_INFO("Done Processing");
     
-    
     sensor_msgs::PointCloud2 *ros_cloud = new sensor_msgs::PointCloud2;
-    // pcl::toROSMsg(*region_cloud, *ros_cloud);
     pcl::toROSMsg(*target_points_, *ros_cloud);
     ros_cloud->header = cloud_msg->header;
     this->pub_cloud_.publish(*ros_cloud);
+    
+    sensor_msgs::PointCloud2 *ros_templ = new sensor_msgs::PointCloud2;
+    pcl::toROSMsg(*region_cloud, *ros_templ);
+    ros_templ->header = cloud_msg->header;
+    if (pub_counter_++ == 30) {
+       this->pub_templ_.publish(*ros_templ);
+       pub_counter_ = 0;
+    }
     
     jsk_msgs::BoundingBoxArray *rviz_bbox = new jsk_msgs::BoundingBoxArray;
     this->rendering_cuboid_->header = cloud_msg->header;
@@ -272,8 +314,7 @@ void HandheldObjectRegistration::cloudCB(
 
 void HandheldObjectRegistration::modelUpdate(
     pcl::PointCloud<PointNormalT>::Ptr src_points,
-    pcl::PointCloud<PointNormalT>::Ptr target_points,
-    const Eigen::Matrix<float, 4, 4> transs) {
+    pcl::PointCloud<PointNormalT>::Ptr target_points) {
     if (src_points->empty() || target_points->empty()) {
        ROS_ERROR("Empty input points for update");
        return;
@@ -342,15 +383,19 @@ void HandheldObjectRegistration::modelUpdate(
        transformPointCloudWithNormalsGPU(target_points, target_points,
                                          transform_matrix);
        */
-       pcl::transformPointCloudWithNormals(*target_points, *update_points,
+       pcl::transformPointCloudWithNormals(*target_points, *target_points,
                                            transform_matrix);
-       /*
-       transformPointCloudWithNormalsGPU(target_points, update_points,
-                                         transform_matrix);
-       */
+
+       // transformPointCloudWithNormalsGPU(target_points, target_points,
+       //                                   transform_matrix);
     }
 
-
+    
+    // this->modelVoxelUpdate(target_points, target_projection,
+    //                        src_points, src_projection);
+    cv::waitKey(3);
+    return;
+    
     
     ROS_INFO("\033[33m ICP \033[0m");
     /**
@@ -535,11 +580,12 @@ void HandheldObjectRegistration::modelVoxelUpdate(
               (s_index < static_cast<int>(src_points->size()))) {
              
              if (s_index != -1 && t_index != -1) {
-
                 float dist = std::fabs(src_points->points[s_index].z -
                                        target_points->points[t_index].z);
                 if (dist < DIST_THRESH) {
                    point_weights[t_index] = this->init_weight_;
+                   
+                   
                    update_model->points[t_index] = src_points->points[s_index];
                 } else {
                    update_model->push_back(src_points->points[s_index]);
