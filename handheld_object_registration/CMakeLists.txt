@@ -150,6 +150,8 @@ add_executable(object_model_annotation_node
   src/object_model_annotation_node.cpp
 )
 
+add_executable(particle_filters_node
+  src/particle_filter_trackings.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
@@ -163,6 +165,10 @@ target_link_libraries(handheld_object_registration_node
 
 target_link_libraries(object_model_annotation_node 
   ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${PCL_LIBRARIES})
+
+target_link_libraries(particle_filters_node
+  ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} 
+)
 
 #############
 ## Install ##

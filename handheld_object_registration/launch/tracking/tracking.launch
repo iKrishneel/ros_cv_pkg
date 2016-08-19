@@ -40,7 +40,7 @@
       <remap from="~renew_model" to="selected_cloud_downsampler/output" />
       <remap from="~renew_box" to="$(arg renew_box)" />
       <param name="BASE_FRAME_ID" value="$(arg BASE_FRAME_ID)" />
-      <param name="max_particle_num" value="100" />
+      <param name="max_particle_num" value="200" />
     </node>
     <node pkg="nodelet" type="nodelet"
           name="selected_cloud_downsampler"

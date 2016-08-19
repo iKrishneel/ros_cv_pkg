@@ -91,10 +91,10 @@ class HandheldObjectRegistration {
     ros::Subscriber pf_pose_;
     bool pose_flag_;
     Eigen::Affine3f prev_transform_;
-
+    Eigen::Affine3f total_transform_;
+   
     int pub_counter_;
    
-    std::vector<PointT> motion_hisotry_;
    
  protected:
     ros::NodeHandle pnh_;

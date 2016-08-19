@@ -16,6 +16,7 @@ HandheldObjectRegistration::HandheldObjectRegistration():
                                            cv::ORB::HARRIS_SCORE, 31, true);
     this->voxel_weights_.clear();
     this->prev_transform_ = Eigen::Affine3f::Identity();
+    this->total_transform_ = Eigen::Affine3f::Identity();
     this->pub_counter_ = 0;
     
     //! temporary
@@ -177,13 +178,8 @@ void HandheldObjectRegistration::cloudCB(
      */
     Eigen::Affine3f tracker_transform = Eigen::Affine3f::Identity();
     if (this->pose_flag_) {
-
-       ROS_INFO("\033[34m - MOTION ... \033[0m");
-       
-       
        geometry_msgs::PoseStamped::ConstPtr pose_msg = pose_msg_;
        Eigen::Affine3f transform_model = Eigen::Affine3f::Identity();
-
        transform_model.translation() <<
           pose_msg->pose.position.x,
           pose_msg->pose.position.y,
@@ -192,39 +188,16 @@ void HandheldObjectRegistration::cloudCB(
           pose_msg->pose.orientation.w, pose_msg->pose.orientation.x,
           pose_msg->pose.orientation.y, pose_msg->pose.orientation.z);
        transform_model.rotate(pf_quat);
-
-
-       if (pub_counter_ == 29 || pub_counter_ == 0) {
-          std::cout << transform_model.matrix()  << "\n-------\n";
-       }
-       
-       
-       PointT motion;
-       if (!motion_hisotry_.empty()) {
-          int size = motion_hisotry_.size() - 1;
-          motion.x = pose_msg->pose.position.x - motion_hisotry_[size].x;
-          motion.y = pose_msg->pose.position.y - motion_hisotry_[size].y;
-          motion.z = pose_msg->pose.position.z - motion_hisotry_[size].z;
-       }
-       
-       PointT pt;
-       pt.x = pose_msg->pose.position.x;
-       pt.y = pose_msg->pose.position.y;
-       pt.z = pose_msg->pose.position.z;
-
        if (!this->prev_points_->empty()) {
           tracker_transform =  transform_model * prev_transform_.inverse();
           pcl::transformPointCloudWithNormals(*prev_points_,
                                    *prev_points_, tracker_transform);
-          
           pcl::transformPointCloudWithNormals(*target_points_,
                                               *target_points_,
                                               tracker_transform);
           this->pose_flag_ = false;
        }
-       
        this->prev_transform_ = transform_model;
-       motion_hisotry_.push_back(pt);
     } else {
        ROS_WARN("TRACKER NOT SET");
     }
@@ -290,7 +263,7 @@ void HandheldObjectRegistration::cloudCB(
     sensor_msgs::PointCloud2 *ros_templ = new sensor_msgs::PointCloud2;
     pcl::toROSMsg(*region_cloud, *ros_templ);
     ros_templ->header = cloud_msg->header;
-    if (pub_counter_++ == 30) {
+    if (pub_counter_++ == 1) {
        this->pub_templ_.publish(*ros_templ);
        pub_counter_ = 0;
     }
