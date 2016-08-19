@@ -84,6 +84,9 @@ void HandheldObjectRegistration::poseCB(
     const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
     this->pose_msg_ = pose_msg;
     this->pose_flag_ = true;
+
+    this->previous_transform_ = tf::Transform::getIdentity();
+    
 }
 
 
@@ -188,6 +191,11 @@ void HandheldObjectRegistration::cloudCB(
           pose_msg->pose.orientation.w, pose_msg->pose.orientation.x,
           pose_msg->pose.orientation.y, pose_msg->pose.orientation.z);
        transform_model.rotate(pf_quat);
+
+
+       // this->getPFTransformation();
+       
+       
        if (!this->prev_points_->empty()) {
           tracker_transform =  transform_model * prev_transform_.inverse();
           pcl::transformPointCloudWithNormals(*prev_points_,
@@ -263,7 +271,7 @@ void HandheldObjectRegistration::cloudCB(
     sensor_msgs::PointCloud2 *ros_templ = new sensor_msgs::PointCloud2;
     pcl::toROSMsg(*region_cloud, *ros_templ);
     ros_templ->header = cloud_msg->header;
-    if (pub_counter_++ == 1) {
+    if (pub_counter_++ == 30) {
        this->pub_templ_.publish(*ros_templ);
        pub_counter_ = 0;
     }
@@ -1289,6 +1297,50 @@ bool HandheldObjectRegistration::conditionROI(
        (height - ((height + y) - image_size.height)) : height;
 
     return true;
+}
+
+void HandheldObjectRegistration::getPFTransformation() {
+    tf::TransformListener tf_listener;
+    tf::StampedTransform transform;
+    ros::Time now = ros::Time(0);
+    std::string child_frame = "/camera_rgb_optical_frame";
+    std::string parent_frame = "/track_result";
+    Eigen::Affine3f transform_model = Eigen::Affine3f::Identity();
+    tf::Transform update_transform;
+
+    bool wft_ok = tf_listener.waitForTransform(
+       child_frame, parent_frame, now, ros::Duration(1));
+    if (!wft_ok) {
+       ROS_ERROR("CANNOT TRANSFORM SOURCE AND TARGET FRAMES");
+       return;
+    }
+    tf_listener.lookupTransform(
+       child_frame, parent_frame, now, transform);
+    tf::Quaternion tf_quaternion =  transform.getRotation();
+    transform_model = Eigen::Affine3f::Identity();
+    transform_model.translation() <<
+       transform.getOrigin().getX(),
+       transform.getOrigin().getY(),
+       transform.getOrigin().getZ();
+    Eigen::Quaternion<float> quaternion = Eigen::Quaternion<float>(
+       tf_quaternion.w(), tf_quaternion.x(),
+       tf_quaternion.y(), tf_quaternion.z());
+    transform_model.rotate(quaternion);
+    tf::Vector3 origin = tf::Vector3(transform.getOrigin().getX(),
+                                     transform.getOrigin().getY(),
+                                     transform.getOrigin().getZ());
+    update_transform.setOrigin(origin);
+    tf::Quaternion update_quaternion = tf_quaternion;
+
+    update_transform.setRotation(update_quaternion +
+                                 this->previous_transform_.getRotation());
+
+    static tf::TransformBroadcaster br;
+    br.sendTransform(tf::StampedTransform(
+                        update_transform, camera_info_->header.stamp,
+                        camera_info_->header.frame_id, "object_pose"));
+
+    this->previous_transform_ = update_transform;
 }
 
 int main(int argc, char *argv[]) {

@@ -1,0 +1,19 @@
+<launch>
+  <arg name="points" default="/camera/depth_registered/points" />
+  <arg name="template" default="/particle_filter_update/output/template" />
+  <arg name="pose" default="/camera/depth_registered/camera_info" />
+
+  <node pkg="handheld_object_registration" type="particle_filters_node"
+	name="particle_filters" output="screen" clear_params="false">
+    <remap from="input_cloud" to="$(arg points)" />
+
+    <remap from="input_template" to="$(arg template)" />
+    <remap from="input_pose" to="$(arg template)" />
+
+  </node>
+
+  <node pkg="handheld_object_registration" type="particle_filter_update_manager.py"
+	name="particle_filter_update_manager" output="screen">
+  </node>
+
+</launch>

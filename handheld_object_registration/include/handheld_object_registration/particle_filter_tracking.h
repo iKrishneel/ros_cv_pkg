@@ -46,9 +46,13 @@ class ParticleFilters {
 
  private:
     typedef  message_filters::sync_policies::ApproximateTime<
-    sensor_msgs::PointCloud2, geometry_msgs::PoseStamped> SyncPolicy;
+    sensor_msgs::PointCloud2,
+    // geometry_msgs::PoseStamped
+    sensor_msgs::PointCloud2
+    > SyncPolicy;
     message_filters::Subscriber<sensor_msgs::PointCloud2> sub_templ_;
-    message_filters::Subscriber<geometry_msgs::PoseStamped> sub_pose_;
+    message_filters::Subscriber<sensor_msgs::PointCloud2> sub_pose_;
+    // message_filters::Subscriber<geometry_msgs::PoseStamped> sub_pose_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
     boost::mutex mtx_;
@@ -73,7 +77,8 @@ class ParticleFilters {
     ParticleFilters();
     void cloudCB(const sensor_msgs::PointCloud2::ConstPtr &);
     void templateCB(const sensor_msgs::PointCloud2::ConstPtr &,
-                    const geometry_msgs::PoseStamped::ConstPtr &);
+                    // const geometry_msgs::PoseStamped::ConstPtr &
+                    const sensor_msgs::PointCloud2::ConstPtr &);
    
     void filterPassThrough(const CloudConstPtr &, Cloud &);
     void gridSampleApprox(const CloudConstPtr &, Cloud &, double);

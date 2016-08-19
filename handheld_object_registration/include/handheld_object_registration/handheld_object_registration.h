@@ -9,6 +9,9 @@
 #include <message_filters/synchronizer.h>
 #include <message_filters/sync_policies/approximate_time.h>
 
+#include <tf/transform_listener.h>
+#include <tf/transform_broadcaster.h>
+
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/registration/distances.h>
@@ -94,6 +97,7 @@ class HandheldObjectRegistration {
     Eigen::Affine3f total_transform_;
    
     int pub_counter_;
+    tf::Transform previous_transform_;
    
    
  protected:
@@ -159,6 +163,7 @@ class HandheldObjectRegistration {
                    const Eigen::Vector3f = Eigen::Vector3f(255, 0, 0));
 
     bool conditionROI(int, int, int, int, const cv::Size);
+    void getPFTransformation();
 };
 
 
