@@ -16,8 +16,9 @@ HandheldObjectRegistration::HandheldObjectRegistration():
                                            cv::ORB::HARRIS_SCORE, 31, true);
     this->voxel_weights_.clear();
     this->prev_transform_ = Eigen::Affine3f::Identity();
-    this->total_transform_ = Eigen::Affine3f::Identity();
-    this->pub_counter_ = 0;
+    this->update_counter_ = 0;
+    this->initial_transform_ = Eigen::Matrix4f::Identity();
+    this->transformation_cache_.clear();
     
     //! temporary
     this->rendering_cuboid_ = boost::shared_ptr<jsk_msgs::BoundingBox>(
@@ -124,11 +125,17 @@ void HandheldObjectRegistration::cloudCB(
        seed_point.x = pose_msg_->pose.position.x;
        seed_point.y = pose_msg_->pose.position.y;
        seed_point.z = pose_msg_->pose.position.z;
+
+       double d = pcl::distances::l2(seed_point.getVector4fMap(),
+                          prev_seed_point_.getVector4fMap());
        
-       std::cout << seed_point  << "\n";
+       this->prev_seed_point_ = seed_point;
+
+       std::cout  << "\n";
+       std::cout << seed_point  << "\t Dist: " << d << "\n";
        std::cout << pose_msg_->pose.position.x << ", " <<
           pose_msg_->pose.position.y << ", " <<
-          pose_msg_->pose.position.z << "\n";
+          pose_msg_->pose.position.z << "\n----------------\n";
 
     }
     
@@ -191,15 +198,11 @@ void HandheldObjectRegistration::cloudCB(
           pose_msg->pose.orientation.w, pose_msg->pose.orientation.x,
           pose_msg->pose.orientation.y, pose_msg->pose.orientation.z);
        transform_model.rotate(pf_quat);
-
-
-       // this->getPFTransformation();
-       
        
        if (!this->prev_points_->empty()) {
           tracker_transform =  transform_model * prev_transform_.inverse();
-          pcl::transformPointCloudWithNormals(*prev_points_,
-                                   *prev_points_, tracker_transform);
+          // pcl::transformPointCloudWithNormals(*prev_points_,
+          //                          *prev_points_, tracker_transform);
           pcl::transformPointCloudWithNormals(*target_points_,
                                               *target_points_,
                                               tracker_transform);
@@ -220,26 +223,25 @@ void HandheldObjectRegistration::cloudCB(
        struct timeval timer_start, timer_end;
        gettimeofday(&timer_start, NULL);
        
-       // this->modelUpdate(src_points, target_points_);
+       this->modelUpdate(src_points, target_points_);
 
        //! timer
        gettimeofday(&timer_end, NULL);
        double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
                        timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
        ROS_ERROR("TIME: %3.6f", delta);
-
        
        sensor_msgs::PointCloud2 ros_cloud;
        pcl::toROSMsg(*src_points, ros_cloud);
-       // pcl::toROSMsg(*align_points, ros_cloud);
        ros_cloud.header = cloud_msg->header;
        this->pub_icp_.publish(ros_cloud);
     } else {
        this->target_points_->clear();
-       // *target_points_ = *src_points;
        pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points,
                                                        *target_points_);
+       this->project3DTo2DDepth(initial_projection_, target_points_);
 
+       //! init weight
        this->point_weights_.clear();
        this->point_weights_.resize(static_cast<int>(target_points_->size()));
 
@@ -258,23 +260,29 @@ void HandheldObjectRegistration::cloudCB(
     this->prev_points_->clear();
     pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points,
                                                     *prev_points_);
+    this->project3DTo2DDepth(this->prev_projection_, this->prev_points_);
     
     std::cout << region_cloud->size() << "\t"
               << target_points_->size()  << "\n";
     ROS_INFO("Done Processing");
     
+
+    //! publish data
     sensor_msgs::PointCloud2 *ros_cloud = new sensor_msgs::PointCloud2;
     pcl::toROSMsg(*target_points_, *ros_cloud);
     ros_cloud->header = cloud_msg->header;
     this->pub_cloud_.publish(*ros_cloud);
-    
-    sensor_msgs::PointCloud2 *ros_templ = new sensor_msgs::PointCloud2;
-    pcl::toROSMsg(*region_cloud, *ros_templ);
-    ros_templ->header = cloud_msg->header;
-    if (pub_counter_++ == 30) {
+
+    /*
+    if (update_counter_++ == 1) {
+       sensor_msgs::PointCloud2 *ros_templ = new sensor_msgs::PointCloud2;
+       pcl::toROSMsg(*region_cloud, *ros_templ);
+       ros_templ->header = cloud_msg->header;
        this->pub_templ_.publish(*ros_templ);
-       pub_counter_ = 0;
+       this->update_counter_ = 0;
     }
+    */
+    
     
     jsk_msgs::BoundingBoxArray *rviz_bbox = new jsk_msgs::BoundingBoxArray;
     this->rendering_cuboid_->header = cloud_msg->header;
@@ -311,9 +319,10 @@ void HandheldObjectRegistration::modelUpdate(
     this->project3DTo2DDepth(src_projection, src_points);
 
     //! move it out***
-    ProjectionMap target_projection;
-    this->project3DTo2DDepth(target_projection, this->prev_points_);
+    ProjectionMap target_projection = this->prev_projection_;
+    // this->project3DTo2DDepth(target_projection, this->prev_points_);
 
+    
     //! fitness check
     float benchmark_fitness = this->checkRegistrationFitness(
        src_projection, src_points, target_projection, prev_points_);
@@ -364,7 +373,7 @@ void HandheldObjectRegistration::modelUpdate(
        transformPointCloudWithNormalsGPU(target_points, target_points,
                                          transform_matrix);
        */
-       pcl::transformPointCloudWithNormals(*target_points, *target_points,
+       pcl::transformPointCloudWithNormals(*prev_points_, *update_points,
                                            transform_matrix);
 
        // transformPointCloudWithNormalsGPU(target_points, target_points,
@@ -374,8 +383,7 @@ void HandheldObjectRegistration::modelUpdate(
     
     // this->modelVoxelUpdate(target_points, target_projection,
     //                        src_points, src_projection);
-    cv::waitKey(3);
-    return;
+
     
     
     ROS_INFO("\033[33m ICP \033[0m");
@@ -389,11 +397,14 @@ void HandheldObjectRegistration::modelUpdate(
     this->registrationICP(aligned_points, icp_transform,
                           update_points, src_points);
 
-    Eigen::Matrix4f final_transformation = icp_transform /* transform_matrix*/;
+    Eigen::Matrix4f final_transformation = icp_transform * transform_matrix;
     transformPointCloudWithNormalsGPU(target_points, target_points,
                                       final_transformation);
 
+    
     this->project3DTo2DDepth(target_projection, target_points);
+
+    
     // this->project3DTo2DDepth(aligned_projection, update_points);
 
     //! fitness check
@@ -416,10 +427,46 @@ void HandheldObjectRegistration::modelUpdate(
     std::cout << angle_x * (180/M_PI) << "\n";
     std::cout << angle_y * (180/M_PI)  << "\n";
     std::cout << angle_z * (180/M_PI)  << "\n";
-    
 
+
+    
     this->modelVoxelUpdate(target_points, target_projection,
                            src_points, src_projection);
+    this->initial_transform_ = initial_transform_ * final_transformation;
+    
+    if (this->update_counter_++ == 5) {
+       ROS_WARN("\033[34m\n CHECKING FOR OUTLIER \033[0m");
+       
+       pcl::PointCloud<PointNormalT>::Ptr test_points(
+          new pcl::PointCloud<PointNormalT>);
+       Eigen::Matrix4f inv = this->initial_transform_.inverse();
+       transformPointCloudWithNormalsGPU(target_points, test_points, inv);
+       
+       ProjectionMap virtual_projection;
+       this->project3DTo2DDepth(virtual_projection, test_points);
+
+       //! inverse outlier detection
+       cv::Mat outlier = cv::Mat::zeros(src_projection.rgb.size(), CV_8UC3);
+       for (int j = 0; j < virtual_projection.rgb.rows; j++) {
+          for (int i = 0; i < virtual_projection.rgb.cols; i++) {
+             int vs_index = virtual_projection.indices.at<int>(j, i);
+             int ip_index = initial_projection_.indices.at<int>(j, i);
+             if (vs_index != -1 && ip_index == -1) {
+                outlier.at<cv::Vec3b>(j, i)[1] = 255;
+             }
+          }
+       }
+       
+
+       
+       this->update_counter_ = 0;
+       
+       cv::imshow("transformed", virtual_projection.rgb);
+       cv::imshow("init", initial_projection_.rgb);
+       cv::imshow("outlier", outlier);
+    }
+
+    this->transformation_cache_.push_back(final_transformation);
     
     cv::waitKey(3);
     return;
@@ -428,6 +475,8 @@ void HandheldObjectRegistration::modelUpdate(
      * END CPU ICP
      */
 
+
+    
 
     
     // --> change name
@@ -546,6 +595,8 @@ void HandheldObjectRegistration::modelVoxelUpdate(
        *target_points, *update_model);
     std::vector<float> point_weights = this->point_weights_;
 
+    VoxelWeights voxel_weights = this->voxel_weights_;
+    
     std::cout << "\n\033[35m SIZE:  \033[0m" << update_model->size()  << "\n";
     std::cout << "\033[35m SIZE:  \033[0m" << point_weights.size()  << "\n";
     
@@ -554,6 +605,7 @@ void HandheldObjectRegistration::modelVoxelUpdate(
        for (int i = 0; i < src_projection.depth.cols; i++) {
           float t_depth = target_projection.depth.at<float>(j, i);
           float s_depth = src_projection.depth.at<float>(j, i);
+          
           int s_index = src_projection.indices.at<int>(j, i);
           int t_index = target_projection.indices.at<int>(j, i);
           
@@ -565,7 +617,6 @@ void HandheldObjectRegistration::modelVoxelUpdate(
                                        target_points->points[t_index].z);
                 if (dist < DIST_THRESH) {
                    point_weights[t_index] = this->init_weight_;
-                   
                    
                    update_model->points[t_index] = src_points->points[s_index];
                 } else {
@@ -595,15 +646,16 @@ void HandheldObjectRegistration::modelVoxelUpdate(
 
     std::cout << "\n\033[32m SIZE:  \033[0m" << update_model->size()  << "\n";
     std::cout << "\033[32m SIZE:  \033[0m" << point_weights.size()  << "\n";
+
     
     target_points->clear();
     this->point_weights_.clear();
     const float WEIGHT_THRESH = 0.5f;
     for (int i = 0; i < update_model->size(); i++) {
-       if (point_weights[i] > WEIGHT_THRESH) {
+       // if (point_weights[i] > WEIGHT_THRESH) {
           this->point_weights_.push_back(point_weights[i]);
           target_points->push_back(update_model->points[i]);
-       }
+          //}
     }
     
     // target_points->clear();
@@ -1199,7 +1251,6 @@ bool HandheldObjectRegistration::project3DTo2DDepth(
 
     std::vector<bool> visibility_flag(static_cast<int>(image_points.size()));
     for (int i = 0; i < image_points.size(); i++) {
-       visibility_flag[i] = true;
        int x = image_points[i].x;
        int y = image_points[i].y;
        if (!isnan(x) && !isnan(y) && (x >= 0 && x <= image.cols) &&
@@ -1221,6 +1272,8 @@ bool HandheldObjectRegistration::project3DTo2DDepth(
                 indices.at<int>(y, x) = i;
 
                  visibility_flag[prev_ind] = false;
+             } else {
+                visibility_flag[i] = false;
              }
           } else {
              flag.at<int>(y, x) = 1;
@@ -1230,6 +1283,8 @@ bool HandheldObjectRegistration::project3DTo2DDepth(
              
              depth_image.at<float>(y, x) = cloud->points[i].z / max_distance;
              indices.at<int>(y, x) = i;
+
+             visibility_flag[i] = true;
           }
           min_x = (x < min_x) ? x : min_x;
           min_y = (y < min_y) ? y : min_y;
@@ -1249,6 +1304,7 @@ bool HandheldObjectRegistration::project3DTo2DDepth(
     projection_map.rgb = image;
     projection_map.depth = depth_image;
     projection_map.indices = indices;
+    projection_map.visibility_flag.clear();
     projection_map.visibility_flag = visibility_flag;
     
     return true;

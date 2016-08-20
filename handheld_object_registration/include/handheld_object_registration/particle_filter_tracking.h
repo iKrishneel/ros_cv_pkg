@@ -9,6 +9,9 @@
 
 #include <sensor_msgs/PointCloud2.h>
 #include <geometry_msgs/PoseStamped.h>
+#include <tf/transform_listener.h>
+#include <tf/transform_broadcaster.h>
+#include <tf_conversions/tf_eigen.h>
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -61,16 +64,17 @@ class ParticleFilters {
     double downsampling_grid_size_;
     int counter;
     bool tracker_init_;
+    Eigen::Affine3f prev_transformation_;
    
  protected:
     ros::NodeHandle pnh_;
+   
     void onInit();
     void subscribe();
     void unsubscribe();
    
     ros::Publisher pub_cloud_;
     ros::Publisher pub_pose_;
-
     ros::Subscriber sub_cloud_;
    
  public:

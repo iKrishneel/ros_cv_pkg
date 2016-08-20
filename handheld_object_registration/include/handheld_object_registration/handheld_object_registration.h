@@ -74,6 +74,10 @@ class HandheldObjectRegistration {
     PointNormal::Ptr input_normals_;
     pcl::PointCloud<PointNormalT>::Ptr target_points_;
     pcl::PointCloud<PointNormalT>::Ptr prev_points_;
+
+    ProjectionMap initial_projection_;
+    ProjectionMap prev_projection_;
+   
     std::vector<float> point_weights_;
     VoxelWeights voxel_weights_;
    
@@ -83,22 +87,22 @@ class HandheldObjectRegistration {
 
     boost::shared_ptr<jsk_msgs::BoundingBox> rendering_cuboid_;
     sensor_msgs::CameraInfo::ConstPtr camera_info_;
-
+    cv::Ptr<cv::cuda::ORB> orb_gpu_;
+   
     /**
      * temp variable for dev
      */
-    cv::Ptr<cv::cuda::ORB> orb_gpu_;
-   
     geometry_msgs::PoseStamped::ConstPtr pose_msg_;
     ros::Subscriber screen_pt_;
     ros::Subscriber pf_pose_;
     bool pose_flag_;
     Eigen::Affine3f prev_transform_;
-    Eigen::Affine3f total_transform_;
-   
-    int pub_counter_;
+    int update_counter_;
     tf::Transform previous_transform_;
-   
+    PointT prev_seed_point_;
+
+    Eigen::Matrix4f initial_transform_;  //! cumulative transform
+    std::vector<Eigen::Matrix4f> transformation_cache_;
    
  protected:
     ros::NodeHandle pnh_;

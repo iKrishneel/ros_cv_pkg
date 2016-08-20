@@ -2,7 +2,7 @@
 #include <handheld_object_registration/particle_filter_tracking.h>
 
 ParticleFilters::ParticleFilters():
-    tracker_init_(false), downsampling_grid_size_(0.02) {
+    tracker_init_(false), downsampling_grid_size_(0.01) {
 
     std::vector<double> default_step_covariance =
        std::vector<double>(6, 0.015 * 0.015);
@@ -69,7 +69,7 @@ void ParticleFilters::onInit() {
     this->pub_cloud_ = pnh_.advertise<sensor_msgs::PointCloud2>(
        "/particle_filters/output/results", 1);
     this->pub_pose_ = pnh_.advertise<geometry_msgs::PoseStamped>(
-       "/particle_filters/output/pose", 1);
+       "/particle_filter_tracker/track_result_pose", 1);
 }
 
 void ParticleFilters::subscribe() {
@@ -113,6 +113,13 @@ void ParticleFilters::cloudCB(
        ParticleT result = tracker_->getResult();
        Eigen::Affine3f transformation = this->tracker_->toEigenMatrix(result);
 
+       tf::Transform tfTransformation;
+       tf::transformEigenToTF((Eigen::Affine3d)transformation,
+                              tfTransformation);
+       geometry_msgs::PoseStamped result_pose_stamped;
+       tf::poseTFToMsg(tfTransformation, result_pose_stamped.pose);
+       result_pose_stamped.header = cloud_msg->header;
+       
        pcl::PointCloud<PointT>::Ptr result_cloud(new pcl::PointCloud<PointT>);
        pcl::transformPointCloud<PointT>(
           *(this->tracker_->getReferenceCloud()), *result_cloud,
@@ -121,7 +128,11 @@ void ParticleFilters::cloudCB(
        sensor_msgs::PointCloud2 *ros_cloud = new sensor_msgs::PointCloud2;
        pcl::toROSMsg(*result_cloud, *ros_cloud);
        ros_cloud->header = cloud_msg->header;
+
+       this->pub_pose_.publish(result_pose_stamped);
        this->pub_cloud_.publish(*ros_cloud);
+
+       this->prev_transformation_ = transformation;
     }
 }
 
@@ -138,10 +149,15 @@ void ParticleFilters::templateCB(
 
     Eigen::Vector4f centroid;
     Eigen::Affine3f trans = Eigen::Affine3f::Identity();
-    pcl::compute3DCentroid<PointT>(*target_cloud, centroid);
-    trans.translation().matrix() = Eigen::Vector3f(centroid[0],
-                                                   centroid[1],
-                                                   centroid[2]);
+
+    if (!tracker_init_) {
+       pcl::compute3DCentroid<PointT>(*target_cloud, centroid);
+       trans.translation().matrix() = Eigen::Vector3f(centroid[0],
+                                                      centroid[1],
+                                                      centroid[2]);
+    } else {
+       trans = this->prev_transformation_;
+    }
     pcl::PointCloud<PointT>::Ptr transed_ref(new pcl::PointCloud<PointT>);
     pcl::transformPointCloud<PointT>(*target_cloud,
                                      *transed_ref, trans.inverse());
@@ -151,7 +167,7 @@ void ParticleFilters::templateCB(
                            downsampling_grid_size_);
     this->tracker_->setReferenceCloud(transed_ref_downsampled);
     this->tracker_->setTrans(trans);
-    tracker_->resetTracking();
+    // tracker_->resetTracking();
 
     tracker_init_ = true;
     
@@ -161,7 +177,7 @@ void ParticleFilters::filterPassThrough(
     const CloudConstPtr &cloud, Cloud &result) {
     pcl::PassThrough<PointT> pass;
     pass.setFilterFieldName("z");
-    pass.setFilterLimits(0.0, 10.0);
+    pass.setFilterLimits(0.0, 3.0);
     pass.setKeepOrganized(false);
     pass.setInputCloud(cloud);
     pass.filter(result);
@@ -176,8 +192,6 @@ void ParticleFilters::gridSampleApprox(
     grid.setInputCloud(cloud);
     grid.filter(result);
 }
-
-
 
 int main(int argc, char *argv[]) {
     ros::init(argc, argv, "particle_filter_tracking");
