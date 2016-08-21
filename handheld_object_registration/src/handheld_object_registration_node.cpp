@@ -5,7 +5,10 @@ HandheldObjectRegistration::HandheldObjectRegistration():
     num_threads_(16), is_init_(false), min_points_size_(100),
     weight_decay_factor_(0.75f), init_weight_(1.0f), pose_flag_(false) {
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
+    
     this->target_points_ = pcl::PointCloud<PointNormalT>::Ptr(
+       new pcl::PointCloud<PointNormalT>);
+    this->initial_points_ = pcl::PointCloud<PointNormalT>::Ptr(
        new pcl::PointCloud<PointNormalT>);
     this->prev_points_ = pcl::PointCloud<PointNormalT>::Ptr(
        new pcl::PointCloud<PointNormalT>);
@@ -239,7 +242,10 @@ void HandheldObjectRegistration::cloudCB(
        this->target_points_->clear();
        pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points,
                                                        *target_points_);
+       pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points,
+                                                       *initial_points_);
        this->project3DTo2DDepth(initial_projection_, target_points_);
+       
 
        //! init weight
        this->point_weights_.clear();
@@ -434,34 +440,69 @@ void HandheldObjectRegistration::modelUpdate(
                            src_points, src_projection);
     this->initial_transform_ = initial_transform_ * final_transformation;
     
-    if (this->update_counter_++ == 5) {
-       ROS_WARN("\033[34m\n CHECKING FOR OUTLIER \033[0m");
-       
-       pcl::PointCloud<PointNormalT>::Ptr test_points(
+    if (this->update_counter_++ > 2) {
+       pcl::PointCloud<PointNormalT>::Ptr init_trans_points(
           new pcl::PointCloud<PointNormalT>);
        Eigen::Matrix4f inv = this->initial_transform_.inverse();
-       transformPointCloudWithNormalsGPU(target_points, test_points, inv);
-       
-       ProjectionMap virtual_projection;
-       this->project3DTo2DDepth(virtual_projection, test_points);
+       transformPointCloudWithNormalsGPU(target_points, init_trans_points, inv);
 
+       //! project to initial
+       ProjectionMap inv_target_projection;
+       this->project3DTo2DDepth(inv_target_projection, init_trans_points);
+
+       //! project to previous
+       pcl::PointCloud<PointNormalT>::Ptr prev_trans_points(
+          new pcl::PointCloud<PointNormalT>);
+       inv = final_transformation.inverse();
+       transformPointCloudWithNormalsGPU(target_points, prev_trans_points, inv);
+       ProjectionMap inv_prev_projection;
+       this->project3DTo2DDepth(inv_prev_projection, prev_trans_points);
+
+       
        //! inverse outlier detection
+       std::vector<bool> prev_outlier_flag(target_points->size());
+       std::vector<bool> init_outlier_flag(target_points->size());
        cv::Mat outlier = cv::Mat::zeros(src_projection.rgb.size(), CV_8UC3);
-       for (int j = 0; j < virtual_projection.rgb.rows; j++) {
-          for (int i = 0; i < virtual_projection.rgb.cols; i++) {
-             int vs_index = virtual_projection.indices.at<int>(j, i);
-             int ip_index = initial_projection_.indices.at<int>(j, i);
-             if (vs_index != -1 && ip_index == -1) {
+       for (int j = 0; j < inv_target_projection.rgb.rows; j++) {
+          for (int i = 0; i < inv_target_projection.rgb.cols; i++) {
+             int it_index = inv_target_projection.indices.at<int>(j, i);
+             int ip_index = this->initial_projection_.indices.at<int>(j, i);
+             if (it_index != -1) {
+                init_outlier_flag[it_index] = false;
+             }
+             if (it_index != -1 && ip_index == -1) {
+                init_outlier_flag[it_index] = true;
                 outlier.at<cv::Vec3b>(j, i)[1] = 255;
+             }
+             
+             int ipp_index = inv_prev_projection.indices.at<int>(j, i);
+             int pp_index = this->prev_projection_.indices.at<int>(j, i);
+
+             if (ipp_index != -1) {
+                prev_outlier_flag[ipp_index] = false;
+             }
+             if (ipp_index != -1 && pp_index == -1) {
+                prev_outlier_flag[ipp_index] = true;
              }
           }
        }
-       
+
+       init_trans_points->clear();
+       pcl::copyPointCloud<PointNormalT, PointNormalT>(
+          *target_points, *init_trans_points);
+       target_points->clear();
+       for (int i = 0; i < init_outlier_flag.size(); i++) {
+          if (!init_outlier_flag[i] && !init_outlier_flag[i]) {
+             target_points->push_back(init_trans_points->points[i]);
+             // target_points->points[i].r = 0;
+             // target_points->points[i].b = 0;
+             // target_points->points[i].g = 255;
+          }
+       }
 
        
-       this->update_counter_ = 0;
        
-       cv::imshow("transformed", virtual_projection.rgb);
+       cv::imshow("transformed", inv_target_projection.rgb);
        cv::imshow("init", initial_projection_.rgb);
        cv::imshow("outlier", outlier);
     }

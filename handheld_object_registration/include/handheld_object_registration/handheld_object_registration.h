@@ -76,6 +76,8 @@ class HandheldObjectRegistration {
     pcl::PointCloud<PointNormalT>::Ptr prev_points_;
 
     ProjectionMap initial_projection_;
+    pcl::PointCloud<PointNormalT>::Ptr initial_points_;
+   
     ProjectionMap prev_projection_;
    
     std::vector<float> point_weights_;
