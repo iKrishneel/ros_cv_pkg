@@ -88,9 +88,6 @@ void HandheldObjectRegistration::poseCB(
     const geometry_msgs::PoseStamped::ConstPtr &pose_msg) {
     this->pose_msg_ = pose_msg;
     this->pose_flag_ = true;
-
-    this->previous_transform_ = tf::Transform::getIdentity();
-    
 }
 
 
@@ -105,15 +102,21 @@ void HandheldObjectRegistration::cloudCB(
        return;
     }
 
+    //! timer
+    struct timeval timer_start, timer_end;
+    gettimeofday(&timer_start, NULL);
+    
     ROS_INFO("\033[34m - Running Callback ... \033[0m");
     
     this->camera_info_ = cinfo_msg;
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
     this->kdtree_->setInputCloud(cloud);
-
+    
+    
     PointNormal::Ptr normals(new PointNormal);
     this->getNormals(normals, cloud);
-
+    
+    
     this->input_cloud_->clear();
     pcl::copyPointCloud<PointT, PointT>(*cloud, *input_cloud_);
     this->input_normals_->clear();
@@ -141,6 +144,32 @@ void HandheldObjectRegistration::cloudCB(
           pose_msg_->pose.position.z << "\n----------------\n";
 
     }
+
+
+    gettimeofday(&timer_start, NULL);
+    
+    //! region growing
+    pcl::PointCloud<PointNormalT>::Ptr cloud_downsampled(
+       new pcl::PointCloud<PointNormalT>);
+    this->fastSeedRegionGrowing(cloud_downsampled, seed_point,
+                                cloud, normals, 5);
+
+    gettimeofday(&timer_end, NULL);
+    double idelta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
+    ROS_ERROR("TIME: %3.6f", idelta);
+    
+    sensor_msgs::PointCloud2 *ros_cloud1 = new sensor_msgs::PointCloud2;
+    pcl::toROSMsg(*cloud_downsampled, *ros_cloud1);
+    ros_cloud1->header = cloud_msg->header;
+    this->pub_cloud_.publish(*ros_cloud1);
+
+
+    
+    return;
+    // -----------------------------------------
+    
+    
     
     this->seedRegionGrowing(region_cloud, region_normal, seed_point,
                             cloud, normals);
@@ -164,6 +193,15 @@ void HandheldObjectRegistration::cloudCB(
        src_points->push_back(pt);
     }
 
+    
+    //! timer
+    gettimeofday(&timer_end, NULL);
+    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
+    ROS_ERROR("TIME: %3.6f", delta);
+
+    return;
+    
     /**
      * DEBUG
     std::clock_t start;
@@ -267,6 +305,8 @@ void HandheldObjectRegistration::cloudCB(
     pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points,
                                                     *prev_points_);
     this->project3DTo2DDepth(this->prev_projection_, this->prev_points_);
+    
+
     
     std::cout << region_cloud->size() << "\t"
               << target_points_->size()  << "\n";
@@ -1133,10 +1173,11 @@ void HandheldObjectRegistration::seedCorrespondingRegion(
     Eigen::Vector4f seed_point = cloud->points[seed_index].getVector4fMap();
     Eigen::Vector4f seed_normal = normals->points[
        seed_index].getNormalVector4fMap();
-   
+    
     std::vector<int> neigbor_indices;
     this->getPointNeigbour<int>(neigbor_indices,
                                 cloud->points[parent_index], 18);
+
 
     int neigb_lenght = static_cast<int>(neigbor_indices.size());
     std::vector<int> merge_list(neigb_lenght);
@@ -1200,7 +1241,6 @@ void HandheldObjectRegistration::getNormals(
        ROS_ERROR("-Input cloud is empty in normal estimation");
        return;
     }
-    
     pcl::IntegralImageNormalEstimation<PointT, NormalT> ne;
     ne.setNormalEstimationMethod(ne.AVERAGE_3D_GRADIENT);
     ne.setMaxDepthChangeFactor(0.02f);
@@ -1228,6 +1268,7 @@ void HandheldObjectRegistration::getPointNeigbour(
          seed_point, K, neigbor_indices, point_squared_distance);
     }
 }
+
 
 bool HandheldObjectRegistration::project3DTo2DDepth(
     ProjectionMap &projection_map,
@@ -1351,8 +1392,497 @@ bool HandheldObjectRegistration::project3DTo2DDepth(
     return true;
 }
 
+
 /**
- * DEGUB ONE
+ * FIND BETTER WAY
+ */
+bool HandheldObjectRegistration::project3DTo2DDepth(
+    ProjectionMap &projection_map,
+    const pcl::PointCloud<PointT>::Ptr cloud, const float max_distance) {
+    if (cloud->empty()) {
+       ROS_ERROR("- Empty cloud. Cannot project 3D to 2D depth.");
+       return false;
+    }
+    cv::Mat object_points = cv::Mat(static_cast<int>(cloud->size()), 3, CV_32F);
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(this->num_threads_)
+#endif
+    for (int i = 0; i < cloud->size(); i++) {
+       object_points.at<float>(i, 0) = cloud->points[i].x;
+       object_points.at<float>(i, 1) = cloud->points[i].y;
+       object_points.at<float>(i, 2) = cloud->points[i].z;
+    }
+    float K[9];
+    float R[9];
+    for (int i = 0; i < 9; i++) {
+       K[i] = camera_info_->K[i];
+       R[i] = camera_info_->R[i];
+    }
+
+    cv::Mat camera_matrix = cv::Mat(3, 3, CV_32F, K);
+    cv::Mat rotation_matrix = cv::Mat(3, 3, CV_32F, R);
+    float tvec[3];
+    tvec[0] = camera_info_->P[3];
+    tvec[1] = camera_info_->P[7];
+    tvec[2] = camera_info_->P[11];
+    cv::Mat translation_matrix = cv::Mat(3, 1, CV_32F, tvec);
+    
+    float D[5];
+    for (int i = 0; i < 5; i++) {
+       D[i] = camera_info_->D[i];
+    }
+    cv::Mat distortion_model = cv::Mat(5, 1, CV_32F, D);
+    cv::Mat rvec;
+    cv::Rodrigues(rotation_matrix, rvec);
+    
+    std::vector<cv::Point2f> image_points;
+    cv::projectPoints(object_points, rvec, translation_matrix,
+                      camera_matrix, distortion_model, image_points);
+    
+    cv::Mat image = cv::Mat::zeros(camera_info_->height,
+                                   camera_info_->width, CV_8UC3);
+    cv::Mat depth_image = cv::Mat::zeros(image.size(), CV_32F);
+    cv::Mat indices = cv::Mat(image.size(), CV_32S);
+    
+    cv::Mat flag = cv::Mat(image.size(), CV_32S);
+    for (int j = 0; j < image.rows; j++) {
+       for (int i = 0; i < image.cols; i++) {
+          indices.at<int>(j, i) = -1;
+          flag.at<int>(j, i) = 0;
+       }
+    }
+
+    int min_x = std::numeric_limits<int>::max();
+    int min_y = std::numeric_limits<int>::max();
+    int max_x = 0;
+    int max_y = 0;
+
+    std::vector<bool> visibility_flag(static_cast<int>(image_points.size()));
+    for (int i = 0; i < image_points.size(); i++) {
+       int x = image_points[i].x;
+       int y = image_points[i].y;
+       if (!isnan(x) && !isnan(y) && (x >= 0 && x <= image.cols) &&
+           (y >= 0 && y <= image.rows)) {
+          //! occlusion points
+          if (flag.at<int>(y, x) == 1) {
+             int prev_ind = indices.at<int>(y, x);
+             float prev_depth = cloud->points[prev_ind].z;
+             float curr_depth = cloud->points[i].z;
+             if (curr_depth < prev_depth && curr_depth > 0.0f &&
+                 !isnan(curr_depth)) {
+                // TODO(NORMAL CHECK):  if normal deviates more
+                // reject
+                image.at<cv::Vec3b>(y, x)[2] = cloud->points[i].r;
+                image.at<cv::Vec3b>(y, x)[1] = cloud->points[i].g;
+                image.at<cv::Vec3b>(y, x)[0] = cloud->points[i].b;
+
+                depth_image.at<float>(y, x) = cloud->points[i].z / max_distance;
+                indices.at<int>(y, x) = i;
+
+                 visibility_flag[prev_ind] = false;
+             } else {
+                visibility_flag[i] = false;
+             }
+          } else {
+             flag.at<int>(y, x) = 1;
+             image.at<cv::Vec3b>(y, x)[2] = cloud->points[i].r;
+             image.at<cv::Vec3b>(y, x)[1] = cloud->points[i].g;
+             image.at<cv::Vec3b>(y, x)[0] = cloud->points[i].b;
+             
+             depth_image.at<float>(y, x) = cloud->points[i].z / max_distance;
+             indices.at<int>(y, x) = i;
+
+             visibility_flag[i] = true;
+          }
+          min_x = (x < min_x) ? x : min_x;
+          min_y = (y < min_y) ? y : min_y;
+          max_x = (x > max_x) ? x : max_x;
+          max_y = (y > max_y) ? y : max_y;
+       }
+    }
+    int width = max_x - min_x;
+    int height = max_y - min_y;
+    cv::Rect rect(min_x, min_y, width, height);
+    
+    this->conditionROI(min_x, min_y, width, height, image.size());
+    projection_map.x = min_x;
+    projection_map.y = min_y;
+    projection_map.width = width;
+    projection_map.height = height;
+    projection_map.rgb = image;
+    projection_map.depth = depth_image;
+    projection_map.indices = indices;
+    projection_map.visibility_flag.clear();
+    projection_map.visibility_flag = visibility_flag;
+    
+    return true;
+}
+
+
+void HandheldObjectRegistration::fastSeedRegionGrowing(
+    pcl::PointCloud<PointNormalT>::Ptr cloud_downsampled,
+    PointT seed_point, const PointCloud::Ptr cloud,
+    const PointNormal::Ptr normals, const int w_size) {
+    if (cloud->empty() || cloud->size() != normals->size() ||
+        isnan(seed_point.x) || isnan(seed_point.y) || isnan(seed_point.z)) {
+       return;
+    }
+    const double MAX_DISTANCE = 2.0f;
+    /*
+
+    pcl::PointCloud<PointNormalT>::Ptr cloud_points(
+       new pcl::PointCloud<PointNormalT>);
+    for (int i = 0; i < cloud->size(); i++) {
+       if (cloud->points[i].z < MAX_DISTANCE) {
+          PointNormalT pt;
+          pt.x = cloud->points[i].x;
+          pt.y = cloud->points[i].y;
+          pt.z = cloud->points[i].z;
+          pt.r = cloud->points[i].r;
+          pt.g = cloud->points[i].g;
+          pt.b = cloud->points[i].b;
+          pt.normal_x = normals->points[i].normal_x;
+          pt.normal_y = normals->points[i].normal_y;
+          pt.normal_z = normals->points[i].normal_z;
+          cloud_points->push_back(pt);
+       }
+    }
+    */
+    const float leaf_size = 0.015f;
+    pcl::PointCloud<PointT>::Ptr cloud_downsample(
+       new pcl::PointCloud<PointT>);
+    pcl::VoxelGrid<PointT> voxel_grid;
+    voxel_grid.setInputCloud(cloud);
+    voxel_grid.setLeafSize(leaf_size, leaf_size, leaf_size);
+    voxel_grid.setFilterFieldName("z");
+    voxel_grid.setFilterLimits(0.0, MAX_DISTANCE);
+    voxel_grid.filter(*cloud_downsample);
+    
+    ProjectionMap projection_map;
+    this->project3DTo2DDepth(projection_map, cloud_downsample);
+
+    // PointNormal::Ptr normal_downsample(new PointNormal);
+    // normal_downsample->resize(static_cast<int>(cloud_downsample->size()));
+    
+    std::vector<std::vector<int> > neigbor_indices(
+       static_cast<int>(cloud_downsample->size()));
+    const int pixel_len = 10;
+    Eigen::Vector4f seed_pt = seed_point.getVector4fMap();
+    seed_pt(3) = 0.0f;
+    int seed_index = -1;
+    
+    const int in_dim = static_cast<int>(cloud_downsample->size());
+    int *labels = reinterpret_cast<int*>(std::malloc(sizeof(int) * in_dim));
+
+    cloud_downsampled->clear();
+    cloud_downsampled->resize(static_cast<int>(cloud_downsample->size()));
+
+    double min_dist = DBL_MAX;
+    for (int j = projection_map.y; j < projection_map.height +
+            projection_map.y; j++) {
+       for (int i = projection_map.x; i < projection_map.width +
+               projection_map.x; i++) {
+          int index = projection_map.indices.at<int>(j, i);
+          if (index != -1) {
+             
+             // normal_downsample->points[index] =
+             NormalT n = normals->points[i + (j * camera_info_->width)];
+             PointNormalT pt;
+             pt.x = cloud_downsample->points[index].x;
+             pt.y = cloud_downsample->points[index].y;
+             pt.z = cloud_downsample->points[index].z;
+             pt.r = cloud_downsample->points[index].r;
+             pt.g = cloud_downsample->points[index].g;
+             pt.b = cloud_downsample->points[index].b;
+             pt.normal_x = n.normal_x;
+             pt.normal_y = n.normal_y;
+             pt.normal_z = n.normal_z;
+             cloud_downsampled->points[index] = pt;
+             
+             // std::vector<int> n_indices;
+             for (int y = -pixel_len; y <= pixel_len; y+=1) {
+                for (int x = -pixel_len; x <= pixel_len; x+=1) {
+                   int idx = projection_map.indices.at<int>(j+y, i+x);
+                   if (idx != -1) {
+                      float d = std::fabs(projection_map.depth.at<float>(j, i)-
+                                          projection_map.depth.at<float>(j+y, i+x));
+                      if (d < 0.05f) {
+                         // std::cout << idx  << ", ";
+                         // n_indices.push_back(idx);
+
+                         neigbor_indices[index].push_back(idx);
+                         
+                      }
+                   }
+                }
+             }
+             // neigbor_indices[index] =  n_indices;
+
+             //! point of seed point
+             Eigen::Vector4f p = cloud_downsample->points[
+                index].getVector4fMap();
+             p(3) = 0.0f;
+             double d = pcl::distances::l2(seed_pt, p);
+             if (d < min_dist) {
+                min_dist = d;
+                seed_index = index;
+             }
+             
+             labels[index] = -1;
+          }
+       }
+    }
+    
+    if (seed_index == -1) {
+       ROS_ERROR("SEED INDEX IS -1");
+       return;
+    }
+    seed_point = cloud_downsample->points[seed_index];
+    labels[seed_index] = 1;
+
+    this->fastSeedCorrespondingRegion(labels, cloud_downsampled,
+                                      neigbor_indices, seed_index, seed_index);
+
+    pcl::PointCloud<PointNormalT>::Ptr temp_points(
+       new pcl::PointCloud<PointNormalT>);
+
+    for (int i = 0; i < in_dim; i++) {
+       if (labels[i] != -1) {
+          temp_points->push_back(cloud_downsampled->points[i]);
+       }
+    }
+
+
+    std::cout << "FINAL: " << temp_points->size()  << "\n";
+    
+    cloud_downsampled->clear();
+    pcl::copyPointCloud<PointNormalT, PointNormalT>(*temp_points,
+                                                    *cloud_downsampled);
+    
+    free(labels);
+    
+    // cv::imshow("rgb", projection_map.rgb);
+    // cv::waitKey(3);
+    
+    
+    return;
+    
+
+
+    
+    const int wsize = std::floor(w_size / 2);
+    const int im_width = this->camera_info_->width;
+    const int im_height = this->camera_info_->height;
+    
+    const int num_points = std::ceil(im_width / w_size) *
+       std::ceil(im_height / w_size);
+    
+    // pcl::PointCloud<PointNormalT>::Ptr cloud_downsampled(
+    //    new pcl::PointCloud<PointNormalT>);
+    cloud_downsampled->clear();
+    cloud_downsampled->resize(num_points);
+    std::vector<cv::Point2i> point_indices2D(num_points);
+    std::vector<double> distance_to_seed(num_points);
+
+    cv::Mat test = cv::Mat::zeros(480, 640, CV_8UC3);
+    for (int j = wsize; j < im_height - wsize; j += w_size) {
+       for (int i = wsize; i < im_width - wsize; i += w_size) {
+          int pt_index = i + (j * im_width);
+
+          PointT point = cloud->points[pt_index];
+          NormalT normal = normals->points[pt_index];
+          
+          if (isnan(point.x) || isnan(point.y) || isnan(point.z)) {
+             int temp_count = 0;
+             for (int y = -wsize; y <= wsize; y++) {
+                for (int x = -wsize; x <= wsize; x++) {
+                   int s = i + x;
+                   int t = j + y;
+                   if ((s >= wsize && s < im_width) &&
+                       (t >= wsize && t < im_height)) {
+                      int idx = ((s-wsize)/w_size) +
+                         (((t-wsize)/w_size) * (im_width/w_size));
+
+                      PointT pt = cloud->points[idx];
+                      if (!isnan(pt.x) && !isnan(pt.y) && !isnan(pt.z)) {
+                         point = pt;
+                         normal = normals->points[idx];
+                      }
+                   }
+                }
+             }
+          }
+
+          if (!isnan(point.x) && !isnan(point.y) && !isnan(point.z)) {
+          
+             PointNormalT pt;
+             pt.x = point.x;
+             pt.y = point.y;
+             pt.z = point.z;
+             pt.r = point.r;
+             pt.g = point.g;
+             pt.b = point.b;
+             pt.normal_x = normal.normal_x;
+             pt.normal_y = normal.normal_y;
+             pt.normal_z = normal.normal_z;
+
+             int icounter = ((i - wsize)/w_size) +
+                (((j - wsize)/w_size) * (im_width/w_size));
+
+             double d = pcl::distances::l2(point.getVector4fMap(),
+                                           seed_point.getVector4fMap());
+             distance_to_seed[icounter] = d;
+          
+             cloud_downsampled->points[icounter] = pt;
+             point_indices2D[icounter] = cv::Point2i(i, j);
+          
+          
+             std::vector<int> n_indices;
+             for (int y = -w_size; y <= w_size; y += w_size) {
+                for (int x = -w_size; x <= w_size; x += w_size) {
+                   int s = i + x;
+                   int t = j + y;
+                   if ((s >= wsize && s < im_width) &&
+                       (t >= wsize && t < im_height)) {
+                      int idx = ((s-wsize)/w_size) +
+                         (((t-wsize)/w_size) * (im_width/w_size));
+                      n_indices.push_back(idx);
+                      test.at<cv::Vec3b>(t, s)[1] = 255;
+                   }
+                }
+             }
+             // test.at<cv::Vec3b>(j, i)[0] = 255;
+             // cv::namedWindow("debug", cv::WINDOW_NORMAL);
+             // cv::imshow("debug", test);
+             // cv::waitKey(0);
+          
+             neigbor_indices[icounter] = n_indices;
+             icounter++;
+             n_indices.clear();
+          }
+       }
+    }
+    /*
+    const int in_dim = static_cast<int>(cloud_downsampled->size());
+    int *labels = reinterpret_cast<int*>(malloc(sizeof(int) * in_dim));
+    
+    double min_dist = DBL_MAX;
+    for (int i = 0; i < distance_to_seed.size(); i++) {
+       if (distance_to_seed[i] < min_dist) {
+          seed_index = i;
+          min_dist = distance_to_seed[i];
+       }
+       labels[i] = -1;
+    }
+    */
+    if (seed_index == -1) {
+       ROS_ERROR("SEED POINT NOT FOUND");
+       return;
+    }
+    PointNormalT seeded_point = cloud_downsampled->points[seed_index];
+    labels[seed_index] = 1;
+
+    this->fastSeedCorrespondingRegion(labels, cloud_downsampled,
+                                      neigbor_indices, seed_index, seed_index);
+
+    pcl::PointCloud<PointNormalT>::Ptr temp(
+    new pcl::PointCloud<PointNormalT>);
+    for (int i = 0; i < in_dim; i++) {
+       if (labels[i] != -1) {
+          temp->push_back(cloud_downsampled->points[i]);
+       }
+    }
+    cloud_downsampled->clear();
+    *cloud_downsampled = *temp;
+    
+    ROS_WARN("\033[34m COMPLETED GROWING\033[0m");
+}
+
+void HandheldObjectRegistration::fastSeedCorrespondingRegion(
+    int *labels, const pcl::PointCloud<PointNormalT>::Ptr cloud,
+    const std::vector<std::vector<int> > neigbhor_list,
+    const int parent_index, const int seed_index) {
+    Eigen::Vector4f seed_point = cloud->points[seed_index].getVector4fMap();
+    Eigen::Vector4f seed_normal = cloud->points[
+       seed_index].getNormalVector4fMap();
+    
+    std::vector<int> neigbor_indices = neigbhor_list[parent_index];
+    
+    int neigb_lenght = static_cast<int>(neigbor_indices.size());
+    std::vector<int> merge_list(neigb_lenght);
+    merge_list[0] = -1;
+    
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(this->num_threads_) \
+    shared(merge_list, labels)
+#endif
+    for (int i = 0; i < neigbor_indices.size(); i++) {
+        int index = neigbor_indices[i];
+        if (index != parent_index && labels[index] == -1) {
+            Eigen::Vector4f parent_pt = cloud->points[
+                parent_index].getVector4fMap();
+            Eigen::Vector4f child_pt = cloud->points[index].getVector4fMap();
+            Eigen::Vector4f child_norm = cloud->points[
+                index].getNormalVector4fMap();
+            if (this->seedVoxelConvexityCriteria(
+                   seed_point, seed_normal, parent_pt, child_pt,
+                   child_norm, -0.01f) == 1) {
+                merge_list[i] = index;
+                labels[index] = 1;
+            } else {
+                merge_list[i] = -1;
+            }
+        } else {
+            merge_list[i] = -1;
+        }
+    }
+
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(this->num_threads_) schedule(guided, 1)
+#endif
+    for (int i = 0; i < merge_list.size(); i++) {
+        int index = merge_list[i];
+        if (index != -1) {
+           fastSeedCorrespondingRegion(labels, cloud, neigbhor_list,
+                                       index, seed_index);
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+bool HandheldObjectRegistration::conditionROI(
+    int x, int y, int width, int height, const cv::Size image_size) {
+    if (x > image_size.width || y > image_size.height) {
+       return false;
+    }
+    
+    x = (x < 0) ? 0 : x;
+    y = (y < 0) ? 0 : y;
+    x = (x > image_size.width) ? image_size.width : x;
+    y = (y > image_size.height) ? image_size.height : y;
+    width = (width + x > image_size.width) ?
+       (width - ((width + x) - image_size.width)) : width;
+    height = (height + y > image_size.height) ?
+       (height - ((height + y) - image_size.height)) : height;
+
+    return true;
+}
+
+
+
+
+/**
+ * DEGUB FUNCTIONS ONLY
  */
 void HandheldObjectRegistration::plotPlane(
     pcl::PointCloud<PointNormalT>::Ptr cloud, const Eigen::Vector4f param,
@@ -1378,24 +1908,6 @@ void HandheldObjectRegistration::plotPlane(
     }
 }
 
-bool HandheldObjectRegistration::conditionROI(
-    int x, int y, int width, int height, const cv::Size image_size) {
-    if (x > image_size.width || y > image_size.height) {
-       return false;
-    }
-    
-    x = (x < 0) ? 0 : x;
-    y = (y < 0) ? 0 : y;
-    x = (x > image_size.width) ? image_size.width : x;
-    y = (y > image_size.height) ? image_size.height : y;
-    width = (width + x > image_size.width) ?
-       (width - ((width + x) - image_size.width)) : width;
-    height = (height + y > image_size.height) ?
-       (height - ((height + y) - image_size.height)) : height;
-
-    return true;
-}
-
 void HandheldObjectRegistration::getPFTransformation() {
     tf::TransformListener tf_listener;
     tf::StampedTransform transform;
@@ -1404,7 +1916,8 @@ void HandheldObjectRegistration::getPFTransformation() {
     std::string parent_frame = "/track_result";
     Eigen::Affine3f transform_model = Eigen::Affine3f::Identity();
     tf::Transform update_transform;
-
+    std::vector<int> temp;
+    
     bool wft_ok = tf_listener.waitForTransform(
        child_frame, parent_frame, now, ros::Duration(1));
     if (!wft_ok) {
@@ -1439,6 +1952,7 @@ void HandheldObjectRegistration::getPFTransformation() {
 
     this->previous_transform_ = update_transform;
 }
+
 
 int main(int argc, char *argv[]) {
     ros::init(argc, argv, "handheld_object_registration");
