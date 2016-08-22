@@ -136,28 +136,32 @@ void HandheldObjectRegistration::cloudCB(
 
     }
 
-    PointCloud::Ptr region_cloud(new PointCloud);
-    PointNormal::Ptr region_normal(new PointNormal);
-    
-    this->seedRegionGrowing(region_cloud, region_normal, seed_point,
-                            cloud, normals);
+    // PointCloud::Ptr region_cloud(new PointCloud);
+    // PointNormal::Ptr region_normal(new PointNormal);
 
-    //! delete this later
     pcl::PointCloud<PointNormalT>::Ptr src_points(
        new pcl::PointCloud<PointNormalT>);
-    for (int i = 0; i < region_cloud->size(); i++) {
-       PointNormalT pt;
-       pt.x = region_cloud->points[i].x;
-       pt.y = region_cloud->points[i].y;
-       pt.z = region_cloud->points[i].z;
-       pt.r = region_cloud->points[i].r;
-       pt.g = region_cloud->points[i].g;
-       pt.b = region_cloud->points[i].b;
-       pt.normal_x = region_normal->points[i].normal_x;
-       pt.normal_y = region_normal->points[i].normal_y;
-       pt.normal_z = region_normal->points[i].normal_z;
-       src_points->push_back(pt);
-    }
+    this->seedRegionGrowing(
+       // region_cloud, region_normal,
+       src_points,
+       seed_point,
+       cloud, normals);
+
+    //! delete this later
+
+    // for (int i = 0; i < region_cloud->size(); i++) {
+    //    PointNormalT pt;
+    //    pt.x = region_cloud->points[i].x;
+    //    pt.y = region_cloud->points[i].y;
+    //    pt.z = region_cloud->points[i].z;
+    //    pt.r = region_cloud->points[i].r;
+    //    pt.g = region_cloud->points[i].g;
+    //    pt.b = region_cloud->points[i].b;
+    //    pt.normal_x = region_normal->points[i].normal_x;
+    //    pt.normal_y = region_normal->points[i].normal_y;
+    //    pt.normal_z = region_normal->points[i].normal_z;
+    //    src_points->push_back(pt);
+    // }
 
     
     //! timer
@@ -273,7 +277,7 @@ void HandheldObjectRegistration::cloudCB(
     
 
     
-    std::cout << region_cloud->size() << "\t"
+    std::cout << src_points->size() << "\t"
               << target_points_->size()  << "\n";
     ROS_INFO("Done Processing");
     
@@ -305,8 +309,8 @@ void HandheldObjectRegistration::cloudCB(
     delete rviz_bbox;
     pcl::PointCloud<PointNormalT>().swap(*src_points);
     PointCloud().swap(*cloud);
-    PointCloud().swap(*region_cloud);
-    PointNormal().swap(*region_normal);
+    // PointCloud().swap(*region_cloud);
+    // PointNormal().swap(*region_normal);
     
     // is_init_ = false;
 }
@@ -1092,7 +1096,8 @@ void HandheldObjectRegistration::symmetricPlane(
 }
 
 bool HandheldObjectRegistration::seedRegionGrowing(
-    PointCloud::Ptr out_cloud, PointNormal::Ptr out_normals,
+    // PointCloud::Ptr out_cloud, PointNormal::Ptr out_normals,
+    pcl::PointCloud<PointNormalT>::Ptr src_points,
     const PointT seed_point, const PointCloud::Ptr cloud,
     PointNormal::Ptr normals) {
     if (cloud->empty() || normals->size() != cloud->size()) {
@@ -1121,20 +1126,33 @@ bool HandheldObjectRegistration::seedRegionGrowing(
        labels[i] = -1;
     }
 
-    temp_counter = 0;
+
     this->seedCorrespondingRegion(labels, cloud, normals,
                                   seed_index, seed_index);
 
-    std::cout << "TEMP: " << temp_counter  << "\n";
-
-    out_cloud->clear();
-    out_normals->clear();
+    // out_cloud->clear();
+    // out_normals->clear();
+    src_points->clear();
+    // pcl::PointCloud<PointNormalT>::Ptr src_points(
+    //    new pcl::PointCloud<PointNormalT>);
     for (int i = 0; i < in_dim; i++) {
        if (labels[i] != -1) {
-          out_cloud->push_back(cloud->points[i]);
-          out_normals->push_back(normals->points[i]);
+          // out_cloud->push_back(cloud->points[i]);
+          // out_normals->push_back(normals->points[i]);
+          PointNormalT pt;
+          pt.x = cloud->points[i].x;
+          pt.y = cloud->points[i].y;
+          pt.z = cloud->points[i].z;
+          pt.r = cloud->points[i].r;
+          pt.g = cloud->points[i].g;
+          pt.b = cloud->points[i].b;
+          pt.normal_x = normals->points[i].normal_x;
+          pt.normal_y = normals->points[i].normal_y;
+          pt.normal_z = normals->points[i].normal_z;
+          src_points->push_back(pt);
        }
     }
+
     free(labels);
     return true;
 }
@@ -1145,8 +1163,6 @@ void HandheldObjectRegistration::seedCorrespondingRegion(
     Eigen::Vector4f seed_point = cloud->points[seed_index].getVector4fMap();
     Eigen::Vector4f seed_normal = normals->points[
        seed_index].getNormalVector4fMap();
-
-    temp_counter++;
     
     std::vector<int> neigbor_indices;
     this->getPointNeigbour<int>(neigbor_indices,

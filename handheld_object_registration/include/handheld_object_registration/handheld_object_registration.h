@@ -102,7 +102,6 @@ class HandheldObjectRegistration {
     int update_counter_;
     tf::Transform previous_transform_;
     PointT prev_seed_point_;
-   int temp_counter;
 
    
     Eigen::Matrix4f initial_transform_;  //! cumulative transform
@@ -141,7 +140,8 @@ class HandheldObjectRegistration {
                           const pcl::PointCloud<PointNormalT>::Ptr,
                           const ProjectionMap);
    
-    bool seedRegionGrowing(PointCloud::Ptr, PointNormal::Ptr,
+    bool seedRegionGrowing(// PointCloud::Ptr, PointNormal::Ptr,
+                           pcl::PointCloud<PointNormalT>::Ptr,
                            const PointT, const PointCloud::Ptr,
                            PointNormal::Ptr);
     void seedCorrespondingRegion(int *, const PointCloud::Ptr,
