@@ -106,7 +106,7 @@ void HandheldObjectRegistration::cloudCB(
     
     //! timer
     struct timeval timer_start, timer_end;
-    gettimeofday(&timer_start, NULL);
+    // gettimeofday(&timer_start, NULL);
 
     this->camera_info_ = cinfo_msg;
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
@@ -139,6 +139,25 @@ void HandheldObjectRegistration::cloudCB(
        ROS_ERROR("SEED POINT IS NAN");
        return;
     }
+
+    std::cout << screen_msg_.point.x  << "\t" << screen_msg_.point.y << "\n";
+    gettimeofday(&timer_start, NULL);
+    
+    getObjectRegion(cloud, normals, seed_point);
+
+    gettimeofday(&timer_end, NULL);
+    double idelta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
+    ROS_ERROR("TIME: %3.6f", idelta);
+
+    
+    sensor_msgs::PointCloud2 ros_cloud1;
+    pcl::toROSMsg(*cloud, ros_cloud1);
+    ros_cloud1.header = cloud_msg->header;
+    this->pub_icp_.publish(ros_cloud1);
+    
+    return;
+    
     
     pcl::PointCloud<PointNormalT>::Ptr src_points(
        new pcl::PointCloud<PointNormalT>);
@@ -1466,44 +1485,61 @@ void HandheldObjectRegistration::getObjectRegion(
     std::vector<std::vector<int> > neigbhor_list(cloud->size());
 
     int seed_index = -1;
-    double min_distance = DBL_MAX;
-    
-// #ifdef _OPENMP
-// #pragma omp parallel for num_threads(this->num_threads_)
-// #endif
-    for (int j = 0; j < this->camera_info_->height; j++) {
-       for (int i = 0; i < this->camera_info_->width; i++) {
-          int index = i + (j * camera_info_->width);
-          for (int y = -1; y <= 1; y++) {
-             for (int x = -1; x <= 1; x++) {
-                if ((i+x >= 0 && i+x < camera_info_->width) &&
-                    (j+y >= 0 && j+y < camera_info_->height)) {
-                   int ind = (i+x) + ((j+y) * camera_info_->width);
-                   neigbhor_list[index].push_back(ind);
-                }
-             }
-          }
+    double min_distance = 0.05 * 0.05;
 
-          double d = pcl::distances::l2(seed_pt.getVector4fMap(),
-                                        cloud->points[index].getVector4fMap());
-          if (d < min_distance) {
-             min_distance = d;
-             seed_index = index;
+    Eigen::Vector4f in_seed = seed_pt.getVector4fMap();
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(8)
+#endif
+    for (int i = 0; i < cloud->size(); i+=3) {
+       int index = i;
+       if (!isnan(cloud->points[i].x) &&
+           !isnan(cloud->points[i].y) &&
+           !isnan(cloud->points[i].z)) {
+          if (cloud->points[index].z < 2.0f) {
+             
+             // double d = pcl::distances::l2(
+             //    in_seed, cloud->points[index].getVector4fMap());
+
+             double dist = DBL_MAX;
+             dist = std::pow(seed_pt.x - cloud->points[index].x, 2) +
+                std::pow(seed_pt.y - cloud->points[index].y, 2) +
+                std::pow(seed_pt.z - cloud->points[index].z, 2);
+             
+             
+             if (dist < min_distance) {
+                min_distance = dist;
+                seed_index = index;
+             }
           }
        }
     }
-
     if (seed_index == -1) {
        ROS_ERROR("INDEX IS NAN");
        return;
     }
+
     
     Eigen::Vector4f seed_point = cloud->points[seed_index].getVector4fMap();
     Eigen::Vector4f seed_normal = normals->points[
        seed_index].getNormalVector4fMap();
-
+    
     std::vector<int> processing_list = neigbhor_list[seed_index];
     std::vector<int> labels(static_cast<int>(cloud->size()), -1);
+
+    const int window_size = 3;
+    const int wsize = window_size * window_size;
+    const int lenght = std::floor(window_size/3);
+
+    processing_list.clear();
+    for (int j = -lenght; j <= lenght; j++) {
+       for (int i = -lenght; i <= lenght; i++) {
+          int index = (seed_index + (j * camera_info_->width)) + i;
+          if (index >= 0 && index < cloud->size()) {
+             processing_list.push_back(index);
+          }
+       }
+    }
     
     std::vector<int> temp_list;
     while (true) {
@@ -1521,8 +1557,17 @@ void HandheldObjectRegistration::getObjectRegion(
              if (this->seedVoxelConvexityCriteria(
                     seed_point, seed_normal, seed_point, c, n, -0.01) == 1) {
                 labels[idx] = 1;
-                temp_list.insert(temp_list.end(), neigbhor_list[idx].begin(),
-                                 neigbhor_list[idx].end());
+
+                for (int j = -lenght; j <= lenght; j++) {
+                   for (int k = -lenght; k <= lenght; k++) {
+                      int index = (idx + (j * camera_info_->width)) + k;
+                      if (index >= 0 && index < cloud->size()) {
+                         temp_list.push_back(index);
+                      }
+                   }
+                }
+                // temp_list.insert(temp_list.end(), neigbhor_list[idx].begin(),
+                //                  neigbhor_list[idx].end());
              }
           }
        }
