@@ -140,8 +140,7 @@ class HandheldObjectRegistration {
                           const pcl::PointCloud<PointNormalT>::Ptr,
                           const ProjectionMap);
    
-    bool seedRegionGrowing(// PointCloud::Ptr, PointNormal::Ptr,
-                           pcl::PointCloud<PointNormalT>::Ptr,
+    bool seedRegionGrowing(pcl::PointCloud<PointNormalT>::Ptr,
                            const PointT, const PointCloud::Ptr,
                            PointNormal::Ptr);
     void seedCorrespondingRegion(int *, const PointCloud::Ptr,
@@ -183,6 +182,10 @@ class HandheldObjectRegistration {
                             const pcl::PointCloud<PointT>::Ptr,
                             const float = 1.0f);
    
+
+
+    void getObjectRegion(PointCloud::Ptr, PointNormal::Ptr,
+                         int, int);
    
     //! debug functions
     void plotPlane(pcl::PointCloud<PointNormalT>::Ptr, const Eigen::Vector4f,

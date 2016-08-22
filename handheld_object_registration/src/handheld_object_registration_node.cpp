@@ -135,35 +135,26 @@ void HandheldObjectRegistration::cloudCB(
           pose_msg_->pose.position.z << "\n----------------\n";
 
     }
-
-    // PointCloud::Ptr region_cloud(new PointCloud);
-    // PointNormal::Ptr region_normal(new PointNormal);
-
-    pcl::PointCloud<PointNormalT>::Ptr src_points(
-       new pcl::PointCloud<PointNormalT>);
-    this->seedRegionGrowing(
-       // region_cloud, region_normal,
-       src_points,
-       seed_point,
-       cloud, normals);
-
-    //! delete this later
-
-    // for (int i = 0; i < region_cloud->size(); i++) {
-    //    PointNormalT pt;
-    //    pt.x = region_cloud->points[i].x;
-    //    pt.y = region_cloud->points[i].y;
-    //    pt.z = region_cloud->points[i].z;
-    //    pt.r = region_cloud->points[i].r;
-    //    pt.g = region_cloud->points[i].g;
-    //    pt.b = region_cloud->points[i].b;
-    //    pt.normal_x = region_normal->points[i].normal_x;
-    //    pt.normal_y = region_normal->points[i].normal_y;
-    //    pt.normal_z = region_normal->points[i].normal_z;
-    //    src_points->push_back(pt);
-    // }
+    if (isnan(seed_point.x) || isnan(seed_point.y) ||isnan(seed_point.z)) {
+       ROS_ERROR("SEED POINT IS NAN");
+       return;
+    }
+    std::cout << seed_point  << "\n";
+    getObjectRegion(cloud, normals, screen_msg_.point.x, screen_msg_.point.y);
 
     
+    sensor_msgs::PointCloud2 *ros_cloud1 = new sensor_msgs::PointCloud2;
+    pcl::toROSMsg(*cloud, *ros_cloud1);
+    ros_cloud1->header = cloud_msg->header;
+    this->pub_cloud_.publish(*ros_cloud1);
+    return;
+    
+    
+    
+    pcl::PointCloud<PointNormalT>::Ptr src_points(
+       new pcl::PointCloud<PointNormalT>);
+    this->seedRegionGrowing(src_points, seed_point, cloud, normals);
+
     //! timer
     gettimeofday(&timer_end, NULL);
     double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
@@ -310,7 +301,7 @@ void HandheldObjectRegistration::cloudCB(
     pcl::PointCloud<PointNormalT>().swap(*src_points);
     PointCloud().swap(*cloud);
     // PointCloud().swap(*region_cloud);
-    // PointNormal().swap(*region_normal);
+    PointNormal().swap(*normals);
     
     // is_init_ = false;
 }
@@ -1096,7 +1087,6 @@ void HandheldObjectRegistration::symmetricPlane(
 }
 
 bool HandheldObjectRegistration::seedRegionGrowing(
-    // PointCloud::Ptr out_cloud, PointNormal::Ptr out_normals,
     pcl::PointCloud<PointNormalT>::Ptr src_points,
     const PointT seed_point, const PointCloud::Ptr cloud,
     PointNormal::Ptr normals) {
@@ -1125,20 +1115,11 @@ bool HandheldObjectRegistration::seedRegionGrowing(
        }
        labels[i] = -1;
     }
-
-
     this->seedCorrespondingRegion(labels, cloud, normals,
                                   seed_index, seed_index);
-
-    // out_cloud->clear();
-    // out_normals->clear();
     src_points->clear();
-    // pcl::PointCloud<PointNormalT>::Ptr src_points(
-    //    new pcl::PointCloud<PointNormalT>);
     for (int i = 0; i < in_dim; i++) {
        if (labels[i] != -1) {
-          // out_cloud->push_back(cloud->points[i]);
-          // out_normals->push_back(normals->points[i]);
           PointNormalT pt;
           pt.x = cloud->points[i].x;
           pt.y = cloud->points[i].y;
@@ -1152,7 +1133,6 @@ bool HandheldObjectRegistration::seedRegionGrowing(
           src_points->push_back(pt);
        }
     }
-
     free(labels);
     return true;
 }
@@ -1211,7 +1191,7 @@ int HandheldObjectRegistration::seedVoxelConvexityCriteria(
     Eigen::Vector4f seed_point, Eigen::Vector4f seed_normal,
     Eigen::Vector4f c_centroid, Eigen::Vector4f n_centroid,
     Eigen::Vector4f n_normal, const float thresh) {
-    float im_relation = (n_centroid - c_centroid).dot(n_normal);
+    // float im_relation = (n_centroid - c_centroid).dot(n_normal);
     float pt2seed_relation = FLT_MAX;
     float seed2pt_relation = FLT_MAX;
     pt2seed_relation = (n_centroid - seed_point).dot(n_normal);
@@ -1788,6 +1768,92 @@ void HandheldObjectRegistration::getPFTransformation() {
 
     this->previous_transform_ = update_transform;
 }
+
+
+
+void HandheldObjectRegistration::getObjectRegion(
+    PointCloud::Ptr cloud, PointNormal::Ptr normals,
+    int seed_x, int seed_y) {
+    if (cloud->empty() || normals->size() != cloud->size()) {
+       return;
+    }
+
+    //! create a neigbour list
+    
+    int neigbor_size = 4;
+    std::vector<std::vector<int> > neigbhor_list(cloud->size());
+    
+    for (int j = 0; j < this->camera_info_->height; j++) {
+       for (int i = 0; i < this->camera_info_->width; i++) {
+          int index = i + (j * camera_info_->width);
+          for (int y = -1; y <= 1; y++) {
+             for (int x = -1; x <= 1; x++) {
+                if ((i+x >= 0 && i+x < camera_info_->width) &&
+                    (j+y >= 0 && j+y < camera_info_->height)) {
+                   int ind = (i+x) + ((j+y) * camera_info_->width);
+                   neigbhor_list[index].push_back(ind);
+                }
+             }
+          }
+       }
+    }
+    
+    int seed_index = seed_x + (seed_y * camera_info_->width);
+    
+    Eigen::Vector4f seed_point = cloud->points[seed_index].getVector4fMap();
+    Eigen::Vector4f seed_normal = normals->points[
+       seed_index].getNormalVector4fMap();
+
+    std::vector<int> processing_list = neigbhor_list[seed_index];
+    std::vector<int> labels(static_cast<int>(cloud->size()), -1);
+
+    struct timeval timer_start, timer_end;
+    gettimeofday(&timer_start, NULL);
+    
+    std::vector<int> temp_list;
+    while (true) {
+
+       if (processing_list.empty()) {
+          break;
+       }
+
+       temp_list.clear();
+       for (int i = 0; i < processing_list.size(); i++) {
+          int idx = processing_list[i];
+          if (labels[idx] == -1) {
+             Eigen::Vector4f c = cloud->points[idx].getVector4fMap();
+             Eigen::Vector4f n = normals->points[idx].getNormalVector4fMap();
+             
+             if (this->seedVoxelConvexityCriteria(seed_point, seed_normal,
+                                                  seed_point, c, n, -0.01) == 1) {
+                labels[idx] = 1;
+                temp_list.insert(temp_list.end(), neigbhor_list[idx].begin(),
+                                 neigbhor_list[idx].end());
+             }
+          }
+       }
+
+       processing_list.clear();
+       processing_list.insert(processing_list.end(), temp_list.begin(),
+                              temp_list.end());
+    }
+
+    gettimeofday(&timer_end, NULL);
+    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
+    ROS_ERROR("TIME: %3.6f", delta);
+    
+
+    PointCloud::Ptr points(new PointCloud);
+    for (int i = 0; i < labels.size(); i++) {
+       if (labels[i] != -1) {
+          points->push_back(cloud->points[i]);
+       }
+    }
+    cloud->clear();
+    *cloud = *points;
+}
+
 
 
 int main(int argc, char *argv[]) {
