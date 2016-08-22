@@ -164,28 +164,11 @@ class HandheldObjectRegistration {
                                     const pcl::PointCloud<PointNormalT>::Ptr,
                                     const cv::Mat, const cv::Mat);
    
-   
     void symmetricPlane(float *, pcl::PointCloud<PointNormalT>::Ptr,
                         const float = 0.02f);
 
-
-    //! specific region growing
-    void fastSeedRegionGrowing(pcl::PointCloud<PointNormalT>::Ptr,
-                               PointT, const PointCloud::Ptr,
-                               const PointNormal::Ptr, const int);
-    void fastSeedCorrespondingRegion(int *,
-                                     const pcl::PointCloud<PointNormalT>::Ptr,
-                                     const Eigen::Vector4f, const Eigen::Vector4f,
-                                     const std::vector<std::vector<int> >,
-                                     const int, const int);
-    bool project3DTo2DDepth(ProjectionMap &,
-                            const pcl::PointCloud<PointT>::Ptr,
-                            const float = 1.0f);
-   
-
-
     void getObjectRegion(PointCloud::Ptr, PointNormal::Ptr,
-                         int, int);
+                         const PointT);
    
     //! debug functions
     void plotPlane(pcl::PointCloud<PointNormalT>::Ptr, const Eigen::Vector4f,

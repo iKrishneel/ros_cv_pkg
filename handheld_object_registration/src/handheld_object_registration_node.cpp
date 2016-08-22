@@ -139,29 +139,11 @@ void HandheldObjectRegistration::cloudCB(
        ROS_ERROR("SEED POINT IS NAN");
        return;
     }
-    std::cout << seed_point  << "\n";
-    getObjectRegion(cloud, normals, screen_msg_.point.x, screen_msg_.point.y);
-
-    
-    sensor_msgs::PointCloud2 *ros_cloud1 = new sensor_msgs::PointCloud2;
-    pcl::toROSMsg(*cloud, *ros_cloud1);
-    ros_cloud1->header = cloud_msg->header;
-    this->pub_cloud_.publish(*ros_cloud1);
-    return;
-    
-    
     
     pcl::PointCloud<PointNormalT>::Ptr src_points(
        new pcl::PointCloud<PointNormalT>);
     this->seedRegionGrowing(src_points, seed_point, cloud, normals);
 
-    //! timer
-    gettimeofday(&timer_end, NULL);
-    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
-                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
-    ROS_ERROR("TIME: %3.6f", delta);
-
-    
     /**
      * DEBUG
     std::clock_t start;
@@ -242,6 +224,7 @@ void HandheldObjectRegistration::cloudCB(
                                                        *target_points_);
        pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points,
                                                        *initial_points_);
+       //! initial user marked region
        this->project3DTo2DDepth(initial_projection_, target_points_);
        
 
@@ -266,7 +249,6 @@ void HandheldObjectRegistration::cloudCB(
                                                     *prev_points_);
     this->project3DTo2DDepth(this->prev_projection_, this->prev_points_);
     
-
     
     std::cout << src_points->size() << "\t"
               << target_points_->size()  << "\n";
@@ -406,7 +388,6 @@ void HandheldObjectRegistration::modelUpdate(
     Eigen::Matrix4f final_transformation = icp_transform * transform_matrix;
     transformPointCloudWithNormalsGPU(target_points, target_points,
                                       final_transformation);
-
     
     this->project3DTo2DDepth(target_projection, target_points);
 
@@ -426,7 +407,7 @@ void HandheldObjectRegistration::modelUpdate(
     transform_matrix = icp_transform;
     float angle_x = std::atan2(transform_matrix(2, 1), transform_matrix(2, 2));
     float angle_y = std::atan2(-transform_matrix(2, 0), std::sqrt(
-                                  transform_matrix(2, 1) * transform_matrix(2, 1)  +
+                                  transform_matrix(2, 1) * transform_matrix(2, 1) +
                                   transform_matrix(2, 2) * transform_matrix(2, 2)));
     float angle_z = std::atan2(transform_matrix(1, 0), transform_matrix(0, 0));
 
@@ -434,10 +415,10 @@ void HandheldObjectRegistration::modelUpdate(
     std::cout << angle_y * (180/M_PI)  << "\n";
     std::cout << angle_z * (180/M_PI)  << "\n";
 
-
-    
+    /*
     this->modelVoxelUpdate(target_points, target_projection,
                            src_points, src_projection);
+    */
     this->initial_transform_ = initial_transform_ * final_transformation;
     
     if (this->update_counter_++ > 2) {
@@ -455,38 +436,64 @@ void HandheldObjectRegistration::modelUpdate(
           new pcl::PointCloud<PointNormalT>);
        inv = final_transformation.inverse();
        transformPointCloudWithNormalsGPU(target_points, prev_trans_points, inv);
+       
        ProjectionMap inv_prev_projection;
        this->project3DTo2DDepth(inv_prev_projection, prev_trans_points);
-
        
        //! inverse outlier detection
-       std::vector<bool> prev_outlier_flag(target_points->size());
-       std::vector<bool> init_outlier_flag(target_points->size());
+       std::vector<bool> prev_outlier_flag(target_points->size(), false);
+       std::vector<bool> init_outlier_flag(target_points->size(), false);
        cv::Mat outlier = cv::Mat::zeros(src_projection.rgb.size(), CV_8UC3);
        for (int j = 0; j < inv_target_projection.rgb.rows; j++) {
           for (int i = 0; i < inv_target_projection.rgb.cols; i++) {
+
+             //! matching to the init model
              int it_index = inv_target_projection.indices.at<int>(j, i);
              int ip_index = this->initial_projection_.indices.at<int>(j, i);
+
+             /*
              if (it_index != -1) {
-                init_outlier_flag[it_index] = false;
+                //! check the normal deviation
+                Eigen::Vector4f it_norm = init_trans_points->points[
+                   it_index].getNormalVector4fMap().normalized();
+                Eigen::Vector4f ip_norm = this->initial_points_->points[
+                   ip_index].getNormalVector4fMap().normalized();
+
+                float angle = std::acos(ip_norm.dot(it_norm));
+                std::cout << "Angle: " << angle * (180.0/M_PI)  << "\n";
+                                
+                if (angle < M_PI/18 && !isnan(angle)) {
+                   init_outlier_flag[it_index] = false;
+                   outlier.at<cv::Vec3b>(j, i)[2] = 255;
+                } else {
+                   init_outlier_flag[it_index] = true;
+                   outlier.at<cv::Vec3b>(j, i)[1] = 255;
+                }
              }
              if (it_index != -1 && ip_index == -1) {
                 init_outlier_flag[it_index] = true;
                 outlier.at<cv::Vec3b>(j, i)[1] = 255;
              }
+             */
              
+             //! matching to the previous model
              int ipp_index = inv_prev_projection.indices.at<int>(j, i);
              int pp_index = this->prev_projection_.indices.at<int>(j, i);
 
              if (ipp_index != -1) {
                 prev_outlier_flag[ipp_index] = false;
+                
+                outlier.at<cv::Vec3b>(j, i)[0] = 255;
              }
              if (ipp_index != -1 && pp_index == -1) {
                 prev_outlier_flag[ipp_index] = true;
+                
+                outlier.at<cv::Vec3b>(j, i)[2] = 255;
              }
           }
        }
 
+       /* //! update via removal of outliers
        init_trans_points->clear();
        pcl::copyPointCloud<PointNormalT, PointNormalT>(
           *target_points, *init_trans_points);
@@ -494,13 +501,9 @@ void HandheldObjectRegistration::modelUpdate(
        for (int i = 0; i < init_outlier_flag.size(); i++) {
           if (!init_outlier_flag[i] && !init_outlier_flag[i]) {
              target_points->push_back(init_trans_points->points[i]);
-             // target_points->points[i].r = 0;
-             // target_points->points[i].b = 0;
-             // target_points->points[i].g = 255;
           }
        }
-
-       
+       */
        
        cv::imshow("transformed", inv_target_projection.rgb);
        cv::imshow("init", initial_projection_.rgb);
@@ -1361,321 +1364,6 @@ bool HandheldObjectRegistration::project3DTo2DDepth(
 }
 
 
-/**
- * FIND BETTER WAY
- */
-bool HandheldObjectRegistration::project3DTo2DDepth(
-    ProjectionMap &projection_map,
-    const pcl::PointCloud<PointT>::Ptr cloud, const float max_distance) {
-    if (cloud->empty()) {
-       ROS_ERROR("- Empty cloud. Cannot project 3D to 2D depth.");
-       return false;
-    }
-    cv::Mat object_points = cv::Mat(static_cast<int>(cloud->size()), 3, CV_32F);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(this->num_threads_)
-#endif
-    for (int i = 0; i < cloud->size(); i++) {
-       object_points.at<float>(i, 0) = cloud->points[i].x;
-       object_points.at<float>(i, 1) = cloud->points[i].y;
-       object_points.at<float>(i, 2) = cloud->points[i].z;
-    }
-    float K[9];
-    float R[9];
-    for (int i = 0; i < 9; i++) {
-       K[i] = camera_info_->K[i];
-       R[i] = camera_info_->R[i];
-    }
-
-    cv::Mat camera_matrix = cv::Mat(3, 3, CV_32F, K);
-    cv::Mat rotation_matrix = cv::Mat(3, 3, CV_32F, R);
-    float tvec[3];
-    tvec[0] = camera_info_->P[3];
-    tvec[1] = camera_info_->P[7];
-    tvec[2] = camera_info_->P[11];
-    cv::Mat translation_matrix = cv::Mat(3, 1, CV_32F, tvec);
-    
-    float D[5];
-    for (int i = 0; i < 5; i++) {
-       D[i] = camera_info_->D[i];
-    }
-    cv::Mat distortion_model = cv::Mat(5, 1, CV_32F, D);
-    cv::Mat rvec;
-    cv::Rodrigues(rotation_matrix, rvec);
-    
-    std::vector<cv::Point2f> image_points;
-    cv::projectPoints(object_points, rvec, translation_matrix,
-                      camera_matrix, distortion_model, image_points);
-    
-    cv::Mat image = cv::Mat::zeros(camera_info_->height,
-                                   camera_info_->width, CV_8UC3);
-    cv::Mat depth_image = cv::Mat::zeros(image.size(), CV_32F);
-    cv::Mat indices = cv::Mat(image.size(), CV_32S);
-    
-    cv::Mat flag = cv::Mat(image.size(), CV_32S);
-    for (int j = 0; j < image.rows; j++) {
-       for (int i = 0; i < image.cols; i++) {
-          indices.at<int>(j, i) = -1;
-          flag.at<int>(j, i) = 0;
-       }
-    }
-
-    int min_x = std::numeric_limits<int>::max();
-    int min_y = std::numeric_limits<int>::max();
-    int max_x = 0;
-    int max_y = 0;
-
-    std::vector<bool> visibility_flag(static_cast<int>(image_points.size()));
-    for (int i = 0; i < image_points.size(); i++) {
-       int x = image_points[i].x;
-       int y = image_points[i].y;
-       if (!isnan(x) && !isnan(y) && (x >= 0 && x <= image.cols) &&
-           (y >= 0 && y <= image.rows)) {
-          //! occlusion points
-          if (flag.at<int>(y, x) == 1) {
-             int prev_ind = indices.at<int>(y, x);
-             float prev_depth = cloud->points[prev_ind].z;
-             float curr_depth = cloud->points[i].z;
-             if (curr_depth < prev_depth && curr_depth > 0.0f &&
-                 !isnan(curr_depth)) {
-                // TODO(NORMAL CHECK):  if normal deviates more
-                // reject
-                image.at<cv::Vec3b>(y, x)[2] = cloud->points[i].r;
-                image.at<cv::Vec3b>(y, x)[1] = cloud->points[i].g;
-                image.at<cv::Vec3b>(y, x)[0] = cloud->points[i].b;
-
-                depth_image.at<float>(y, x) = cloud->points[i].z / max_distance;
-                indices.at<int>(y, x) = i;
-
-                 visibility_flag[prev_ind] = false;
-             } else {
-                visibility_flag[i] = false;
-             }
-          } else {
-             flag.at<int>(y, x) = 1;
-             image.at<cv::Vec3b>(y, x)[2] = cloud->points[i].r;
-             image.at<cv::Vec3b>(y, x)[1] = cloud->points[i].g;
-             image.at<cv::Vec3b>(y, x)[0] = cloud->points[i].b;
-             
-             depth_image.at<float>(y, x) = cloud->points[i].z / max_distance;
-             indices.at<int>(y, x) = i;
-
-             visibility_flag[i] = true;
-          }
-          min_x = (x < min_x) ? x : min_x;
-          min_y = (y < min_y) ? y : min_y;
-          max_x = (x > max_x) ? x : max_x;
-          max_y = (y > max_y) ? y : max_y;
-       }
-    }
-    int width = max_x - min_x;
-    int height = max_y - min_y;
-    cv::Rect rect(min_x, min_y, width, height);
-    
-    this->conditionROI(min_x, min_y, width, height, image.size());
-    projection_map.x = min_x;
-    projection_map.y = min_y;
-    projection_map.width = width;
-    projection_map.height = height;
-    projection_map.rgb = image;
-    projection_map.depth = depth_image;
-    projection_map.indices = indices;
-    projection_map.visibility_flag.clear();
-    projection_map.visibility_flag = visibility_flag;
-    
-    return true;
-}
-
-
-void HandheldObjectRegistration::fastSeedRegionGrowing(
-    pcl::PointCloud<PointNormalT>::Ptr cloud_downsampled,
-    PointT seed_point, const PointCloud::Ptr cloud,
-    const PointNormal::Ptr normals, const int w_size) {
-    if (cloud->empty() || cloud->size() != normals->size() ||
-        isnan(seed_point.x) || isnan(seed_point.y) || isnan(seed_point.z)) {
-       return;
-    }
-    const double MAX_DISTANCE = 2.0f;
-    const float leaf_size = 0.015f;
-    pcl::PointCloud<PointT>::Ptr cloud_downsample(
-       new pcl::PointCloud<PointT>);
-    pcl::VoxelGrid<PointT> voxel_grid;
-    voxel_grid.setInputCloud(cloud);
-    voxel_grid.setLeafSize(leaf_size, leaf_size, leaf_size);
-    voxel_grid.setFilterFieldName("z");
-    voxel_grid.setFilterLimits(0.0, MAX_DISTANCE);
-    voxel_grid.filter(*cloud_downsample);
-    
-    ProjectionMap projection_map;
-    this->project3DTo2DDepth(projection_map, cloud_downsample);
-    
-    std::vector<std::vector<int> > neigbor_indices(
-       static_cast<int>(cloud_downsample->size()));
-    const int pixel_len = 10;
-    Eigen::Vector4f seed_pt = seed_point.getVector4fMap();
-    seed_pt(3) = 0.0f;
-    int seed_index = -1;
-    
-    const int in_dim = static_cast<int>(cloud_downsample->size());
-    int *labels = reinterpret_cast<int*>(std::malloc(sizeof(int) * in_dim));
-
-    cloud_downsampled->clear();
-    cloud_downsampled->resize(static_cast<int>(cloud_downsample->size()));
-
-    double min_dist = DBL_MAX;
-    int temp_count = 0;
-    
-    for (int j = projection_map.y; j < projection_map.height +
-            projection_map.y; j++) {
-       for (int i = projection_map.x; i < projection_map.width +
-               projection_map.x; i++) {
-          int index = projection_map.indices.at<int>(j, i);
-          if (index != -1) {
-
-             NormalT n = normals->points[i + (j * camera_info_->width)];
-             if (!isnan(n.normal_x) && !isnan(n.normal_y) &&
-                 !isnan(n.normal_z)) {
-                PointNormalT pt;
-                pt.x = cloud_downsample->points[index].x;
-                pt.y = cloud_downsample->points[index].y;
-                pt.z = cloud_downsample->points[index].z;
-                pt.r = cloud_downsample->points[index].r;
-                pt.g = cloud_downsample->points[index].g;
-                pt.b = cloud_downsample->points[index].b;
-                pt.normal_x = n.normal_x;
-                pt.normal_y = n.normal_y;
-                pt.normal_z = n.normal_z;
-                cloud_downsampled->points[index] = pt;
-
-                // std::vector<int> n_indices;
-                for (int y = -pixel_len; y <= pixel_len; y+=1) {
-                   for (int x = -pixel_len; x <= pixel_len; x+=1) {
-                      int idx = projection_map.indices.at<int>(j+y, i+x);
-                      if (idx != -1) {
-                         float d = std::fabs(projection_map.depth.at<float>(j, i)-
-                                             projection_map.depth.at<float>(j+y, i+x));
-                         if (d < 0.05f) {
-                            neigbor_indices[index].push_back(idx);
-                         
-                         }
-                      }
-                   }
-                }
-                // neigbor_indices[index] =  n_indices;
-
-                Eigen::Vector4f p = cloud_downsample->points[
-                   index].getVector4fMap();
-                p(3) = 0.0f;
-                double d = pcl::distances::l2(seed_pt, p);
-                if (d < min_dist) {
-                   min_dist = d;
-                   seed_index = index;
-                }
-                labels[index] = -1;
-             }
-          }
-       }
-    }
-
-    
-    if (seed_index == -1) {
-       ROS_ERROR("SEED INDEX IS -1");
-       return;
-    }
-    seed_point = cloud_downsample->points[seed_index];
-    labels[seed_index] = 1;
-
-    struct timeval timer_start, timer_end;
-    gettimeofday(&timer_start, NULL);
-
-    Eigen::Vector4f seed_normal = cloud_downsampled->points[
-       seed_index].getNormalVector4fMap();
-    this->fastSeedCorrespondingRegion(labels, cloud_downsampled,
-                                      seed_point.getVector4fMap(), seed_normal,
-                                      neigbor_indices, seed_index, seed_index);
-    
-    gettimeofday(&timer_end, NULL);
-    double idelta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
-                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
-    ROS_WARN("GROWING TIME: %3.6f", idelta);
-    return;
-    
-    pcl::PointCloud<PointNormalT>::Ptr temp_points(
-       new pcl::PointCloud<PointNormalT>);
-
-    for (int i = 0; i < in_dim; i++) {
-       if (labels[i] != -1) {
-          temp_points->push_back(cloud_downsampled->points[i]);
-       }
-    }
-    
-    cloud_downsampled->clear();
-    pcl::copyPointCloud<PointNormalT, PointNormalT>(*temp_points,
-                                                    *cloud_downsampled);    
-    free(labels);
-    
-    cv::imshow("rgb", projection_map.rgb);
-    cv::waitKey(3);
-    
-    return;
-    
-    ROS_WARN("\033[34m COMPLETED GROWING\033[0m");
-}
-
-void HandheldObjectRegistration::fastSeedCorrespondingRegion(
-    int *labels, const pcl::PointCloud<PointNormalT>::Ptr cloud,
-    const Eigen::Vector4f seed_point, const Eigen::Vector4f seed_normal,
-    const std::vector<std::vector<int> > neigbhor_list,
-    const int parent_index, const int seed_index) {
-    // Eigen::Vector4f seed_point = cloud->points[seed_index].getVector4fMap();
-    //  Eigen::Vector4f seed_normal = cloud->points[
-    //    seed_index].getNormalVector4fMap();
-    
-    std::vector<int> neigbor_indices = neigbhor_list[parent_index];
-    
-    int neigb_lenght = static_cast<int>(neigbor_indices.size());
-    std::vector<int> merge_list(neigb_lenght);
-    merge_list[0] = -1;
-    
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(this->num_threads_) \
-    shared(merge_list, labels)
-#endif
-    for (int i = 0; i < neigbor_indices.size(); i++) {
-        int index = neigbor_indices[i];
-        if (index != parent_index && labels[index] == -1) {
-            Eigen::Vector4f parent_pt = cloud->points[
-                parent_index].getVector4fMap();
-            Eigen::Vector4f child_pt = cloud->points[index].getVector4fMap();
-            Eigen::Vector4f child_norm = cloud->points[
-                index].getNormalVector4fMap();
-            int criteria = this->seedVoxelConvexityCriteria(
-               seed_point, seed_normal, parent_pt, child_pt,
-               child_norm, -0.01f);
-            if (criteria == 1) {
-                merge_list[i] = index;
-                labels[index] = 1;
-            } else {
-                merge_list[i] = -1;
-            }
-        } else {
-            merge_list[i] = -1;
-        }
-    }
-
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(this->num_threads_) schedule(guided, 1)
-#endif
-    for (int i = 0; i < merge_list.size(); i++) {
-        int index = merge_list[i];
-        if (index != -1) {
-           fastSeedCorrespondingRegion(labels, cloud, seed_point, seed_normal,
-                                       neigbhor_list, index, seed_index);
-        }
-    }
-}
-
-
 bool HandheldObjectRegistration::conditionROI(
     int x, int y, int width, int height, const cv::Size image_size) {
     if (x > image_size.width || y > image_size.height) {
@@ -1693,9 +1381,6 @@ bool HandheldObjectRegistration::conditionROI(
 
     return true;
 }
-
-
-
 
 /**
  * DEGUB FUNCTIONS ONLY
@@ -1773,16 +1458,19 @@ void HandheldObjectRegistration::getPFTransformation() {
 
 void HandheldObjectRegistration::getObjectRegion(
     PointCloud::Ptr cloud, PointNormal::Ptr normals,
-    int seed_x, int seed_y) {
+    const PointT seed_pt) {
     if (cloud->empty() || normals->size() != cloud->size()) {
        return;
     }
 
-    //! create a neigbour list
-    
-    int neigbor_size = 4;
     std::vector<std::vector<int> > neigbhor_list(cloud->size());
+
+    int seed_index = -1;
+    double min_distance = DBL_MAX;
     
+// #ifdef _OPENMP
+// #pragma omp parallel for num_threads(this->num_threads_)
+// #endif
     for (int j = 0; j < this->camera_info_->height; j++) {
        for (int i = 0; i < this->camera_info_->width; i++) {
           int index = i + (j * camera_info_->width);
@@ -1795,10 +1483,20 @@ void HandheldObjectRegistration::getObjectRegion(
                 }
              }
           }
+
+          double d = pcl::distances::l2(seed_pt.getVector4fMap(),
+                                        cloud->points[index].getVector4fMap());
+          if (d < min_distance) {
+             min_distance = d;
+             seed_index = index;
+          }
        }
     }
-    
-    int seed_index = seed_x + (seed_y * camera_info_->width);
+
+    if (seed_index == -1) {
+       ROS_ERROR("INDEX IS NAN");
+       return;
+    }
     
     Eigen::Vector4f seed_point = cloud->points[seed_index].getVector4fMap();
     Eigen::Vector4f seed_normal = normals->points[
@@ -1806,17 +1504,13 @@ void HandheldObjectRegistration::getObjectRegion(
 
     std::vector<int> processing_list = neigbhor_list[seed_index];
     std::vector<int> labels(static_cast<int>(cloud->size()), -1);
-
-    struct timeval timer_start, timer_end;
-    gettimeofday(&timer_start, NULL);
     
     std::vector<int> temp_list;
     while (true) {
-
+       
        if (processing_list.empty()) {
           break;
        }
-
        temp_list.clear();
        for (int i = 0; i < processing_list.size(); i++) {
           int idx = processing_list[i];
@@ -1824,8 +1518,8 @@ void HandheldObjectRegistration::getObjectRegion(
              Eigen::Vector4f c = cloud->points[idx].getVector4fMap();
              Eigen::Vector4f n = normals->points[idx].getNormalVector4fMap();
              
-             if (this->seedVoxelConvexityCriteria(seed_point, seed_normal,
-                                                  seed_point, c, n, -0.01) == 1) {
+             if (this->seedVoxelConvexityCriteria(
+                    seed_point, seed_normal, seed_point, c, n, -0.01) == 1) {
                 labels[idx] = 1;
                 temp_list.insert(temp_list.end(), neigbhor_list[idx].begin(),
                                  neigbhor_list[idx].end());
@@ -1837,11 +1531,6 @@ void HandheldObjectRegistration::getObjectRegion(
        processing_list.insert(processing_list.end(), temp_list.begin(),
                               temp_list.end());
     }
-
-    gettimeofday(&timer_end, NULL);
-    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
-                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
-    ROS_ERROR("TIME: %3.6f", delta);
     
 
     PointCloud::Ptr points(new PointCloud);
