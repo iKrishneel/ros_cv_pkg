@@ -102,7 +102,9 @@ class HandheldObjectRegistration {
     int update_counter_;
     tf::Transform previous_transform_;
     PointT prev_seed_point_;
+   int temp_counter;
 
+   
     Eigen::Matrix4f initial_transform_;  //! cumulative transform
     std::vector<Eigen::Matrix4f> transformation_cache_;
    
@@ -143,7 +145,8 @@ class HandheldObjectRegistration {
                            const PointT, const PointCloud::Ptr,
                            PointNormal::Ptr);
     void seedCorrespondingRegion(int *, const PointCloud::Ptr,
-                                 const PointNormal::Ptr, const int, const int);
+                                 const PointNormal::Ptr,
+                                 const int, const int);
     int seedVoxelConvexityCriteria(Eigen::Vector4f, Eigen::Vector4f,
                                    Eigen::Vector4f, Eigen::Vector4f,
                                    Eigen::Vector4f, const float = 0.0f);
@@ -173,6 +176,7 @@ class HandheldObjectRegistration {
                                const PointNormal::Ptr, const int);
     void fastSeedCorrespondingRegion(int *,
                                      const pcl::PointCloud<PointNormalT>::Ptr,
+                                     const Eigen::Vector4f, const Eigen::Vector4f,
                                      const std::vector<std::vector<int> >,
                                      const int, const int);
     bool project3DTo2DDepth(ProjectionMap &,
