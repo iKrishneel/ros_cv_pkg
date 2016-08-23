@@ -1482,42 +1482,6 @@ void HandheldObjectRegistration::getObjectRegion(
        return;
     }
 
-    std::vector<std::vector<int> > neigbhor_list(cloud->size());
-
-
-    double min_distance = 0.05 * 0.05;
-    
-    /*
-    Eigen::Vector4f in_seed = seed_pt.getVector4fMap();
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(8)
-#endif
-    for (int i = 0; i < cloud->size(); i+=3) {
-       int index = i;
-       if (!isnan(cloud->points[i].x) &&
-           !isnan(cloud->points[i].y) &&
-           !isnan(cloud->points[i].z)) {
-          if (cloud->points[index].z < 2.0f) {
-             
-             // double d = pcl::distances::l2(
-             //    in_seed, cloud->points[index].getVector4fMap());
-
-             double dist = DBL_MAX;
-             dist = std::pow(seed_pt.x - cloud->points[index].x, 2) +
-                std::pow(seed_pt.y - cloud->points[index].y, 2) +
-                std::pow(seed_pt.z - cloud->points[index].z, 2);
-             
-             
-             if (dist < min_distance) {
-                min_distance = dist;
-                seed_index = index;
-             }
-          }
-       }
-    }
-
-    */
-
     cv::Point2f image_index;
     int seed_index = -1;
     if (this->projectPoint3DTo2DIndex(image_index, seed_pt)) {
@@ -1526,13 +1490,12 @@ void HandheldObjectRegistration::getObjectRegion(
        ROS_ERROR("INDEX IS NAN");
        return;
     }
-
     
     Eigen::Vector4f seed_point = cloud->points[seed_index].getVector4fMap();
     Eigen::Vector4f seed_normal = normals->points[
        seed_index].getNormalVector4fMap();
     
-    std::vector<int> processing_list = neigbhor_list[seed_index];
+    std::vector<int> processing_list;
     std::vector<int> labels(static_cast<int>(cloud->size()), -1);
 
     const int window_size = 3;
@@ -1574,8 +1537,6 @@ void HandheldObjectRegistration::getObjectRegion(
                       }
                    }
                 }
-                // temp_list.insert(temp_list.end(), neigbhor_list[idx].begin(),
-                //                  neigbhor_list[idx].end());
              }
           }
        }
@@ -1584,7 +1545,6 @@ void HandheldObjectRegistration::getObjectRegion(
        processing_list.insert(processing_list.end(), temp_list.begin(),
                               temp_list.end());
     }
-    
 
     PointCloud::Ptr points(new PointCloud);
     for (int i = 0; i < labels.size(); i++) {
