@@ -171,12 +171,13 @@ class HandheldObjectRegistration {
                          const PointCloud::Ptr, const PointNormal::Ptr,
                          const PointT);
     bool projectPoint3DTo2DIndex(cv::Point2f &, const PointT);
+    bool conditionROI(int, int, int, int, const cv::Size);
    
     //! debug functions
+    void getAxisAngles(float &, float &, float &,
+                       const Eigen::Matrix4f);
     void plotPlane(pcl::PointCloud<PointNormalT>::Ptr, const Eigen::Vector4f,
                    const Eigen::Vector3f = Eigen::Vector3f(255, 0, 0));
-
-    bool conditionROI(int, int, int, int, const cv::Size);
     void getPFTransformation();
 };
 

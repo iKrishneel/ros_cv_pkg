@@ -360,13 +360,6 @@ void HandheldObjectRegistration::modelUpdate(
              *target_cloud, *src_cloud, transform_matrix);
        }
        // TODO(ADD) : correspondances
-       /*
-       transformPointCloudWithNormalsGPU(target_points, target_points,
-                                         transform_matrix);
-       */
-       // pcl::transformPointCloudWithNormals(*prev_points_, *update_points,
-       //                                     transform_matrix);
-
        transformPointCloudWithNormalsGPU(prev_points_, update_points,
                                          transform_matrix);
     }
@@ -382,12 +375,52 @@ void HandheldObjectRegistration::modelUpdate(
     Eigen::Matrix<float, 4, 4> icp_transform = Eigen::Matrix4f::Identity();
     this->registrationICP(aligned_points, icp_transform,
                           update_points, src_points);
-
     Eigen::Matrix4f final_transformation = icp_transform * transform_matrix;
+    this->project3DTo2DDepth(target_projection, target_points);
+    /*
     transformPointCloudWithNormalsGPU(target_points, target_points,
                                       final_transformation);
+    */
     
-    this->project3DTo2DDepth(target_projection, target_points);
+    
+    //! project src to prev for intermediate outlier detection
+    pcl::PointCloud<PointNormalT>::Ptr prev_trans_points(
+       new pcl::PointCloud<PointNormalT>);
+    Eigen::Matrix4f inv = final_transformation.inverse();
+    transformPointCloudWithNormalsGPU(src_points, prev_trans_points, inv);
+
+    ProjectionMap src_project_prev;
+    this->project3DTo2DDepth(src_project_prev, prev_trans_points);
+
+    for (int j = src_project_prev.y;
+         j < src_project_prev.height + src_project_prev.y; j++) {
+       for (int i = src_project_prev.x;
+            i < src_project_prev.width + src_project_prev.x; i++) {
+          int ipp_index = src_project_prev.indices.at<int>(j, i);
+          int pp_index = this->prev_projection_.indices.at<int>(j, i);
+          if (ipp_index != -1 && pp_index == -1) {
+             //! search in grid niegbor
+             for (int y = -1; y <= 1; y++) {
+                for (int x = -1; x <= 1; x++) {
+                   pp_index = prev_projection_.indices.at<int>(j+y, i+x);
+                   if (pp_index != -1) {
+                      break;
+                   }
+                }
+                if (pp_index != -1) {
+                   break;
+                }
+             }
+             if (pp_index != -1) {  //! outlier
+                target_points->push_back(src_points->points[ipp_index]);
+             }
+          } else if (ipp_index != -1 && pp_index != -1) {
+             target_points->push_back(src_points->points[ipp_index]);
+          }
+       }
+    }
+    return;
+    
 
     
     //! fitness check
@@ -400,18 +433,6 @@ void HandheldObjectRegistration::modelUpdate(
     //    return;
     // }
 
-    transform_matrix = icp_transform;
-    float angle_x = std::atan2(transform_matrix(2, 1), transform_matrix(2, 2));
-    float angle_y = std::atan2(-transform_matrix(2, 0), std::sqrt(
-                                  transform_matrix(2, 1) * transform_matrix(2, 1) +
-                                  transform_matrix(2, 2) * transform_matrix(2, 2)));
-    float angle_z = std::atan2(transform_matrix(1, 0), transform_matrix(0, 0));
-
-    std::cout << angle_x * (180/M_PI) << "\n";
-    std::cout << angle_y * (180/M_PI)  << "\n";
-    std::cout << angle_z * (180/M_PI)  << "\n";
-
-
     /*
     this->modelVoxelUpdate(target_points, target_projection,
                            src_points, src_projection);
@@ -423,34 +444,33 @@ void HandheldObjectRegistration::modelUpdate(
 
        pcl::PointCloud<PointNormalT>::Ptr init_trans_points(
           new pcl::PointCloud<PointNormalT>);
-       Eigen::Matrix4f inv = this->initial_transform_.inverse();
-       transformPointCloudWithNormalsGPU(target_points, init_trans_points, inv);
+       inv = this->initial_transform_.inverse();
 
        //! project to initial
-       ProjectionMap inv_target_projection;
-       this->project3DTo2DDepth(inv_target_projection, init_trans_points);
+       transformPointCloudWithNormalsGPU(target_points, init_trans_points, inv);
+       ProjectionMap target_project_initial;
+       this->project3DTo2DDepth(target_project_initial, init_trans_points);
        
        //! project to previous
-       pcl::PointCloud<PointNormalT>::Ptr prev_trans_points(
-          new pcl::PointCloud<PointNormalT>);
-       inv = final_transformation.inverse();
-       // transformPointCloudWithNormalsGPU(target_points,
-       // prev_trans_points, inv);
-       transformPointCloudWithNormalsGPU(src_points, prev_trans_points, inv);
-       
-       ProjectionMap inv_prev_projection;
-       this->project3DTo2DDepth(inv_prev_projection, prev_trans_points);
+       // pcl::PointCloud<PointNormalT>::Ptr prev_trans_points(
+       //    new pcl::PointCloud<PointNormalT>);
+       // inv = final_transformation.inverse();
+       // transformPointCloudWithNormalsGPU(src_points, prev_trans_points, inv);
+       // ProjectionMap src_project_prev;
+       // this->project3DTo2DDepth(src_project_prev, prev_trans_points);
        
        //! inverse outlier detection
-       std::vector<bool> prev_outlier_flag(target_points->size(), false);
+       std::vector<bool> prev_outlier_flag(prev_trans_points->size(), false);
        std::vector<bool> init_outlier_flag(target_points->size(), false);
        cv::Mat outlier = cv::Mat::zeros(src_projection.rgb.size(), CV_8UC3);
        
-       for (int j = 0; j < inv_target_projection.rgb.rows; j++) {
-          for (int i = 0; i < inv_target_projection.rgb.cols; i++) {
+       for (int j = src_project_prev.y;
+            j < src_project_prev.height + src_project_prev.y; j++) {
+          for (int i = src_project_prev.x;
+               i < src_project_prev.width + src_project_prev.x; i++) {
              /*
              //! matching to the init model
-             int it_index = inv_target_projection.indices.at<int>(j, i);
+             int it_index = target_project_initial.indices.at<int>(j, i);
              int ip_index = this->initial_projection_.indices.at<int>(j, i);
 
              if (it_index != -1) {
@@ -476,17 +496,11 @@ void HandheldObjectRegistration::modelUpdate(
                 outlier.at<cv::Vec3b>(j, i)[1] = 255;
              }
              */
-
              
              //! matching to the previous model
-             int ipp_index = inv_prev_projection.indices.at<int>(j, i);
+             int ipp_index = src_project_prev.indices.at<int>(j, i);
              int pp_index = this->prev_projection_.indices.at<int>(j, i);
 
-             if (ipp_index != -1) {
-                // prev_outlier_flag[ipp_index] = false;
-                
-                // outlier.at<cv::Vec3b>(j, i)[0] = 255;
-             }
              if (ipp_index != -1 && pp_index == -1) {
 
                 //! search in grid niegbor
@@ -502,16 +516,14 @@ void HandheldObjectRegistration::modelUpdate(
                    }
                 }
 
-                if (pp_index != -1) {
+                if (pp_index == -1) {  //! outlier
+                   prev_outlier_flag[ipp_index] = true;
+                   
                    outlier.at<cv::Vec3b>(j, i)[1] = 255;
-                } else {
-                   outlier.at<cv::Vec3b>(j, i)[2] = 255;
                 }
              }
           }
        }
-
-
 
        
        /* //! update via removal of outliers
@@ -526,7 +538,7 @@ void HandheldObjectRegistration::modelUpdate(
        }
        */
 
-       cv::imshow("transformed", inv_target_projection.rgb);
+       cv::imshow("transformed", target_project_initial.rgb);
        cv::imshow("init", initial_projection_.rgb);
        // cv::imshow("init", prev_projection_.rgb);
        cv::imshow("outlier", outlier);
@@ -1547,6 +1559,18 @@ bool HandheldObjectRegistration::projectPoint3DTo2DIndex(
     } else {
        return false;
     }
+}
+
+
+void HandheldObjectRegistration::getAxisAngles(
+    float &angle_x, float &angle_y, float &angle_z,
+    const Eigen::Matrix4f transform_matrix) {
+    angle_x = std::atan2(transform_matrix(2, 1),
+                               transform_matrix(2, 2));
+    angle_y = std::atan2(-transform_matrix(2, 0), std::sqrt(
+          transform_matrix(2, 1) * transform_matrix(2, 1) +
+          transform_matrix(2, 2) * transform_matrix(2, 2)));
+    angle_z = std::atan2(transform_matrix(1, 0), transform_matrix(0, 0));
 }
 
 
