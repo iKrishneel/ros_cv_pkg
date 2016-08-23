@@ -167,7 +167,8 @@ class HandheldObjectRegistration {
     void symmetricPlane(float *, pcl::PointCloud<PointNormalT>::Ptr,
                         const float = 0.02f);
 
-    void getObjectRegion(PointCloud::Ptr, PointNormal::Ptr,
+    void getObjectRegion(pcl::PointCloud<PointNormalT>::Ptr,
+                         const PointCloud::Ptr, const PointNormal::Ptr,
                          const PointT);
     bool projectPoint3DTo2DIndex(cv::Point2f &, const PointT);
    

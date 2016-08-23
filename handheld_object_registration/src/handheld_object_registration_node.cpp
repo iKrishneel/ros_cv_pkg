@@ -109,8 +109,8 @@ void HandheldObjectRegistration::cloudCB(
     // gettimeofday(&timer_start, NULL);
 
     this->camera_info_ = cinfo_msg;
-    this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
-    this->kdtree_->setInputCloud(cloud);
+    // this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
+    // this->kdtree_->setInputCloud(cloud);
     
     PointNormal::Ptr normals(new PointNormal);
     this->getNormals(normals, cloud);
@@ -140,28 +140,12 @@ void HandheldObjectRegistration::cloudCB(
        return;
     }
 
-    std::cout << screen_msg_.point.x  << "\t" << screen_msg_.point.y << "\n";
-    gettimeofday(&timer_start, NULL);
-    
-    getObjectRegion(cloud, normals, seed_point);
-
-    gettimeofday(&timer_end, NULL);
-    double idelta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
-                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
-    ROS_ERROR("TIME: %3.6f", idelta);
-
-    
-    sensor_msgs::PointCloud2 ros_cloud1;
-    pcl::toROSMsg(*cloud, ros_cloud1);
-    ros_cloud1.header = cloud_msg->header;
-    this->pub_icp_.publish(ros_cloud1);
-    
-    return;
-    
-    
     pcl::PointCloud<PointNormalT>::Ptr src_points(
        new pcl::PointCloud<PointNormalT>);
-    this->seedRegionGrowing(src_points, seed_point, cloud, normals);
+    getObjectRegion(src_points, cloud, normals, seed_point);
+    
+
+    // this->seedRegionGrowing(src_points, seed_point, cloud, normals);
 
     /**
      * DEBUG
@@ -1401,6 +1385,151 @@ bool HandheldObjectRegistration::conditionROI(
     return true;
 }
 
+void HandheldObjectRegistration::getObjectRegion(
+    pcl::PointCloud<PointNormalT>::Ptr src_points,
+    const PointCloud::Ptr cloud, const PointNormal::Ptr normals,
+    const PointT seed_pt) {
+    if (cloud->empty() || normals->size() != cloud->size()) {
+       return;
+    }
+
+    cv::Point2f image_index;
+    int seed_index = -1;
+    if (this->projectPoint3DTo2DIndex(image_index, seed_pt)) {
+       seed_index = (image_index.x + (image_index.y * camera_info_->width));
+    } else {
+       ROS_ERROR("INDEX IS NAN");
+       return;
+    }
+    
+    Eigen::Vector4f seed_point = cloud->points[seed_index].getVector4fMap();
+    Eigen::Vector4f seed_normal = normals->points[
+       seed_index].getNormalVector4fMap();
+    
+    std::vector<int> processing_list;
+    std::vector<int> labels(static_cast<int>(cloud->size()), -1);
+
+    const int window_size = 3;
+    const int wsize = window_size * window_size;
+    const int lenght = std::floor(window_size/3);
+
+    processing_list.clear();
+    for (int j = -lenght; j <= lenght; j++) {
+       for (int i = -lenght; i <= lenght; i++) {
+          int index = (seed_index + (j * camera_info_->width)) + i;
+          if (index >= 0 && index < cloud->size()) {
+             processing_list.push_back(index);
+          }
+       }
+    }
+    
+    std::vector<int> temp_list;
+    while (true) {
+       
+       if (processing_list.empty()) {
+          break;
+       }
+       temp_list.clear();
+       for (int i = 0; i < processing_list.size(); i++) {
+          int idx = processing_list[i];
+          if (labels[idx] == -1) {
+             Eigen::Vector4f c = cloud->points[idx].getVector4fMap();
+             Eigen::Vector4f n = normals->points[idx].getNormalVector4fMap();
+             
+             if (this->seedVoxelConvexityCriteria(
+                    seed_point, seed_normal, seed_point, c, n, -0.01) == 1) {
+                labels[idx] = 1;
+
+                for (int j = -lenght; j <= lenght; j++) {
+                   for (int k = -lenght; k <= lenght; k++) {
+                      int index = (idx + (j * camera_info_->width)) + k;
+                      if (index >= 0 && index < cloud->size()) {
+                         temp_list.push_back(index);
+                      }
+                   }
+                }
+             }
+          }
+       }
+
+       processing_list.clear();
+       processing_list.insert(processing_list.end(), temp_list.begin(),
+                              temp_list.end());
+    }
+
+    // PointCloud::Ptr points(new PointCloud);
+    // for (int i = 0; i < labels.size(); i++) {
+    //    if (labels[i] != -1) {
+    //       points->push_back(cloud->points[i]);
+    //    }
+    // }
+    src_points->clear();
+    for (int i = 0; i < labels.size(); i++) {
+       if (labels[i] != -1) {
+          PointNormalT pt;
+          pt.x = cloud->points[i].x;
+          pt.y = cloud->points[i].y;
+          pt.z = cloud->points[i].z;
+          pt.r = cloud->points[i].r;
+          pt.g = cloud->points[i].g;
+          pt.b = cloud->points[i].b;
+          pt.normal_x = normals->points[i].normal_x;
+          pt.normal_y = normals->points[i].normal_y;
+          pt.normal_z = normals->points[i].normal_z;
+          src_points->push_back(pt);
+       }
+    }
+    // cloud->clear();
+    // *cloud = *points;
+}
+
+bool HandheldObjectRegistration::projectPoint3DTo2DIndex(
+    cv::Point2f &image_index, const PointT in_point) {
+    if (isnan(in_point.x) || isnan(in_point.y) || isnan(in_point.z)) {
+       ROS_ERROR(" NAN POINT CANNOT BE PROJECTED TO 2D INDEX.");
+       return false;
+    }
+    cv::Mat object_points = cv::Mat(1, 3, CV_32F);
+    object_points.at<float>(0, 0) = in_point.x;
+    object_points.at<float>(0, 1) = in_point.y;
+    object_points.at<float>(0, 2) = in_point.z;
+
+    float K[9];
+    float R[9];
+    for (int i = 0; i < 9; i++) {
+       K[i] = camera_info_->K[i];
+       R[i] = camera_info_->R[i];
+    }
+
+    cv::Mat camera_matrix = cv::Mat(3, 3, CV_32F, K);
+    cv::Mat rotation_matrix = cv::Mat(3, 3, CV_32F, R);
+    float tvec[3];
+    tvec[0] = camera_info_->P[3];
+    tvec[1] = camera_info_->P[7];
+    tvec[2] = camera_info_->P[11];
+    cv::Mat translation_matrix = cv::Mat(3, 1, CV_32F, tvec);
+    
+    float D[5];
+    for (int i = 0; i < 5; i++) {
+       D[i] = camera_info_->D[i];
+    }
+    cv::Mat distortion_model = cv::Mat(5, 1, CV_32F, D);
+    cv::Mat rvec;
+    cv::Rodrigues(rotation_matrix, rvec);
+    
+    std::vector<cv::Point2f> image_points;
+    cv::projectPoints(object_points, rvec, translation_matrix,
+                      camera_matrix, distortion_model, image_points);
+    if ((image_points[0].x >= 0 && image_points[0].x < camera_info_->width) &&
+        (image_points[0].y >= 0 && image_points[0].y < camera_info_->height)) {
+       image_index = image_points[0];
+       return true;
+    } else {
+       return false;
+    }
+}
+
+
 /**
  * DEGUB FUNCTIONS ONLY
  */
@@ -1472,136 +1601,6 @@ void HandheldObjectRegistration::getPFTransformation() {
 
     this->previous_transform_ = update_transform;
 }
-
-
-
-void HandheldObjectRegistration::getObjectRegion(
-    PointCloud::Ptr cloud, PointNormal::Ptr normals,
-    const PointT seed_pt) {
-    if (cloud->empty() || normals->size() != cloud->size()) {
-       return;
-    }
-
-    cv::Point2f image_index;
-    int seed_index = -1;
-    if (this->projectPoint3DTo2DIndex(image_index, seed_pt)) {
-       seed_index = (image_index.x + (image_index.y * camera_info_->width));
-    } else {
-       ROS_ERROR("INDEX IS NAN");
-       return;
-    }
-    
-    Eigen::Vector4f seed_point = cloud->points[seed_index].getVector4fMap();
-    Eigen::Vector4f seed_normal = normals->points[
-       seed_index].getNormalVector4fMap();
-    
-    std::vector<int> processing_list;
-    std::vector<int> labels(static_cast<int>(cloud->size()), -1);
-
-    const int window_size = 3;
-    const int wsize = window_size * window_size;
-    const int lenght = std::floor(window_size/3);
-
-    processing_list.clear();
-    for (int j = -lenght; j <= lenght; j++) {
-       for (int i = -lenght; i <= lenght; i++) {
-          int index = (seed_index + (j * camera_info_->width)) + i;
-          if (index >= 0 && index < cloud->size()) {
-             processing_list.push_back(index);
-          }
-       }
-    }
-    
-    std::vector<int> temp_list;
-    while (true) {
-       
-       if (processing_list.empty()) {
-          break;
-       }
-       temp_list.clear();
-       for (int i = 0; i < processing_list.size(); i++) {
-          int idx = processing_list[i];
-          if (labels[idx] == -1) {
-             Eigen::Vector4f c = cloud->points[idx].getVector4fMap();
-             Eigen::Vector4f n = normals->points[idx].getNormalVector4fMap();
-             
-             if (this->seedVoxelConvexityCriteria(
-                    seed_point, seed_normal, seed_point, c, n, -0.01) == 1) {
-                labels[idx] = 1;
-
-                for (int j = -lenght; j <= lenght; j++) {
-                   for (int k = -lenght; k <= lenght; k++) {
-                      int index = (idx + (j * camera_info_->width)) + k;
-                      if (index >= 0 && index < cloud->size()) {
-                         temp_list.push_back(index);
-                      }
-                   }
-                }
-             }
-          }
-       }
-
-       processing_list.clear();
-       processing_list.insert(processing_list.end(), temp_list.begin(),
-                              temp_list.end());
-    }
-
-    PointCloud::Ptr points(new PointCloud);
-    for (int i = 0; i < labels.size(); i++) {
-       if (labels[i] != -1) {
-          points->push_back(cloud->points[i]);
-       }
-    }
-    cloud->clear();
-    *cloud = *points;
-}
-
-bool HandheldObjectRegistration::projectPoint3DTo2DIndex(
-    cv::Point2f &image_index, const PointT in_point) {
-    if (isnan(in_point.x) || isnan(in_point.y) || isnan(in_point.z)) {
-       ROS_ERROR(" NAN POINT CANNOT BE PROJECTED TO 2D INDEX.");
-       return false;
-    }
-    cv::Mat object_points = cv::Mat(1, 3, CV_32F);
-    object_points.at<float>(0, 0) = in_point.x;
-    object_points.at<float>(0, 1) = in_point.y;
-    object_points.at<float>(0, 2) = in_point.z;
-
-    float K[9];
-    float R[9];
-    for (int i = 0; i < 9; i++) {
-       K[i] = camera_info_->K[i];
-       R[i] = camera_info_->R[i];
-    }
-
-    cv::Mat camera_matrix = cv::Mat(3, 3, CV_32F, K);
-    cv::Mat rotation_matrix = cv::Mat(3, 3, CV_32F, R);
-    float tvec[3];
-    tvec[0] = camera_info_->P[3];
-    tvec[1] = camera_info_->P[7];
-    tvec[2] = camera_info_->P[11];
-    cv::Mat translation_matrix = cv::Mat(3, 1, CV_32F, tvec);
-    
-    float D[5];
-    for (int i = 0; i < 5; i++) {
-       D[i] = camera_info_->D[i];
-    }
-    cv::Mat distortion_model = cv::Mat(5, 1, CV_32F, D);
-    cv::Mat rvec;
-    cv::Rodrigues(rotation_matrix, rvec);
-    
-    std::vector<cv::Point2f> image_points;
-    cv::projectPoints(object_points, rvec, translation_matrix,
-                      camera_matrix, distortion_model, image_points);
-    if ((image_points[0].x >= 0 && image_points[0].x < camera_info_->width) &&
-        (image_points[0].y >= 0 && image_points[0].y < camera_info_->height)) {
-       image_index = image_points[0];
-       return true;
-    } else {
-       return false;
-    }
-}
-
 
 int main(int argc, char *argv[]) {
     ros::init(argc, argv, "handheld_object_registration");
