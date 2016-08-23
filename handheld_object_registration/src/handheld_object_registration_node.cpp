@@ -109,8 +109,8 @@ void HandheldObjectRegistration::cloudCB(
     // gettimeofday(&timer_start, NULL);
 
     this->camera_info_ = cinfo_msg;
-    // this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
-    // this->kdtree_->setInputCloud(cloud);
+    // kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
+    // kdtree_->setInputCloud(cloud);
     
     PointNormal::Ptr normals(new PointNormal);
     this->getNormals(normals, cloud);
@@ -364,18 +364,13 @@ void HandheldObjectRegistration::modelUpdate(
        transformPointCloudWithNormalsGPU(target_points, target_points,
                                          transform_matrix);
        */
-       pcl::transformPointCloudWithNormals(*prev_points_, *update_points,
-                                           transform_matrix);
+       // pcl::transformPointCloudWithNormals(*prev_points_, *update_points,
+       //                                     transform_matrix);
 
-       // transformPointCloudWithNormalsGPU(target_points, target_points,
-       //                                   transform_matrix);
+       transformPointCloudWithNormalsGPU(prev_points_, update_points,
+                                         transform_matrix);
     }
 
-    
-    // this->modelVoxelUpdate(target_points, target_projection,
-    //                        src_points, src_projection);
-
-    
     
     ROS_INFO("\033[33m ICP \033[0m");
     /**
@@ -395,8 +390,6 @@ void HandheldObjectRegistration::modelUpdate(
     this->project3DTo2DDepth(target_projection, target_points);
 
     
-    // this->project3DTo2DDepth(aligned_projection, update_points);
-
     //! fitness check
     float update_fitness = this->checkRegistrationFitness(
        src_projection, src_points, target_projection, target_points);
@@ -418,13 +411,16 @@ void HandheldObjectRegistration::modelUpdate(
     std::cout << angle_y * (180/M_PI)  << "\n";
     std::cout << angle_z * (180/M_PI)  << "\n";
 
+
     /*
     this->modelVoxelUpdate(target_points, target_projection,
                            src_points, src_projection);
     */
+    
     this->initial_transform_ = initial_transform_ * final_transformation;
     
     if (this->update_counter_++ > 2) {
+
        pcl::PointCloud<PointNormalT>::Ptr init_trans_points(
           new pcl::PointCloud<PointNormalT>);
        Eigen::Matrix4f inv = this->initial_transform_.inverse();
@@ -433,12 +429,14 @@ void HandheldObjectRegistration::modelUpdate(
        //! project to initial
        ProjectionMap inv_target_projection;
        this->project3DTo2DDepth(inv_target_projection, init_trans_points);
-
+       
        //! project to previous
        pcl::PointCloud<PointNormalT>::Ptr prev_trans_points(
           new pcl::PointCloud<PointNormalT>);
        inv = final_transformation.inverse();
-       transformPointCloudWithNormalsGPU(target_points, prev_trans_points, inv);
+       // transformPointCloudWithNormalsGPU(target_points,
+       // prev_trans_points, inv);
+       transformPointCloudWithNormalsGPU(src_points, prev_trans_points, inv);
        
        ProjectionMap inv_prev_projection;
        this->project3DTo2DDepth(inv_prev_projection, prev_trans_points);
@@ -447,14 +445,14 @@ void HandheldObjectRegistration::modelUpdate(
        std::vector<bool> prev_outlier_flag(target_points->size(), false);
        std::vector<bool> init_outlier_flag(target_points->size(), false);
        cv::Mat outlier = cv::Mat::zeros(src_projection.rgb.size(), CV_8UC3);
+       
        for (int j = 0; j < inv_target_projection.rgb.rows; j++) {
           for (int i = 0; i < inv_target_projection.rgb.cols; i++) {
-
+             /*
              //! matching to the init model
              int it_index = inv_target_projection.indices.at<int>(j, i);
              int ip_index = this->initial_projection_.indices.at<int>(j, i);
 
-             /*
              if (it_index != -1) {
                 //! check the normal deviation
                 Eigen::Vector4f it_norm = init_trans_points->points[
@@ -463,7 +461,6 @@ void HandheldObjectRegistration::modelUpdate(
                    ip_index].getNormalVector4fMap().normalized();
 
                 float angle = std::acos(ip_norm.dot(it_norm));
-                std::cout << "Angle: " << angle * (180.0/M_PI)  << "\n";
                                 
                 if (angle < M_PI/18 && !isnan(angle)) {
                    init_outlier_flag[it_index] = false;
@@ -472,30 +469,51 @@ void HandheldObjectRegistration::modelUpdate(
                    init_outlier_flag[it_index] = true;
                    outlier.at<cv::Vec3b>(j, i)[1] = 255;
                 }
+       
              }
              if (it_index != -1 && ip_index == -1) {
                 init_outlier_flag[it_index] = true;
                 outlier.at<cv::Vec3b>(j, i)[1] = 255;
              }
              */
+
              
              //! matching to the previous model
              int ipp_index = inv_prev_projection.indices.at<int>(j, i);
              int pp_index = this->prev_projection_.indices.at<int>(j, i);
 
              if (ipp_index != -1) {
-                prev_outlier_flag[ipp_index] = false;
+                // prev_outlier_flag[ipp_index] = false;
                 
-                outlier.at<cv::Vec3b>(j, i)[0] = 255;
+                // outlier.at<cv::Vec3b>(j, i)[0] = 255;
              }
              if (ipp_index != -1 && pp_index == -1) {
-                prev_outlier_flag[ipp_index] = true;
-                
-                outlier.at<cv::Vec3b>(j, i)[2] = 255;
+
+                //! search in grid niegbor
+                for (int y = -1; y <= 1; y++) {
+                   for (int x = -1; x <= 1; x++) {
+                      pp_index = prev_projection_.indices.at<int>(j+y, i+x);
+                      if (pp_index != -1) {
+                         break;
+                      }
+                   }
+                   if (pp_index != -1) {
+                      break;
+                   }
+                }
+
+                if (pp_index != -1) {
+                   outlier.at<cv::Vec3b>(j, i)[1] = 255;
+                } else {
+                   outlier.at<cv::Vec3b>(j, i)[2] = 255;
+                }
              }
           }
        }
 
+
+
+       
        /* //! update via removal of outliers
        init_trans_points->clear();
        pcl::copyPointCloud<PointNormalT, PointNormalT>(
@@ -507,13 +525,16 @@ void HandheldObjectRegistration::modelUpdate(
           }
        }
        */
-       
+
        cv::imshow("transformed", inv_target_projection.rgb);
        cv::imshow("init", initial_projection_.rgb);
+       // cv::imshow("init", prev_projection_.rgb);
        cv::imshow("outlier", outlier);
     }
 
     this->transformation_cache_.push_back(final_transformation);
+
+    std::cout << "PRINTING"  << "\n";
     
     cv::waitKey(3);
     return;
@@ -791,13 +812,12 @@ void HandheldObjectRegistration::featureBasedTransformation(
        }
        // } //! endif
     }
+    /*
     cv::Mat img_matches;
     cv::drawMatches(src_image, src_keypoints, target_image,  tgt_keypoints,
                     good_matches, img_matches);
     cv::imshow("matching", img_matches);
-
-    // cv::waitKey(3);
-    
+    */
 }
 
 
