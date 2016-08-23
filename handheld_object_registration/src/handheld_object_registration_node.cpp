@@ -1484,9 +1484,10 @@ void HandheldObjectRegistration::getObjectRegion(
 
     std::vector<std::vector<int> > neigbhor_list(cloud->size());
 
-    int seed_index = -1;
-    double min_distance = 0.05 * 0.05;
 
+    double min_distance = 0.05 * 0.05;
+    
+    /*
     Eigen::Vector4f in_seed = seed_pt.getVector4fMap();
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(8)
@@ -1514,7 +1515,14 @@ void HandheldObjectRegistration::getObjectRegion(
           }
        }
     }
-    if (seed_index == -1) {
+
+    */
+
+    cv::Point2f image_index;
+    int seed_index = -1;
+    if (this->projectPoint3DTo2DIndex(image_index, seed_pt)) {
+       seed_index = (image_index.x + (image_index.y * camera_info_->width));
+    } else {
        ROS_ERROR("INDEX IS NAN");
        return;
     }
@@ -1588,6 +1596,51 @@ void HandheldObjectRegistration::getObjectRegion(
     *cloud = *points;
 }
 
+bool HandheldObjectRegistration::projectPoint3DTo2DIndex(
+    cv::Point2f &image_index, const PointT in_point) {
+    if (isnan(in_point.x) || isnan(in_point.y) || isnan(in_point.z)) {
+       ROS_ERROR(" NAN POINT CANNOT BE PROJECTED TO 2D INDEX.");
+       return false;
+    }
+    cv::Mat object_points = cv::Mat(1, 3, CV_32F);
+    object_points.at<float>(0, 0) = in_point.x;
+    object_points.at<float>(0, 1) = in_point.y;
+    object_points.at<float>(0, 2) = in_point.z;
+
+    float K[9];
+    float R[9];
+    for (int i = 0; i < 9; i++) {
+       K[i] = camera_info_->K[i];
+       R[i] = camera_info_->R[i];
+    }
+
+    cv::Mat camera_matrix = cv::Mat(3, 3, CV_32F, K);
+    cv::Mat rotation_matrix = cv::Mat(3, 3, CV_32F, R);
+    float tvec[3];
+    tvec[0] = camera_info_->P[3];
+    tvec[1] = camera_info_->P[7];
+    tvec[2] = camera_info_->P[11];
+    cv::Mat translation_matrix = cv::Mat(3, 1, CV_32F, tvec);
+    
+    float D[5];
+    for (int i = 0; i < 5; i++) {
+       D[i] = camera_info_->D[i];
+    }
+    cv::Mat distortion_model = cv::Mat(5, 1, CV_32F, D);
+    cv::Mat rvec;
+    cv::Rodrigues(rotation_matrix, rvec);
+    
+    std::vector<cv::Point2f> image_points;
+    cv::projectPoints(object_points, rvec, translation_matrix,
+                      camera_matrix, distortion_model, image_points);
+    if ((image_points[0].x >= 0 && image_points[0].x < camera_info_->width) &&
+        (image_points[0].y >= 0 && image_points[0].y < camera_info_->height)) {
+       image_index = image_points[0];
+       return true;
+    } else {
+       return false;
+    }
+}
 
 
 int main(int argc, char *argv[]) {

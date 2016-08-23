@@ -169,6 +169,7 @@ class HandheldObjectRegistration {
 
     void getObjectRegion(PointCloud::Ptr, PointNormal::Ptr,
                          const PointT);
+    bool projectPoint3DTo2DIndex(cv::Point2f &, const PointT);
    
     //! debug functions
     void plotPlane(pcl::PointCloud<PointNormalT>::Ptr, const Eigen::Vector4f,
