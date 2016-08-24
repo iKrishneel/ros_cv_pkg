@@ -368,30 +368,36 @@ void HandheldObjectRegistration::modelUpdate(
           transformation_estimation.estimateRigidTransformation(
              *target_cloud, *src_cloud, correspondences, transform_matrix);
              */
-          pcl::registration::TransformationEstimationSVD<
-             PointNormalT, PointNormalT> transformation_estimation;
-          transformation_estimation.estimateRigidTransformation(
-             *prev_points_, *src_points, correspondences, transform_matrix);
-
-          // TODO: iterate till minimization
+          int iter = 0;
+          while (iter++ < 1) {
+             pcl::registration::TransformationEstimationSVD<
+                PointNormalT, PointNormalT> transformation_estimation;
+             Eigen::Matrix4f trans_mat = Eigen::Matrix4f::Identity();
+             transformation_estimation.estimateRigidTransformation(
+                *prev_points_, *src_points, correspondences, trans_mat);
+             transformPointCloudWithNormalsGPU(prev_points_, update_points,
+                                               trans_mat);
+             this->prev_points_->clear();
+             pcl::copyPointCloud<PointNormalT, PointNormalT>(
+                *update_points, *prev_points_);
+             
+             transform_matrix = transform_matrix * trans_mat;
+          }
        }
-       // TODO(ADD) : correspondances
-       transformPointCloudWithNormalsGPU(prev_points_, update_points,
+       transformPointCloudWithNormalsGPU(target_points, target_points,
                                          transform_matrix);
     }
-    
-    ROS_INFO("\033[33m ICP \033[0m");
-    /**
-     * FOR REGISTRATION USE PCL ICP
-     */
 
+    
+    ROS_INFO("\033[33m PCL--ICP \033[0m");
     pcl::PointCloud<PointNormalT>::Ptr aligned_points(
        new pcl::PointCloud<PointNormalT>);
     Eigen::Matrix<float, 4, 4> icp_transform = Eigen::Matrix4f::Identity();
-    // this->registrationICP(aligned_points, icp_transform,
-    //                       update_points, src_points);
+    this->registrationICP(aligned_points, icp_transform,
+                          target_points, src_points);
     Eigen::Matrix4f final_transformation = icp_transform * transform_matrix;
 
+    
     /*
     //! project prev->cur alignment to 2d
     ProjectionMap aligned_projection;
@@ -425,12 +431,17 @@ void HandheldObjectRegistration::modelUpdate(
        }
     }
     */
+
+
     //! transform the model to current orientation
     transformPointCloudWithNormalsGPU(target_points, target_points,
-                                      final_transformation);
+                                      icp_transform);
 
+    return;
+    
+    
     /*
-    this->project3DTo2DDepth(target_projection, target_points);
+      this->project3DTo2DDepth(target_projection, target_points);
     this->modelVoxelUpdate(target_points, target_projection,
                            src_points, src_projection);
     */
@@ -446,22 +457,44 @@ void HandheldObjectRegistration::modelUpdate(
        new pcl::PointCloud<PointNormalT>);
     Eigen::Matrix4f inv = this->initial_transform_.inverse();
     transformPointCloudWithNormalsGPU(target_points, init_trans_points, inv);
+
+    //! realignment for error compensation
+    Eigen::Matrix4f transform_error;
+    this->registrationICP(init_trans_points, transform_error,
+                          init_trans_points, this->initial_points_);
+    
+    Eigen::Matrix4f inv_trans_error = transform_error.inverse();
+    transformPointCloudWithNormalsGPU(target_points, target_points,
+                                      inv_trans_error);
+    
     ProjectionMap target_project_initial;
     this->project3DTo2DDepth(target_project_initial, init_trans_points);
 
+
+    /*
+    //! plot outliers
+    cv::Mat outlier = cv::Mat::zeros(480, 640, CV_8UC3);
+    for (int j = 0; j < 480; j++) {
+       for (int i = 0;  i < 640; i++) {
+          int x = target_project_initial.indices.at<int>(j, i);
+          int y = initial_projection_.indices.at<int>(j, i);
+          if (x != -1 && y == -1) {
+             outlier.at<cv::Vec3b>(j, i)[0] = 255;
+          } else if (y != -1 && x == -1) {
+             outlier.at<cv::Vec3b>(j, i)[1] = 255;
+          } else if (y != -1 && x != -1) {
+             outlier.at<cv::Vec3b>(j, i)[2] = 255;
+          }
+       }
+    }
+
+
+    cv::imshow("outlier", outlier);
+    */
     cv::imshow("transfromed", target_project_initial.rgb);
     
     cv::waitKey(3);
     return;
-
-    
-    // std::vector<CandidateIndices> candidate_indices1;
-    // this->featureBasedTransformation(
-    //    candidate_indices1, init_trans_points,
-    //    target_project_initial.indices, target_project_initial.rgb,
-    //    this->initial_points_, initial_projection_.indices,
-    //    initial_projection_.rgb);
-    
 
     
     if (this->update_counter_++ > 2) {
@@ -737,14 +770,23 @@ void HandheldObjectRegistration::featureBasedTransformation(
                                               static_cast<int>(tgt_pt.x));
        
        if (tgt_index != -1 && src_index != -1) {
-          // Eigen::Vector4f src_normal = src_points->points[
-          //    src_index].getNormalVector4fMap();
-          // Eigen::Vector4f tgt_normal = target_points->points[
-          //    tgt_index].getNormalVector4fMap();
-          // float angle = (src_normal.dot(tgt_normal)) / (
-          //    src_normal.norm() * tgt_normal.norm());
-          // if (angle > ANGLE_THRESH_)
-          {
+          /*
+          Eigen::Vector4f src_normal = src_points->points[
+             src_index].getNormalVector4fMap();
+          Eigen::Vector4f tgt_normal = target_points->points[
+             tgt_index].getNormalVector4fMap();
+          float angle = (src_normal.dot(tgt_normal)) / (
+             src_normal.norm() * tgt_normal.norm());
+          if (angle > ANGLE_THRESH_)
+          */
+          Eigen::Vector4f src_point = src_points->points[
+             src_index].getVector4fMap();
+          Eigen::Vector4f tgt_point = target_points->points[
+             tgt_index].getVector4fMap();
+          src_point(3) = 0.0f;
+          tgt_point(3) = 0.0f;
+          double d = pcl::distances::l2(src_point, tgt_point);
+          if (d < 0.02) {
              matches_flag[i] = true;
              candidate_indices[i].source_index = src_index;
              candidate_indices[i].target_index = tgt_index;
@@ -797,65 +839,21 @@ bool HandheldObjectRegistration::registrationICP(
     icp->setRANSACOutlierRejectionThreshold(0.05);
     icp->setRANSACIterations(1000);
     icp->setTransformationEpsilon(1e-8);
+    icp->setUseReciprocalCorrespondences(true);
     
-    // icp->setMaxCorrespondenceDistance(1e-5);
+    icp->setMaxCorrespondenceDistance(0.03);
        
     icp->setInputSource(src_points);
     icp->setInputTarget(target_points);
 
-    //! getting the correspondances
-    pcl::registration::CorrespondenceEstimation<PointNormalT,
-                                                PointNormalT>::Ptr
-       correspond_estimation(new pcl::registration::CorrespondenceEstimation<
-                             PointNormalT, PointNormalT>);
-    correspond_estimation->setInputSource(src_points);
-    correspond_estimation->setInputTarget(target_points);
 
-    icp->setCorrespondenceEstimation(correspond_estimation);
+    pcl::registration::TransformationEstimationSVD<
+       PointNormalT, PointNormalT>::Ptr trans_svd(
+          new pcl::registration::TransformationEstimationSVD<
+          PointNormalT, PointNormalT>);
+    icp->setTransformationEstimation(trans_svd);
     icp->align(*align_points);
-    transformation = icp->getFinalTransformation();
-    
-    boost::shared_ptr<pcl::Correspondences> correspondences(
-       new pcl::Correspondences);
-    correspond_estimation->determineCorrespondences(*correspondences);
-
-    /*
-    ROS_INFO("PRINTING CORRESPONDENCES");
-    align_points->clear();
-    *align_points = *src_points;
-    float fitness = icp->getFitnessScore();
-    std::cout << "\033[33m INFO:  \033[0m" << correspondences->size()
-              << "\t"  << align_points->size()  << "\n";
-
-    float outlier_counter = 0.0f;
-    for (int i = 0; i < correspondences->size(); i++) {
-       int query = correspondences->operator[](i).index_query;  //! source
-       int match = correspondences->operator[](i).index_match;  //! target
-       if (correspondences->operator[](i).distance > 0.005) {
-
-          // std::cout << "\033[35mDEBUG:  \033[0m" << query << ", "
-          //           << match << "\t" << distance  << "\n";
-          
-          // this->target_points_->push_back(align_points->points[query]);
-          // align_points->points[query].r = 0;
-          // align_points->points[query].b = 0;
-          // align_points->points[query].g = 0;
-
-          outlier_counter += 1.0f;
-       }
-    }
-   
-    const float OUTLIER_THRESH_ = 0.05f;
-    bool is_converged = (icp->hasConverged() == 1) ? true : false;
-    float outlier_ratio = outlier_counter / static_cast<float>(
-       correspondences->size());
-    if (outlier_ratio > OUTLIER_THRESH_ && is_converged) {
-       is_converged = false;
-    }
-    
-    std::cout << "\033[34m OUTLIER RATION: " <<
-       outlier_ratio << "\033[0m\n";
-    */
+    transformation = icp->getFinalTransformation();    
     
     std::cout << "has converged:" << icp->hasConverged() << " score: "
               << icp->getFitnessScore() << std::endl;

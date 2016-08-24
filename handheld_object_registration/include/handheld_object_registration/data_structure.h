@@ -8,6 +8,7 @@
 struct CandidateIndices {
     int source_index;
     int target_index;
+    float distance;
 };
 
 struct ProjectionMap {
