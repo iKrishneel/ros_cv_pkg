@@ -109,8 +109,6 @@ void HandheldObjectRegistration::cloudCB(
     // gettimeofday(&timer_start, NULL);
 
     this->camera_info_ = cinfo_msg;
-    // kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
-    // kdtree_->setInputCloud(cloud);
     
     PointNormal::Ptr normals(new PointNormal);
     this->getNormals(normals, cloud);
@@ -208,6 +206,15 @@ void HandheldObjectRegistration::cloudCB(
 
        struct timeval timer_start, timer_end;
        gettimeofday(&timer_start, NULL);
+
+
+       *target_points_ += *target_points_;
+
+       /*
+       pcl::KdTreeFLANN<PointNormalT>::Ptr kdtree(
+          new pcl::KdTreeFLANN<PointNormalT>);
+       kdtree->setInputCloud(target_points_);
+       */
        
        this->modelUpdate(src_points, target_points_);
 
@@ -215,7 +222,7 @@ void HandheldObjectRegistration::cloudCB(
        gettimeofday(&timer_end, NULL);
        double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
                        timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
-       ROS_ERROR("TIME: %3.6f", delta);
+       ROS_ERROR("TIME: %3.6f, %d", delta, target_points_->size());
        
        sensor_msgs::PointCloud2 ros_cloud;
        pcl::toROSMsg(*src_points, ros_cloud);
@@ -396,7 +403,6 @@ void HandheldObjectRegistration::modelUpdate(
     this->registrationICP(aligned_points, icp_transform,
                           target_points, src_points);
     Eigen::Matrix4f final_transformation = icp_transform * transform_matrix;
-
     
     /*
     //! project prev->cur alignment to 2d
@@ -432,20 +438,13 @@ void HandheldObjectRegistration::modelUpdate(
     }
     */
 
-
     //! transform the model to current orientation
     transformPointCloudWithNormalsGPU(target_points, target_points,
                                       icp_transform);
-    
 
-    ROS_ERROR("BEFORE UPDATE: %d", target_points->size());
-    
     this->project3DTo2DDepth(target_projection, target_points);
     this->modelVoxelUpdate(target_points, target_projection,
                            src_points, src_projection);
-
-    ROS_ERROR("AFTER UPDATE: %d", target_points->size());
-    
     
     //! transform to init
     this->initial_transform_ =  final_transformation * initial_transform_;
@@ -860,20 +859,22 @@ bool HandheldObjectRegistration::registrationICP(
     icp->setRANSACIterations(1000);
     icp->setTransformationEpsilon(1e-8);
     icp->setUseReciprocalCorrespondences(true);
-    
     icp->setMaxCorrespondenceDistance(0.03);
-       
     icp->setInputSource(src_points);
     icp->setInputTarget(target_points);
-
-
+    /*
     pcl::registration::TransformationEstimationSVD<
        PointNormalT, PointNormalT>::Ptr trans_svd(
           new pcl::registration::TransformationEstimationSVD<
           PointNormalT, PointNormalT>);
+    */
+    pcl::registration::TransformationEstimationPointToPlaneLLS<
+       PointNormalT, PointNormalT>::Ptr trans_svd(
+          new pcl::registration::TransformationEstimationPointToPlaneLLS<
+          PointNormalT, PointNormalT>);
     icp->setTransformationEstimation(trans_svd);
     icp->align(*align_points);
-    transformation = icp->getFinalTransformation();    
+    transformation = icp->getFinalTransformation();
     
     std::cout << "has converged:" << icp->hasConverged() << " score: "
               << icp->getFitnessScore() << std::endl;

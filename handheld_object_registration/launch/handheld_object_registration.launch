@@ -16,9 +16,9 @@
   </node>
   
 
-  <node pkg="image_view2" type="image_view2"
-      name="image_view2" output="screen">
-    <remap from="image" to="$(arg IMAGE)" />
-  </node>
+  <!-- <node pkg="image_view2" type="image_view2" -->
+  <!--     name="image_view2" output="screen"> -->
+  <!--   <remap from="image" to="$(arg IMAGE)" /> -->
+  <!-- </node> -->
 
 </launch>
