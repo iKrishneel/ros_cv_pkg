@@ -5,7 +5,6 @@ HandheldObjectRegistration::HandheldObjectRegistration():
     num_threads_(16), is_init_(false), min_points_size_(100),
     weight_decay_factor_(0.75f), init_weight_(1.0f), pose_flag_(false) {
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
-    
     this->target_points_ = pcl::PointCloud<PointNormalT>::Ptr(
        new pcl::PointCloud<PointNormalT>);
     this->initial_points_ = pcl::PointCloud<PointNormalT>::Ptr(
@@ -140,7 +139,7 @@ void HandheldObjectRegistration::cloudCB(
 
     pcl::PointCloud<PointNormalT>::Ptr src_points(
        new pcl::PointCloud<PointNormalT>);
-    getObjectRegion(src_points, cloud, normals, seed_point);
+    fastSeedRegionGrowing(src_points, cloud, normals, seed_point);
     
 
     // this->seedRegionGrowing(src_points, seed_point, cloud, normals);
@@ -323,14 +322,6 @@ void HandheldObjectRegistration::modelUpdate(
 
     //! move it out***
     ProjectionMap target_projection = this->prev_projection_;
-    // this->project3DTo2DDepth(target_projection, this->prev_points_);
-
-    
-    //! fitness check
-    float benchmark_fitness = this->checkRegistrationFitness(
-       src_projection, src_points, target_projection, prev_points_);
-    ROS_INFO("\033[34m BENCHMARK: %3.2f \033[0m", benchmark_fitness);
-
     
     //!  Feature check
     std::vector<CandidateIndices> candidate_indices;
@@ -400,6 +391,15 @@ void HandheldObjectRegistration::modelUpdate(
                                          transform_matrix);
     }
 
+    this->project3DTo2DDepth(target_projection, target_points);
+    float registration_fitness = this->checkRegistrationFitness(
+       src_projection, src_points, target_projection, target_points);
+    ROS_INFO("\033[34m BENCHMARK: %3.2f \033[0m", registration_fitness);
+    return;
+
+
+    
+    
     //! get current visible points on the model
     update_points->clear();
     this->project3DTo2DDepth(target_projection, target_points);
@@ -889,37 +889,65 @@ float HandheldObjectRegistration::checkRegistrationFitness(
        ROS_ERROR("EMPTY INPUT.. REGISTRATION CHECK FAILED");
        return -1.0f;
     }
-    double DIST_THRESH = 0.05;
+    double DIST_THRESH = 0.02;
+    float ANGLE_THRESH = std::cos(M_PI / 18.0f);
     float inlier_counter = 0.0f;
-    float outlier_counter = 0.0f;
+    // float outlier_counter = 0.0f;
 
-    // cv::Mat image = cv::Mat::zeros(480, 640, CV_8UC3);
-    for (int j = 0; j < src_projection.indices.rows; j++) {
-       for (int i = 0; i < src_projection.indices.cols; i++) {
+    bool use_angle = false;
+    cv::Mat image = cv::Mat::zeros(480, 640, CV_8UC3);
+    // int min_x = std::min(src_projection.x, target_projection.x);
+    // int min_y = std::min(src_projection.y, target_projection.y);
+    // int max_w = std::max(src_projection.width, target_projection.width);
+    // int max_h = std::max(src_projection.height, target_projection.height);
+
+    Eigen::Vector3f n_src = Eigen::Vector3f::Identity();
+    Eigen::Vector3f n_tgt = Eigen::Vector3f::Identity();
+    
+    for (int j = target_projection.y; j < target_projection.y +
+            target_projection.height; j++) {
+       for (int i = target_projection.x; i < target_projection.x +
+               target_projection.width; i++) {
           int s_index = src_projection.indices.at<int>(j, i);
           int t_index = target_projection.indices.at<int>(j, i);
-          // cv::Scalar color(255, 0, 0);
+          // cv::Scalar color(0, 0, 0);
           if (s_index != -1 && t_index != -1) {
              float diff = std::fabs(src_points->points[s_index].z -
                                     target_points->points[t_index].z);
+             
              if (diff < DIST_THRESH) {
-                inlier_counter += 1.0f;
-                // color = cv::Scalar(0, 255, 0);
+                if (use_angle) {
+                   n_src = src_points->points[s_index].getNormalVector3fMap();
+                   n_tgt = target_points->points[
+                      t_index].getNormalVector3fMap();
+                   float angle = n_src.normalized().dot(n_tgt.normalized());
+                   if (angle > ANGLE_THRESH) {
+                      inlier_counter += 1.0f;
+                   }
+                } else {
+                   inlier_counter += 1.0f;
+                }
+                
+                image.at<cv::Vec3b>(j, i)[1] = 255;
              } else {
-                outlier_counter += 1.0f;
+                image.at<cv::Vec3b>(j, i)[0] = 255;
              }
-          } else if (s_index == -1 && t_index != -1) {
-             outlier_counter += 1.0f;
-          } else if (s_index != -1 && t_index == -1) {
-             outlier_counter += 1.0f;
           }
-          // cv::circle(image, cv::Point(i, j), 2, color, -1);
+          
+          /*
+          else if (s_index == -1 && t_index != -1) {
+             color = cv::Scalar(0, 0, 255);
+          } else if (s_index != -1 && t_index == -1) {
+             color = cv::Scalar(0, 0, 255);
+          }
+
+          */
        }
     }
-    // cv::imshow("render", image);
-    // cv::waitKey(3);
+    cv::imshow("render", image);
+    cv::waitKey(3);
     
-    float fitness = inlier_counter / (inlier_counter + outlier_counter);
+    float fitness = inlier_counter / static_cast<float>(src_points->size());
     return fitness;
 }
 
@@ -1368,7 +1396,7 @@ bool HandheldObjectRegistration::conditionROI(
     return true;
 }
 
-void HandheldObjectRegistration::getObjectRegion(
+void HandheldObjectRegistration::fastSeedRegionGrowing(
     pcl::PointCloud<PointNormalT>::Ptr src_points,
     const PointCloud::Ptr cloud, const PointNormal::Ptr normals,
     const PointT seed_pt) {

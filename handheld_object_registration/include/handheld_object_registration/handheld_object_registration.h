@@ -49,12 +49,7 @@ class HandheldObjectRegistration {
     typedef pcl::PointXYZRGBNormal PointNormalT;
     typedef pcl::PointCloud<PointT> PointCloud;
     typedef pcl::PointCloud<NormalT> PointNormal;
-   /*
-    struct Weights {
-       float weight[HISTORY_WINDOW];
-    };
-    typedef std::vector<Weights> VoxelWeights;
-   */
+
  private:
     boost::mutex mutex_;
     boost::mutex lock_;
@@ -168,7 +163,7 @@ class HandheldObjectRegistration {
     void symmetricPlane(float *, pcl::PointCloud<PointNormalT>::Ptr,
                         const float = 0.02f);
 
-    void getObjectRegion(pcl::PointCloud<PointNormalT>::Ptr,
+    void fastSeedRegionGrowing(pcl::PointCloud<PointNormalT>::Ptr,
                          const PointCloud::Ptr, const PointNormal::Ptr,
                          const PointT);
     bool projectPoint3DTo2DIndex(cv::Point2f &, const PointT);
