@@ -208,7 +208,7 @@ void HandheldObjectRegistration::cloudCB(
        struct timeval timer_start, timer_end;
        gettimeofday(&timer_start, NULL);
        
-       //! this->modelUpdate(src_points, target_points_);
+       this->modelUpdate(src_points, target_points_);
 
        //! timer
        gettimeofday(&timer_end, NULL);
@@ -230,37 +230,37 @@ void HandheldObjectRegistration::cloudCB(
        this->project3DTo2DDepth(initial_projection_, target_points_);
 
        //! deform the initial region slightly
-       cv::Mat mask = cv::Mat::zeros(480, 640, CV_8UC1);
-       for (int i = initial_projection_.y; i < initial_projection_.y +
-               initial_projection_.height; i++) {
-          for (int j = initial_projection_.x; j < initial_projection_.x +
-                  initial_projection_.width; j++) {
-             if (initial_projection_.indices.at<int>(i, j) != -1) {
-                mask.at<uchar>(i, j) = 255;
+       cv::Mat im_gray;
+       this->initial_projection_.depth.convertTo(im_gray, CV_8U, 255);
+       int DILATE_THRESH = 5;
+       cv::Mat element = cv::getStructuringElement(
+          cv::MORPH_ELLIPSE, cv::Size(DILATE_THRESH*2+1, DILATE_THRESH*2+1),
+          cv::Point(DILATE_THRESH, DILATE_THRESH));
+       cv::Ptr<cv::cuda::Filter> dilate = cv::cuda::createMorphologyFilter(
+          cv::MORPH_DILATE, im_gray.type(), element);
+       cv::cuda::GpuMat d_src(im_gray);
+       cv::cuda::GpuMat d_dst;
+       dilate->apply(d_src, d_dst);
+       cv::Mat dilate_mask;
+       d_dst.download(dilate_mask);
+
+       //! indices are replaced by deformed values
+       cv::Mat plot = cv::Mat::zeros(480, 640, CV_8UC3);
+       // for (int j = initial_projection_.y; j < initial_projection_.y +
+       //         initial_projection_.height; j++) {
+       //    for (int i = initial_projection_.x; i < initial_projection_.x +
+       //            initial_projection_.width; i++) {
+       for (int j = 0; j < initial_projection_.indices.rows ; j++) {
+          for (int i = 0; i < initial_projection_.indices.cols; i++) {
+             if (dilate_mask.at<uchar>(j, i) != 0 &&
+                 initial_projection_.indices.at<int>(j, i) == -1) {
+                this->initial_projection_.indices.at<int>(j, i) = -2;
+
+                plot.at<cv::Vec3b>(j, i)[0] = 255;
+                
              }
           }
        }
-       cv::imshow("mask", mask);
-       
-       cv::waitKey(3);
-
-
-       //! init weight
-       /*
-       this->point_weights_.clear();
-       this->point_weights_.resize(static_cast<int>(target_points_->size()));
-
-       this->voxel_weights_.clear();
-       this->voxel_weights_.resize(static_cast<int>(target_points_->size()));
-       for (int i = 0; i < target_points_->size(); i++) {
-          point_weights_[i] = this->init_weight_;
-          int j = 0;
-          this->voxel_weights_[i].weight[j] = this->init_weight_;
-          for (j = 1; j < HISTORY_WINDOW; j++) {
-             this->voxel_weights_[i].weight[j] = -1;
-          }
-       }
-       */
     }
 
     this->prev_points_->clear();
@@ -469,9 +469,7 @@ void HandheldObjectRegistration::modelUpdate(
        for (int i = 0;  i < this->initial_projection_.indices.cols; i++) {
           int tpi_index = target_project_initial.indices.at<int>(j, i);
           int ip_index = initial_projection_.indices.at<int>(j, i);
-          
-          if (tpi_index!= -1 && ip_index == -1) {
-             // TODO(CHECK):  check distance and angle
+          if (tpi_index != -1 && ip_index == -1) {
              target_points->points[tpi_index].x =
                 std::numeric_limits<float>::quiet_NaN();
              target_points->points[tpi_index].y =
@@ -483,9 +481,16 @@ void HandheldObjectRegistration::modelUpdate(
           } else if (ip_index != -1 && tpi_index == -1) {
              outlier.at<cv::Vec3b>(j, i)[1] = 255;
           } else if (ip_index != -1 && tpi_index != -1) {
+             // TODO(check): distance and angle
+             
              outlier.at<cv::Vec3b>(j, i) = initial_projection_.rgb.at<
                 cv::Vec3b>(j, i);
           }
+          /*
+          if (ip_index == -2 && tpi_index != -1) {
+             outlier.at<cv::Vec3b>(j, i)[0] = 255;
+          }
+          */
        }
     }
 
