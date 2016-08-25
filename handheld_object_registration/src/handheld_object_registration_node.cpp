@@ -245,7 +245,6 @@ void HandheldObjectRegistration::cloudCB(
        d_dst.download(dilate_mask);
 
        //! indices are replaced by deformed values
-       cv::Mat plot = cv::Mat::zeros(480, 640, CV_8UC3);
        // for (int j = initial_projection_.y; j < initial_projection_.y +
        //         initial_projection_.height; j++) {
        //    for (int i = initial_projection_.x; i < initial_projection_.x +
@@ -255,9 +254,6 @@ void HandheldObjectRegistration::cloudCB(
              if (dilate_mask.at<uchar>(j, i) != 0 &&
                  initial_projection_.indices.at<int>(j, i) == -1) {
                 this->initial_projection_.indices.at<int>(j, i) = -2;
-
-                plot.at<cv::Vec3b>(j, i)[0] = 255;
-                
              }
           }
        }
