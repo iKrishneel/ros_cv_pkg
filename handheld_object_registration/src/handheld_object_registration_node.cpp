@@ -204,17 +204,10 @@ void HandheldObjectRegistration::cloudCB(
     if (!this->target_points_->empty()) {
        std::cout << "updating"  << "\n";
 
+       //! timer
        struct timeval timer_start, timer_end;
        gettimeofday(&timer_start, NULL);
 
-
-       *target_points_ += *target_points_;
-
-       /*
-       pcl::KdTreeFLANN<PointNormalT>::Ptr kdtree(
-          new pcl::KdTreeFLANN<PointNormalT>);
-       kdtree->setInputCloud(target_points_);
-       */
        
        this->modelUpdate(src_points, target_points_);
 
@@ -395,20 +388,32 @@ void HandheldObjectRegistration::modelUpdate(
                                          transform_matrix);
     }
 
+    //! get current visible points on the model
+    update_points->clear();
+    this->project3DTo2DDepth(target_projection, target_points);
+    for (int i = 0; i < target_points->size(); i++) {
+       if (target_projection.visibility_flag[i]) {
+          update_points->push_back(target_points->points[i]);
+       }
+    }
+    if (update_points->empty()) {
+       pcl::copyPointCloud<PointNormalT, PointNormalT>(*target_points,
+                                                       *update_points);
+    }
     
     ROS_INFO("\033[33m PCL--ICP \033[0m");
     pcl::PointCloud<PointNormalT>::Ptr aligned_points(
        new pcl::PointCloud<PointNormalT>);
     Eigen::Matrix<float, 4, 4> icp_transform = Eigen::Matrix4f::Identity();
     this->registrationICP(aligned_points, icp_transform,
-                          target_points, src_points);
+                          update_points, src_points);
     Eigen::Matrix4f final_transformation = icp_transform * transform_matrix;
     
-    /*
+
     //! project prev->cur alignment to 2d
+    /*
     ProjectionMap aligned_projection;
     this->project3DTo2DDepth(aligned_projection, aligned_points);
-
     for (int j = src_projection.y;
          j < src_projection.height + src_projection.y; j++) {
        for (int i = src_projection.x;
@@ -437,7 +442,7 @@ void HandheldObjectRegistration::modelUpdate(
        }
     }
     */
-
+    
     //! transform the model to current orientation
     transformPointCloudWithNormalsGPU(target_points, target_points,
                                       icp_transform);
@@ -459,6 +464,8 @@ void HandheldObjectRegistration::modelUpdate(
                           init_trans_points, this->initial_points_);
     transformPointCloudWithNormalsGPU(target_points, target_points,
                                       transform_error);
+
+    std::cout << transform_error  << "\n";
     
     ProjectionMap target_project_initial;
     this->project3DTo2DDepth(target_project_initial, init_trans_points);
@@ -473,6 +480,7 @@ void HandheldObjectRegistration::modelUpdate(
           int ip_index = initial_projection_.indices.at<int>(j, i);
           
           if (tpi_index!= -1 && ip_index == -1) {
+             // TODO(CHECK):  check distance and angle
              target_points->points[tpi_index].x =
                 std::numeric_limits<float>::quiet_NaN();
              target_points->points[tpi_index].y =
@@ -513,9 +521,6 @@ void HandheldObjectRegistration::modelUpdate(
 
     
     if (this->update_counter_++ > 2) {
-
-
-       
        
        for (int j = src_projection.y;
             j < src_projection.height + src_projection.y; j++) {
