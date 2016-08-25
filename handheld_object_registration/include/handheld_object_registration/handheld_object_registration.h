@@ -62,6 +62,7 @@ class HandheldObjectRegistration {
 
     int num_threads_;
     int min_points_size_;  //! number of points for update
+    float registration_thresh_;
    
     float weight_decay_factor_;
     float init_weight_;

@@ -3,7 +3,8 @@
 
 HandheldObjectRegistration::HandheldObjectRegistration():
     num_threads_(16), is_init_(false), min_points_size_(100),
-    weight_decay_factor_(0.75f), init_weight_(1.0f), pose_flag_(false) {
+    weight_decay_factor_(0.75f), init_weight_(1.0f), pose_flag_(false),
+    registration_thresh_(0.6f) {
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
     this->target_points_ = pcl::PointCloud<PointNormalT>::Ptr(
        new pcl::PointCloud<PointNormalT>);
@@ -365,39 +366,44 @@ void HandheldObjectRegistration::modelUpdate(
           }
        }
        if (!src_cloud->empty() || !target_cloud->empty()) {
-          /*
-          pcl::registration::TransformationEstimationSVD<
-             PointT, PointT> transformation_estimation;
-          transformation_estimation.estimateRigidTransformation(
-             *target_cloud, *src_cloud, correspondences, transform_matrix);
-             */
           int iter = 0;
-          while (iter++ < 1) {
+          const int MAX_ITER = 1;
+          while (iter++ < MAX_ITER) {
              pcl::registration::TransformationEstimationSVD<
                 PointNormalT, PointNormalT> transformation_estimation;
              Eigen::Matrix4f trans_mat = Eigen::Matrix4f::Identity();
              transformation_estimation.estimateRigidTransformation(
                 *prev_points_, *src_points, correspondences, trans_mat);
-             transformPointCloudWithNormalsGPU(prev_points_, update_points,
+             if (MAX_ITER > 1) {
+                transformPointCloudWithNormalsGPU(prev_points_, update_points,
                                                trans_mat);
-             this->prev_points_->clear();
-             pcl::copyPointCloud<PointNormalT, PointNormalT>(
-                *update_points, *prev_points_);
-             
+                this->prev_points_->clear();
+                pcl::copyPointCloud<PointNormalT, PointNormalT>(
+                   *update_points, *prev_points_);
+             }
              transform_matrix =  trans_mat * transform_matrix;
           }
        }
+       update_points->clear();
+       pcl::copyPointCloud<PointNormalT, PointNormalT>(
+          *target_points, *update_points);
        transformPointCloudWithNormalsGPU(target_points, target_points,
                                          transform_matrix);
+
+       /*
+       this->project3DTo2DDepth(target_projection, target_points);
+       float registration_fitness = this->checkRegistrationFitness(
+          src_projection, src_points, target_projection, target_points);
+       
+       if (registration_fitness < this->registration_thresh_) {
+          target_points->clear();
+          pcl::copyPointCloud<PointNormalT, PointNormalT>(
+             *update_points, *target_points);
+       }
+       ROS_INFO("\033[34m BENCHMARK: %3.2f \033[0m", registration_fitness);
+       return;
+       */
     }
-
-    
-    this->project3DTo2DDepth(target_projection, target_points);
-    float registration_fitness = this->checkRegistrationFitness(
-       src_projection, src_points, target_projection, target_points);
-    ROS_INFO("\033[34m BENCHMARK: %3.2f \033[0m", registration_fitness);
-    return;
-
 
     
     
@@ -924,7 +930,8 @@ float HandheldObjectRegistration::checkRegistrationFitness(
           }
        }
     }
-    float fitness = inlier_counter / static_cast<float>(src_points->size());
+    int min_size = std::min(src_points->size(), target_points->size());
+    float fitness = inlier_counter / static_cast<float>(min_size);
     return fitness;
 }
 
