@@ -409,39 +409,6 @@ void HandheldObjectRegistration::modelUpdate(
                           update_points, src_points);
     Eigen::Matrix4f final_transformation = icp_transform * transform_matrix;
     
-
-    //! project prev->cur alignment to 2d
-    /*
-    ProjectionMap aligned_projection;
-    this->project3DTo2DDepth(aligned_projection, aligned_points);
-    for (int j = src_projection.y;
-         j < src_projection.height + src_projection.y; j++) {
-       for (int i = src_projection.x;
-            i < src_projection.width + src_projection.x; i++) {
-          int ap_index = aligned_projection.indices.at<int>(j, i);
-          int src_index = src_projection.indices.at<int>(j, i);
-          if (ap_index == -1 && src_index != -1) {
-             for (int y = -1; y <= 1; y++) {
-                for (int x = -1; x <= 1; x++) {
-                   if ((j+y >= 0 && j+y < camera_info_->height) &&
-                       (i+x >= 0 && i+x < camera_info_->width)) {
-                      ap_index = aligned_projection.indices.at<int>(j+y, i+x);
-                      if (ap_index != -1) {
-                         break;
-                      }
-                   }
-                }
-                if (ap_index != -1) {
-                   break;
-                }
-             }
-             if (ap_index == -1) {  //! outlier
-                src_projection.indices.at<int>(j, i) = -1;
-             }
-          }
-       }
-    }
-    */
     
     //! transform the model to current orientation
     transformPointCloudWithNormalsGPU(target_points, target_points,
@@ -451,21 +418,29 @@ void HandheldObjectRegistration::modelUpdate(
     this->modelVoxelUpdate(target_points, target_projection,
                            src_points, src_projection);
     
+    // this->project3DTo2DDepth(target_projection, aligned_points);
+    // this->modelVoxelUpdate(aligned_points, target_projection,
+    //                        src_points, src_projection);
+
+    
     //! transform to init
     this->initial_transform_ =  final_transformation * initial_transform_;
     pcl::PointCloud<PointNormalT>::Ptr init_trans_points(
        new pcl::PointCloud<PointNormalT>);
     Eigen::Matrix4f inv = this->initial_transform_.inverse();
     transformPointCloudWithNormalsGPU(target_points, init_trans_points, inv);
-    
+
+    // TODO(THRESHOLD):  if above certain value than run icp
+
     //! realignment for error compensation
+    /*
     Eigen::Matrix4f transform_error;
     this->registrationICP(init_trans_points, transform_error,
                           init_trans_points, this->initial_points_);
     transformPointCloudWithNormalsGPU(target_points, target_points,
                                       transform_error);
-
-    std::cout << transform_error  << "\n";
+    */
+    
     
     ProjectionMap target_project_initial;
     this->project3DTo2DDepth(target_project_initial, init_trans_points);
