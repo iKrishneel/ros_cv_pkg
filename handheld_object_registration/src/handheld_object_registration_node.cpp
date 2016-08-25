@@ -384,13 +384,14 @@ void HandheldObjectRegistration::modelUpdate(
              pcl::copyPointCloud<PointNormalT, PointNormalT>(
                 *update_points, *prev_points_);
              
-             transform_matrix = transform_matrix * trans_mat;
+             transform_matrix =  trans_mat * transform_matrix;
           }
        }
        transformPointCloudWithNormalsGPU(target_points, target_points,
                                          transform_matrix);
     }
 
+    
     this->project3DTo2DDepth(target_projection, target_points);
     float registration_fitness = this->checkRegistrationFitness(
        src_projection, src_points, target_projection, target_points);
@@ -816,11 +817,12 @@ void HandheldObjectRegistration::featureBasedTransformation(
        }
        // } //! endif
     }
-
+#ifdef _DEBUG
     cv::Mat img_matches;
     cv::drawMatches(src_image, src_keypoints, target_image,  tgt_keypoints,
                     good_matches, img_matches);
     cv::imshow("matching", img_matches);
+#endif
 }
 
 
@@ -892,25 +894,16 @@ float HandheldObjectRegistration::checkRegistrationFitness(
     double DIST_THRESH = 0.02;
     float ANGLE_THRESH = std::cos(M_PI / 18.0f);
     float inlier_counter = 0.0f;
-    // float outlier_counter = 0.0f;
 
     bool use_angle = false;
-    cv::Mat image = cv::Mat::zeros(480, 640, CV_8UC3);
-    // int min_x = std::min(src_projection.x, target_projection.x);
-    // int min_y = std::min(src_projection.y, target_projection.y);
-    // int max_w = std::max(src_projection.width, target_projection.width);
-    // int max_h = std::max(src_projection.height, target_projection.height);
-
     Eigen::Vector3f n_src = Eigen::Vector3f::Identity();
     Eigen::Vector3f n_tgt = Eigen::Vector3f::Identity();
-    
     for (int j = target_projection.y; j < target_projection.y +
             target_projection.height; j++) {
        for (int i = target_projection.x; i < target_projection.x +
                target_projection.width; i++) {
           int s_index = src_projection.indices.at<int>(j, i);
           int t_index = target_projection.indices.at<int>(j, i);
-          // cv::Scalar color(0, 0, 0);
           if (s_index != -1 && t_index != -1) {
              float diff = std::fabs(src_points->points[s_index].z -
                                     target_points->points[t_index].z);
@@ -927,26 +920,10 @@ float HandheldObjectRegistration::checkRegistrationFitness(
                 } else {
                    inlier_counter += 1.0f;
                 }
-                
-                image.at<cv::Vec3b>(j, i)[1] = 255;
-             } else {
-                image.at<cv::Vec3b>(j, i)[0] = 255;
              }
           }
-          
-          /*
-          else if (s_index == -1 && t_index != -1) {
-             color = cv::Scalar(0, 0, 255);
-          } else if (s_index != -1 && t_index == -1) {
-             color = cv::Scalar(0, 0, 255);
-          }
-
-          */
        }
     }
-    cv::imshow("render", image);
-    cv::waitKey(3);
-    
     float fitness = inlier_counter / static_cast<float>(src_points->size());
     return fitness;
 }
