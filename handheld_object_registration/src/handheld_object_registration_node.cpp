@@ -17,7 +17,7 @@ HandheldObjectRegistration::HandheldObjectRegistration():
     
     this->orb_gpu_ = cv::cuda::ORB::create(1000, 1.20f, 8, 11, 0, 2,
                                            cv::ORB::HARRIS_SCORE, 31, true);
-    this->voxel_weights_.clear();
+    // this->voxel_weights_.clear();
     this->prev_transform_ = Eigen::Affine3f::Identity();
     this->update_counter_ = 0;
     this->initial_transform_ = Eigen::Matrix4f::Identity();
@@ -207,9 +207,8 @@ void HandheldObjectRegistration::cloudCB(
        //! timer
        struct timeval timer_start, timer_end;
        gettimeofday(&timer_start, NULL);
-
        
-       this->modelUpdate(src_points, target_points_);
+       //! this->modelUpdate(src_points, target_points_);
 
        //! timer
        gettimeofday(&timer_end, NULL);
@@ -229,9 +228,25 @@ void HandheldObjectRegistration::cloudCB(
                                                        *initial_points_);
        //! initial user marked region
        this->project3DTo2DDepth(initial_projection_, target_points_);
+
+       //! deform the initial region slightly
+       cv::Mat mask = cv::Mat::zeros(480, 640, CV_8UC1);
+       for (int i = initial_projection_.y; i < initial_projection_.y +
+               initial_projection_.height; i++) {
+          for (int j = initial_projection_.x; j < initial_projection_.x +
+                  initial_projection_.width; j++) {
+             if (initial_projection_.indices.at<int>(i, j) != -1) {
+                mask.at<uchar>(i, j) = 255;
+             }
+          }
+       }
+       cv::imshow("mask", mask);
        
+       cv::waitKey(3);
+
 
        //! init weight
+       /*
        this->point_weights_.clear();
        this->point_weights_.resize(static_cast<int>(target_points_->size()));
 
@@ -245,6 +260,7 @@ void HandheldObjectRegistration::cloudCB(
              this->voxel_weights_[i].weight[j] = -1;
           }
        }
+       */
     }
 
     this->prev_points_->clear();

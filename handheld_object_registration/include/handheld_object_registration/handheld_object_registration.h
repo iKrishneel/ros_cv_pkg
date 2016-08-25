@@ -36,6 +36,7 @@
 #include <opencv2/cudaarithm.hpp>
 #include <opencv2/cudafeatures2d.hpp>
 #include <opencv2/cudaimgproc.hpp>
+#include <opencv2/cudafilters.hpp>
 
 namespace jsk_msgs = jsk_recognition_msgs;
 
@@ -48,12 +49,12 @@ class HandheldObjectRegistration {
     typedef pcl::PointXYZRGBNormal PointNormalT;
     typedef pcl::PointCloud<PointT> PointCloud;
     typedef pcl::PointCloud<NormalT> PointNormal;
-
+   /*
     struct Weights {
        float weight[HISTORY_WINDOW];
     };
     typedef std::vector<Weights> VoxelWeights;
-   
+   */
  private:
     boost::mutex mutex_;
     boost::mutex lock_;
@@ -80,8 +81,8 @@ class HandheldObjectRegistration {
    
     ProjectionMap prev_projection_;
    
-    std::vector<float> point_weights_;
-    VoxelWeights voxel_weights_;
+    // std::vector<float> point_weights_;
+    // VoxelWeights voxel_weights_;
    
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
     geometry_msgs::PointStamped screen_msg_;
