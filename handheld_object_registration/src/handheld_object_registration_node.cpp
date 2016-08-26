@@ -3,7 +3,7 @@
 
 HandheldObjectRegistration::HandheldObjectRegistration():
     num_threads_(16), is_init_(false), min_points_size_(100),
-    weight_decay_factor_(0.75f), init_weight_(1.0f), pose_flag_(false),
+    pose_flag_(false), axis_angle_thresh_(0.20f),
     registration_thresh_(0.6f) {
     this->kdtree_ = pcl::KdTreeFLANN<PointT>::Ptr(new pcl::KdTreeFLANN<PointT>);
     this->target_points_ = pcl::PointCloud<PointNormalT>::Ptr(
@@ -219,7 +219,7 @@ void HandheldObjectRegistration::cloudCB(
        sensor_msgs::PointCloud2 ros_cloud;
        pcl::toROSMsg(*src_points, ros_cloud);
        ros_cloud.header = cloud_msg->header;
-       this->pub_icp_.publish(ros_cloud);
+       // this->pub_icp_.publish(ros_cloud);
     } else {
        this->target_points_->clear();
        pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points,
@@ -389,23 +389,21 @@ void HandheldObjectRegistration::modelUpdate(
           *target_points, *update_points);
        transformPointCloudWithNormalsGPU(target_points, target_points,
                                          transform_matrix);
-
-       /*
-       this->project3DTo2DDepth(target_projection, target_points);
-       float registration_fitness = this->checkRegistrationFitness(
-          src_projection, src_points, target_projection, target_points);
-       
-       if (registration_fitness < this->registration_thresh_) {
+       float angle_x;
+       float angle_y;
+       float angle_z;
+       this->getAxisAngles(angle_x, angle_y, angle_z, transform_matrix);
+       if (angle_x > this->axis_angle_thresh_ ||
+           angle_y > this->axis_angle_thresh_ ||
+           angle_z > this->axis_angle_thresh_) {
           target_points->clear();
           pcl::copyPointCloud<PointNormalT, PointNormalT>(
              *update_points, *target_points);
-       }
-       ROS_INFO("\033[34m BENCHMARK: %3.2f \033[0m", registration_fitness);
-       return;
-       */
-    }
 
-    
+          ROS_INFO("\033[35m THE ROTATION IS HIGHER THAN THRESHOLD \033[0m\n");
+          return;
+       }
+    }
     
     //! get current visible points on the model
     update_points->clear();
@@ -427,7 +425,18 @@ void HandheldObjectRegistration::modelUpdate(
     this->registrationICP(aligned_points, icp_transform,
                           update_points, src_points);
     Eigen::Matrix4f final_transformation = icp_transform * transform_matrix;
-    
+
+    //! explosion check
+    float angle_x;
+    float angle_y;
+    float angle_z;
+    this->getAxisAngles(angle_x, angle_y, angle_z, icp_transform);
+    if (angle_x > this->axis_angle_thresh_ ||
+        angle_y > this->axis_angle_thresh_ ||
+        angle_z > this->axis_angle_thresh_) {
+       ROS_INFO("\033[36m THE ROTATION IS HIGHER THAN THRESHOLD \033[0m\n");
+       return;
+    }
     
     //! transform the model to current orientation
     transformPointCloudWithNormalsGPU(target_points, target_points,
@@ -468,6 +477,7 @@ void HandheldObjectRegistration::modelUpdate(
     cv::Mat outlier = cv::Mat::zeros(this->camera_info_->height,
                                      this->camera_info_->width,  CV_8UC3);
 
+    const float OUTLIER_DIST_THRESH = 0.03f;
     for (int j = 0; j < this->initial_projection_.indices.rows; j++) {
        for (int i = 0;  i < this->initial_projection_.indices.cols; i++) {
           int tpi_index = target_project_initial.indices.at<int>(j, i);
@@ -482,18 +492,27 @@ void HandheldObjectRegistration::modelUpdate(
                 
              outlier.at<cv::Vec3b>(j, i)[2] = 255;
           } else if (ip_index != -1 && tpi_index == -1) {
+
+             // TODO(add): add this point to the model
+             
              outlier.at<cv::Vec3b>(j, i)[1] = 255;
           } else if (ip_index != -1 && tpi_index != -1) {
-             // TODO(check): distance and angle
-             
-             outlier.at<cv::Vec3b>(j, i) = initial_projection_.rgb.at<
-                cv::Vec3b>(j, i);
+             float d = std::fabs(target_project_initial.depth.at<float>(j, i) -
+                                 initial_projection_.depth.at<float>(j, i));
+             if (d < OUTLIER_DIST_THRESH) {
+                outlier.at<cv::Vec3b>(j, i) = initial_projection_.rgb.at<
+                   cv::Vec3b>(j, i);
+             } else {
+                target_points->points[tpi_index].x =
+                   std::numeric_limits<float>::quiet_NaN();
+                target_points->points[tpi_index].y =
+                   std::numeric_limits<float>::quiet_NaN();
+                target_points->points[tpi_index].z =
+                   std::numeric_limits<float>::quiet_NaN();
+                
+                outlier.at<cv::Vec3b>(j, i)[0] = 255;
+             }
           }
-          /*
-          if (ip_index == -2 && tpi_index != -1) {
-             outlier.at<cv::Vec3b>(j, i)[0] = 255;
-          }
-          */
        }
     }
 
@@ -505,11 +524,26 @@ void HandheldObjectRegistration::modelUpdate(
        PointNormalT pt = update_points->points[i];
        if (!isnan(pt.x) && !isnan(pt.y) && !isnan(pt.z) &&
            !isnan(pt.normal_x) && !isnan(pt.normal_y) && !isnan(pt.normal_z)) {
-
           target_points->push_back(update_points->points[i]);
        }
+       /*
+       else {
+          PointNormalT pt = update_points->points[i];
+          pt.r = 255;
+          pt.g = 0;
+          pt.b = 0;
+          nan_points->push_back(pt);
+       }
+       */
     }
+    /*
+    sensor_msgs::PointCloud2 ros_cloud;
+    pcl::toROSMsg(*nan_points, ros_cloud);
+    ros_cloud.header = camera_info_->header;
+    this->pub_icp_.publish(ros_cloud);
+    */
 
+    
     ROS_ERROR("FINAL UPDATE: %d", target_points->size());
     
     cv::imshow("intial", initial_projection_.rgb);

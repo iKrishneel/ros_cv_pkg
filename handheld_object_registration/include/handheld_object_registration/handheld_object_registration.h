@@ -63,22 +63,16 @@ class HandheldObjectRegistration {
     int num_threads_;
     int min_points_size_;  //! number of points for update
     float registration_thresh_;
-   
-    float weight_decay_factor_;
-    float init_weight_;
+    float axis_angle_thresh_;
    
     PointCloud::Ptr input_cloud_;
     PointNormal::Ptr input_normals_;
     pcl::PointCloud<PointNormalT>::Ptr target_points_;
     pcl::PointCloud<PointNormalT>::Ptr prev_points_;
-
-    ProjectionMap initial_projection_;
-    pcl::PointCloud<PointNormalT>::Ptr initial_points_;
-   
     ProjectionMap prev_projection_;
    
-    // std::vector<float> point_weights_;
-    // VoxelWeights voxel_weights_;
+    ProjectionMap initial_projection_;
+    pcl::PointCloud<PointNormalT>::Ptr initial_points_;
    
     pcl::KdTreeFLANN<PointT>::Ptr kdtree_;
     geometry_msgs::PointStamped screen_msg_;
