@@ -469,10 +469,18 @@ void HandheldObjectRegistration::modelUpdate(
                                       transform_error);
     */
     
-    
     ProjectionMap target_project_initial;
     this->project3DTo2DDepth(target_project_initial, init_trans_points);
+
+    // TODO(CHECK): check for failure
     
+    
+    //! FOR DEBUG VIEW ONLY
+    pcl::PointCloud<PointNormalT>::Ptr debug_points(
+       new pcl::PointCloud<PointNormalT>);
+    pcl::copyPointCloud<PointNormalT, PointNormalT>(
+       *target_points, *debug_points);
+    //! END DEBUG VIEW ONLY
     //! plot outliers
     cv::Mat outlier = cv::Mat::zeros(this->camera_info_->height,
                                      this->camera_info_->width,  CV_8UC3);
@@ -483,14 +491,39 @@ void HandheldObjectRegistration::modelUpdate(
           int tpi_index = target_project_initial.indices.at<int>(j, i);
           int ip_index = initial_projection_.indices.at<int>(j, i);
           if (tpi_index != -1 && ip_index == -1) {
-             target_points->points[tpi_index].x =
-                std::numeric_limits<float>::quiet_NaN();
-             target_points->points[tpi_index].y =
-                std::numeric_limits<float>::quiet_NaN();
-             target_points->points[tpi_index].z =
-                std::numeric_limits<float>::quiet_NaN();
+
+             //! check if neigbor has the point
+             for (int y = -1; y <= 1; y++) {
+                for (int x = -1; x <= 1; x++) {
+                   if ((i+x >= 0 && i+x < initial_projection_.indices.cols) &&
+                       (j+y >= 0 && j+y < initial_projection_.indices.rows)) {
+                      ip_index = initial_projection_.indices.at<int>(j+y, i+x);
+                   }
+                   if (ip_index != -1) {
+                      float d = std::fabs(
+                         target_project_initial.depth.at<float>(j, i) -
+                         initial_projection_.depth.at<float>(j, i));
+                      if (d > OUTLIER_DIST_THRESH) {
+                         ip_index = -1;
+                      } else {
+                         break;
+                      }
+                   }
+                }
+                if (ip_index != -1) {
+                   break;
+                }
+             }
+             if (ip_index == -1) {
+                target_points->points[tpi_index].x =
+                   std::numeric_limits<float>::quiet_NaN();
+                target_points->points[tpi_index].y =
+                   std::numeric_limits<float>::quiet_NaN();
+                target_points->points[tpi_index].z =
+                   std::numeric_limits<float>::quiet_NaN();
                 
-             outlier.at<cv::Vec3b>(j, i)[2] = 255;
+                outlier.at<cv::Vec3b>(j, i)[2] = 255;
+             }
           } else if (ip_index != -1 && tpi_index == -1) {
 
              // TODO(add): add this point to the model
@@ -520,28 +553,27 @@ void HandheldObjectRegistration::modelUpdate(
     pcl::copyPointCloud<PointNormalT, PointNormalT>(
        *target_points, *update_points);
     target_points->clear();
+
+    
     for (int i = 0; i < update_points->size(); i++) {
        PointNormalT pt = update_points->points[i];
        if (!isnan(pt.x) && !isnan(pt.y) && !isnan(pt.z) &&
            !isnan(pt.normal_x) && !isnan(pt.normal_y) && !isnan(pt.normal_z)) {
           target_points->push_back(update_points->points[i]);
+
+          debug_points->points[i].x =
+             std::numeric_limits<float>::quiet_NaN();
+          debug_points->points[i].y =
+             std::numeric_limits<float>::quiet_NaN();
+          debug_points->points[i].z =
+             std::numeric_limits<float>::quiet_NaN();
        }
-       /*
-       else {
-          PointNormalT pt = update_points->points[i];
-          pt.r = 255;
-          pt.g = 0;
-          pt.b = 0;
-          nan_points->push_back(pt);
-       }
-       */
     }
-    /*
+
     sensor_msgs::PointCloud2 ros_cloud;
-    pcl::toROSMsg(*nan_points, ros_cloud);
+    pcl::toROSMsg(*debug_points, ros_cloud);
     ros_cloud.header = camera_info_->header;
     this->pub_icp_.publish(ros_cloud);
-    */
 
     
     ROS_ERROR("FINAL UPDATE: %d", target_points->size());
@@ -552,6 +584,8 @@ void HandheldObjectRegistration::modelUpdate(
     cv::waitKey(3);
     return;
 
+
+    
     
     if (this->update_counter_++ > 2) {
        
@@ -734,31 +768,25 @@ void HandheldObjectRegistration::modelVoxelUpdate(
           
           int s_index = src_projection.indices.at<int>(j, i);
           int t_index = target_projection.indices.at<int>(j, i);
-          
-          // if ((t_index >= 0 && t_index <
-          //      static_cast<int>(target_points->size())) &&
-          //     (s_index >= 0 && s_index <
-          //      static_cast<int>(src_points->size()))) {
-             if (s_index != -1 && t_index != -1) {
-                float dist = std::fabs(src_points->points[s_index].z -
-                                       target_points->points[t_index].z);
-                if (dist < DIST_THRESH) {
-                   update_model->points[t_index] = src_points->points[s_index];
+          if (s_index != -1 && t_index != -1) {
+             float dist = std::fabs(src_points->points[s_index].z -
+                                    target_points->points[t_index].z);
+             if (dist < DIST_THRESH) {
+                update_model->points[t_index] = src_points->points[s_index];
 
-                   visz.at<cv::Vec3b>(j, i)[1] = 255;
+                visz.at<cv::Vec3b>(j, i)[1] = 255;
                    
-                } else {
-                   // update_model->push_back(src_points->points[s_index]);
-                }
-             } else if (s_index == -1 && t_index != -1) {
-                //! already in the model
-                visz.at<cv::Vec3b>(j, i)[0] = 255;
-             }  else if (s_index != -1 && t_index == -1) {
-                update_model->push_back(src_points->points[s_index]);
-
-                visz.at<cv::Vec3b>(j, i)[2] = 255;
+             } else {
+                // update_model->push_back(src_points->points[s_index]);
              }
-             // }
+          } else if (s_index == -1 && t_index != -1) {
+             //! already in the model
+             visz.at<cv::Vec3b>(j, i)[0] = 255;
+          }  else if (s_index != -1 && t_index == -1) {
+             update_model->push_back(src_points->points[s_index]);
+
+             visz.at<cv::Vec3b>(j, i)[2] = 255;
+          }
        }
     }
     
