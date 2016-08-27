@@ -163,6 +163,12 @@ class HandheldObjectRegistration {
                          const PointT);
     bool projectPoint3DTo2DIndex(cv::Point2f &, const PointT);
     bool conditionROI(int, int, int, int, const cv::Size);
+
+    void denseVoxelRegistration(Eigen::Matrix4f &, const ProjectionMap,
+                                const pcl::PointCloud<PointNormalT>::Ptr,
+                                const ProjectionMap,
+                                const pcl::PointCloud<PointNormalT>::Ptr);
+   
    
     //! debug functions
     void getAxisAngles(float &, float &, float &,

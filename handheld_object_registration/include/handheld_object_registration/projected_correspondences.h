@@ -32,7 +32,7 @@ __host__ __device__ struct Correspondence {
 };
 
 #define GRID_SIZE 16
-#define DISTANCE_THRESH  0.05f
+#define DISTANCE_THRESH  0.02f
 
 #define IMAGE_WIDTH 640
 #define IMAGE_HEIGHT 480
@@ -55,9 +55,6 @@ bool allocateCopyDataToGPU(pcl::Correspondences &, float &, bool,
                            const pcl::PointCloud<PointTYPE>::Ptr,
                            const ProjectionMap &);
    
-void estimatedCorrespondences(pcl::Correspondences &, float &,
-                              const pcl::PointCloud<PointTYPE>::Ptr,
-                              const pcl::PointCloud<PointTYPE>::Ptr);
 
 void cudaGlobalAllocFree();
 
