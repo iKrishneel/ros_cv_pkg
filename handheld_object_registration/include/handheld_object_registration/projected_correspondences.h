@@ -29,6 +29,9 @@ __host__ __device__ struct Correspondence {
     int query_index;
     int match_index;
     float distance;
+
+    Correspondence(int q, int m, float d) :
+       query_index(q), match_index(m), distance(d){}
 };
 
 #define GRID_SIZE 16

@@ -743,27 +743,45 @@ void HandheldObjectRegistration::denseVoxelRegistration(
     ProjectionMap temp_projection = target_projection;
     
     while (true) {
+
+       //! timer
+       struct timeval timer_start, timer_end;
+       gettimeofday(&timer_start, NULL);
+
+       
        bool data_copied = allocateCopyDataToGPU(
           correspondences, energy, copy_src, src_points,
           src_projection, temp_points, temp_projection);
+
+       //! timer
+       gettimeofday(&timer_end, NULL);
+       double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+                       timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
+       ROS_ERROR("\033[35mTIME: %3.6f\033[0m", delta);
+       //! end timer
+       
        
        if (data_copied) {
-          // std::cout << "\033[34mENERGY LEVEL:  " << energy
-          //           << "\t" << iter_counter << "\033[0m\n";
+          std::cout << "\033[34mENERGY LEVEL:  " << energy
+                    << "\t" << iter_counter << "\033[0m\n";
           
           if (correspondences.size() > 7) {
              icp_trans = Eigen::Matrix4f::Identity();
+
+             
              pcl::registration::TransformationEstimationPointToPlaneLLS<
                 PointNormalT, PointNormalT> transformation_estimation;
              transformation_estimation.estimateRigidTransformation(
                 *temp_points, *src_points, correspondences, icp_trans);
              transformPointCloudWithNormalsGPU(temp_points, temp_points,
                                                icp_trans);
+             
              transformation_matrix = icp_trans * transformation_matrix;
              project3DTo2DDepth(temp_projection, temp_points);
           }
        }
        if (++iter_counter > MAX_ITER || energy < ENERGY_THRESH) {
+          cudaGlobalAllocFree();
           break;
        }
     }

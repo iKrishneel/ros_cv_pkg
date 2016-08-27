@@ -73,6 +73,7 @@ void findCorrespondencesGPU(Correspondence * correspondences,
     int offset = t_idx + t_idy * blockDim.x * gridDim.x;
 
     //! temp
+    /*
     if (offset == 0) {
        for (int i = 0; i < im_width * im_height; i++) {
           correspondences[i].query_index = -1;
@@ -80,7 +81,7 @@ void findCorrespondencesGPU(Correspondence * correspondences,
        }
     }
     __syncthreads();
-    
+    */
     if (offset < im_width * im_height) {
        int model_index = d_model_indices[offset];
        if (model_index != -1) {
@@ -135,15 +136,9 @@ void findCorrespondencesGPU(Correspondence * correspondences,
     }
 }
 
-
-//! global memory allocations ----
-// int *d_src_indices;
-// int *d_model_indices;
+// cuMat<float, NUMBER_OF_ELEMENTS> *src_points;
 // cuMat<float, NUMBER_OF_ELEMENTS> *d_src_points;
-// cuMat<float, NUMBER_OF_ELEMENTS> *d_model_points;
-// int icounter = 0;
-//! -----------------------------
-
+// int *d_src_indices;
 
 bool allocateCopyDataToGPU(
     pcl::Correspondences &corr, float &energy,
@@ -159,29 +154,42 @@ bool allocateCopyDataToGPU(
 
     int *d_src_indices;
     int *d_model_indices;
-    cuMat<float, NUMBER_OF_ELEMENTS> *d_src_points;
     cuMat<float, NUMBER_OF_ELEMENTS> *d_model_points;
-
+    cuMat<float, NUMBER_OF_ELEMENTS> *d_src_points;
+    
     const int TGT_SIZE = std::max(
        static_cast<int>(target_points->size()),
        target_projection.width * target_projection.height);
     cuMat<float, NUMBER_OF_ELEMENTS> model_points[TGT_SIZE];
 
     const int SRC_POINT_SIZE = static_cast<float>(source_points->size());
-    // const int SRC_POINT_SIZE = src_projection.width * src_projection.height;
-    cuMat<float, NUMBER_OF_ELEMENTS> src_points[SRC_POINT_SIZE];
+    // cuMat<float, NUMBER_OF_ELEMENTS> src_points[SRC_POINT_SIZE];
+    cuMat<float, NUMBER_OF_ELEMENTS> *src_points;
+
+    if (allocate_src) {
+       src_points = reinterpret_cast<cuMat<float, NUMBER_OF_ELEMENTS>* >(
+       std::malloc(sizeof(cuMat<float, NUMBER_OF_ELEMENTS>) * SRC_POINT_SIZE));
+    }
     
     const int SRC_SIZE = IMAGE_WIDTH * IMAGE_HEIGHT;
     int src_indices[SRC_SIZE];
     int model_indices[SRC_SIZE];
 
-// #ifdef _OPENMP
-// #pragma omp parallel for num_threads(16) collapse(2)
-// #endif
+    int image_size = IMAGE_WIDTH * IMAGE_HEIGHT;
+    Correspondence *correspondences = reinterpret_cast<Correspondence*>(
+       std::malloc(sizeof(Correspondence) * image_size));
     
+// #ifdef _OPENMP
+// #pragma omp parallel for num_threads(8) collapse(2)
+// #endif
     for (int j = 0; j < target_projection.indices.rows; j++) {
        for (int i = 0; i < target_projection.indices.cols; i++) {
           int idx = i + (j * src_projection.indices.cols);
+
+          correspondences[idx].query_index = -1;
+          correspondences[idx].match_index = -1;
+          correspondences[idx].distance = FLT_MAX;
+          
           int index = target_projection.indices.at<int>(j, i);
           if (index != -1) {
              float x = target_points->points[index].x;
@@ -218,7 +226,9 @@ bool allocateCopyDataToGPU(
           }
        }
     }
+    return -1;
 
+    
     int TMP_SIZE = TGT_SIZE * sizeof(cuMat<float, 3>);
     cudaMalloc(reinterpret_cast<void**>(&d_model_points), TMP_SIZE);
     cudaMemcpy(d_model_points, model_points, TMP_SIZE, cudaMemcpyHostToDevice);
@@ -239,12 +249,11 @@ bool allocateCopyDataToGPU(
                   cudaMemcpyHostToDevice);
     }
 
-    //! copied from function below
-    int image_size = IMAGE_WIDTH * IMAGE_HEIGHT;
-
     Correspondence *d_correspondences;
     cudaMalloc(reinterpret_cast<void**>(&d_correspondences),
                sizeof(Correspondence) * image_size);
+    cudaMemcpy(d_correspondences, correspondences,
+               sizeof(Correspondence) * image_size, cudaMemcpyHostToDevice);
         
     dim3 block_size(cuDivUp(IMAGE_WIDTH, GRID_SIZE),
                     cuDivUp(IMAGE_HEIGHT, GRID_SIZE));
@@ -254,8 +263,8 @@ bool allocateCopyDataToGPU(
        d_correspondences, d_src_points, d_src_indices, d_model_points,
        d_model_indices, IMAGE_WIDTH, IMAGE_HEIGHT, target_projection.height);
 
-    Correspondence *correspondences = reinterpret_cast<Correspondence*>(
-       std::malloc(sizeof(Correspondence) * image_size));
+    // Correspondence *correspondences = reinterpret_cast<Correspondence*>(
+    //    std::malloc(sizeof(Correspondence) * image_size));
     cudaMemcpy(correspondences, d_correspondences,
                sizeof(Correspondence) * image_size, cudaMemcpyDeviceToHost);
 
@@ -291,9 +300,11 @@ bool allocateCopyDataToGPU(
     energy /= static_cast<float>(match_counter);
     energy = (match_counter == 0) ? -1.0f : energy;
 
-    free(correspondences);
+    free(src_points);
     cudaFree(d_src_indices);
     cudaFree(d_src_points);
+    
+    free(correspondences);
     cudaFree(d_correspondences);
     cudaFree(d_model_points);
     cudaFree(d_model_indices);
@@ -304,4 +315,5 @@ bool allocateCopyDataToGPU(
 void cudaGlobalAllocFree() {
     // cudaFree(d_src_indices);
     // cudaFree(d_src_points);
+    // free(src_points);
 }
