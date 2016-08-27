@@ -208,7 +208,7 @@ void HandheldObjectRegistration::cloudCB(
        struct timeval timer_start, timer_end;
        gettimeofday(&timer_start, NULL);
        
-       this->modelUpdate(src_points, target_points_);
+       this->modelRegistrationAndUpdate(src_points, target_points_);
 
        //! timer
        gettimeofday(&timer_end, NULL);
@@ -304,7 +304,7 @@ void HandheldObjectRegistration::cloudCB(
 }
 
 
-void HandheldObjectRegistration::modelUpdate(
+void HandheldObjectRegistration::modelRegistrationAndUpdate(
     pcl::PointCloud<PointNormalT>::Ptr src_points,
     pcl::PointCloud<PointNormalT>::Ptr target_points) {
     if (src_points->empty() || target_points->empty()) {
@@ -585,63 +585,6 @@ void HandheldObjectRegistration::modelUpdate(
     return;
 
 
-    
-    
-    if (this->update_counter_++ > 2) {
-       
-       for (int j = src_projection.y;
-            j < src_projection.height + src_projection.y; j++) {
-          for (int i = src_projection.x;
-               i < src_projection.width + src_projection.x; i++) {
-             /*
-             //! matching to the init model
-             int it_index = target_project_initial.indices.at<int>(j, i);
-             int ip_index = this->initial_projection_.indices.at<int>(j, i);
-
-             if (it_index != -1) {
-                //! check the normal deviation
-                Eigen::Vector4f it_norm = init_trans_points->points[
-                   it_index].getNormalVector4fMap().normalized();
-                Eigen::Vector4f ip_norm = this->initial_points_->points[
-                   ip_index].getNormalVector4fMap().normalized();
-
-                float angle = std::acos(ip_norm.dot(it_norm));
-                                
-                if (angle < M_PI/18 && !isnan(angle)) {
-                   init_outlier_flag[it_index] = false;
-                   outlier.at<cv::Vec3b>(j, i)[2] = 255;
-                } else {
-                   init_outlier_flag[it_index] = true;
-                   outlier.at<cv::Vec3b>(j, i)[1] = 255;
-                }
-       
-             }
-             if (it_index != -1 && ip_index == -1) {
-                init_outlier_flag[it_index] = true;
-                outlier.at<cv::Vec3b>(j, i)[1] = 255;
-             }
-             */
-                   
-                   
-          }
-       }
-    }
-
-    this->transformation_cache_.push_back(final_transformation);
-
-    std::cout << "PRINTING"  << "\n";
-    
-    cv::waitKey(3);
-    return;
-
-    /**
-     * END CPU ICP
-     */
-
-
-    
-
-    
     // --> change name
     //! project the target points
 
@@ -942,11 +885,12 @@ bool HandheldObjectRegistration::registrationICP(
     icp->setTransformationEstimation(trans_svd);
     icp->align(*align_points);
     transformation = icp->getFinalTransformation();
-    
+
+    /*
     std::cout << "has converged:" << icp->hasConverged() << " score: "
               << icp->getFitnessScore() << std::endl;
     std::cout << "Rotation Threshold: " << icp->getTransformationEpsilon()  << "\n";
-    
+    */
     return (icp->hasConverged());
 }
 

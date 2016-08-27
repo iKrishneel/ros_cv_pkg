@@ -124,8 +124,8 @@ class HandheldObjectRegistration {
                                    const pcl::PointCloud<PointNormalT>::Ptr,
                                    const ProjectionMap,
                                    const pcl::PointCloud<PointNormalT>::Ptr);
-    void modelUpdate(pcl::PointCloud<PointNormalT>::Ptr,
-                     pcl::PointCloud<PointNormalT>::Ptr);
+    void modelRegistrationAndUpdate(pcl::PointCloud<PointNormalT>::Ptr,
+                                    pcl::PointCloud<PointNormalT>::Ptr);
     void modelVoxelUpdate(const pcl::PointCloud<PointNormalT>::Ptr,
                           const ProjectionMap,
                           const pcl::PointCloud<PointNormalT>::Ptr,
