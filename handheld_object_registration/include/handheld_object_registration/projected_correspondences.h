@@ -41,6 +41,7 @@ __host__ __device__ struct Correspondence {
 #define IMAGE_HEIGHT 480
 
 const int NUMBER_OF_ELEMENTS = 3;
+const int POINT_ELEMENTS = 12;
 
 void cudaAssert(cudaError_t, char *, int, bool = true);
 __host__ __device__ __align__(16)
