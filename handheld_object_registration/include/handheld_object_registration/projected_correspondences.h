@@ -57,7 +57,13 @@ bool allocateCopyDataToGPU(pcl::Correspondences &, float &, bool,
                            const ProjectionMap &,
                            const pcl::PointCloud<PointTYPE>::Ptr,
                            const ProjectionMap &);
-   
+
+
+bool allocateCopyDataToGPU2(pcl::Correspondences &, float &, bool,
+                           const pcl::PointCloud<PointTYPE>::Ptr,
+                           const ProjectionMap &,
+                           const pcl::PointCloud<PointTYPE>::Ptr,
+                           const ProjectionMap &);
 
 void cudaGlobalAllocFree();
 

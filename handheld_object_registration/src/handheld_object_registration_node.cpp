@@ -741,6 +741,15 @@ void HandheldObjectRegistration::denseVoxelRegistration(
     pcl::copyPointCloud<PointNormalT, PointNormalT>(*target_points,
                                                     *temp_points);
     ProjectionMap temp_projection = target_projection;
+
+    /**
+     * 
+     */
+    bool data_copied = allocateCopyDataToGPU2(
+       correspondences, energy, copy_src, src_points,
+       src_projection, temp_points, temp_projection);
+    
+    return;
     
     while (true) {
 
@@ -748,11 +757,11 @@ void HandheldObjectRegistration::denseVoxelRegistration(
        struct timeval timer_start, timer_end;
        gettimeofday(&timer_start, NULL);
 
-       
+       /*
        bool data_copied = allocateCopyDataToGPU(
           correspondences, energy, copy_src, src_points,
           src_projection, temp_points, temp_projection);
-
+       */
        //! timer
        gettimeofday(&timer_end, NULL);
        double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
