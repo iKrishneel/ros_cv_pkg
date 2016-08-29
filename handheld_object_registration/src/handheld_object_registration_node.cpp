@@ -219,7 +219,7 @@ void HandheldObjectRegistration::cloudCB(
        sensor_msgs::PointCloud2 ros_cloud;
        pcl::toROSMsg(*src_points, ros_cloud);
        ros_cloud.header = cloud_msg->header;
-       // this->pub_icp_.publish(ros_cloud);
+       this->pub_icp_.publish(ros_cloud);
     } else {
        this->target_points_->clear();
        pcl::copyPointCloud<PointNormalT, PointNormalT>(*src_points,
@@ -323,8 +323,6 @@ void HandheldObjectRegistration::modelRegistrationAndUpdate(
 
     //! move it out***
     ProjectionMap target_projection = this->prev_projection_;
-
-
 
     
     /**
@@ -585,7 +583,6 @@ void HandheldObjectRegistration::modelRegistrationAndUpdate(
     pcl::copyPointCloud<PointNormalT, PointNormalT>(
        *target_points, *update_points);
     target_points->clear();
-
     
     for (int i = 0; i < update_points->size(); i++) {
        PointNormalT pt = update_points->points[i];
@@ -601,12 +598,12 @@ void HandheldObjectRegistration::modelRegistrationAndUpdate(
              std::numeric_limits<float>::quiet_NaN();
        }
     }
-
+    /*
     sensor_msgs::PointCloud2 ros_cloud;
     pcl::toROSMsg(*debug_points, ros_cloud);
     ros_cloud.header = camera_info_->header;
     this->pub_icp_.publish(ros_cloud);
-
+    */
     
     ROS_ERROR("FINAL UPDATE: %d", target_points->size());
     
@@ -615,106 +612,6 @@ void HandheldObjectRegistration::modelRegistrationAndUpdate(
     cv::imshow("outlier", outlier);
     cv::waitKey(3);
     return;
-
-
-    // --> change name
-    //! project the target points
-
-    /*
-    const int SEARCH_WSIZE = 8;
-    const float ICP_DIST_THRESH = 0.05f;
-    cv::Mat debug_im = cv::Mat::zeros(src_projection.rgb.size(), CV_8UC3);
-    float cpu_energy = 0.0;
-    pcl::Correspondences cpu_correspondences;
-    for (int j = target_projection.y; j < target_projection.y +
-            target_projection.height; j++) {
-       for (int i = target_projection.x; i < target_projection.x +
-               target_projection.width; i++) {
-          
-          int model_index = target_projection.indices.at<int>(j, i);
-          if (model_index != -1) {
-             pcl::Correspondence corr;
-             int x = i - (SEARCH_WSIZE/2);
-             int y = j - (SEARCH_WSIZE/2);
-             if (this->conditionROI(x, y, SEARCH_WSIZE, SEARCH_WSIZE,
-                                    target_projection.rgb.size())) {
-                Eigen::Vector4f model_pt = target_points->points[
-                   model_index].getVector4fMap();
-                double min_dsm = std::numeric_limits<double>::max();
-                int min_ism = -1;
-                for (int l = y; l < y + SEARCH_WSIZE; l++) {
-                   for (int k = x; k < x + SEARCH_WSIZE; k++) {
-                      int src_index = src_projection.indices.at<int>(l, k);
-                      Eigen::Vector4f src_pt = src_points->points[
-                         src_index].getVector4fMap();
-                      double dsm = pcl::distances::l2(src_pt, model_pt);
-                      if (dsm < min_dsm && !isnan(dsm)) {
-                         min_dsm = dsm;
-                         min_ism = src_index;
-                      }
-                   }
-                }
-                if (min_ism != -1) {
-                   if (min_dsm < ICP_DIST_THRESH) {
-                      corr.index_match = min_ism;
-                      corr.index_query = model_index;
-                      cpu_correspondences.push_back(corr);
-
-                      cpu_energy += min_dsm;
-                   }
-                }
-             }
-          }
-       }
-    }
-
-    std::cout << "cpu energy: " << cpu_energy /
-       static_cast<float>(cpu_correspondences.size()) << "\n";
-
-    Eigen::Matrix4f cpu_trans = Eigen::Matrix4f::Identity();
-    pcl::registration::TransformationEstimationPointToPlaneLLS<
-       PointNormalT, PointNormalT> transformation_estimation;
-    transformation_estimation.estimateRigidTransformation(
-       *target_points, *src_points, cpu_correspondences, cpu_trans);
-
-    std::cout << "------\n" << "CPU TRANS:"  << "\n";
-    std::cout << "CPU SIZE: " << cpu_correspondences.size()  << "\n";
-    std::cout << cpu_trans  << "\n-------------\n";
-    //!------------------------
-    */
-
-    /* GPU BASED ALIGNMENT
-    const float ENERGY_THRESH = 0.0005;
-    const int MAX_ITER = 0;    
-    Eigen::Matrix4f icp_trans = Eigen::Matrix4f::Identity();
-    pcl::Correspondences correspondences;
-    float energy;
-    int icounter = 0;
-    bool copy_src = true;
-    while (true) {
-       bool data_copied = allocateCopyDataToGPU(
-          correspondences, energy, copy_src, src_points,
-          src_projection, target_points, target_projection);
-       if (data_copied) {
-          std::cout << "ENERGY LEVEL:  " << energy  << "\n";
-
-          if (correspondences.size() > 7) {
-             pcl::registration::TransformationEstimationPointToPlaneLLS<
-                PointNormalT, PointNormalT> transformation_estimation;
-             transformation_estimation.estimateRigidTransformation(
-                *target_points, *src_points, correspondences, icp_trans);
-             transformPointCloudWithNormalsGPU(target_points, target_points,
-                                               icp_trans);
-          }
-       }
-       copy_src = true;
-
-       if (icounter++ > MAX_ITER || energy < ENERGY_THRESH) {
-          break;
-       }
-    }
-    */
-
 }
 
 void HandheldObjectRegistration::denseVoxelRegistration(
