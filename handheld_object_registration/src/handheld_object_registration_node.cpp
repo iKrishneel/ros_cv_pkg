@@ -728,28 +728,21 @@ void HandheldObjectRegistration::denseVoxelRegistration(
        ROS_ERROR("ERROR: [denseVoxelRegistration] EMPTY INPUT");
        return;
     }
-    const float ENERGY_THRESH = 0.0010f;
+    const float ENERGY_THRESH = 1e-4;
     const int MAX_ITER = 10;
     pcl::Correspondences correspondences;
+    
     bool copy_src = true;
     int iter_counter = 0;
     float energy = std::numeric_limits<float>::max();
-    Eigen::Matrix4f icp_trans = Eigen::Matrix4f::Identity();
     
+    Eigen::Matrix4f icp_trans = Eigen::Matrix4f::Identity();
     pcl::PointCloud<PointNormalT>::Ptr temp_points(
        new pcl::PointCloud<PointNormalT>);
     pcl::copyPointCloud<PointNormalT, PointNormalT>(*target_points,
                                                     *temp_points);
     ProjectionMap temp_projection = target_projection;
-
-    /**
-     * 
-     */
-    bool data_copied = allocateCopyDataToGPU2(
-       correspondences, energy, copy_src, src_points,
-       src_projection, temp_points, temp_projection);
-    
-    return;
+    const float TRANSLATION_THRESH = 0.10f;
     
     while (true) {
 
@@ -757,11 +750,10 @@ void HandheldObjectRegistration::denseVoxelRegistration(
        struct timeval timer_start, timer_end;
        gettimeofday(&timer_start, NULL);
 
-       /*
-       bool data_copied = allocateCopyDataToGPU(
+       bool data_copied = allocateCopyDataToGPU2(
           correspondences, energy, copy_src, src_points,
           src_projection, temp_points, temp_projection);
-       */
+
        //! timer
        gettimeofday(&timer_end, NULL);
        double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
@@ -769,24 +761,34 @@ void HandheldObjectRegistration::denseVoxelRegistration(
        ROS_ERROR("\033[35mTIME: %3.6f\033[0m", delta);
        //! end timer
        
-       
        if (data_copied) {
           std::cout << "\033[34mENERGY LEVEL:  " << energy
                     << "\t" << iter_counter << "\033[0m\n";
           
           if (correspondences.size() > 7) {
              icp_trans = Eigen::Matrix4f::Identity();
-
-             
              pcl::registration::TransformationEstimationPointToPlaneLLS<
                 PointNormalT, PointNormalT> transformation_estimation;
              transformation_estimation.estimateRigidTransformation(
                 *temp_points, *src_points, correspondences, icp_trans);
-             transformPointCloudWithNormalsGPU(temp_points, temp_points,
-                                               icp_trans);
              
-             transformation_matrix = icp_trans * transformation_matrix;
-             project3DTo2DDepth(temp_projection, temp_points);
+             //! explosion check
+             float translation = icp_trans.col(3).head<3>().norm();
+             float angle_x;
+             float angle_y;
+             float angle_z;
+             this->getAxisAngles(angle_x, angle_y, angle_z, icp_trans);
+             if (angle_x > this->axis_angle_thresh_ ||
+                 angle_y > this->axis_angle_thresh_ ||
+                 angle_z > this->axis_angle_thresh_ ||
+                 translation > TRANSLATION_THRESH) {
+                ROS_INFO("\033[36m LARGE ROTATION \033[0m\n");
+             } else {
+                transformPointCloudWithNormalsGPU(temp_points, temp_points,
+                                                  icp_trans);
+                transformation_matrix = icp_trans * transformation_matrix;
+                project3DTo2DDepth(temp_projection, temp_points);
+             }
           }
        }
        if (++iter_counter > MAX_ITER || energy < ENERGY_THRESH) {

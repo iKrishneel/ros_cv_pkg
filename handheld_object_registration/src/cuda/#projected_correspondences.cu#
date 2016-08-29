@@ -442,7 +442,6 @@ bool allocateCopyDataToGPU2(
     dim3 block_size(cuDivUp(IMAGE_WIDTH, GRID_SIZE),
                     cuDivUp(IMAGE_HEIGHT, GRID_SIZE));
     dim3 grid_size(GRID_SIZE, GRID_SIZE);
-
     
     //! copy model data
     float *d_target_points;
@@ -485,20 +484,16 @@ bool allocateCopyDataToGPU2(
     Correspondence *d_correspondences;
     cudaMalloc(reinterpret_cast<void**>(&d_correspondences),
                sizeof(Correspondence) * IN_TSIZE);
-    
 
     estimateCorrespondencesKernel<<<block_size, grid_size>>>(
        d_correspondences, d_target_points, d_target_indices,
        d_src_points, d_src_indices, IMG_SIZE,
        target_projection.indices.step, 20);
-
-
     
     // for (int i = 0; i < target_points->size(); i++) {
     //    std::cout << target_points->points[i]  << "\n";
     // }
     // return -1;
-    
 
     Correspondence *correspondences = reinterpret_cast<Correspondence*>(
        std::malloc(sizeof(Correspondence) * IN_TSIZE));
