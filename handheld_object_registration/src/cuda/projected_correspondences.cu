@@ -381,6 +381,15 @@ void estimateCorrespondencesKernel(Correspondence *correspondences,
                       min_dsm = dist;
                       min_ism = src_index;
                    }
+
+#ifdef _DEBUG
+                   if (model_index == 10) {
+                      printf("SRC INDEX: %d --- %3.4f,  %3.4f,  %3.4f ---- %3.4f\n",
+                             src_index, src_pt[0], src_pt[1], src_pt[2], dist);
+                      printf("MATCH INDEX: %d --- %3.4f\n",
+                             min_ism, min_dsm);
+                   }
+#endif
                 }
              }
           }
@@ -480,7 +489,7 @@ bool allocateCopyDataToGPU2(
 
     estimateCorrespondencesKernel<<<block_size, grid_size>>>(
        d_correspondences, d_model_points, d_target_indices,
-       d_model_points, d_target_indices, IMG_SIZE,
+       d_src_points, d_src_indices, IMG_SIZE,
        target_projection.indices.step, 20);
 
 
@@ -516,8 +525,11 @@ bool allocateCopyDataToGPU2(
              c.index_match = correspondences[i].match_index;
              corr.push_back(c);
 
-             // std::cout << correspondences[i].distance  << "\n";
-             
+#ifdef _DEBUG
+             std::cout << correspondences[i].query_index  << ", ";
+             std::cout << correspondences[i].match_index  << ", ";
+             std::cout << correspondences[i].distance  << "\n";
+#endif
              energy += correspondences[i].distance;
              match_counter++;
           }

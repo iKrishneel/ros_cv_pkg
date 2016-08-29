@@ -35,7 +35,7 @@ __host__ __device__ struct Correspondence {
 };
 
 #define GRID_SIZE 16
-#define DISTANCE_THRESH  0.02f
+#define DISTANCE_THRESH  (0.02f * 0.02f)
 
 #define IMAGE_WIDTH 640
 #define IMAGE_HEIGHT 480
