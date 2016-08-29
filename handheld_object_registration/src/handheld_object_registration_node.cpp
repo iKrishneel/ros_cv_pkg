@@ -323,36 +323,6 @@ void HandheldObjectRegistration::modelRegistrationAndUpdate(
 
     //! move it out***
     ProjectionMap target_projection = this->prev_projection_;
-
-    
-    /**
-     * TEST GPU ICP
-     */
-    ROS_WARN("RUNNING GPU ");
-    struct timeval timer_start, timer_end;
-    gettimeofday(&timer_start, NULL);
-    
-    Eigen::Matrix4f gpu_trans;
-    this->denseVoxelRegistration(gpu_trans, target_projection, target_points,
-                                 src_projection, src_points);
-    
-    transformPointCloudWithNormalsGPU(target_points, target_points,
-                                      gpu_trans);
-
-    gettimeofday(&timer_end, NULL);
-    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
-                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
-    ROS_ERROR("\033[35mTIME: %3.6f, %d \033[0m", delta, target_points_->size());
-    
-    std::cout << "GPU TRANS: \n" << gpu_trans  << "\n";
-    return;
-    /**
-     * END TEST GPU ICP
-     *****************************************************
-     */
-
-
-
     
     //!  Feature check
     std::vector<CandidateIndices> candidate_indices;
@@ -447,13 +417,20 @@ void HandheldObjectRegistration::modelRegistrationAndUpdate(
        pcl::copyPointCloud<PointNormalT, PointNormalT>(*target_points,
                                                        *update_points);
     }
-    
-    ROS_INFO("\033[33m PCL--ICP \033[0m");
-    pcl::PointCloud<PointNormalT>::Ptr aligned_points(
-       new pcl::PointCloud<PointNormalT>);
+
+    bool icp_device_cpu = false;
     Eigen::Matrix<float, 4, 4> icp_transform = Eigen::Matrix4f::Identity();
-    this->registrationICP(aligned_points, icp_transform,
-                          update_points, src_points);
+    if (icp_device_cpu) {
+       ROS_INFO("\033[33m PCL--ICP \033[0m");
+       pcl::PointCloud<PointNormalT>::Ptr aligned_points(
+          new pcl::PointCloud<PointNormalT>);
+       this->registrationICP(aligned_points, icp_transform,
+                             update_points, src_points);
+    } else {
+       this->project3DTo2DDepth(target_projection, update_points);
+       this->denseVoxelRegistration(icp_transform, target_projection,
+                                    update_points, src_projection, src_points);
+    }
     Eigen::Matrix4f final_transformation = icp_transform * transform_matrix;
 
     //! explosion check
@@ -642,7 +619,6 @@ void HandheldObjectRegistration::denseVoxelRegistration(
     const float TRANSLATION_THRESH = 0.10f;
     
     while (true) {
-
        //! timer
        struct timeval timer_start, timer_end;
        gettimeofday(&timer_start, NULL);
@@ -693,6 +669,7 @@ void HandheldObjectRegistration::denseVoxelRegistration(
           break;
        }
     }
+    pcl::PointCloud<PointNormalT>().swap(*temp_points);
 }
 
 void HandheldObjectRegistration::modelVoxelUpdate(

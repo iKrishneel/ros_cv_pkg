@@ -119,7 +119,8 @@ void findCorrespondencesGPU(Correspondence * correspondences,
 
                    float dist = cuEuclideanDistance(src_pt, model_pt, 3);
                    
-                   if (dist >= 0.0f && dist < min_dsm && !isnan(dist)) {
+                   if (dist >= 0.0f && dist < min_dsm && !isnan(dist)
+                      && dist < DISTANCE_THRESH) {
                       min_dsm = dist;
                       min_ism = src_index;
                    }
@@ -488,7 +489,7 @@ bool allocateCopyDataToGPU2(
     estimateCorrespondencesKernel<<<block_size, grid_size>>>(
        d_correspondences, d_target_points, d_target_indices,
        d_src_points, d_src_indices, IMG_SIZE,
-       target_projection.indices.step, 20);
+       target_projection.indices.step, target_projection.height);
     
     // for (int i = 0; i < target_points->size(); i++) {
     //    std::cout << target_points->points[i]  << "\n";
