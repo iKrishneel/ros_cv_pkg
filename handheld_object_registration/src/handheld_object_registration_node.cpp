@@ -116,6 +116,8 @@ void HandheldObjectRegistration::cloudCB(
     int seed_index  = screen_msg_.point.x +
        (camera_info_->width * screen_msg_.point.y);
     PointT seed_point = cloud->points[seed_index];
+    std::cout << seed_point  << "\t Dist: " << "\n";
+    
     if (this->pose_flag_) {
        seed_point.x = pose_msg_->pose.position.x;
        seed_point.y = pose_msg_->pose.position.y;
@@ -127,7 +129,6 @@ void HandheldObjectRegistration::cloudCB(
        this->prev_seed_point_ = seed_point;
 
        std::cout  << "\n";
-       std::cout << seed_point  << "\t Dist: " << d << "\n";
        std::cout << pose_msg_->pose.position.x << ", " <<
           pose_msg_->pose.position.y << ", " <<
           pose_msg_->pose.position.z << "\n----------------\n";
@@ -140,13 +141,13 @@ void HandheldObjectRegistration::cloudCB(
 
     pcl::PointCloud<PointNormalT>::Ptr src_points(
        new pcl::PointCloud<PointNormalT>);
-    fastSeedRegionGrowing(src_points, cloud, normals, seed_point);
-    
+    // fastSeedRegionGrowing(src_points, cloud, normals, seed_point);
 
-    // this->seedRegionGrowing(src_points, seed_point, cloud, normals);
+    this->seedRegionGrowing(src_points, seed_point, cloud, normals);
 
     /**
      * DEBUG
+     */
     std::clock_t start;
     start = std::clock();
 
@@ -163,8 +164,9 @@ void HandheldObjectRegistration::cloudCB(
     this->pub_icp_.publish(ros_cloud1);
     
     return;
-    * DEBUG
-    */
+    /**
+     * DEBUG
+     */
 
 
     /**
@@ -1092,6 +1094,8 @@ bool HandheldObjectRegistration::seedRegionGrowing(
        ROS_ERROR("- Seed Point is Nan. Skipping");
        return false;
     }
+
+    this->kdtree_->setInputCloud(cloud);
     
     std::vector<int> neigbor_indices;
     this->getPointNeigbour<int>(neigbor_indices, seed_point, 1);
@@ -1389,6 +1393,14 @@ void HandheldObjectRegistration::fastSeedRegionGrowing(
        ROS_ERROR("INDEX IS NAN");
        return;
     }
+
+    cv::Mat test = cv::Mat::zeros(480, 640, CV_8UC3);
+    cv::circle(test, image_index, 3, cv::Scalar(0, 255, 0), -1);
+    cv::imshow("test", test);
+    cv::waitKey(3);
+    
+    
+    
     
     Eigen::Vector4f seed_point = cloud->points[seed_index].getVector4fMap();
     Eigen::Vector4f seed_normal = normals->points[
