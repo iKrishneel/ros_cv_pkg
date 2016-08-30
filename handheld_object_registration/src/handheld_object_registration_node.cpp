@@ -141,9 +141,9 @@ void HandheldObjectRegistration::cloudCB(
 
     pcl::PointCloud<PointNormalT>::Ptr src_points(
        new pcl::PointCloud<PointNormalT>);
-    // fastSeedRegionGrowing(src_points, cloud, normals, seed_point);
+    fastSeedRegionGrowing(src_points, cloud, normals, seed_point);
 
-    this->seedRegionGrowing(src_points, seed_point, cloud, normals);
+    // this->seedRegionGrowing(src_points, seed_point, cloud, normals);
 
     /**
      * DEBUG
@@ -152,7 +152,7 @@ void HandheldObjectRegistration::cloudCB(
     start = std::clock();
 
     float equation[4];
-    this->symmetricPlane(equation, src_points);
+    // this->symmetricPlane(equation, src_points);
     
     double duration = (std::clock() - start) /
        static_cast<double>(CLOCKS_PER_SEC);
@@ -1388,19 +1388,19 @@ void HandheldObjectRegistration::fastSeedRegionGrowing(
     cv::Point2f image_index;
     int seed_index = -1;
     if (this->projectPoint3DTo2DIndex(image_index, seed_pt)) {
-       seed_index = (image_index.x + (image_index.y * camera_info_->width));
+       seed_index = (static_cast<int>(image_index.x) +
+                     (static_cast<int>(image_index.y) * camera_info_->width));
     } else {
        ROS_ERROR("INDEX IS NAN");
        return;
     }
 
+#ifdef _DEBUG
     cv::Mat test = cv::Mat::zeros(480, 640, CV_8UC3);
     cv::circle(test, image_index, 3, cv::Scalar(0, 255, 0), -1);
     cv::imshow("test", test);
     cv::waitKey(3);
-    
-    
-    
+#endif
     
     Eigen::Vector4f seed_point = cloud->points[seed_index].getVector4fMap();
     Eigen::Vector4f seed_normal = normals->points[
