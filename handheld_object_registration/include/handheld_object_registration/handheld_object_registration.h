@@ -31,6 +31,7 @@
 
 #include <handheld_object_registration/transformation.h>
 #include <handheld_object_registration/projected_correspondences.h>
+#include <handheld_object_registration/oriented_bounding_box.h>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/cudaarithm.hpp>
@@ -42,7 +43,7 @@ namespace jsk_msgs = jsk_recognition_msgs;
 
 #define HISTORY_WINDOW 5
 
-class HandheldObjectRegistration {
+class HandheldObjectRegistration: public OrientedBoundingBox {
 
     typedef pcl::PointXYZRGB PointT;
     typedef pcl::Normal NormalT;

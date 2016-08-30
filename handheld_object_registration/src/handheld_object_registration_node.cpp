@@ -142,7 +142,6 @@ void HandheldObjectRegistration::cloudCB(
     pcl::PointCloud<PointNormalT>::Ptr src_points(
        new pcl::PointCloud<PointNormalT>);
     fastSeedRegionGrowing(src_points, cloud, normals, seed_point);
-
     // this->seedRegionGrowing(src_points, seed_point, cloud, normals);
 
     /**
@@ -151,8 +150,17 @@ void HandheldObjectRegistration::cloudCB(
     std::clock_t start;
     start = std::clock();
 
+    jsk_msgs::BoundingBox bounding_box;
+    // this->fitOriented3DBoundingBox(bounding_box, src_points);
+
+    jsk_msgs::BoundingBoxArray *rviz_bbox1 = new jsk_msgs::BoundingBoxArray;
+    bounding_box.header = cloud_msg->header;
+    rviz_bbox1->boxes.push_back(bounding_box);
+    rviz_bbox1->header = cloud_msg->header;
+    this->pub_bbox_.publish(*rviz_bbox1);
+    
     float equation[4];
-    // this->symmetricPlane(equation, src_points);
+    this->symmetricPlane(equation, src_points);
     
     double duration = (std::clock() - start) /
        static_cast<double>(CLOCKS_PER_SEC);
@@ -945,6 +953,21 @@ void HandheldObjectRegistration::symmetricPlane(
     voxel_grid.setLeafSize(leaf_size, leaf_size, leaf_size);
     voxel_grid.filter(*region_points);
 
+
+    // pcl::PCA<PointNormalT> pca;
+    // pca.setInputCloud(region_points);
+    // Eigen::Matrix3f eigen = pca.getEigenVectors();
+    // Eigen::Vector3f values = pca.getEigenValues();
+    // std::cout << eigen  << "\n";
+    // std::cout << eigen(0, 0)  << "\n\n";
+    // Eigen::Vector4f center;
+    // pcl::compute3DCentroid(*in_cloud, center);
+    // Eigen::Vector4f pparam = Eigen::Vector4f(eigen(1, 0), eigen(1, 1),
+    //                                          eigen(1, 2), 0);
+    // plotPlane(in_cloud, pparam);
+    // return;
+
+    
     // in_cloud->clear();
     // *in_cloud = *region_points;
 
@@ -956,8 +979,13 @@ void HandheldObjectRegistration::symmetricPlane(
     const float DISTANCE_THRESH_ = 0.10f;
     
     //! compute the symmetric
-    std::vector<std::vector<Eigen::Vector4f> > symmetric_planes;
+    std::vector<Eigen::Vector4f> symmetric_planes;
     float symmetric_energy = 0.0f;
+    Eigen::Vector4f plane_param;
+
+
+    ROS_WARN("NUMBER OF POINTS: %d", region_points->size());
+    
     for (int i = 0; i < region_points->size(); i++) {
        Eigen::Vector4f point1 = region_points->points[i].getVector4fMap();
        Eigen::Vector4f norm1 = region_points->points[i].getNormalVector4fMap();
@@ -965,7 +993,7 @@ void HandheldObjectRegistration::symmetricPlane(
        norm1(3) = 0.0f;
        
        std::vector<Eigen::Vector4f> s_planes;
-       Eigen::Vector4f plane_param;
+
        for (int j = i + 1; j < region_points->size(); j++) {
           Eigen::Vector4f point2 = region_points->points[j].getVector4fMap();
           Eigen::Vector4f norm2 = region_points->points[
@@ -988,6 +1016,8 @@ void HandheldObjectRegistration::symmetricPlane(
           
           pcl::PointCloud<PointNormalT>::Ptr temp_points(
              new pcl::PointCloud<PointNormalT>);
+
+          /*
           for (int k = 0; k < region_points->size(); k++) {
              Eigen::Vector3f n = region_points->points[
                 k].getNormalVector3fMap();
@@ -1016,7 +1046,7 @@ void HandheldObjectRegistration::symmetricPlane(
                 seed_point, 1, neigbor_indices, point_squared_distance);
              
              int nidx = neigbor_indices[0];
-             float distance = std::sqrt(point_squared_distance[0]);
+             float distance = point_squared_distance[0];
              
              if (distance < leaf_size * 2.0f) {
                 Eigen::Vector3f symm_n = n - (2.0f * (
@@ -1031,25 +1061,36 @@ void HandheldObjectRegistration::symmetricPlane(
                 // std::cout << w  << "\t" << angle * 180.0/M_PI << "\n";
                 
                 if (angle > ANGLE_THRESH_) {
-                   weight += (w * 0.5f);
+                   weight += (w * 0.0f);
                 } else {
                    weight += w;
                 }
              }
+
              temp_points->push_back(seed_point);
+
           }
+          */
           weight /= static_cast<float>(region_points->size());
-          
+
+          symmetric_planes.push_back(norm_s);
+
           // printf("WEIGHT: %3.2f, %3.2f \n", weight, symmetric_energy);
           if (!isnan(weight) && weight > symmetric_energy) {
              symmetric_energy = weight;
              plane_param = norm_s;
-             in_cloud->clear();
-             *in_cloud = *temp_points;
+             // in_cloud->clear();
+             // *in_cloud = *temp_points;
           }
        }
+    }
 
-       this->plotPlane(in_cloud, plane_param);
+
+    std::cout << "NUMBER OF PLANES: " << symmetric_planes.size()  << "\n";
+    
+    
+    // this->plotPlane(in_cloud, plane_param);
+       /*
        return;
        
        if (!s_planes.empty()) {
@@ -1078,7 +1119,7 @@ void HandheldObjectRegistration::symmetricPlane(
     std::cout << "\033[34m NUMBER OF SYMMETRIC PLANES:  \033[0m"
               << symmetric_planes.size()  << "\n";
 
-
+    */
     return;
 }
 
