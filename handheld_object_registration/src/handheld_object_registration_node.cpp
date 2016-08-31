@@ -153,20 +153,24 @@ void HandheldObjectRegistration::cloudCB(
     jsk_msgs::BoundingBox bounding_box;
     // this->fitOriented3DBoundingBox(bounding_box, src_points);
 
-    jsk_msgs::BoundingBoxArray *rviz_bbox1 = new jsk_msgs::BoundingBoxArray;
-    bounding_box.header = cloud_msg->header;
-    rviz_bbox1->boxes.push_back(bounding_box);
-    rviz_bbox1->header = cloud_msg->header;
-    this->pub_bbox_.publish(*rviz_bbox1);
+
     
     float equation[4];
-    this->symmetricPlane(equation, src_points, 0.01);
+    this->symmetricPlane(equation, src_points, 0.005);
+
+    this->fitOriented3DBoundingBox(bounding_box, src_points);
 
     gettimeofday(&timer_end, NULL);
     double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
                     timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
     ROS_ERROR("TIME: %3.6f, %d", delta, target_points_->size());
 
+    jsk_msgs::BoundingBoxArray *rviz_bbox1 = new jsk_msgs::BoundingBoxArray;
+    bounding_box.header = cloud_msg->header;
+    rviz_bbox1->boxes.push_back(bounding_box);
+    rviz_bbox1->header = cloud_msg->header;
+    this->pub_bbox_.publish(*rviz_bbox1);
+    
     sensor_msgs::PointCloud2 ros_cloud1;
     pcl::toROSMsg(*src_points, ros_cloud1);
     ros_cloud1.header = cloud_msg->header;
@@ -948,6 +952,11 @@ void HandheldObjectRegistration::symmetricPlane(
        return;
     }
 
+    /**
+     * NOTE ADD [INPUT] oversegmented region points
+     */
+    const int min_cluster_size = 20;
+    
     ProjectionMap in_proj_map;
     this->project3DTo2DDepth(in_proj_map, in_cloud);
 
@@ -955,40 +964,85 @@ void HandheldObjectRegistration::symmetricPlane(
        new pcl::PointCloud<PointNormalT>);
     this->getEdgesFromNormals(edge_removed, in_cloud, in_proj_map);
 
-    in_cloud->clear();
-    *in_cloud = *edge_removed;
+    //! test only
+    // Eigen::Vector4f center;
+    // pcl::compute3DCentroid(*edge_removed, center);
+    // pcl::demeanPointCloud<PointNormalT, float>(
+    //    *edge_removed, center, *edge_removed);
+    //! end testo nly
     
-    return;
+    // pcl::VoxelGrid<PointNormalT> voxel_grid;
+    // voxel_grid.setInputCloud(edge_removed);
+    // voxel_grid.setLeafSize(leaf_size, leaf_size, leaf_size);
+    // voxel_grid.filter(*edge_removed);
     
-
-    Eigen::Vector4f center;
-    pcl::compute3DCentroid(*in_cloud, center);
-    pcl::demeanPointCloud<PointNormalT, float>(*in_cloud, center, *in_cloud);
-    
-    pcl::PointCloud<PointNormalT>::Ptr region_points(
-       new pcl::PointCloud<PointNormalT>);
-    pcl::VoxelGrid<PointNormalT> voxel_grid;
-    voxel_grid.setInputCloud(in_cloud);
-    voxel_grid.setLeafSize(leaf_size, leaf_size, leaf_size);
-    voxel_grid.filter(*region_points);
-
-    /*
     pcl::search::KdTree<PointNormalT>::Ptr tree(
        new pcl::search::KdTree<PointNormalT>);
-    tree->setInputCloud(region_points);
-    
+    tree->setInputCloud(edge_removed);
     pcl::EuclideanClusterExtraction<PointNormalT> ec;
-    ec.setClusterTolerance(leaf_size * 2.0f);
-    ec.setMinClusterSize(10);
+    ec.setClusterTolerance(leaf_size * 1.0f);
+    ec.setMinClusterSize(min_cluster_size);
     ec.setMaxClusterSize(25000);
     ec.setSearchMethod(tree);
-    ec.setInputCloud(region_points);
+    ec.setInputCloud(edge_removed);
     
     std::vector<pcl::PointIndices> cluster_indices;
     ec.extract(cluster_indices);
 
+    in_cloud->clear();
+    pcl::PointCloud<PointNormalT>::Ptr region_points(
+       new pcl::PointCloud<PointNormalT>);
+    // for (int i = 0; i < cluster_indices.size(); i++)
+    {
+       int i = 0;
+       region_points->clear();
+       region_points->resize(static_cast<int>(
+                                cluster_indices[i].indices.size()));
+       for (int j = 0; j < cluster_indices[i].indices.size(); j++) {
+          int idx = cluster_indices[i].indices[j];
+          region_points->points[j] = edge_removed->points[idx];
+       }
+
+       if (region_points->size() > min_cluster_size) {
+          Eigen::Vector4f center;
+          pcl::compute3DCentroid(*region_points, center);
+          pcl::demeanPointCloud<PointNormalT, float>(
+             *region_points, center, *region_points);
+
+          pcl::PCA<PointNormalT> pca;
+          pca.setInputCloud(region_points);
+          Eigen::Matrix3f eigen = pca.getEigenVectors();
+
+          for (int k = 0; k < 3; k++) {
+             Eigen::Vector3f color = Eigen::Vector3f(0, 0, 0);
+             color[k] = 255;
+             Eigen::Vector4f pparam = Eigen::Vector4f(
+                eigen(k, 0), eigen(k, 1), eigen(k, 2), 0);
+             
+             // plotPlane(region_points, pparam, color);
+          }
+          *in_cloud = *region_points;
+       }
+    }
+
+    
+    
     std::cout <<"\n SIZE: " << cluster_indices.size() << "\t"
               << in_cloud->size() << "\n";
+
+        
+    return;
+    
+
+    // Eigen::Vector4f center;
+    // pcl::compute3DCentroid(*in_cloud, center);
+    // pcl::demeanPointCloud<PointNormalT, float>(*in_cloud, center, *in_cloud);
+    
+
+
+    /*
+
+
 
     in_cloud->clear();
     *in_cloud = *region_points;
@@ -1767,8 +1821,8 @@ void HandheldObjectRegistration::plotPlane(
     Eigen::Vector3f point_x = Eigen::Vector3f(param(3)/param(0), 0.0f, 0.0f);
     Eigen::Vector3f point_y = Eigen::Vector3f(-param(2), 0, param(0));
     Eigen::Vector3f point_z = Eigen::Vector3f(-param(1), param(0), 0);
-    for (float y = -1.0f; y < 1.0f; y += 0.01f) {
-       for (float x = -1.0f; x < 1.0f; x += 0.01f) {
+    for (float y = -0.10f; y < 0.10f; y += 0.01f) {
+       for (float x = -0.10f; x < 0.10f; x += 0.01f) {
          PointNormalT pt;
          pt.x = point_x(0) + point_y(0) * x + point_z(0) * y;
          pt.y = point_x(1) + point_y(1) * x + point_z(1) * y;
