@@ -147,8 +147,8 @@ void HandheldObjectRegistration::cloudCB(
     /**
      * DEBUG
      */
-    std::clock_t start;
-    start = std::clock();
+    struct timeval itimer_start, itimer_end;
+    gettimeofday(&timer_start, NULL);
 
     jsk_msgs::BoundingBox bounding_box;
     // this->fitOriented3DBoundingBox(bounding_box, src_points);
@@ -160,11 +160,12 @@ void HandheldObjectRegistration::cloudCB(
     this->pub_bbox_.publish(*rviz_bbox1);
     
     float equation[4];
-    this->symmetricPlane(equation, src_points);
-    
-    double duration = (std::clock() - start) /
-       static_cast<double>(CLOCKS_PER_SEC);
-    std::cout << "printf: " << duration <<'\n';
+    this->symmetricPlane(equation, src_points, 0.01);
+
+    gettimeofday(&timer_end, NULL);
+    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
+    ROS_ERROR("TIME: %3.6f, %d", delta, target_points_->size());
 
     sensor_msgs::PointCloud2 ros_cloud1;
     pcl::toROSMsg(*src_points, ros_cloud1);
@@ -946,6 +947,24 @@ void HandheldObjectRegistration::symmetricPlane(
        ROS_ERROR("Input size are not equal");
        return;
     }
+
+    ProjectionMap in_proj_map;
+    this->project3DTo2DDepth(in_proj_map, in_cloud);
+
+    pcl::PointCloud<PointNormalT>::Ptr edge_removed(
+       new pcl::PointCloud<PointNormalT>);
+    this->getEdgesFromNormals(edge_removed, in_cloud, in_proj_map);
+
+    in_cloud->clear();
+    *in_cloud = *edge_removed;
+    
+    return;
+    
+
+    Eigen::Vector4f center;
+    pcl::compute3DCentroid(*in_cloud, center);
+    pcl::demeanPointCloud<PointNormalT, float>(*in_cloud, center, *in_cloud);
+    
     pcl::PointCloud<PointNormalT>::Ptr region_points(
        new pcl::PointCloud<PointNormalT>);
     pcl::VoxelGrid<PointNormalT> voxel_grid;
@@ -953,27 +972,77 @@ void HandheldObjectRegistration::symmetricPlane(
     voxel_grid.setLeafSize(leaf_size, leaf_size, leaf_size);
     voxel_grid.filter(*region_points);
 
-
-    // pcl::PCA<PointNormalT> pca;
-    // pca.setInputCloud(region_points);
-    // Eigen::Matrix3f eigen = pca.getEigenVectors();
-    // Eigen::Vector3f values = pca.getEigenValues();
-    // std::cout << eigen  << "\n";
-    // std::cout << eigen(0, 0)  << "\n\n";
-    // Eigen::Vector4f center;
-    // pcl::compute3DCentroid(*in_cloud, center);
-    // Eigen::Vector4f pparam = Eigen::Vector4f(eigen(1, 0), eigen(1, 1),
-    //                                          eigen(1, 2), 0);
-    // plotPlane(in_cloud, pparam);
-    // return;
-
+    /*
+    pcl::search::KdTree<PointNormalT>::Ptr tree(
+       new pcl::search::KdTree<PointNormalT>);
+    tree->setInputCloud(region_points);
     
-    // in_cloud->clear();
-    // *in_cloud = *region_points;
+    pcl::EuclideanClusterExtraction<PointNormalT> ec;
+    ec.setClusterTolerance(leaf_size * 2.0f);
+    ec.setMinClusterSize(10);
+    ec.setMaxClusterSize(25000);
+    ec.setSearchMethod(tree);
+    ec.setInputCloud(region_points);
+    
+    std::vector<pcl::PointIndices> cluster_indices;
+    ec.extract(cluster_indices);
+
+    std::cout <<"\n SIZE: " << cluster_indices.size() << "\t"
+              << in_cloud->size() << "\n";
+
+    in_cloud->clear();
+    *in_cloud = *region_points;
+    return;
+    */
+    
+    pcl::PCA<PointNormalT> pca;
+    pca.setInputCloud(in_cloud);
+    Eigen::Matrix3f eigen = pca.getEigenVectors();
+    Eigen::Vector3f values = pca.getEigenValues();
+    std::cout << eigen  << "\n";
+    std::cout << eigen(0, 0)  << "\n\n";
 
     pcl::KdTreeFLANN<PointNormalT>::Ptr kdtree(
        new pcl::KdTreeFLANN<PointNormalT>);
     kdtree->setInputCloud(region_points);
+    
+    Eigen::Vector4f plane_param;
+    float symm_energy = 0.0f;
+    pcl::PointCloud<PointNormalT>::Ptr temp_points(
+       new pcl::PointCloud<PointNormalT>);
+    
+    for (int i = 0; i < 3; i++) {
+       Eigen::Vector3f color = Eigen::Vector3f(0, 0, 0);
+       color[i] = 255;
+       Eigen::Vector4f pparam = Eigen::Vector4f(
+          eigen(i, 0), eigen(i, 1), eigen(i, 2), 0);
+
+       float e = this->evaluateSymmetricFitnessScore(
+          temp_points, in_cloud, pparam, kdtree, 0.01f);
+       
+       if (e > symm_energy) {
+          symm_energy = e;
+          plane_param = pparam;
+       }
+
+       ROS_INFO("\033[35m SYMMETRIC ENERGY: %3.2f \033[0m", e);
+
+       // if (e > 0.8) {
+       //    color(0) = 0;
+       //    color(1) = 255;
+       // }
+       // std::cout << temp_points->size()  << "\n";
+       // *in_cloud += *temp_points;
+       // plotPlane(in_cloud, pparam, color);
+    }
+    ROS_INFO("\033[36m SYMMETRIC ENERGY: %3.2f \033[0m", symm_energy);
+    plotPlane(in_cloud, plane_param);
+    return;
+
+
+
+    
+    // ------------------------------------------
 
     const float ANGLE_THRESH_ = M_PI/8;
     const float DISTANCE_THRESH_ = 0.10f;
@@ -981,10 +1050,14 @@ void HandheldObjectRegistration::symmetricPlane(
     //! compute the symmetric
     std::vector<Eigen::Vector4f> symmetric_planes;
     float symmetric_energy = 0.0f;
-    Eigen::Vector4f plane_param;
+    
 
 
     ROS_WARN("NUMBER OF POINTS: %d", region_points->size());
+
+    std::ofstream outfile;
+    outfile.open("symmetric.txt", std::ios::out);
+    int icount = 0;
     
     for (int i = 0; i < region_points->size(); i++) {
        Eigen::Vector4f point1 = region_points->points[i].getVector4fMap();
@@ -1013,66 +1086,18 @@ void HandheldObjectRegistration::symmetricPlane(
           std::vector<int> neigbor_indices;
           std::vector<float> point_squared_distance;
           float weight = 0.0f;
-          
-          pcl::PointCloud<PointNormalT>::Ptr temp_points(
-             new pcl::PointCloud<PointNormalT>);
 
-          /*
-          for (int k = 0; k < region_points->size(); k++) {
-             Eigen::Vector3f n = region_points->points[
-                k].getNormalVector3fMap();
-             Eigen::Vector3f p = region_points->points[k].getVector3fMap();
-                
-             // float beta = p(0) * plane_n(0) + p(1) * plane_n(1) +
-             //    p(2) * plane_n(2);
-             // float alpha = (plane_n(0) * plane_n(0)) +
-             //    (plane_n(1) * plane_n(1)) + (plane_n(2) * plane_n(2));
-             // float t = (norm_s(3) - beta) / alpha;
-             
-             PointNormalT seed_point = region_points->points[k];
-             // seed_point.x = p(0) + (t * 2 * plane_n(0));
-             // seed_point.y = p(1) + (t * 2 * plane_n(1));
-             // seed_point.z = p(2) + (t * 2 * plane_n(2));
-             
-             Eigen::Vector3f seed_pt = p - 2.0f * norm_s.head<3>() *
-                (p.dot(norm_s.head<3>()) - d);
-             seed_point.x = seed_pt(0);
-             seed_point.y = seed_pt(1);
-             seed_point.z = seed_pt(2);
-                
-             neigbor_indices.clear();
-             point_squared_distance.clear();
-             int search_out = kdtree->nearestKSearch(
-                seed_point, 1, neigbor_indices, point_squared_distance);
-             
-             int nidx = neigbor_indices[0];
-             float distance = point_squared_distance[0];
-             
-             if (distance < leaf_size * 2.0f) {
-                Eigen::Vector3f symm_n = n - (2.0f * (
-                                                 plane_n.dot(n)) * plane_n);
-                Eigen::Vector3f sneig_r = region_points->points[
-                      nidx].getNormalVector3fMap();
-                float dot_prod = (symm_n.dot(sneig_r)) / (
-                   symm_n.norm() * sneig_r.norm());
-                float angle = std::acos(dot_prod);  //! * (180.0f/M_PI);
-                float w = 1.0f / (1.0f + (angle / (2.0f * M_PI)));
-
-                // std::cout << w  << "\t" << angle * 180.0/M_PI << "\n";
-                
-                if (angle > ANGLE_THRESH_) {
-                   weight += (w * 0.0f);
-                } else {
-                   weight += w;
-                }
-             }
-
-             temp_points->push_back(seed_point);
-
+          float angle = norm1.normalized().dot(norm2.normalized());
+          if (angle > 0.85f) {
+             outfile << icount++ << " " << norm_s(0) << " "
+                     << norm_s(1) << " " << norm_s(2) << " "
+                     << dist_s << "\n";
           }
-          */
-          weight /= static_cast<float>(region_points->size());
 
+          
+
+
+          weight /= static_cast<float>(region_points->size());
           symmetric_planes.push_back(norm_s);
 
           // printf("WEIGHT: %3.2f, %3.2f \n", weight, symmetric_energy);
@@ -1084,9 +1109,10 @@ void HandheldObjectRegistration::symmetricPlane(
           }
        }
     }
-
+    outfile.close();
 
     std::cout << "NUMBER OF PLANES: " << symmetric_planes.size()  << "\n";
+    exit(1);
     
     
     // this->plotPlane(in_cloud, plane_param);
@@ -1122,6 +1148,149 @@ void HandheldObjectRegistration::symmetricPlane(
     */
     return;
 }
+
+void HandheldObjectRegistration::getEdgesFromNormals(
+    pcl::PointCloud<PointNormalT>::Ptr non_edge_points,
+    const pcl::PointCloud<PointNormalT>::Ptr in_cloud,
+    const ProjectionMap in_proj_map) {
+    if (in_cloud->empty()) {
+       ROS_ERROR("[getEdgesFromNormals]: INPUT ERROR");
+       return;
+    }
+    int neigbor_size = 3;
+    int wsize = std::floor(neigbor_size);
+
+    cv::Mat image = cv::Mat::zeros(480, 640, CV_8UC3);
+
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(16) collapse(2)
+#endif
+    for (int j = in_proj_map.y; j < in_proj_map.height +
+            in_proj_map.y; j++) {
+       for (int i = in_proj_map.x; i < in_proj_map.width +
+               in_proj_map.x; i++) {
+          int index = in_proj_map.indices.at<int>(j, i);
+          if (index != -1) {
+             Eigen::Vector4f norm_p = in_cloud->points[
+                index].getNormalVector4fMap().normalized();
+             
+             Eigen::Vector4f norm_c = Eigen::Vector4f::Identity();
+             float min_angle = FLT_MAX;
+             float max_angle = 0.0f;
+             for (int y = -wsize; y <= wsize; y++) {
+                for (int x = -wsize; x <= wsize; x++) {
+                   int ind = in_proj_map.indices.at<int>(j+y, i+x);
+                   if (ind != -1) {
+                      norm_c = in_cloud->points[ind].getNormalVector4fMap();
+                      float angle = norm_c.normalized().dot(norm_p);
+                      if (angle < min_angle && !isnan(angle)) {
+                         min_angle = angle;
+                      }
+                      if (angle > max_angle && !isnan(angle)) {
+                         max_angle = angle;
+                      }
+                   }
+                }
+             }
+
+             float variance = max_angle - min_angle;
+             
+             if (variance > 0.03f) {
+                image.at<cv::Vec3b>(j, i)[1] = 255;
+             }
+          }
+       }
+    }
+
+    for (int j = in_proj_map.y; j < in_proj_map.height +
+            in_proj_map.y; j++) {
+       for (int i = in_proj_map.x; i < in_proj_map.width +
+               in_proj_map.x; i++) {
+          int index = in_proj_map.indices.at<int>(j, i);
+          if (image.at<cv::Vec3b>(j, i)[1] != 255 && index != -1) {
+             non_edge_points->push_back(in_cloud->points[index]);
+          }
+       }
+    }
+          
+    cv::imshow("edge", image);
+    cv::waitKey(3);
+}
+
+
+float HandheldObjectRegistration::evaluateSymmetricFitnessScore(
+    pcl::PointCloud<PointNormalT>::Ptr out_cloud,
+    const pcl::PointCloud<PointNormalT>::Ptr region_points,
+    const Eigen::Vector4f plane_param,
+    const pcl::KdTreeFLANN<PointNormalT>::Ptr kdtree,
+    const float dist_thresh) {
+    if (region_points->empty() || isnan(plane_param(0)) ||
+        isnan(plane_param(1)) || isnan(plane_param(2))) {
+       ROS_ERROR("[evaluateSymmetricFitnessScore]: INPUT ERROR");
+       return 0.0f;
+    }
+    const float ANGLE_THRESH = M_PI / 6;
+    float weight = 0.0f;
+    Eigen::Vector3f plane_n = plane_param.head<3>();
+
+    std::vector<int> neigbor_indices;
+    std::vector<float> point_squared_distance;
+    
+    for (int k = 0; k < region_points->size(); k++) {
+       Eigen::Vector3f n = region_points->points[
+          k].getNormalVector3fMap();
+       Eigen::Vector3f p = region_points->points[k].getVector3fMap();
+                
+       float beta = p(0) * plane_n(0) + p(1) * plane_n(1) +
+          p(2) * plane_n(2);
+       float alpha = (plane_n(0) * plane_n(0)) +
+          (plane_n(1) * plane_n(1)) + (plane_n(2) * plane_n(2));
+       float t = (plane_param(3) - beta) / alpha;
+             
+       PointNormalT seed_point = region_points->points[k];
+       seed_point.x = p(0) + (t * 2 * plane_n(0));
+       seed_point.y = p(1) + (t * 2 * plane_n(1));
+       seed_point.z = p(2) + (t * 2 * plane_n(2));
+             
+       Eigen::Vector3f seed_pt = p - 2.0f * plane_param.head<3>() *
+          (p.dot(plane_param.head<3>()) - plane_param(3));
+       // seed_point.x = seed_pt(0);
+       // seed_point.y = seed_pt(1);
+       // seed_point.z = seed_pt(2);
+                
+       neigbor_indices.clear();
+       point_squared_distance.clear();
+       int search_out = kdtree->nearestKSearch(
+          seed_point, 1, neigbor_indices, point_squared_distance);
+             
+       int nidx = neigbor_indices[0];
+       float distance = point_squared_distance[0];
+             
+       if (distance < dist_thresh) {
+          Eigen::Vector3f symm_n = n - (2.0f * (
+                                           plane_n.dot(n)) * plane_n);
+          Eigen::Vector3f sneig_r = region_points->points[
+             nidx].getNormalVector3fMap();
+          float dot_prod = (symm_n.dot(sneig_r)) / (
+             symm_n.norm() * sneig_r.norm());
+          float angle = std::acos(dot_prod);  //! * (180.0f/M_PI);
+          float w = 1.0f / (1.0f + (angle / (2.0f * M_PI)));
+
+          // std::cout << "weight: " << w  << "\n";
+          
+          if (angle > ANGLE_THRESH) {
+             weight += (w * 0.50f);
+          } else {
+             weight += w;
+          }
+       }
+       out_cloud->push_back(seed_point);
+    }
+    weight /= static_cast<float>(region_points->size());
+    return weight;
+    
+}
+
 
 bool HandheldObjectRegistration::seedRegionGrowing(
     pcl::PointCloud<PointNormalT>::Ptr src_points,
@@ -1604,7 +1773,9 @@ void HandheldObjectRegistration::plotPlane(
          pt.x = point_x(0) + point_y(0) * x + point_z(0) * y;
          pt.y = point_x(1) + point_y(1) * x + point_z(1) * y;
          pt.z = point_x(2) + point_y(2) * x + point_z(2) * y;
-         pt.g = 255;
+         pt.r = color(0);
+         pt.b = color(1);
+         pt.g = color(2);
          cloud->push_back(pt);
       }
     }

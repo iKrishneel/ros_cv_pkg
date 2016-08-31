@@ -20,6 +20,7 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/features/integral_image_normal.h>
 #include <pcl/registration/default_convergence_criteria.h>
+#include <pcl/segmentation/extract_clusters.h>
 
 #include <pcl/registration/transformation_estimation_svd.h>
 #include <pcl/registration/transformation_estimation_point_to_plane_lls.h>
@@ -158,7 +159,15 @@ class HandheldObjectRegistration: public OrientedBoundingBox {
    
     void symmetricPlane(float *, pcl::PointCloud<PointNormalT>::Ptr,
                         const float = 0.02f);
-
+    float evaluateSymmetricFitnessScore(pcl::PointCloud<PointNormalT>::Ptr,
+                                        const pcl::PointCloud<PointNormalT>::Ptr,
+                                        const Eigen::Vector4f,
+                                        const pcl::KdTreeFLANN<PointNormalT>::Ptr,
+                                        const float);
+    void getEdgesFromNormals(pcl::PointCloud<PointNormalT>::Ptr,
+                             const pcl::PointCloud<PointNormalT>::Ptr,
+                             const ProjectionMap);
+   
     void fastSeedRegionGrowing(pcl::PointCloud<PointNormalT>::Ptr,
                          const PointCloud::Ptr, const PointNormal::Ptr,
                          const PointT);
