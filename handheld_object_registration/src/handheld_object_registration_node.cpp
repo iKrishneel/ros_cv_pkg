@@ -160,7 +160,7 @@ void HandheldObjectRegistration::cloudCB(
     struct timeval timer_start, timer_end;
     gettimeofday(&timer_start, NULL);
     float equation[4];
-    this->symmetricPlane(equation, src_points, 0.025f);
+    this->symmetricPlane(equation, src_points, 0.02f);
 
     // this->fitOriented3DBoundingBox(bounding_box, src_points);
 
@@ -961,7 +961,7 @@ void HandheldObjectRegistration::symmetricPlane(
     pcl::PointCloud<PointNormalT>::Ptr region_points(
        new pcl::PointCloud<PointNormalT>);
     voxel_grid.filter(*region_points);
-
+    
     Eigen::Vector4f center;
     pcl::compute3DCentroid(*region_points, center);
     pcl::demeanPointCloud<PointNormalT, float>(
@@ -1026,11 +1026,29 @@ void HandheldObjectRegistration::symmetricPlane(
           candidate_splanes.push_back(symmetric_planes[i]);
        }
     }
+    // return;
+    
+
+    //! testing using weight (put to cuda)
+    float max_energy = 0.0f;
+    int max_index = -1;
+    for (int i = 0; i < candidate_splanes.size(); i++) {
+       float energy = evaluateSymmetricFitness(
+          reflected_points, region_points, candidate_splanes[0], kdtree,
+          0.005, true);
+
+       std::cout << "energy: " << energy  << "\n";
+       
+       if (energy > max_energy) {
+          max_energy = energy;
+          max_index = i;
+       }
+    }
     
     std::cout << "\nFILTERED SIZE: " << candidate_splanes.size()<< "\n";
     
     
-    plotPlane(region_points, candidate_splanes[0]);
+    plotPlane(region_points, candidate_splanes[max_index]);
     
     in_cloud->clear();
     *in_cloud += *region_points;
@@ -1087,10 +1105,12 @@ float HandheldObjectRegistration::evaluateSymmetricFitness(
        seed_point.normal_y = symm_n(1);
        seed_point.normal_z = symm_n(2);
 
-       seed_point.r = 0;
-       seed_point.g = 255;
-       seed_point.b = 0;
-
+       if (!compute_symmetric_weight) {
+          seed_point.r = 0;
+          seed_point.g = 255;
+          seed_point.b = 0;
+       }
+       
        if (compute_symmetric_weight) {
           neigbor_indices.clear();
           point_squared_distance.clear();
@@ -1098,6 +1118,9 @@ float HandheldObjectRegistration::evaluateSymmetricFitness(
              seed_point, 1, neigbor_indices, point_squared_distance);
           int nidx = neigbor_indices[0];
           float distance = point_squared_distance[0];
+
+          // ROS_INFO("\033[34m DIST:  %3.4f\033[0m", distance);
+          
           if (distance < dist_thresh) {
 
              Eigen::Vector3f sneig_r = region_points->points[
