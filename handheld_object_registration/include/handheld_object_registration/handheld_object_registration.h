@@ -169,9 +169,14 @@ class HandheldObjectRegistration: public OrientedBoundingBox {
                              const ProjectionMap);
    
     void fastSeedRegionGrowing(pcl::PointCloud<PointNormalT>::Ptr,
-                         const PointCloud::Ptr, const PointNormal::Ptr,
-                         const PointT);
+                               cv::Point2i &, const PointCloud::Ptr,
+                               const PointNormal::Ptr, const PointT);
     bool projectPoint3DTo2DIndex(cv::Point2f &, const PointT);
+    void regionOverSegmentation(pcl::PointCloud<PointNormalT>::Ptr,
+                                const PointCloud::Ptr, const PointNormal::Ptr,
+                                const ProjectionMap, const cv::Point2i);
+   
+   
     bool conditionROI(int, int, int, int, const cv::Size);
 
     void denseVoxelRegistration(Eigen::Matrix4f &, const ProjectionMap,

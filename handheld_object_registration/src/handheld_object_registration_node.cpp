@@ -103,10 +103,6 @@ void HandheldObjectRegistration::cloudCB(
     }
 
     ROS_INFO("\033[34m - Running Callback ... \033[0m");
-    
-    //! timer
-    struct timeval timer_start, timer_end;
-    // gettimeofday(&timer_start, NULL);
 
     this->camera_info_ = cinfo_msg;
     
@@ -116,23 +112,15 @@ void HandheldObjectRegistration::cloudCB(
     int seed_index  = screen_msg_.point.x +
        (camera_info_->width * screen_msg_.point.y);
     PointT seed_point = cloud->points[seed_index];
-    std::cout << seed_point  << "\t Dist: " << "\n";
     
     if (this->pose_flag_) {
        seed_point.x = pose_msg_->pose.position.x;
        seed_point.y = pose_msg_->pose.position.y;
        seed_point.z = pose_msg_->pose.position.z;
-
-       double d = pcl::distances::l2(seed_point.getVector4fMap(),
-                          prev_seed_point_.getVector4fMap());
        
+       // double d = pcl::distances::l2(seed_point.getVector4fMap(),
+       //                    prev_seed_point_.getVector4fMap());
        this->prev_seed_point_ = seed_point;
-
-       std::cout  << "\n";
-       std::cout << pose_msg_->pose.position.x << ", " <<
-          pose_msg_->pose.position.y << ", " <<
-          pose_msg_->pose.position.z << "\n----------------\n";
-
     }
     if (isnan(seed_point.x) || isnan(seed_point.y) ||isnan(seed_point.z)) {
        ROS_ERROR("SEED POINT IS NAN");
@@ -141,24 +129,40 @@ void HandheldObjectRegistration::cloudCB(
 
     pcl::PointCloud<PointNormalT>::Ptr src_points(
        new pcl::PointCloud<PointNormalT>);
-    fastSeedRegionGrowing(src_points, cloud, normals, seed_point);
+    cv::Point2i seed_index2D;
+    fastSeedRegionGrowing(src_points, seed_index2D, cloud, normals, seed_point);
+
+    if (src_points->empty()) {
+       ROS_ERROR("SEED POINT IS NAN");
+       return;
+    }
+
+    /*
+    //! oversegmented region
+    ProjectionMap src_projection;
+    this->project3DTo2DDepth(src_projection, src_points);
+    pcl::PointCloud<PointNormalT>::Ptr region_cloud(
+       new pcl::PointCloud<PointNormalT>);
+    this->regionOverSegmentation(region_cloud, cloud, normals,
+                                 src_projection, seed_index2D);
+    return;
+    */
+    
     // this->seedRegionGrowing(src_points, seed_point, cloud, normals);
 
     /**
      * DEBUG
      */
-    struct timeval itimer_start, itimer_end;
-    gettimeofday(&timer_start, NULL);
-
     jsk_msgs::BoundingBox bounding_box;
     // this->fitOriented3DBoundingBox(bounding_box, src_points);
 
-
-    
+        //! timer
+    struct timeval timer_start, timer_end;
+    gettimeofday(&timer_start, NULL);
     float equation[4];
-    this->symmetricPlane(equation, src_points, 0.005);
+    this->symmetricPlane(equation, src_points, 0.02);
 
-    this->fitOriented3DBoundingBox(bounding_box, src_points);
+    // this->fitOriented3DBoundingBox(bounding_box, src_points);
 
     gettimeofday(&timer_end, NULL);
     double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
@@ -955,8 +959,8 @@ void HandheldObjectRegistration::symmetricPlane(
     /**
      * NOTE ADD [INPUT] oversegmented region points
      */
+    /*
     const int min_cluster_size = 20;
-    
     ProjectionMap in_proj_map;
     this->project3DTo2DDepth(in_proj_map, in_cloud);
 
@@ -1019,100 +1023,43 @@ void HandheldObjectRegistration::symmetricPlane(
              Eigen::Vector4f pparam = Eigen::Vector4f(
                 eigen(k, 0), eigen(k, 1), eigen(k, 2), 0);
              
-             // plotPlane(region_points, pparam, color);
+             plotPlane(region_points, pparam, color);
           }
           *in_cloud = *region_points;
        }
-    }
-
-    
-    
-    std::cout <<"\n SIZE: " << cluster_indices.size() << "\t"
-              << in_cloud->size() << "\n";
-
-        
-    return;
-    
-
-    // Eigen::Vector4f center;
-    // pcl::compute3DCentroid(*in_cloud, center);
-    // pcl::demeanPointCloud<PointNormalT, float>(*in_cloud, center, *in_cloud);
-    
-
-
-    /*
-
-
-
-    in_cloud->clear();
-    *in_cloud = *region_points;
+    }        
     return;
     */
     
-    pcl::PCA<PointNormalT> pca;
-    pca.setInputCloud(in_cloud);
-    Eigen::Matrix3f eigen = pca.getEigenVectors();
-    Eigen::Vector3f values = pca.getEigenValues();
-    std::cout << eigen  << "\n";
-    std::cout << eigen(0, 0)  << "\n\n";
+    // ------------------------------------------
+
+    pcl::VoxelGrid<PointNormalT> voxel_grid;
+    voxel_grid.setInputCloud(in_cloud);
+    voxel_grid.setLeafSize(leaf_size, leaf_size, leaf_size);
+    pcl::PointCloud<PointNormalT>::Ptr region_points(
+       new pcl::PointCloud<PointNormalT>);
+    voxel_grid.filter(*region_points);
+
+
+    Eigen::Vector4f center;
+    pcl::compute3DCentroid(*region_points, center);
+    pcl::demeanPointCloud<PointNormalT, float>(
+          *region_points, center, *region_points);
 
     pcl::KdTreeFLANN<PointNormalT>::Ptr kdtree(
        new pcl::KdTreeFLANN<PointNormalT>);
     kdtree->setInputCloud(region_points);
     
-    Eigen::Vector4f plane_param;
-    float symm_energy = 0.0f;
-    pcl::PointCloud<PointNormalT>::Ptr temp_points(
-       new pcl::PointCloud<PointNormalT>);
-    
-    for (int i = 0; i < 3; i++) {
-       Eigen::Vector3f color = Eigen::Vector3f(0, 0, 0);
-       color[i] = 255;
-       Eigen::Vector4f pparam = Eigen::Vector4f(
-          eigen(i, 0), eigen(i, 1), eigen(i, 2), 0);
-
-       float e = this->evaluateSymmetricFitnessScore(
-          temp_points, in_cloud, pparam, kdtree, 0.01f);
-       
-       if (e > symm_energy) {
-          symm_energy = e;
-          plane_param = pparam;
-       }
-
-       ROS_INFO("\033[35m SYMMETRIC ENERGY: %3.2f \033[0m", e);
-
-       // if (e > 0.8) {
-       //    color(0) = 0;
-       //    color(1) = 255;
-       // }
-       // std::cout << temp_points->size()  << "\n";
-       // *in_cloud += *temp_points;
-       // plotPlane(in_cloud, pparam, color);
-    }
-    ROS_INFO("\033[36m SYMMETRIC ENERGY: %3.2f \033[0m", symm_energy);
-    plotPlane(in_cloud, plane_param);
-    return;
-
-
-
-    
-    // ------------------------------------------
-
     const float ANGLE_THRESH_ = M_PI/8;
     const float DISTANCE_THRESH_ = 0.10f;
     
     //! compute the symmetric
     std::vector<Eigen::Vector4f> symmetric_planes;
     float symmetric_energy = 0.0f;
-    
-
 
     ROS_WARN("NUMBER OF POINTS: %d", region_points->size());
 
-    std::ofstream outfile;
-    outfile.open("symmetric.txt", std::ios::out);
-    int icount = 0;
-    
+    in_cloud->clear();
     for (int i = 0; i < region_points->size(); i++) {
        Eigen::Vector4f point1 = region_points->points[i].getVector4fMap();
        Eigen::Vector4f norm1 = region_points->points[i].getNormalVector4fMap();
@@ -1121,86 +1068,58 @@ void HandheldObjectRegistration::symmetricPlane(
        
        std::vector<Eigen::Vector4f> s_planes;
 
+       PointNormalT ptt = region_points->points[i];
+       ptt.r = 0;
+       ptt.g = 255;
+       ptt.b = 0;
+       in_cloud->push_back(ptt);
+       
+       
        for (int j = i + 1; j < region_points->size(); j++) {
           Eigen::Vector4f point2 = region_points->points[j].getVector4fMap();
           Eigen::Vector4f norm2 = region_points->points[
              j].getNormalVector4fMap();
           point2(3) = 0.0f;
           norm2(3) = 0.0f;
-
           //! equation of the symmetric plane
-          double d = pcl::distances::l2(point1, point2);
-          Eigen::Vector4f norm_s = (point1 - point2) / static_cast<float>(d);
+
+          Eigen::Vector4f norm_s = (point1 - point2) / (
+             (point1 - point2).norm());
+          norm_s(3) = 0.0f;
           norm_s = norm_s.normalized();
-          float dist_s = ((point1 - point2).dot(norm_s)) / 2.0f;
+          Eigen::Vector4f offset = ((point2 + point1) / 2.0f);
+          float dist_s = (offset).dot(norm_s);
           norm_s(3) = dist_s;
-          
-          Eigen::Vector3f plane_n = norm_s.head<3>();
-          //! compute fitness
-          std::vector<int> neigbor_indices;
-          std::vector<float> point_squared_distance;
-          float weight = 0.0f;
-
           float angle = norm1.normalized().dot(norm2.normalized());
-          if (angle > 0.85f) {
-             outfile << icount++ << " " << norm_s(0) << " "
-                     << norm_s(1) << " " << norm_s(2) << " "
-                     << dist_s << "\n";
-          }
-
-          
-
-
-          weight /= static_cast<float>(region_points->size());
-          symmetric_planes.push_back(norm_s);
-
-          // printf("WEIGHT: %3.2f, %3.2f \n", weight, symmetric_energy);
-          if (!isnan(weight) && weight > symmetric_energy) {
-             symmetric_energy = weight;
-             plane_param = norm_s;
-             // in_cloud->clear();
-             // *in_cloud = *temp_points;
+          if (angle > 0.70f) {
+             symmetric_planes.push_back(norm_s);
+             in_cloud->push_back(region_points->points[j]);
           }
        }
     }
-    outfile.close();
 
-    std::cout << "NUMBER OF PLANES: " << symmetric_planes.size()  << "\n";
-    exit(1);
+    in_cloud->clear();
+    
+    float energy = this->evaluateSymmetricFitnessScore(
+       in_cloud, region_points, symmetric_planes[0], kdtree,
+       0.005);
+
+    Eigen::Vector4f r_center;
+    pcl::compute3DCentroid(*in_cloud, r_center);
+    pcl::compute3DCentroid(*region_points, center);
+    center(3) = 0.0f;
+    r_center(3) = 0.0f;
+    std::cout << "\nDISTANCE: " <<
+       pcl::distances::l2(center, r_center)  << "\n";
     
     
-    // this->plotPlane(in_cloud, plane_param);
-       /*
-       return;
-       
-       if (!s_planes.empty()) {
-          symmetric_planes.push_back(s_planes);
-       }
-       std::cout << "\033[35m NUMBER OF SYMMETRIC PLANES:  \033[0m"
-                 << s_planes.size()  << "\n";
-
-       //! cluster similar planes
-       const float dist_thresh = 0.05f;
-       std::vector<int> filter_plane_indices;
-       for (int j = 1; j < s_planes.size(); j++) {
-          float distance = std::fabs(s_planes[j-1](3) - s_planes[j](3));
-          float angle = s_planes[j].head<3>().dot(s_planes[j-1].head<3>());
-
-          std::cout << "\t\t: " << distance << "\t" << angle  << "\n";
-          std::cout << s_planes[j] << "\n----\n" << s_planes[j-1]  << "\n";
-          
-          if (distance < dist_thresh && angle > 0.85f) {
-             
-          }
-       }
-       std::exit(-1);
-    }
+    plotPlane(in_cloud, symmetric_planes[0]);
+    *in_cloud += *region_points;
     
-    std::cout << "\033[34m NUMBER OF SYMMETRIC PLANES:  \033[0m"
-              << symmetric_planes.size()  << "\n";
-
-    */
+    std::cout << "NUMB: " << symmetric_planes.size() << "\t "
+              << energy  << "\n";
     return;
+
 }
 
 void HandheldObjectRegistration::getEdgesFromNormals(
@@ -1271,7 +1190,6 @@ void HandheldObjectRegistration::getEdgesFromNormals(
     cv::waitKey(3);
 }
 
-
 float HandheldObjectRegistration::evaluateSymmetricFitnessScore(
     pcl::PointCloud<PointNormalT>::Ptr out_cloud,
     const pcl::PointCloud<PointNormalT>::Ptr region_points,
@@ -1305,7 +1223,11 @@ float HandheldObjectRegistration::evaluateSymmetricFitnessScore(
        seed_point.x = p(0) + (t * 2 * plane_n(0));
        seed_point.y = p(1) + (t * 2 * plane_n(1));
        seed_point.z = p(2) + (t * 2 * plane_n(2));
-             
+
+       seed_point.r = 0;
+       seed_point.g = 255;
+       seed_point.b = 0;
+       
        Eigen::Vector3f seed_pt = p - 2.0f * plane_param.head<3>() *
           (p.dot(plane_param.head<3>()) - plane_param(3));
        // seed_point.x = seed_pt(0);
@@ -1319,7 +1241,9 @@ float HandheldObjectRegistration::evaluateSymmetricFitnessScore(
              
        int nidx = neigbor_indices[0];
        float distance = point_squared_distance[0];
-             
+
+       // ROS_WARN("DIST: %3.4f" , distance);
+       
        if (distance < dist_thresh) {
           Eigen::Vector3f symm_n = n - (2.0f * (
                                            plane_n.dot(n)) * plane_n);
@@ -1643,17 +1567,18 @@ bool HandheldObjectRegistration::conditionROI(
 
 void HandheldObjectRegistration::fastSeedRegionGrowing(
     pcl::PointCloud<PointNormalT>::Ptr src_points,
-    const PointCloud::Ptr cloud, const PointNormal::Ptr normals,
-    const PointT seed_pt) {
+    cv::Point2i &seed_index2D, const PointCloud::Ptr cloud,
+    const PointNormal::Ptr normals, const PointT seed_pt) {
     if (cloud->empty() || normals->size() != cloud->size()) {
        return;
     }
-
     cv::Point2f image_index;
     int seed_index = -1;
     if (this->projectPoint3DTo2DIndex(image_index, seed_pt)) {
        seed_index = (static_cast<int>(image_index.x) +
                      (static_cast<int>(image_index.y) * camera_info_->width));
+       seed_index2D = cv::Point2i(static_cast<int>(image_index.x),
+                                   static_cast<int>(image_index.y));
     } else {
        ROS_ERROR("INDEX IS NAN");
        return;
@@ -1675,7 +1600,7 @@ void HandheldObjectRegistration::fastSeedRegionGrowing(
 
     const int window_size = 3;
     const int wsize = window_size * window_size;
-    const int lenght = std::floor(window_size/3);
+    const int lenght = std::floor(window_size/2);
 
     processing_list.clear();
     for (int j = -lenght; j <= lenght; j++) {
@@ -1686,10 +1611,8 @@ void HandheldObjectRegistration::fastSeedRegionGrowing(
           }
        }
     }
-    
     std::vector<int> temp_list;
     while (true) {
-       
        if (processing_list.empty()) {
           break;
        }
@@ -1715,18 +1638,10 @@ void HandheldObjectRegistration::fastSeedRegionGrowing(
              }
           }
        }
-
        processing_list.clear();
        processing_list.insert(processing_list.end(), temp_list.begin(),
                               temp_list.end());
     }
-
-    // PointCloud::Ptr points(new PointCloud);
-    // for (int i = 0; i < labels.size(); i++) {
-    //    if (labels[i] != -1) {
-    //       points->push_back(cloud->points[i]);
-    //    }
-    // }
     src_points->clear();
     for (int i = 0; i < labels.size(); i++) {
        if (labels[i] != -1) {
@@ -1794,6 +1709,55 @@ bool HandheldObjectRegistration::projectPoint3DTo2DIndex(
 }
 
 
+void HandheldObjectRegistration::regionOverSegmentation(
+    pcl::PointCloud<PointNormalT>::Ptr region_cloud,
+    const PointCloud::Ptr cloud, const PointNormal::Ptr normals,
+    const ProjectionMap src_projection, const cv::Point2i seed_index2D) {
+    if (cloud->empty() || cloud->size() != normals->size()) {
+       ROS_ERROR("[regionOverSegmentation]: INPUT SIZE ERROR");
+       return;
+    }
+    if (cloud->height == 1) {
+       ROS_ERROR("[regionOverSegmentation]: UNORGANIZED POINTCLOUD");
+       return;
+    }
+    const float MAX_DISTANCE = 2.50f;  //! maximum distance
+    const float RADIUS = 0.20f;  //! object region size
+
+    int seed_ind = seed_index2D.x + (seed_index2D.y * camera_info_->width);
+    Eigen::Vector4f seed_point = cloud->points[seed_ind].getVector4fMap();
+    seed_point(3) = 0.0f;
+    Eigen::Vector4f point = Eigen::Vector4f::Identity();
+    
+    cv::Mat region_indices = cv::Mat::zeros(this->camera_info_->height,
+                                            this->camera_info_->width, CV_32S);
+    
+    cv::Mat im_test = cv::Mat::zeros(region_indices.size(), CV_8UC3);
+    for (int j = 0; j < this->camera_info_->height; j++) {
+       for (int i = 0; i < this->camera_info_->width; i++) {
+          region_indices.at<int>(j, i) = -1;
+          int index = i + (j * this->camera_info_->width);
+          float depth = cloud->points[index].z;
+          if (depth < MAX_DISTANCE &&
+              src_projection.indices.at<int>(j, i) == -1) {
+             point = cloud->points[index].getVector4fMap();
+             point(3) = 0.0f;
+             double d = pcl::distances::l2(point, seed_point);
+             if (static_cast<float>(d) < RADIUS) {
+                region_indices.at<int>(j, i) = index;
+                im_test.at<cv::Vec3b>(j, i)[0] = cloud->points[index].b;
+                im_test.at<cv::Vec3b>(j, i)[1] = cloud->points[index].g;
+                im_test.at<cv::Vec3b>(j, i)[2] = cloud->points[index].r;
+             }
+          }
+       }
+    }
+
+    cv::imshow("test", im_test);
+    cv::waitKey(3);
+}
+
+
 void HandheldObjectRegistration::getAxisAngles(
     float &angle_x, float &angle_y, float &angle_z,
     const Eigen::Matrix4f transform_matrix) {
@@ -1804,6 +1768,8 @@ void HandheldObjectRegistration::getAxisAngles(
           transform_matrix(2, 2) * transform_matrix(2, 2)));
     angle_z = std::atan2(transform_matrix(1, 0), transform_matrix(0, 0));
 }
+
+
 
 
 /**
@@ -1821,8 +1787,8 @@ void HandheldObjectRegistration::plotPlane(
     Eigen::Vector3f point_x = Eigen::Vector3f(param(3)/param(0), 0.0f, 0.0f);
     Eigen::Vector3f point_y = Eigen::Vector3f(-param(2), 0, param(0));
     Eigen::Vector3f point_z = Eigen::Vector3f(-param(1), param(0), 0);
-    for (float y = -0.10f; y < 0.10f; y += 0.01f) {
-       for (float x = -0.10f; x < 0.10f; x += 0.01f) {
+    for (float y = -0.10f; y < 0.10f; y += 0.005f) {
+       for (float x = -0.10f; x < 0.10f; x += 0.005f) {
          PointNormalT pt;
          pt.x = point_x(0) + point_y(0) * x + point_z(0) * y;
          pt.y = point_x(1) + point_y(1) * x + point_z(1) * y;
