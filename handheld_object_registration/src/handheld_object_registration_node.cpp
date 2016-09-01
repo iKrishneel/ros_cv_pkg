@@ -137,25 +137,17 @@ void HandheldObjectRegistration::cloudCB(
        return;
     }
 
-
     //! oversegmented region
     struct timeval timer_start, timer_end;
     gettimeofday(&timer_start, NULL);
     
     ProjectionMap src_projection;
-    this->project3DTo2DDepth(src_projection, src_points);
+    // this->project3DTo2DDepth(src_projection, src_points);
     pcl::PointCloud<PointNormalT>::Ptr region_cloud(
        new pcl::PointCloud<PointNormalT>);
     this->regionOverSegmentation(region_cloud, cloud, normals,
                                  src_projection, seed_index2D);
-    gettimeofday(&timer_end, NULL);
-    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
-                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
-    ROS_ERROR("TIME: %3.6f, %d", delta, target_points_->size());
-    return;
 
-    
-    // this->seedRegionGrowing(src_points, seed_point, cloud, normals);
 
     /**
      * DEBUG
@@ -1676,18 +1668,8 @@ void HandheldObjectRegistration::regionOverSegmentation(
     int seed_ind = seed_index2D.x + (seed_index2D.y * camera_info_->width);
     PointT seed_point = cloud->points[seed_ind];
 
-    cv::Mat im_test = cv::Mat::zeros(this->camera_info_->height,
-                                     this->camera_info_->width, CV_8UC3);
-
-    const int lenght = 50;
-    int x = src_projection.x - lenght;
-    int y = src_projection.y - lenght;
-    int width = src_projection.width + lenght * 2;
-    int height = src_projection.height + lenght * 2;
-    this->conditionROI(x, y, width, height, src_projection.rgb.size());
-    
-    for (int j = y; j < y + height; j++) {
-       for (int i = x; i < x + width; i++) {
+    for (int j = 0; j < this->camera_info_->height; j++) {
+       for (int i = 0; i < this->camera_info_->width; i++) {
           int index = i + (j * this->camera_info_->width);
           float depth = cloud->points[index].z;
           if (depth < MAX_DISTANCE) {
@@ -1715,6 +1697,7 @@ void HandheldObjectRegistration::regionOverSegmentation(
           }
        }
     }
+    
     // cv::imshow("test", im_test);
     // cv::waitKey(3);
 }
