@@ -142,6 +142,7 @@ include_directories(
 cuda_add_executable(handheld_object_registration_node 
   src/handheld_object_registration_node.cpp
   src/oriented_bounding_box.cpp
+  #src/region_growing.cpp
   #src/cuda/world_to_image_projection.cu
   src/cuda/projected_correspondences.cu
   src/cuda/transformation.cu
