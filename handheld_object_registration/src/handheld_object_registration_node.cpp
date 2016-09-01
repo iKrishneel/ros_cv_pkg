@@ -1065,16 +1065,6 @@ void HandheldObjectRegistration::symmetricPlane(
        Eigen::Vector4f norm1 = region_points->points[i].getNormalVector4fMap();
        point1(3) = 0.0f;
        norm1(3) = 0.0f;
-       
-       std::vector<Eigen::Vector4f> s_planes;
-
-       PointNormalT ptt = region_points->points[i];
-       ptt.r = 0;
-       ptt.g = 255;
-       ptt.b = 0;
-       in_cloud->push_back(ptt);
-       
-       
        for (int j = i + 1; j < region_points->size(); j++) {
           Eigen::Vector4f point2 = region_points->points[j].getVector4fMap();
           Eigen::Vector4f norm2 = region_points->points[
@@ -1082,7 +1072,6 @@ void HandheldObjectRegistration::symmetricPlane(
           point2(3) = 0.0f;
           norm2(3) = 0.0f;
           //! equation of the symmetric plane
-
           Eigen::Vector4f norm_s = (point1 - point2) / (
              (point1 - point2).norm());
           norm_s(3) = 0.0f;
@@ -1091,13 +1080,15 @@ void HandheldObjectRegistration::symmetricPlane(
           float dist_s = (offset).dot(norm_s);
           norm_s(3) = dist_s;
           float angle = norm1.normalized().dot(norm2.normalized());
-          if (angle > 0.70f) {
+          if (angle > 0.80f) {
              symmetric_planes.push_back(norm_s);
-             in_cloud->push_back(region_points->points[j]);
           }
        }
     }
 
+    return;
+    
+    
     in_cloud->clear();
     
     float energy = this->evaluateSymmetricFitnessScore(
@@ -1120,6 +1111,88 @@ void HandheldObjectRegistration::symmetricPlane(
               << energy  << "\n";
     return;
 
+}
+
+float HandheldObjectRegistration::evaluateSymmetricFitnessScore(
+    pcl::PointCloud<PointNormalT>::Ptr out_cloud,
+    const pcl::PointCloud<PointNormalT>::Ptr region_points,
+    const Eigen::Vector4f plane_param,
+    const pcl::KdTreeFLANN<PointNormalT>::Ptr kdtree,
+    const float dist_thresh) {
+    if (region_points->empty() || isnan(plane_param(0)) ||
+        isnan(plane_param(1)) || isnan(plane_param(2))) {
+       ROS_ERROR("[evaluateSymmetricFitnessScore]: INPUT ERROR");
+       return 0.0f;
+    }
+    bool compute_symmetric_weight = false;
+    
+    const float ANGLE_THRESH = M_PI / 6;
+    float weight = 0.0f;
+    Eigen::Vector3f plane_n = plane_param.head<3>();
+
+    std::vector<int> neigbor_indices;
+    std::vector<float> point_squared_distance;
+    
+    for (int k = 0; k < region_points->size(); k++) {
+       Eigen::Vector3f n = region_points->points[
+          k].getNormalVector3fMap();
+       Eigen::Vector3f p = region_points->points[k].getVector3fMap();
+       /*
+       float beta = p(0) * plane_n(0) + p(1) * plane_n(1) +
+          p(2) * plane_n(2);
+       float alpha = (plane_n(0) * plane_n(0)) +
+          (plane_n(1) * plane_n(1)) + (plane_n(2) * plane_n(2));
+       float t = (plane_param(3) - beta) / alpha;
+       */
+       PointNormalT seed_point = region_points->points[k];
+       // seed_point.x = p(0) + (t * 2 * plane_n(0));
+       // seed_point.y = p(1) + (t * 2 * plane_n(1));
+       // seed_point.z = p(2) + (t * 2 * plane_n(2));
+       
+       Eigen::Vector3f seed_pt = p - 2.0f * plane_param.head<3>() *
+          (p.dot(plane_param.head<3>()) - plane_param(3));
+       Eigen::Vector3f symm_n = n - (2.0f * (
+                                        plane_n.dot(n)) * plane_n);
+       seed_point.x = seed_pt(0);
+       seed_point.y = seed_pt(1);
+       seed_point.z = seed_pt(2);
+
+       seed_point.normal_x = symm_n(0);
+       seed_point.normal_y = symm_n(1);
+       seed_point.normal_z = symm_n(2);
+
+       seed_point.r = 0;
+       seed_point.g = 255;
+       seed_point.b = 0;
+
+       if (compute_symmetric_weight) {
+          neigbor_indices.clear();
+          point_squared_distance.clear();
+          int search_out = kdtree->nearestKSearch(
+             seed_point, 1, neigbor_indices, point_squared_distance);
+          int nidx = neigbor_indices[0];
+          float distance = point_squared_distance[0];
+          if (distance < dist_thresh) {
+
+             Eigen::Vector3f sneig_r = region_points->points[
+                nidx].getNormalVector3fMap();
+             float dot_prod = (symm_n.dot(sneig_r)) / (
+                symm_n.norm() * sneig_r.norm());
+             float angle = std::acos(dot_prod);  //! * (180.0f/M_PI);
+             float w = 1.0f / (1.0f + (angle / (2.0f * M_PI)));
+          
+             if (angle > ANGLE_THRESH) {
+                weight += (w * 0.50f);
+             } else {
+                weight += w;
+             }
+          }
+       }
+       out_cloud->push_back(seed_point);
+    }
+    weight /= static_cast<float>(region_points->size());
+    return weight;
+    
 }
 
 void HandheldObjectRegistration::getEdgesFromNormals(
@@ -1188,85 +1261,6 @@ void HandheldObjectRegistration::getEdgesFromNormals(
           
     cv::imshow("edge", image);
     cv::waitKey(3);
-}
-
-float HandheldObjectRegistration::evaluateSymmetricFitnessScore(
-    pcl::PointCloud<PointNormalT>::Ptr out_cloud,
-    const pcl::PointCloud<PointNormalT>::Ptr region_points,
-    const Eigen::Vector4f plane_param,
-    const pcl::KdTreeFLANN<PointNormalT>::Ptr kdtree,
-    const float dist_thresh) {
-    if (region_points->empty() || isnan(plane_param(0)) ||
-        isnan(plane_param(1)) || isnan(plane_param(2))) {
-       ROS_ERROR("[evaluateSymmetricFitnessScore]: INPUT ERROR");
-       return 0.0f;
-    }
-    const float ANGLE_THRESH = M_PI / 6;
-    float weight = 0.0f;
-    Eigen::Vector3f plane_n = plane_param.head<3>();
-
-    std::vector<int> neigbor_indices;
-    std::vector<float> point_squared_distance;
-    
-    for (int k = 0; k < region_points->size(); k++) {
-       Eigen::Vector3f n = region_points->points[
-          k].getNormalVector3fMap();
-       Eigen::Vector3f p = region_points->points[k].getVector3fMap();
-                
-       float beta = p(0) * plane_n(0) + p(1) * plane_n(1) +
-          p(2) * plane_n(2);
-       float alpha = (plane_n(0) * plane_n(0)) +
-          (plane_n(1) * plane_n(1)) + (plane_n(2) * plane_n(2));
-       float t = (plane_param(3) - beta) / alpha;
-             
-       PointNormalT seed_point = region_points->points[k];
-       seed_point.x = p(0) + (t * 2 * plane_n(0));
-       seed_point.y = p(1) + (t * 2 * plane_n(1));
-       seed_point.z = p(2) + (t * 2 * plane_n(2));
-
-       seed_point.r = 0;
-       seed_point.g = 255;
-       seed_point.b = 0;
-       
-       Eigen::Vector3f seed_pt = p - 2.0f * plane_param.head<3>() *
-          (p.dot(plane_param.head<3>()) - plane_param(3));
-       // seed_point.x = seed_pt(0);
-       // seed_point.y = seed_pt(1);
-       // seed_point.z = seed_pt(2);
-                
-       neigbor_indices.clear();
-       point_squared_distance.clear();
-       int search_out = kdtree->nearestKSearch(
-          seed_point, 1, neigbor_indices, point_squared_distance);
-             
-       int nidx = neigbor_indices[0];
-       float distance = point_squared_distance[0];
-
-       // ROS_WARN("DIST: %3.4f" , distance);
-       
-       if (distance < dist_thresh) {
-          Eigen::Vector3f symm_n = n - (2.0f * (
-                                           plane_n.dot(n)) * plane_n);
-          Eigen::Vector3f sneig_r = region_points->points[
-             nidx].getNormalVector3fMap();
-          float dot_prod = (symm_n.dot(sneig_r)) / (
-             symm_n.norm() * sneig_r.norm());
-          float angle = std::acos(dot_prod);  //! * (180.0f/M_PI);
-          float w = 1.0f / (1.0f + (angle / (2.0f * M_PI)));
-
-          // std::cout << "weight: " << w  << "\n";
-          
-          if (angle > ANGLE_THRESH) {
-             weight += (w * 0.50f);
-          } else {
-             weight += w;
-          }
-       }
-       out_cloud->push_back(seed_point);
-    }
-    weight /= static_cast<float>(region_points->size());
-    return weight;
-    
 }
 
 
