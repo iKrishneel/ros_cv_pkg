@@ -159,11 +159,11 @@ class HandheldObjectRegistration: public OrientedBoundingBox {
    
     void symmetricPlane(float *, pcl::PointCloud<PointNormalT>::Ptr,
                         const float = 0.02f);
-    float evaluateSymmetricFitnessScore(pcl::PointCloud<PointNormalT>::Ptr,
-                                        const pcl::PointCloud<PointNormalT>::Ptr,
-                                        const Eigen::Vector4f,
-                                        const pcl::KdTreeFLANN<PointNormalT>::Ptr,
-                                        const float);
+    float evaluateSymmetricFitness(pcl::PointCloud<PointNormalT>::Ptr,
+                                   const pcl::PointCloud<PointNormalT>::Ptr,
+                                   const Eigen::Vector4f,
+                                   const pcl::KdTreeFLANN<PointNormalT>::Ptr,
+                                   const float, const bool = false);
     void getEdgesFromNormals(pcl::PointCloud<PointNormalT>::Ptr,
                              const pcl::PointCloud<PointNormalT>::Ptr,
                              const ProjectionMap);
