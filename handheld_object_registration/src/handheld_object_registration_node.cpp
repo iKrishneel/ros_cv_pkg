@@ -137,16 +137,23 @@ void HandheldObjectRegistration::cloudCB(
        return;
     }
 
-    /*
+
     //! oversegmented region
+    struct timeval timer_start, timer_end;
+    gettimeofday(&timer_start, NULL);
+    
     ProjectionMap src_projection;
     this->project3DTo2DDepth(src_projection, src_points);
     pcl::PointCloud<PointNormalT>::Ptr region_cloud(
        new pcl::PointCloud<PointNormalT>);
     this->regionOverSegmentation(region_cloud, cloud, normals,
                                  src_projection, seed_index2D);
+    gettimeofday(&timer_end, NULL);
+    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
+    ROS_ERROR("TIME: %3.6f, %d", delta, target_points_->size());
     return;
-    */
+
     
     // this->seedRegionGrowing(src_points, seed_point, cloud, normals);
 
@@ -157,17 +164,17 @@ void HandheldObjectRegistration::cloudCB(
     // this->fitOriented3DBoundingBox(bounding_box, src_points);
 
         //! timer
-    struct timeval timer_start, timer_end;
-    gettimeofday(&timer_start, NULL);
+    // struct timeval timer_start, timer_end;
+    // gettimeofday(&timer_start, NULL);
     float equation[4];
     this->symmetricPlane(equation, src_points, 0.02f);
 
     // this->fitOriented3DBoundingBox(bounding_box, src_points);
 
-    gettimeofday(&timer_end, NULL);
-    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
-                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
-    ROS_ERROR("TIME: %3.6f, %d", delta, target_points_->size());
+    // gettimeofday(&timer_end, NULL);
+    // double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+    //                 timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
+    // ROS_ERROR("TIME: %3.6f, %d", delta, target_points_->size());
 
     jsk_msgs::BoundingBoxArray *rviz_bbox1 = new jsk_msgs::BoundingBoxArray;
     bounding_box.header = cloud_msg->header;
@@ -1049,7 +1056,6 @@ void HandheldObjectRegistration::symmetricPlane(
     
     
     plotPlane(region_points, candidate_splanes[max_index]);
-    
     in_cloud->clear();
     *in_cloud += *region_points;
     
@@ -1665,39 +1671,52 @@ void HandheldObjectRegistration::regionOverSegmentation(
        return;
     }
     const float MAX_DISTANCE = 2.50f;  //! maximum distance
-    const float RADIUS = 0.20f;  //! object region size
+    const float RADIUS = 0.20f * 0.2f;  //! object region size
 
     int seed_ind = seed_index2D.x + (seed_index2D.y * camera_info_->width);
-    Eigen::Vector4f seed_point = cloud->points[seed_ind].getVector4fMap();
-    seed_point(3) = 0.0f;
-    Eigen::Vector4f point = Eigen::Vector4f::Identity();
+    PointT seed_point = cloud->points[seed_ind];
+
+    cv::Mat im_test = cv::Mat::zeros(this->camera_info_->height,
+                                     this->camera_info_->width, CV_8UC3);
+
+    const int lenght = 50;
+    int x = src_projection.x - lenght;
+    int y = src_projection.y - lenght;
+    int width = src_projection.width + lenght * 2;
+    int height = src_projection.height + lenght * 2;
+    this->conditionROI(x, y, width, height, src_projection.rgb.size());
     
-    cv::Mat region_indices = cv::Mat::zeros(this->camera_info_->height,
-                                            this->camera_info_->width, CV_32S);
-    
-    cv::Mat im_test = cv::Mat::zeros(region_indices.size(), CV_8UC3);
-    for (int j = 0; j < this->camera_info_->height; j++) {
-       for (int i = 0; i < this->camera_info_->width; i++) {
-          region_indices.at<int>(j, i) = -1;
+    for (int j = y; j < y + height; j++) {
+       for (int i = x; i < x + width; i++) {
           int index = i + (j * this->camera_info_->width);
           float depth = cloud->points[index].z;
-          if (depth < MAX_DISTANCE &&
-              src_projection.indices.at<int>(j, i) == -1) {
-             point = cloud->points[index].getVector4fMap();
-             point(3) = 0.0f;
-             double d = pcl::distances::l2(point, seed_point);
-             if (static_cast<float>(d) < RADIUS) {
-                region_indices.at<int>(j, i) = index;
-                im_test.at<cv::Vec3b>(j, i)[0] = cloud->points[index].b;
-                im_test.at<cv::Vec3b>(j, i)[1] = cloud->points[index].g;
-                im_test.at<cv::Vec3b>(j, i)[2] = cloud->points[index].r;
+          if (depth < MAX_DISTANCE) {
+             PointT point = cloud->points[index];
+             float d = std::pow(point.x - seed_point.x, 2) +
+                std::pow(point.y - seed_point.y, 2) +
+                std::pow(point.z - seed_point.z, 2);
+             if (d < RADIUS) {
+                PointNormalT pt;
+                pt.x = point.x;
+                pt.y = point.y;
+                pt.z = point.z;
+                pt.r = point.r;
+                pt.b = point.b;
+                pt.g = point.g;
+                pt.normal_x = normals->points[index].normal_x;
+                pt.normal_y = normals->points[index].normal_y;
+                pt.normal_z = normals->points[index].normal_z;
+                region_cloud->push_back(pt);
+                
+                // im_test.at<cv::Vec3b>(j, i)[0] = cloud->points[index].b;
+                // im_test.at<cv::Vec3b>(j, i)[1] = cloud->points[index].g;
+                // im_test.at<cv::Vec3b>(j, i)[2] = cloud->points[index].r;
              }
           }
        }
     }
-
-    cv::imshow("test", im_test);
-    cv::waitKey(3);
+    // cv::imshow("test", im_test);
+    // cv::waitKey(3);
 }
 
 
