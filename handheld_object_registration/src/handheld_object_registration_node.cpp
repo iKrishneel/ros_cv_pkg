@@ -152,24 +152,23 @@ void HandheldObjectRegistration::cloudCB(
     /**
      * DEBUG
      */
-    //! timer
-    // struct timeval timer_start, timer_end;
-    // gettimeofday(&timer_start, NULL);
 
     const float leaf_size = 0.02f;
     std::vector<Eigen::Vector4f> symmetric_planes;
-    this->getSymmetricPlane(symmetric_planes, src_points, leaf_size);
-    this->symmetricBasedSegmentation(region_cloud, symmetric_planes, 0.01f);
+    Eigen::Vector4f centroid;
+    this->generateSymmetricPlanes(symmetric_planes, src_points, centroid, leaf_size);
+    this->symmetricBasedSegmentation(region_cloud, symmetric_planes,
+                                     centroid, 0.01f);
 
-    // gettimeofday(&timer_end, NULL);
-    // double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
-    //                 timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
-    // ROS_ERROR("TIME: %3.6f, %d", delta, target_points_->size());
+    gettimeofday(&timer_end, NULL);
+    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
+    ROS_ERROR("TIME: %3.6f, %d", delta, target_points_->size());
     
     
     sensor_msgs::PointCloud2 ros_cloud1;
-    pcl::toROSMsg(*src_points, ros_cloud1);
-    // pcl::toROSMsg(*region_cloud, ros_cloud1);
+    // pcl::toROSMsg(*src_points, ros_cloud1);
+    pcl::toROSMsg(*region_cloud, ros_cloud1);
     ros_cloud1.header = cloud_msg->header;
     this->pub_icp_.publish(ros_cloud1);
     
@@ -944,6 +943,7 @@ float HandheldObjectRegistration::checkRegistrationFitness(
 void HandheldObjectRegistration::symmetricBasedSegmentation(
     pcl::PointCloud<PointNormalT>::Ptr in_cloud,
     const std::vector<Eigen::Vector4f> symmetric_planes,
+    const Eigen::Vector4f centroid,
     const float leaf_size) {
     if (in_cloud->empty() || symmetric_planes.empty()) {
        ROS_ERROR("[::symmetricBasedSegmentation]: EMPTY INPUTS");
@@ -956,10 +956,10 @@ void HandheldObjectRegistration::symmetricBasedSegmentation(
        new pcl::PointCloud<PointNormalT>);
     voxel_grid.filter(*region_points);
 
-    Eigen::Vector4f centroid;
-    pcl::compute3DCentroid(*region_points, centroid);
+    // Eigen::Vector4f centroid;
+    // pcl::compute3DCentroid(*region_points, centroid);
     pcl::demeanPointCloud<PointNormalT, float>(
-          *region_points, centroid, *region_points);
+       *region_points, centroid, *region_points);
 
     pcl::KdTreeFLANN<PointNormalT>::Ptr kdtree(
        new pcl::KdTreeFLANN<PointNormalT>);
@@ -977,19 +977,13 @@ void HandheldObjectRegistration::symmetricBasedSegmentation(
        float energy = evaluateSymmetricFitness(
           reflected_points, region_points, symmetric_planes[i], kdtree,
           0.005, true);
-
-       std::cout << "energy: " << energy  << "\n";
-       
        if (energy > max_energy) {
           max_energy = energy;
           max_index = i;
        }
        energy_list[i] = energy;
 
-
-       /**
-        * DEBUG ONLY
-        */
+#ifdef _DEBUG
        pcl::PointCloud<PointNormalT>::Ptr temp_points(
           new pcl::PointCloud<PointNormalT>);
        *temp_points += *region_points;
@@ -998,30 +992,29 @@ void HandheldObjectRegistration::symmetricBasedSegmentation(
        pcl::toROSMsg(*temp_points, ros_cloud1);
        ros_cloud1.header = camera_info_->header;
        this->pub_icp_.publish(ros_cloud1);
-
        std::cin.ignore();
+#endif
     }
 
-    //! sort for top k values
-    
-
-    
+// #ifdef _DEBUG
     std::cout << "\nFILTERED SIZE: " << symmetric_planes.size()<< "\n";
-    
     plotPlane(region_points, symmetric_planes[max_index]);
     in_cloud->clear();
     *in_cloud += *region_points;
-
+// #endif
+    
     pcl::PointCloud<PointNormalT>().swap(*region_points);
     pcl::PointCloud<PointNormalT>().swap(*reflected_points);
 }
 
 
-void HandheldObjectRegistration::getSymmetricPlane(
+void HandheldObjectRegistration::generateSymmetricPlanes(
     std::vector<Eigen::Vector4f> &candidate_splanes,
-    pcl::PointCloud<PointNormalT>::Ptr in_cloud, const float leaf_size) {
+    pcl::PointCloud<PointNormalT>::Ptr in_cloud,
+    Eigen::Vector4f &center,
+    const float leaf_size) {
     if (in_cloud->empty()) {
-       ROS_ERROR("[::getSymmetricPlane]: EMPTY INPUT DATA");
+       ROS_ERROR("[::generateSymmetricPlanes]: EMPTY INPUT DATA");
        return;
     }
     pcl::VoxelGrid<PointNormalT> voxel_grid;
@@ -1031,7 +1024,7 @@ void HandheldObjectRegistration::getSymmetricPlane(
        new pcl::PointCloud<PointNormalT>);
     voxel_grid.filter(*region_points);
     
-    Eigen::Vector4f center;
+    // Eigen::Vector4f center;
     pcl::compute3DCentroid(*region_points, center);
     pcl::demeanPointCloud<PointNormalT, float>(
           *region_points, center, *region_points);
@@ -1074,8 +1067,6 @@ void HandheldObjectRegistration::getSymmetricPlane(
           }
        }
     }
-    
-    // std::vector<Eigen::Vector4f> candidate_splanes;
     candidate_splanes.clear();
     pcl::PointCloud<PointNormalT>::Ptr reflected_points(
        new pcl::PointCloud<PointNormalT>);
@@ -1087,21 +1078,22 @@ void HandheldObjectRegistration::getSymmetricPlane(
 
        Eigen::Vector4f r_center;
        pcl::compute3DCentroid(*reflected_points, r_center);
-       pcl::compute3DCentroid(*region_points, center);
-       center(3) = 0.0f;
+       Eigen::Vector4f in_center;
+       pcl::compute3DCentroid(*region_points, in_center);
+       in_center(3) = 0.0f;
        r_center(3) = 0.0f;
 
-       double d = pcl::distances::l2(center, r_center);
+       double d = pcl::distances::l2(in_center, r_center);
        if (static_cast<float>(d) < 0.001) {
           candidate_splanes.push_back(symmetric_planes[i]);
        }
     }
     return;
-    
 
     //! testing using weight (put to cuda)
     float max_energy = 0.0f;
     int max_index = -1;
+    /*
     for (int i = 0; i < candidate_splanes.size(); i++) {
        float energy = evaluateSymmetricFitness(
           reflected_points, region_points, candidate_splanes[0], kdtree,
@@ -1114,11 +1106,17 @@ void HandheldObjectRegistration::getSymmetricPlane(
           max_index = i;
        }
     }
-    
+    */
     std::cout << "\nFILTERED SIZE: " << candidate_splanes.size()<< "\n";
+
+    Eigen::Vector4f pparam = candidate_splanes[0];
+    plotPlane(region_points, pparam, Eigen::Vector3f(0, 0, 255));
+    std::cout << center  << "\n";
     
     
-    plotPlane(region_points, candidate_splanes[max_index]);
+    float t_dist = pparam.head<3>().dot(center.head<3>());
+    pparam(3) = t_dist;
+    plotPlane(region_points, pparam);
     in_cloud->clear();
     *in_cloud += *region_points;
     
