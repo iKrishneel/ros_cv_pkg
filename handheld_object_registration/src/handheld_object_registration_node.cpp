@@ -152,30 +152,24 @@ void HandheldObjectRegistration::cloudCB(
     /**
      * DEBUG
      */
-    jsk_msgs::BoundingBox bounding_box;
-    // this->fitOriented3DBoundingBox(bounding_box, src_points);
-
-        //! timer
+    //! timer
     // struct timeval timer_start, timer_end;
     // gettimeofday(&timer_start, NULL);
-    float equation[4];
-    this->symmetricPlane(equation, src_points, 0.02f);
 
-    // this->fitOriented3DBoundingBox(bounding_box, src_points);
+    const float leaf_size = 0.02f;
+    std::vector<Eigen::Vector4f> symmetric_planes;
+    this->getSymmetricPlane(symmetric_planes, src_points, leaf_size);
+    this->symmetricBasedSegmentation(region_cloud, symmetric_planes, 0.01f);
 
     // gettimeofday(&timer_end, NULL);
     // double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
     //                 timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
     // ROS_ERROR("TIME: %3.6f, %d", delta, target_points_->size());
-
-    jsk_msgs::BoundingBoxArray *rviz_bbox1 = new jsk_msgs::BoundingBoxArray;
-    bounding_box.header = cloud_msg->header;
-    rviz_bbox1->boxes.push_back(bounding_box);
-    rviz_bbox1->header = cloud_msg->header;
-    this->pub_bbox_.publish(*rviz_bbox1);
+    
     
     sensor_msgs::PointCloud2 ros_cloud1;
     pcl::toROSMsg(*src_points, ros_cloud1);
+    // pcl::toROSMsg(*region_cloud, ros_cloud1);
     ros_cloud1.header = cloud_msg->header;
     this->pub_icp_.publish(ros_cloud1);
     
@@ -947,11 +941,87 @@ float HandheldObjectRegistration::checkRegistrationFitness(
 }
 
 
-void HandheldObjectRegistration::symmetricPlane(
-    float *equation, pcl::PointCloud<PointNormalT>::Ptr in_cloud,
+void HandheldObjectRegistration::symmetricBasedSegmentation(
+    pcl::PointCloud<PointNormalT>::Ptr in_cloud,
+    const std::vector<Eigen::Vector4f> symmetric_planes,
     const float leaf_size) {
+    if (in_cloud->empty() || symmetric_planes.empty()) {
+       ROS_ERROR("[::symmetricBasedSegmentation]: EMPTY INPUTS");
+       return;
+    }
+    pcl::VoxelGrid<PointNormalT> voxel_grid;
+    voxel_grid.setInputCloud(in_cloud);
+    voxel_grid.setLeafSize(leaf_size, leaf_size, leaf_size);
+    pcl::PointCloud<PointNormalT>::Ptr region_points(
+       new pcl::PointCloud<PointNormalT>);
+    voxel_grid.filter(*region_points);
+
+    Eigen::Vector4f centroid;
+    pcl::compute3DCentroid(*region_points, centroid);
+    pcl::demeanPointCloud<PointNormalT, float>(
+          *region_points, centroid, *region_points);
+
+    pcl::KdTreeFLANN<PointNormalT>::Ptr kdtree(
+       new pcl::KdTreeFLANN<PointNormalT>);
+    kdtree->setInputCloud(region_points);
+    
+    //! testing using weight (put to cuda)
+    pcl::PointCloud<PointNormalT>::Ptr reflected_points(
+       new pcl::PointCloud<PointNormalT>);
+    float max_energy = 0.0f;
+    int max_index = -1;
+
+    std::vector<float> energy_list(symmetric_planes.size(), 0.0);
+    
+    for (int i = 0; i < symmetric_planes.size(); i++) {
+       float energy = evaluateSymmetricFitness(
+          reflected_points, region_points, symmetric_planes[i], kdtree,
+          0.005, true);
+
+       std::cout << "energy: " << energy  << "\n";
+       
+       if (energy > max_energy) {
+          max_energy = energy;
+          max_index = i;
+       }
+       energy_list[i] = energy;
+
+
+       /**
+        * DEBUG ONLY
+        */
+       pcl::PointCloud<PointNormalT>::Ptr temp_points(
+          new pcl::PointCloud<PointNormalT>);
+       *temp_points += *region_points;
+       plotPlane(temp_points, symmetric_planes[i]);
+       sensor_msgs::PointCloud2 ros_cloud1;
+       pcl::toROSMsg(*temp_points, ros_cloud1);
+       ros_cloud1.header = camera_info_->header;
+       this->pub_icp_.publish(ros_cloud1);
+
+       std::cin.ignore();
+    }
+
+    //! sort for top k values
+    
+
+    
+    std::cout << "\nFILTERED SIZE: " << symmetric_planes.size()<< "\n";
+    
+    plotPlane(region_points, symmetric_planes[max_index]);
+    in_cloud->clear();
+    *in_cloud += *region_points;
+
+    pcl::PointCloud<PointNormalT>().swap(*region_points);
+    pcl::PointCloud<PointNormalT>().swap(*reflected_points);
+}
+
+
+void HandheldObjectRegistration::getSymmetricPlane(
+    std::vector<Eigen::Vector4f> &candidate_splanes,
+    pcl::PointCloud<PointNormalT>::Ptr in_cloud, const float leaf_size) {
     if (in_cloud->empty()) {
-       ROS_ERROR("Input size are not equal");
+       ROS_ERROR("[::getSymmetricPlane]: EMPTY INPUT DATA");
        return;
     }
     pcl::VoxelGrid<PointNormalT> voxel_grid;
@@ -968,7 +1038,7 @@ void HandheldObjectRegistration::symmetricPlane(
 
     pcl::KdTreeFLANN<PointNormalT>::Ptr kdtree(
        new pcl::KdTreeFLANN<PointNormalT>);
-    kdtree->setInputCloud(region_points);
+    // kdtree->setInputCloud(region_points);
     
     const float ANGLE_THRESH_ = std::cos(M_PI/6);
     const float DISTANCE_THRESH_ = 0.10f;
@@ -1005,7 +1075,8 @@ void HandheldObjectRegistration::symmetricPlane(
        }
     }
     
-    std::vector<Eigen::Vector4f> candidate_splanes;
+    // std::vector<Eigen::Vector4f> candidate_splanes;
+    candidate_splanes.clear();
     pcl::PointCloud<PointNormalT>::Ptr reflected_points(
        new pcl::PointCloud<PointNormalT>);
     for (int i = 0; i < symmetric_planes.size(); i++) {
@@ -1021,11 +1092,11 @@ void HandheldObjectRegistration::symmetricPlane(
        r_center(3) = 0.0f;
 
        double d = pcl::distances::l2(center, r_center);
-       if (static_cast<float>(d) < 0.005) {
+       if (static_cast<float>(d) < 0.001) {
           candidate_splanes.push_back(symmetric_planes[i]);
        }
     }
-    // return;
+    return;
     
 
     //! testing using weight (put to cuda)
@@ -1127,8 +1198,10 @@ float HandheldObjectRegistration::evaluateSymmetricFitness(
                 symm_n.norm() * sneig_r.norm());
              float angle = std::acos(dot_prod);  //! * (180.0f/M_PI);
              float w = 1.0f / (1.0f + (angle / (2.0f * M_PI)));
-          
-             if (angle > ANGLE_THRESH) {
+
+             if (isnan(angle)) {
+                w = 0;
+             } else if (angle > ANGLE_THRESH) {
                 weight += (w * 0.50f);
              } else {
                 weight += w;
@@ -1137,9 +1210,12 @@ float HandheldObjectRegistration::evaluateSymmetricFitness(
        }
        out_cloud->push_back(seed_point);
     }
+#ifdef _DEBUG
+    ROS_INFO("\033[34m WEIGHT:  %3.4f  %d\033[0m",
+             weight, region_points->size());
+#endif
     weight /= static_cast<float>(region_points->size());
-    return weight;
-    
+    return weight;    
 }
 
 void HandheldObjectRegistration::getEdgesFromNormals(
