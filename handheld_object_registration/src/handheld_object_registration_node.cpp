@@ -156,9 +156,13 @@ void HandheldObjectRegistration::cloudCB(
     const float leaf_size = 0.02f;
     std::vector<Eigen::Vector4f> symmetric_planes;
     Eigen::Vector4f centroid;
-    this->generateSymmetricPlanes(symmetric_planes, src_points, centroid, leaf_size);
-    this->symmetricBasedSegmentation(region_cloud, symmetric_planes,
-                                     centroid, 0.01f);
+    this->generateSymmetricPlanes(symmetric_planes, src_points,
+                                  centroid, leaf_size);
+
+    pcl::PointCloud<PointNormalT>::Ptr candidate_points(
+       new pcl::PointCloud<PointNormalT>);
+    this->getViewSymmetricPlane(candidate_points, region_cloud,
+                                symmetric_planes, centroid, 0.01f);
 
     gettimeofday(&timer_end, NULL);
     double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
@@ -168,7 +172,8 @@ void HandheldObjectRegistration::cloudCB(
     
     sensor_msgs::PointCloud2 ros_cloud1;
     // pcl::toROSMsg(*src_points, ros_cloud1);
-    pcl::toROSMsg(*region_cloud, ros_cloud1);
+    // pcl::toROSMsg(*region_cloud, ros_cloud1);
+    pcl::toROSMsg(*candidate_points, ros_cloud1);
     ros_cloud1.header = cloud_msg->header;
     this->pub_icp_.publish(ros_cloud1);
     
@@ -940,26 +945,47 @@ float HandheldObjectRegistration::checkRegistrationFitness(
 }
 
 
-void HandheldObjectRegistration::symmetricBasedSegmentation(
+/**
+ * NOT USED FOR NOW
+ */
+bool HandheldObjectRegistration::symmetricBasedOutlierRemoval(
     pcl::PointCloud<PointNormalT>::Ptr in_cloud,
-    const std::vector<Eigen::Vector4f> symmetric_planes,
+    const Eigen::Vector4f symmetric_plane) {
+    if (in_cloud->empty()) {
+       ROS_ERROR("[::symmetricBasedOutlierRemoval]: EMPTY INPUTS");
+       return false;
+    }
+    pcl::PointCloud<PointNormalT>::Ptr reflected_points(
+       new pcl::PointCloud<PointNormalT>);
+    // this->evaluateSymmetricFitness(reflected_points, in_cloud, )
+    
+    ProjectionMap in_proj_map;
+    this->project3DTo2DDepth(in_proj_map, in_cloud);
+
+    
+}
+       
+void HandheldObjectRegistration::getViewSymmetricPlane(
+    pcl::PointCloud<PointNormalT>::Ptr object_points,
+    pcl::PointCloud<PointNormalT>::Ptr in_cloud,
+    std::vector<Eigen::Vector4f> symmetric_planes,
     const Eigen::Vector4f centroid,
     const float leaf_size) {
     if (in_cloud->empty() || symmetric_planes.empty()) {
-       ROS_ERROR("[::symmetricBasedSegmentation]: EMPTY INPUTS");
+       ROS_ERROR("[::getViewSymmetricPlane]: EMPTY INPUTS");
        return;
     }
     pcl::VoxelGrid<PointNormalT> voxel_grid;
     voxel_grid.setInputCloud(in_cloud);
     voxel_grid.setLeafSize(leaf_size, leaf_size, leaf_size);
+    pcl::PointCloud<PointNormalT>::Ptr demean_points(
+       new pcl::PointCloud<PointNormalT>);
+    voxel_grid.filter(*demean_points);
+
     pcl::PointCloud<PointNormalT>::Ptr region_points(
        new pcl::PointCloud<PointNormalT>);
-    voxel_grid.filter(*region_points);
-
-    // Eigen::Vector4f centroid;
-    // pcl::compute3DCentroid(*region_points, centroid);
     pcl::demeanPointCloud<PointNormalT, float>(
-       *region_points, centroid, *region_points);
+       *demean_points, centroid, *region_points);
 
     pcl::KdTreeFLANN<PointNormalT>::Ptr kdtree(
        new pcl::KdTreeFLANN<PointNormalT>);
@@ -970,9 +996,6 @@ void HandheldObjectRegistration::symmetricBasedSegmentation(
        new pcl::PointCloud<PointNormalT>);
     float max_energy = 0.0f;
     int max_index = -1;
-
-    std::vector<float> energy_list(symmetric_planes.size(), 0.0);
-    
     for (int i = 0; i < symmetric_planes.size(); i++) {
        float energy = evaluateSymmetricFitness(
           reflected_points, region_points, symmetric_planes[i], kdtree,
@@ -981,7 +1004,6 @@ void HandheldObjectRegistration::symmetricBasedSegmentation(
           max_energy = energy;
           max_index = i;
        }
-       energy_list[i] = energy;
 
 #ifdef _DEBUG
        pcl::PointCloud<PointNormalT>::Ptr temp_points(
@@ -996,12 +1018,50 @@ void HandheldObjectRegistration::symmetricBasedSegmentation(
 #endif
     }
 
-// #ifdef _DEBUG
+    reflected_points->clear();
+    float energy = evaluateSymmetricFitness(
+       reflected_points, region_points, symmetric_planes[max_index],
+       kdtree, 0.005, true);
+
+    //! filter and remove outliers
+    object_points->clear();
+
+    //! skin color hard coding
+    uchar min_r = 249; uchar max_r = 235;
+    uchar min_g = 202; uchar max_g = 180;
+    uchar min_b = 194; uchar max_b = 173;
+    
+    for (int i = 0; i < reflected_points->size(); i++) {
+       PointNormalT pt = demean_points->points[i];
+       if (reflected_points->points[i].g != 0
+           /*&&
+           (pt.r < min_r && pt.r > max_r) &&
+           (pt.b < min_b && pt.b > max_b) &&
+           (pt.g < min_g && pt.g > max_g)
+           */) {  //! good points
+          object_points->push_back(demean_points->points[i]);
+       }
+    }
+
+    
+    //! pack the best symmetric plane
+    Eigen::Vector4f plane = symmetric_planes[max_index];
+    symmetric_planes.clear();
+    symmetric_planes.push_back(plane);
+    
+    
+#ifdef _DEBUG
     std::cout << "\nFILTERED SIZE: " << symmetric_planes.size()<< "\n";
     plotPlane(region_points, symmetric_planes[max_index]);
+
+    for (int i = 0; i < region_points->size(); i++) {
+       region_points->points[i].x += centroid(0);
+       region_points->points[i].y += centroid(1);
+       region_points->points[i].z += centroid(2);
+    }
     in_cloud->clear();
     *in_cloud += *region_points;
-// #endif
+#endif
     
     pcl::PointCloud<PointNormalT>().swap(*region_points);
     pcl::PointCloud<PointNormalT>().swap(*reflected_points);
@@ -1108,14 +1168,14 @@ void HandheldObjectRegistration::generateSymmetricPlanes(
     }
     */
     std::cout << "\nFILTERED SIZE: " << candidate_splanes.size()<< "\n";
-
+    
     Eigen::Vector4f pparam = candidate_splanes[0];
     plotPlane(region_points, pparam, Eigen::Vector3f(0, 0, 255));
     std::cout << center  << "\n";
     
     
-    float t_dist = pparam.head<3>().dot(center.head<3>());
-    pparam(3) = t_dist;
+    // float t_dist = pparam.head<3>().dot(center.head<3>());
+    pparam(3) += center.head<3>().norm();
     plotPlane(region_points, pparam);
     in_cloud->clear();
     *in_cloud += *region_points;
@@ -1137,6 +1197,7 @@ float HandheldObjectRegistration::evaluateSymmetricFitness(
        ROS_ERROR("[evaluateSymmetricFitness]: INPUT ERROR");
        return 0.0f;
     }
+    out_cloud->clear();
     const float ANGLE_THRESH = M_PI / 6;
     float weight = 0.0f;
     Eigen::Vector3f plane_n = plane_param.head<3>();
@@ -1148,22 +1209,11 @@ float HandheldObjectRegistration::evaluateSymmetricFitness(
        Eigen::Vector3f n = region_points->points[
           k].getNormalVector3fMap();
        Eigen::Vector3f p = region_points->points[k].getVector3fMap();
-       /*
-       float beta = p(0) * plane_n(0) + p(1) * plane_n(1) +
-          p(2) * plane_n(2);
-       float alpha = (plane_n(0) * plane_n(0)) +
-          (plane_n(1) * plane_n(1)) + (plane_n(2) * plane_n(2));
-       float t = (plane_param(3) - beta) / alpha;
-       */
-       PointNormalT seed_point = region_points->points[k];
-       // seed_point.x = p(0) + (t * 2 * plane_n(0));
-       // seed_point.y = p(1) + (t * 2 * plane_n(1));
-       // seed_point.z = p(2) + (t * 2 * plane_n(2));
-       
        Eigen::Vector3f seed_pt = p - 2.0f * plane_param.head<3>() *
           (p.dot(plane_param.head<3>()) - plane_param(3));
        Eigen::Vector3f symm_n = n - (2.0f * (
                                         plane_n.dot(n)) * plane_n);
+       PointNormalT seed_point = region_points->points[k];
        seed_point.x = seed_pt(0);
        seed_point.y = seed_pt(1);
        seed_point.z = seed_pt(2);
@@ -1172,11 +1222,10 @@ float HandheldObjectRegistration::evaluateSymmetricFitness(
        seed_point.normal_y = symm_n(1);
        seed_point.normal_z = symm_n(2);
 
-       if (!compute_symmetric_weight) {
-          seed_point.r = 0;
-          seed_point.g = 255;
-          seed_point.b = 0;
-       }
+       //! initialize current point to true
+       seed_point.r = 255;
+       seed_point.g = 0;
+       seed_point.b = 0;
        
        if (compute_symmetric_weight) {
           neigbor_indices.clear();
@@ -1197,13 +1246,18 @@ float HandheldObjectRegistration::evaluateSymmetricFitness(
              float angle = std::acos(dot_prod);  //! * (180.0f/M_PI);
              float w = 1.0f / (1.0f + (angle / (2.0f * M_PI)));
 
+             int flag = 0;
              if (isnan(angle)) {
                 w = 0;
              } else if (angle > ANGLE_THRESH) {
                 weight += (w * 0.50f);
              } else {
                 weight += w;
+                flag = 1;
              }
+             seed_point.r = flag * 255;
+             seed_point.g = flag * 255;
+             seed_point.b = flag * 255;
           }
        }
        out_cloud->push_back(seed_point);
@@ -1213,7 +1267,7 @@ float HandheldObjectRegistration::evaluateSymmetricFitness(
              weight, region_points->size());
 #endif
     weight /= static_cast<float>(region_points->size());
-    return weight;    
+    return weight;
 }
 
 void HandheldObjectRegistration::getEdgesFromNormals(

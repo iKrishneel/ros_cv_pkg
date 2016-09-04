@@ -166,11 +166,12 @@ class HandheldObjectRegistration: public OrientedBoundingBox {
                                    const Eigen::Vector4f,
                                    const pcl::KdTreeFLANN<PointNormalT>::Ptr,
                                    const float, const bool = false);
-    void symmetricBasedSegmentation(pcl::PointCloud<PointNormalT>::Ptr,
-                                    const std::vector<Eigen::Vector4f>,
-                                    const Eigen::Vector4f,
-                                    const float = 0.02f);
-   
+    void getViewSymmetricPlane(pcl::PointCloud<PointNormalT>::Ptr,
+                               pcl::PointCloud<PointNormalT>::Ptr,
+                               std::vector<Eigen::Vector4f>,
+                               const Eigen::Vector4f, const float = 0.02f);
+    bool symmetricBasedOutlierRemoval(pcl::PointCloud<PointNormalT>::Ptr,
+                                      const Eigen::Vector4f);
    
     void getEdgesFromNormals(pcl::PointCloud<PointNormalT>::Ptr,
                              const pcl::PointCloud<PointNormalT>::Ptr,
