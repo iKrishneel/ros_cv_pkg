@@ -170,8 +170,9 @@ class HandheldObjectRegistration: public OrientedBoundingBox {
                                pcl::PointCloud<PointNormalT>::Ptr,
                                std::vector<Eigen::Vector4f>,
                                const Eigen::Vector4f, const float = 0.02f);
-    bool symmetricBasedOutlierRemoval(pcl::PointCloud<PointNormalT>::Ptr,
-                                      const Eigen::Vector4f);
+    bool estimateObjectRegion(pcl::PointCloud<PointNormalT>::Ptr,
+                              pcl::PointCloud<PointNormalT>::Ptr,
+                              const float);
    
     void getEdgesFromNormals(pcl::PointCloud<PointNormalT>::Ptr,
                              const pcl::PointCloud<PointNormalT>::Ptr,
