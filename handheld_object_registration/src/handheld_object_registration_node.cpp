@@ -112,7 +112,7 @@ void HandheldObjectRegistration::cloudCB(
     int seed_index  = screen_msg_.point.x +
        (camera_info_->width * screen_msg_.point.y);
     PointT seed_point = cloud->points[seed_index];
-    
+
     if (this->pose_flag_) {
        seed_point.x = pose_msg_->pose.position.x;
        seed_point.y = pose_msg_->pose.position.y;
@@ -137,10 +137,15 @@ void HandheldObjectRegistration::cloudCB(
        return;
     }
 
+
+    /**
+     * DEBUG
+     */
+    /*
     //! oversegmented region
     struct timeval timer_start, timer_end;
     gettimeofday(&timer_start, NULL);
-    
+
     ProjectionMap src_projection;
     // this->project3DTo2DDepth(src_projection, src_points);
     pcl::PointCloud<PointNormalT>::Ptr region_cloud(
@@ -148,10 +153,6 @@ void HandheldObjectRegistration::cloudCB(
     this->regionOverSegmentation(region_cloud, cloud, normals,
                                  src_projection, seed_index2D);
 
-
-    /**
-     * DEBUG
-     */
     const float leaf_size = 0.02f;
     std::vector<Eigen::Vector4f> symmetric_planes;
     Eigen::Vector4f centroid;
@@ -163,29 +164,23 @@ void HandheldObjectRegistration::cloudCB(
     this->getViewSymmetricPlane(candidate_obj_points, region_cloud,
                                 symmetric_planes, centroid, 0.01f);
 
-    //! extract points around the candidate with leaf_size radius
-    std::cout << "BEFORE SIZE: " << region_cloud->size()  << "\n";
-    this->estimateObjectRegion(region_cloud, candidate_obj_points, 0.0075f);
+    // //! extract points around the candidate with leaf_size radius
+    // this->estimateObjectRegion(region_cloud, candidate_obj_points, 0.0075f);
+    // this->plotPlane(region_cloud, symmetric_planes[0]);
+    std::cout << "SIZE: " << candidate_obj_points->size()  << "\n";
 
-    this->plotPlane(region_cloud, symmetric_planes[0]);
-    std::cout << "SIZE: " << region_cloud->size()  << "\n";
-       
-       
-    
-    
     gettimeofday(&timer_end, NULL);
     double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
                     timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
     ROS_ERROR("TIME: %3.6f, %d", delta, target_points_->size());
-    
-    
+    */
     sensor_msgs::PointCloud2 ros_cloud1;
-    // pcl::toROSMsg(*src_points, ros_cloud1);
-    pcl::toROSMsg(*region_cloud, ros_cloud1);
+    pcl::toROSMsg(*src_points, ros_cloud1);
+    // pcl::toROSMsg(*region_cloud, ros_cloud1);
     // pcl::toROSMsg(*candidate_obj_points, ros_cloud1);
     ros_cloud1.header = cloud_msg->header;
     this->pub_icp_.publish(ros_cloud1);
-    
+
     return;
     /**
      * DEBUG
@@ -1017,7 +1012,7 @@ void HandheldObjectRegistration::getViewSymmetricPlane(
     pcl::KdTreeFLANN<PointNormalT>::Ptr kdtree(
        new pcl::KdTreeFLANN<PointNormalT>);
     kdtree->setInputCloud(region_points);
-    
+
     //! testing using weight (put to cuda)
     pcl::PointCloud<PointNormalT>::Ptr reflected_points(
        new pcl::PointCloud<PointNormalT>);
@@ -1054,18 +1049,28 @@ void HandheldObjectRegistration::getViewSymmetricPlane(
     object_points->clear();
 
     //! skin color hard coding
-    uchar min_r = 249; uchar max_r = 235;
-    uchar min_g = 202; uchar max_g = 180;
-    uchar min_b = 194; uchar max_b = 173;
-    
+    int min_r = 249; int max_r = 255;
+    int min_g = 202; int max_g = 180;
+    int min_b = 194; int max_b = 173;
+
     for (int i = 0; i < reflected_points->size(); i++) {
        PointNormalT pt = demean_points->points[i];
+
+       // PointT rgb_pt;
+       // rgb_pt.r = pt.r;
+       // rgb_pt.b = pt.b;
+       // rgb_pt.g = pt.g;
+       // pcl::PointXYZHSV hsv_pt;
+       // pcl::PointXYZRGBtoXYZHSV(rgb_pt, hsv_pt);
+
+       std::cout << (int)pt.r << " " << (int)pt.b
+                 << " " << (int)pt.g << "\n";
        if (reflected_points->points[i].g != 0
-           /*&&
-           (pt.r < min_r && pt.r > max_r) &&
-           (pt.b < min_b && pt.b > max_b) &&
-           (pt.g < min_g && pt.g > max_g)
-           */) {  //! good points
+           &&
+           ((int)pt.r < min_r && (int)pt.r > max_r) &&
+           ((int)pt.b < min_b && (int)pt.b > max_b) &&
+           ((int)pt.g < min_g && (int)pt.g > max_g)
+          ) {  //! good points
           object_points->push_back(demean_points->points[i]);
        }
     }
@@ -1818,7 +1823,7 @@ void HandheldObjectRegistration::regionOverSegmentation(
        return;
     }
     const float MAX_DISTANCE = 2.50f;  //! maximum distance
-    const float RADIUS = 0.20f * 0.2f;  //! object region size
+    const float RADIUS = 0.15f * 1.5f;  //! object region size
 
     int seed_ind = seed_index2D.x + (seed_index2D.y * camera_info_->width);
     PointT seed_point = cloud->points[seed_ind];

@@ -13,6 +13,7 @@
 #include <tf/transform_broadcaster.h>
 
 #include <pcl_conversions/pcl_conversions.h>
+#include <pcl/point_types_conversion.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/registration/distances.h>
 #include <pcl/common/centroid.h>
