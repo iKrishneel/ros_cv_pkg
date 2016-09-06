@@ -4,7 +4,39 @@
 #include <handheld_object_registration/object_model_annotation.h>
 #include <algorithm>
 
-ObjectModelAnnotation::ObjectModelAnnotation() {
+ObjectModelAnnotation::ObjectModelAnnotation() :
+    is_save_(false), save_counter_(0) {
+
+    this->pnh_.getParam("/object_model_annotation/save_path",
+                        this->save_path_);
+    this->pnh_.getParam("/object_model_annotation/is_save",
+                        this->is_save_);
+
+    std::cout << "SAVE PATH: " << save_path_  << "\n";
+    
+    if (this->save_path_.empty()) {
+       ROS_WARN("SAVE PATH NOT SET. WILL DEFALT TO .ros/");
+    }
+    
+    if (is_save_ && this->save_path_.empty()) {
+       ROS_ERROR("SAVE PATH NOT SET. SHUTTING DOWN...");
+       ros::shutdown();
+    } else if (is_save_ && !this->save_path_.empty()) {
+       time_t t = time(0);
+       struct tm *now = localtime(&t);
+       char buffer[80];
+       strftime(buffer, 80, "%Y-%m-%d-%s", now);
+       std::string directory = this->save_path_ + std::string(buffer);
+       boost::filesystem::path dir(directory);
+
+       if (!(boost::filesystem::exists(dir))) {
+          std::cout << "Doesn't Exists" << std::endl;
+          if (boost::filesystem::create_directory(dir)) {
+             std::cout << "....Successfully Created !" << std::endl;
+          }
+       }
+       this->save_folder_ = directory;
+    }
     this->onInit();
 }
 
@@ -54,13 +86,46 @@ void ObjectModelAnnotation::callback(
        image_msg, image_msg->encoding)->image;
     pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
-    pcl::PointCloud<PointT>::Ptr bg_cloud(new pcl::PointCloud<PointT>);
-    pcl::copyPointCloud<PointT, PointT>(*cloud, *bg_cloud);
+    // pcl::PointCloud<PointT>::Ptr bg_cloud(new pcl::PointCloud<PointT>);
+    // pcl::copyPointCloud<PointT, PointT>(*cloud, *bg_cloud);
     this->getAnnotatedObjectCloud(cloud, image, screen_rect);
+
+    if (cloud->empty()) {
+       ROS_ERROR("ANNOTATIONED CLOUD IS EMPTY");
+       return;
+    }
+
     Eigen::Vector4f centroid;
     this->compute3DCentroids(cloud, centroid);
-    this->backgroundPointCloudIndices(
-       bg_cloud, cloud, centroid, image.size(), screen_rect);
+    
+    //! save info
+    if (this->is_save_ && !cloud->empty()) {
+       if (this->save_folder_.empty()) {
+          ROS_ERROR("CANNOT SAVE. FOLDER NOT SPECIFIED");
+       } else {
+          ROS_INFO("SAVING INFO");
+          std::ostringstream ss;
+          ss << save_counter_;
+          std::string directory = save_folder_ + "/info_" + ss.str() + ".txt";
+          std::ofstream outfile(directory.c_str());
+          outfile << centroid(0) << " " << centroid(1) << " "
+                  << centroid(2) << " ";
+          outfile << x << " " << y << " " << width
+                  << " " << " " << height << "\n";
+          outfile.close();
+
+          //! save pcd
+          std::string cdir = save_folder_ + "/cloud_" + ss.str() + ".pcd";
+          pcl::io::savePCDFileASCII(cdir, *cloud);
+          
+          this->save_counter_++;
+       }
+    }
+    
+
+    // this->backgroundPointCloudIndices(
+    //    bg_cloud, cloud, centroid, image.size(), screen_rect);
+    
     geometry_msgs::PoseStamped ros_pose;
     ros_pose.pose.position.x = centroid(0);
     ros_pose.pose.position.y = centroid(1);
@@ -77,17 +142,17 @@ void ObjectModelAnnotation::callback(
     pcl::toROSMsg(*cloud, ros_cloud);
     ros_cloud.header = cloud_msg->header;
 
-    sensor_msgs::PointCloud2 ros_bkgd;
-    pcl::toROSMsg(*bg_cloud, ros_bkgd);
-    ros_bkgd.header = cloud_msg->header;
+    // sensor_msgs::PointCloud2 ros_bkgd;
+    // pcl::toROSMsg(*bg_cloud, ros_bkgd);
+    // ros_bkgd.header = cloud_msg->header;
 
     ROS_INFO("--Publish selected object info.");
     this->pub_cloud_.publish(ros_cloud);
-    // this->pub_image_.publish(pub_img.toImageMsg());
+    this->pub_image_.publish(pub_img.toImageMsg());
     this->pub_pose_.publish(ros_pose);
-    this->pub_background_.publish(ros_bkgd);
+    // this->pub_background_.publish(ros_bkgd);
 
-    ros::shutdown();
+    // ros::shutdown();
 }
 
 void ObjectModelAnnotation::getAnnotatedObjectCloud(
@@ -107,14 +172,17 @@ void ObjectModelAnnotation::getAnnotatedObjectCloud(
     std::vector<pcl::PointIndices> cluster_indices;
     pcl::EuclideanClusterExtraction<PointT> euclidean_clustering;
     euclidean_clustering.setClusterTolerance(0.01);
-    euclidean_clustering.setMinClusterSize(60);
+    euclidean_clustering.setMinClusterSize(10);
     euclidean_clustering.setMaxClusterSize(25000);
     euclidean_clustering.setSearchMethod(tree);
     euclidean_clustering.setInputCloud(cloud);
     euclidean_clustering.setIndices(indices);
     euclidean_clustering.extract(cluster_indices);
-    int max_size = FLT_MIN;
-    int index = 0;
+
+    //! temp fix for concave surfaces
+
+    int max_size = 0;
+    int index = -1;
     for (int i = 0; i < cluster_indices.size(); i++) {
        int c_size = cluster_indices[i].indices.size();
        if (c_size > max_size) {
@@ -123,10 +191,42 @@ void ObjectModelAnnotation::getAnnotatedObjectCloud(
        }
     }
     cloud->clear();
+    if (index == -1) {
+       ROS_ERROR("NO REGION FOUND IN ANNOTATION");
+       return;
+    }
+
+    ROS_WARN("SIZE: %d", max_size);
+
+    pcl::PointCloud<PointT>::Ptr cpoints(new pcl::PointCloud<PointT>);
+    Eigen::Vector4f max_centroid;
     for (int i = 0; i < cluster_indices[index].indices.size(); i++) {
        int pi = cluster_indices[index].indices[i];
-       cloud->points.push_back(tmp_cloud->points[pi]);
+       cpoints->points.push_back(tmp_cloud->points[pi]);
     }
+    pcl::compute3DCentroid<PointT, float>(*cpoints, max_centroid);
+    max_centroid(3) = 0.0f;
+
+    for (int i = 0; i < cluster_indices.size(); i++) {
+       int c_size = cluster_indices[i].indices.size();
+       if (c_size > max_size / 5) {
+          cpoints->clear();
+          for (int j = 0; j < cluster_indices[i].indices.size(); j++) {
+             int pi = cluster_indices[i].indices[j];
+             cpoints->points.push_back(tmp_cloud->points[pi]);
+          }
+          Eigen::Vector4f centroid;
+          pcl::compute3DCentroid<PointT, float>(*cpoints, centroid);
+          centroid(3) = 0.0;
+          double d = pcl::distances::l2(max_centroid, centroid);
+          if (d < 0.20) {
+             for (int k = 0; k < cpoints->size(); k++) {
+                cloud->push_back(cpoints->points[k]);
+             }
+          }
+       }
+    }
+    ROS_WARN("PROCESSED");
 }
 
 void ObjectModelAnnotation::imageToPointCloudIndices(

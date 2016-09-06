@@ -16,6 +16,7 @@
 #include <sensor_msgs/PointCloud2.h>
 #include <cv_bridge/cv_bridge.h>
 
+#include <pcl/io/pcd_io.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -48,15 +49,20 @@ class ObjectModelAnnotation {
     message_filters::Subscriber<geometry_msgs::PolygonStamped> sub_screen_pt_;
     boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
 
-    ros::Publisher pub_cloud_;
-    ros::Publisher pub_background_;
-    ros::Publisher pub_image_;
-    ros::Publisher pub_pose_;
+    std::string save_path_;
+    bool is_save_;
+    int save_counter_;
+    std::string save_folder_;
    
  protected:
     void onInit();
     void subscribe();
     void unsubscribe();
+
+    ros::Publisher pub_cloud_;
+    ros::Publisher pub_background_;
+    ros::Publisher pub_image_;
+    ros::Publisher pub_pose_;
    
  public:
     ObjectModelAnnotation();
