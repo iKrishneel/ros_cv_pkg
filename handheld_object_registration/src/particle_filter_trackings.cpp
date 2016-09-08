@@ -61,13 +61,27 @@ ParticleFilters::ParticleFilters():
     coherence->setSearchMethod(search);
     coherence->setMaximumDistance(0.01);
     this->tracker_->setCloudCoherence(coherence);
+
+    this->choi_dataset_.clear();
+    const char * cd_path = "/home/krishneel/Downloads/seq_synth_orange_juice_kitchen/data.txt";
+    std::ifstream infile(cd_path);
+    std::string line;
+    while (std::getline(infile, line)) {
+       std::istringstream iss(line);
+       std::string path_to_pcd;
+       iss >> path_to_pcd;
+       this->choi_dataset_.push_back(path_to_pcd);
+    }
+    choi_counter_ = 0;
+    
+    
     this->onInit();
 }
 
 void ParticleFilters::onInit() {
     this->subscribe();
     this->pub_cloud_ = pnh_.advertise<sensor_msgs::PointCloud2>(
-       "/particle_filters/output/results", 1);
+       "/choi/output/cloud", 1);
     this->pub_pose_ = pnh_.advertise<geometry_msgs::PoseStamped>(
        "/particle_filter_tracker/track_result_pose", 1);
 }
@@ -91,11 +105,49 @@ void ParticleFilters::unsubscribe() {
 
 void ParticleFilters::cloudCB(
     const sensor_msgs::PointCloud2::ConstPtr &cloud_msg) {
-    if (!tracker_init_) {
-       ROS_WARN_ONCE("THE TRACKER IS NOT INITALIZED");
+    if (choi_dataset_.empty()) {
+       ROS_WARN_ONCE("NO CHOI DATA");
        return;
     }
-    pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
+
+    if (choi_counter_ > choi_dataset_.size()) {
+       ROS_WARN("ALL PROCESSED");
+       ros::shutdown();
+    }
+
+    ROS_INFO("PROCESSING: %d", choi_counter_);
+    
+    pcl::PointCloud<pcl::PointXYZRGBA>::Ptr cloud(
+       new pcl::PointCloud<pcl::PointXYZRGBA>);
+    pcl::io::loadPCDFile<pcl::PointXYZRGBA>(
+       choi_dataset_[choi_counter_++], *cloud);
+    sensor_msgs::PointCloud2 *ros_cloud = new sensor_msgs::PointCloud2;
+    pcl::toROSMsg(*cloud, *ros_cloud);
+    ros_cloud->header = cloud_msg->header;
+    this->pub_cloud_.publish(*ros_cloud);
+
+    if (choi_counter_ == 1) {
+       ROS_WARN("FIRST FRAME SLEEP");
+       ros::Duration(10).sleep();
+    } else {
+       ros::Duration(0.3).sleep();
+    }
+    
+    return;
+    /**
+     * RUNNING CHOI:
+     1) LAUNCH this node
+     2) launch point_cloud_image_creator
+     3) handheld_object_registration POINTS:=/choi/output/cloud
+     IMAGE:=/cloud_image/output/image
+     4) object_annotation with same as above input
+     5) tracking_sample (launch is modified here)
+     */
+    ///
+
+
+    
+    // pcl::PointCloud<PointT>::Ptr cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *cloud);
     boost::mutex::scoped_lock lock(mtx_);
     pcl::PointCloud<PointT>::Ptr cloud_pass(new pcl::PointCloud<PointT>);
@@ -125,7 +177,7 @@ void ParticleFilters::cloudCB(
           *(this->tracker_->getReferenceCloud()), *result_cloud,
           transformation);
        
-       sensor_msgs::PointCloud2 *ros_cloud = new sensor_msgs::PointCloud2;
+       // sensor_msgs::PointCloud2 *ros_cloud = new sensor_msgs::PointCloud2;
        pcl::toROSMsg(*result_cloud, *ros_cloud);
        ros_cloud->header = cloud_msg->header;
 
@@ -143,7 +195,7 @@ void ParticleFilters::templateCB(
      const geometry_msgs::PoseStamped::ConstPtr &pose_msg*/
     ) {
 
-    ROS_WARN("SETTING UP TEMPLATE");
+    // ROS_WARN("SETTING UP TEMPLATE");
     pcl::PointCloud<PointT>::Ptr target_cloud(new pcl::PointCloud<PointT>);
     pcl::fromROSMsg(*cloud_msg, *target_cloud);
 
