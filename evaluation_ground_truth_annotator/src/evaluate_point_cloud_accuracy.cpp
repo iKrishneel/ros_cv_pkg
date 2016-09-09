@@ -152,6 +152,6 @@ int main(int argc, char *argv[]) {
        std::cout << "path to the .pcds"  << "\n";
        return -1;
     }
-    EvaluateAccuracy ea(argv[1], argv[2]);
+    EvaluateAccuracy ea(argv[1], argv[2], argv[3]);
     return 0;
 }
