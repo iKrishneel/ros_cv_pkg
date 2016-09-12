@@ -132,6 +132,8 @@ add_executable(evaluation_ground_truth_annotator_node src/evaluation_ground_trut
 
 add_executable(evaluate_point_cloud_accuracy_node src/evaluate_point_cloud_accuracy.cpp)
 
+add_executable(annotate_symmetric_plane_node src/annotate_symmetric_plane.cpp)
+
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 # add_dependencies(evaluation_ground_truth_annotator_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
@@ -142,6 +144,10 @@ target_link_libraries(evaluation_ground_truth_annotator_node
 )
 
 target_link_libraries(evaluate_point_cloud_accuracy_node
+  ${catkin_LIBRARIES}
+)
+
+target_link_libraries(annotate_symmetric_plane_node
   ${catkin_LIBRARIES}
 )
 
