@@ -1,8 +1,7 @@
 <launch>
   <include file="$(find handheld_object_registration)/launch/tracking/tracking.launch">
 
-    <!-- <arg name="input_point" default="/camera/depth_registered/points" /> -->
-    <arg name="input_point" default="/choi/output/cloud" />
+    <arg name="input_point" default="/camera/depth_registered/points" />
     <arg name="voxel_grid_filter_limit_min" value="0.0"/>
     <arg name="voxel_grid_filter_limit_max" value="3.0"/>
     <arg name="voxel_grid_filter_field_name" value="true"/>
