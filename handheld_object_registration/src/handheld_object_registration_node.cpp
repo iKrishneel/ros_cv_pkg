@@ -24,18 +24,18 @@ HandheldObjectRegistration::HandheldObjectRegistration():
     this->transformation_cache_.clear();
     
     //! temporary
-    this->rendering_cuboid_ = boost::shared_ptr<jsk_msgs::BoundingBox>(
-       new jsk_msgs::BoundingBox);
-    this->rendering_cuboid_->pose.position.x = 0.0;
-    this->rendering_cuboid_->pose.position.y = 0.0;
-    this->rendering_cuboid_->pose.position.z = 1.0;
-    this->rendering_cuboid_->pose.orientation.x = 0.0;
-    this->rendering_cuboid_->pose.orientation.y = 0.0;
-    this->rendering_cuboid_->pose.orientation.z = 0.0;
-    this->rendering_cuboid_->pose.orientation.w = 1.0;
-    this->rendering_cuboid_->dimensions.x = 0.5;
-    this->rendering_cuboid_->dimensions.y = 0.5;
-    this->rendering_cuboid_->dimensions.z = 0.5;
+    // this->rendering_cuboid_ = boost::shared_ptr<jsk_msgs::BoundingBox>(
+    //    new jsk_msgs::BoundingBox);
+    // this->rendering_cuboid_->pose.position.x = 0.0;
+    // this->rendering_cuboid_->pose.position.y = 0.0;
+    // this->rendering_cuboid_->pose.position.z = 1.0;
+    // this->rendering_cuboid_->pose.orientation.x = 0.0;
+    // this->rendering_cuboid_->pose.orientation.y = 0.0;
+    // this->rendering_cuboid_->pose.orientation.z = 0.0;
+    // this->rendering_cuboid_->pose.orientation.w = 1.0;
+    // this->rendering_cuboid_->dimensions.x = 0.5;
+    // this->rendering_cuboid_->dimensions.y = 0.5;
+    // this->rendering_cuboid_->dimensions.z = 0.5;
     
     this->onInit();
 }
@@ -151,6 +151,8 @@ void HandheldObjectRegistration::cloudCB(
        new pcl::PointCloud<PointNormalT>);
     this->regionOverSegmentation(region_cloud, cloud, normals,
                                  src_projection, seed_index2D);
+    // src_points->clear();
+    // *src_points = *region_cloud;
 
     const float leaf_size = 0.02f;
     std::vector<Eigen::Vector4f> symmetric_planes;
@@ -181,7 +183,7 @@ void HandheldObjectRegistration::cloudCB(
     pcl::toROSMsg(*candidate_obj_points, ros_cloud1);
     ros_cloud1.header = cloud_msg->header;
     this->pub_icp_.publish(ros_cloud1);
-    */
+
     
     sensor_msgs::PointCloud2 ros_cloud1;
     pcl::toROSMsg(*src_points, ros_cloud1);
@@ -189,7 +191,7 @@ void HandheldObjectRegistration::cloudCB(
     ros_cloud1.header = cloud_msg->header;
     this->pub_templ_.publish(ros_cloud1);
     return;
-    
+
     /**
      * DEBUG
      */
@@ -315,14 +317,14 @@ void HandheldObjectRegistration::cloudCB(
     */
     
     
-    jsk_msgs::BoundingBoxArray *rviz_bbox = new jsk_msgs::BoundingBoxArray;
-    this->rendering_cuboid_->header = cloud_msg->header;
-    rviz_bbox->boxes.push_back(*rendering_cuboid_);
-    rviz_bbox->header = cloud_msg->header;
-    this->pub_bbox_.publish(*rviz_bbox);
+    // jsk_msgs::BoundingBoxArray *rviz_bbox = new jsk_msgs::BoundingBoxArray;
+    // this->rendering_cuboid_->header = cloud_msg->header;
+    // rviz_bbox->boxes.push_back(*rendering_cuboid_);
+    // rviz_bbox->header = cloud_msg->header;
+    // this->pub_bbox_.publish(*rviz_bbox);
     
     delete ros_cloud;
-    delete rviz_bbox;
+    // delete rviz_bbox;
     pcl::PointCloud<PointNormalT>().swap(*src_points);
     PointCloud().swap(*cloud);
     // PointCloud().swap(*region_cloud);
@@ -415,8 +417,11 @@ void HandheldObjectRegistration::modelRegistrationAndUpdate(
        update_points->clear();
        pcl::copyPointCloud<PointNormalT, PointNormalT>(
           *target_points, *update_points);
-       transformPointCloudWithNormalsGPU(target_points, target_points,
-                                         transform_matrix);
+       // transformPointCloudWithNormalsGPU(target_points, target_points,
+       //                                   transform_matrix);
+       pcl::transformPointCloudWithNormals(*target_points, *target_points,
+                                           transform_matrix);
+       
        float angle_x;
        float angle_y;
        float angle_z;
@@ -446,7 +451,7 @@ void HandheldObjectRegistration::modelRegistrationAndUpdate(
                                                        *update_points);
     }
 
-    bool icp_device_cpu = !false;
+    bool icp_device_cpu = false;
     Eigen::Matrix<float, 4, 4> icp_transform = Eigen::Matrix4f::Identity();
     if (icp_device_cpu) {
        ROS_INFO("\033[33m PCL--ICP \033[0m");
@@ -474,24 +479,27 @@ void HandheldObjectRegistration::modelRegistrationAndUpdate(
     }
     
     //! transform the model to current orientation
-    transformPointCloudWithNormalsGPU(target_points, target_points,
-                                      icp_transform);
+    // transformPointCloudWithNormalsGPU(target_points, target_points,
+    //                                   icp_transform);
+    pcl::transformPointCloudWithNormals(*target_points, *target_points,
+                                        icp_transform);
 
+    /*
     this->project3DTo2DDepth(target_projection, target_points);
     this->modelVoxelUpdate(target_points, target_projection,
                            src_points, src_projection);
-    
-    // this->project3DTo2DDepth(target_projection, aligned_points);
-    // this->modelVoxelUpdate(aligned_points, target_projection,
-    //                        src_points, src_projection);
+    */
 
+    *target_points += *src_points;
     
     //! transform to init
     this->initial_transform_ =  final_transformation * initial_transform_;
     pcl::PointCloud<PointNormalT>::Ptr init_trans_points(
        new pcl::PointCloud<PointNormalT>);
     Eigen::Matrix4f inv = this->initial_transform_.inverse();
-    transformPointCloudWithNormalsGPU(target_points, init_trans_points, inv);
+    // transformPointCloudWithNormalsGPU(target_points, init_trans_points, inv);
+    pcl::transformPointCloudWithNormals(*target_points, *init_trans_points,
+                                        inv);
 
     // TODO(THRESHOLD):  if above certain value than run icp
 
@@ -685,7 +693,9 @@ void HandheldObjectRegistration::denseVoxelRegistration(
                  translation > TRANSLATION_THRESH) {
                 ROS_INFO("\033[36m LARGE ROTATION \033[0m\n");
              } else {
-                transformPointCloudWithNormalsGPU(temp_points, temp_points,
+                // transformPointCloudWithNormalsGPU(temp_points, temp_points,
+                //                                   icp_trans);
+                pcl::transformPointCloudWithNormals(*temp_points, *temp_points,
                                                   icp_trans);
                 transformation_matrix = icp_trans * transformation_matrix;
                 project3DTo2DDepth(temp_projection, temp_points);
@@ -735,7 +745,7 @@ void HandheldObjectRegistration::modelVoxelUpdate(
                 visz.at<cv::Vec3b>(j, i)[1] = 255;
                    
              } else {
-                // update_model->push_back(src_points->points[s_index]);
+                update_model->push_back(src_points->points[s_index]);
              }
           } else if (s_index == -1 && t_index != -1) {
              //! already in the model
