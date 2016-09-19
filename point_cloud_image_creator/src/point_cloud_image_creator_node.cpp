@@ -182,8 +182,8 @@ cv::Mat PointCloudImageCreator::projectPointCloudToImagePlane(
     for (int i = 0; i < imagePoints.size(); i++) {
        int x = imagePoints[i].x;
        int y = imagePoints[i].y;
-       if (!isnan(x) && !isnan(y) && (x >= 0 && x <= image.cols) &&
-           (y >= 0 && y <= image.rows)) {
+       if (!isnan(x) && !isnan(y) && (x >= 0 && x < image.cols) &&
+           (y >= 0 && y < image.rows)) {
           image.at<cv::Vec3b>(y, x)[2] = cloud->points[i].r;
           image.at<cv::Vec3b>(y, x)[1] = cloud->points[i].g;
           image.at<cv::Vec3b>(y, x)[0] = cloud->points[i].b;

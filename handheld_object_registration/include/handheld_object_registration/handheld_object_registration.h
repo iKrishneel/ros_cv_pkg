@@ -81,7 +81,7 @@ class HandheldObjectRegistration: public OrientedBoundingBox {
     geometry_msgs::PointStamped screen_msg_;
     bool is_init_;
 
-    boost::shared_ptr<jsk_msgs::BoundingBox> rendering_cuboid_;
+    // boost::shared_ptr<jsk_msgs::BoundingBox> rendering_cuboid_;
     sensor_msgs::CameraInfo::ConstPtr camera_info_;
     cv::Ptr<cv::cuda::ORB> orb_gpu_;
    
@@ -97,6 +97,11 @@ class HandheldObjectRegistration: public OrientedBoundingBox {
     tf::Transform previous_transform_;
     PointT prev_seed_point_;
 
+    //! for evaulation delete
+    std::string save_path_;
+    int save_counter_;
+
+    //! end
    
     Eigen::Matrix4f initial_transform_;  //! cumulative transform
     std::vector<Eigen::Matrix4f> transformation_cache_;

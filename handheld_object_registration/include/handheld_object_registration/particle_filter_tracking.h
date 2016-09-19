@@ -65,6 +65,9 @@ class ParticleFilters {
     int counter;
     bool tracker_init_;
     Eigen::Affine3f prev_transformation_;
+
+    std::vector<std::string> choi_dataset_;
+    int choi_counter_;
    
  protected:
     ros::NodeHandle pnh_;

@@ -1,9 +1,13 @@
 <launch>
+  
+  <arg name="IMAGE" default="/camera/rgb/image_rect_color" />
+  <arg name="POINTS" default="/camera/depth_registered/points" />
+
   <node pkg="handheld_object_registration" type="object_model_annotation_node"
 	name="object_model_annotation" output="screen">
-    <remap from="input_image" to="/camera/rgb/image_rect_color" />
-    <remap from="input_cloud" to="/camera/depth_registered/points" />
-    <remap from="input_screen" to="/camera/rgb/image_rect_color/screenrectangle" />
+    <remap from="input_image" to="$(arg IMAGE)" />
+    <remap from="input_cloud" to="$(arg POINTS)" />
+    <remap from="input_screen" to="$(arg IMAGE)/screenrectangle" />
     
     <param name="save_path" value="/home/krishneel/.ros/" />
     <param name="is_save" value="true" />
@@ -11,7 +15,7 @@
 
   <node pkg="image_view2" type="image_view2"
 	name="image_view2" output="screen">
-    <remap from="image" to="/camera/rgb/image_rect_color"/>
+    <remap from="image" to="$(arg IMAGE)"/>
   </node>
   <!--<include file="$(find multilayer_object_tracking)/launch/object_supervoxel.launch" />-->
 </launch>
