@@ -22,9 +22,20 @@ HandheldObjectRegistration::HandheldObjectRegistration():
     this->update_counter_ = 0;
     this->initial_transform_ = Eigen::Matrix4f::Identity();
     this->transformation_cache_.clear();
-
-    save_path_ = "/home/krishneel/Documents/publications/dataset/experiment/choi";
-    save_counter_ = 0;
+    
+    //! temporary
+    this->rendering_cuboid_ = boost::shared_ptr<jsk_msgs::BoundingBox>(
+       new jsk_msgs::BoundingBox);
+    this->rendering_cuboid_->pose.position.x = 0.0;
+    this->rendering_cuboid_->pose.position.y = 0.0;
+    this->rendering_cuboid_->pose.position.z = 1.0;
+    this->rendering_cuboid_->pose.orientation.x = 0.0;
+    this->rendering_cuboid_->pose.orientation.y = 0.0;
+    this->rendering_cuboid_->pose.orientation.z = 0.0;
+    this->rendering_cuboid_->pose.orientation.w = 1.0;
+    this->rendering_cuboid_->dimensions.x = 0.5;
+    this->rendering_cuboid_->dimensions.y = 0.5;
+    this->rendering_cuboid_->dimensions.z = 0.5;
     
     this->onInit();
 }
@@ -93,9 +104,6 @@ void HandheldObjectRegistration::cloudCB(
 
     ROS_INFO("\033[34m - Running Callback ... \033[0m");
 
-    struct timeval timer_start, timer_end;
-    gettimeofday(&timer_start, NULL);
-    
     this->camera_info_ = cinfo_msg;
     
     PointNormal::Ptr normals(new PointNormal);
@@ -129,29 +137,6 @@ void HandheldObjectRegistration::cloudCB(
        return;
     }
 
-    /**
-     * WRTITE FOR EVALUTION
-     */
-
-    std::ostringstream ss;
-    ss << save_counter_;
-    std::string directory = save_path_ + "/" + ss.str() + ".txt";
-    std::ofstream outfile(directory.c_str());
-    outfile << seed_point.x << " " << seed_point.y << " "
-            << seed_point.z << " ";
-    outfile << seed_index2D.x << " " << seed_index2D.y << "\n";
-    outfile.close();
-
-    // //! save pcd
-    // std::string cdir = save_path_ + "/cloud_" + ss.str() + ".pcd";
-    // pcl::io::savePCDFileASCII(cdir, *src_points);
-    this->save_counter_++;
-    
-    gettimeofday(&timer_end, NULL);
-    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
-                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
-    ROS_ERROR("TIME: %3.6f", delta);
-    
     /**
      * DEBUG
      */
@@ -329,7 +314,15 @@ void HandheldObjectRegistration::cloudCB(
     }
     */
     
+    
+    jsk_msgs::BoundingBoxArray *rviz_bbox = new jsk_msgs::BoundingBoxArray;
+    this->rendering_cuboid_->header = cloud_msg->header;
+    rviz_bbox->boxes.push_back(*rendering_cuboid_);
+    rviz_bbox->header = cloud_msg->header;
+    this->pub_bbox_.publish(*rviz_bbox);
+    
     delete ros_cloud;
+    delete rviz_bbox;
     pcl::PointCloud<PointNormalT>().swap(*src_points);
     PointCloud().swap(*cloud);
     // PointCloud().swap(*region_cloud);
