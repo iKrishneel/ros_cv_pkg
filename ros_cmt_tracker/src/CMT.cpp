@@ -119,6 +119,7 @@ CMT::CMT() {
     
 }
 
+
 void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft,
                      cv::Point2f bottomright) {
 
@@ -133,17 +134,17 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft,
 
     // Get initial keypoints in whole image
     std::vector<cv::KeyPoint> keypoints;
-    detector->detect(im_gray0, keypoints);
-
+    // detector->detect(im_gray0, keypoints);
     cv::Mat features;
-    descriptorExtractor->compute(im_gray0, keypoints, features);
+    // descriptorExtractor->compute(im_gray0, keypoints, features);
 
-    /*
+
     cv::cuda::GpuMat d_im_gray0(im_gray0);
     cv::cuda::GpuMat d_features;
     this->orb_gpu_->detectAndCompute(d_im_gray0, cv::cuda::GpuMat(),
                                      keypoints, d_features, false);
-    */
+    d_features.download(features);
+
     
     // Remember keypoints that are in the rectangle as selected keypoints
     std::vector<cv::KeyPoint> selected_keypoints;
@@ -160,7 +161,6 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft,
     // Remember keypoints that are not in the rectangle as background
     // keypoints
     // cv::Mat features;
-    // d_features.download(features);
     selectedFeatures = cv::Mat(static_cast<int>(selected_keypoints.size()),
                                features.cols, features.type());
     cv::Mat background_features = cv::Mat(
@@ -178,8 +178,7 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft,
 
     std::cout << selectedFeatures.size()  << "\t" << sf_count << "\n";
     std::cout << background_features.size()  << "\t" << bf_count << "\n";
-
-
+    
 
     
     // Assign each keypoint a class starting from 1, background is 0
@@ -250,7 +249,7 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft,
     im_prev = im_gray0.clone();
 
     // Make keypoints 'active' keypoints
-    activeKeypoints = std::vector<std::pair<cv::KeyPoint,int> >();
+    activeKeypoints = std::vector<std::pair<cv::KeyPoint, int> >();
     for (unsigned int i = 0; i < selected_keypoints.size(); i++)
        activeKeypoints.push_back(
           std::make_pair(selected_keypoints[i], selectedClasses[i]));
@@ -261,6 +260,17 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft,
 
     std::cout << "\033[31m DONE....\033[0m"  << "\n";
 }
+
+
+
+
+
+
+
+
+
+
+
 
 typedef std::pair<int,int> PairInt;
 typedef std::pair<float,int> PairFloat;
@@ -584,13 +594,19 @@ void CMT::processFrame(cv::Mat im_gray) {
 
     // Detect keypoints, compute descriptors
     std::vector<cv::KeyPoint> keypoints;
+
     cv::Mat features;
+    /*
     detector->detect(im_gray, keypoints);
-
-    std::cout << "\033[34m KEY: \033[0m" << keypoints.size()  << "\n";
-    
     descriptorExtractor->compute(im_gray, keypoints, features);
+    */
 
+    cv::cuda::GpuMat d_im_gray(im_gray);
+    cv::cuda::GpuMat d_features;
+    this->orb_gpu_->detectAndCompute(d_im_gray, cv::cuda::GpuMat(),
+                                     keypoints, d_features, false);
+    d_features.download(features);
+    
     
     // Create list of active keypoints
     activeKeypoints = std::vector<std::pair<cv::KeyPoint, int> >();
@@ -599,6 +615,15 @@ void CMT::processFrame(cv::Mat im_gray) {
     std::vector<std::vector<cv::DMatch> > matchesAll, selectedMatchesAll;
     descriptorMatcher->knnMatch(features, featuresDatabase, matchesAll, 2);
 
+
+
+
+
+
+
+
+
+    
     // Get all matches for selected features
     if (!isnan(center.x) && !isnan(center.y))
        descriptorMatcher->knnMatch(features, selectedFeatures,
