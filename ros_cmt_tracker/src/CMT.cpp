@@ -22,14 +22,23 @@
 
 #endif
 
-void inout_rect(const std::vector<cv::KeyPoint>& keypoints, cv::Point2f topleft, cv::Point2f bottomright, std::vector<cv::KeyPoint>& in, std::vector<cv::KeyPoint>& out)
-{
-    for(unsigned int i = 0; i < keypoints.size(); i++)
-    {
-        if(keypoints[i].pt.x > topleft.x && keypoints[i].pt.y > topleft.y && keypoints[i].pt.x < bottomright.x && keypoints[i].pt.y < bottomright.y)
-            in.push_back(keypoints[i]);
-        else out.push_back(keypoints[i]);
+std::vector<bool>
+inout_rect(const std::vector<cv::KeyPoint>& keypoints,
+                cv::Point2f topleft, cv::Point2f bottomright,
+                std::vector<cv::KeyPoint>& in, std::vector<cv::KeyPoint>& out) {
+    std::vector<bool> flag_bit(static_cast<int>(keypoints.size()), false);
+    for (unsigned int i = 0; i < keypoints.size(); i++) {
+       if (keypoints[i].pt.x > topleft.x && keypoints[i].pt.y > topleft.y &&
+           keypoints[i].pt.x < bottomright.x &&
+           keypoints[i].pt.y < bottomright.y) {
+          in.push_back(keypoints[i]);
+          flag_bit[i] = true;
+       } else {
+          out.push_back(keypoints[i]);
+          flag_bit[i] = false;
+       }
     }
+    return flag_bit;
 }
 
 
@@ -126,43 +135,53 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft,
     std::vector<cv::KeyPoint> keypoints;
     detector->detect(im_gray0, keypoints);
 
+    cv::Mat features;
+    descriptorExtractor->compute(im_gray0, keypoints, features);
 
-    std::vector<cv::KeyPoint> keypoints1;
+    /*
     cv::cuda::GpuMat d_im_gray0(im_gray0);
-    this->orb_gpu_->detect(d_im_gray0, keypoints1);
-
-    std::cout << "KEY SIZE: " << keypoints1.size()  << "\n";
-
-
+    cv::cuda::GpuMat d_features;
+    this->orb_gpu_->detectAndCompute(d_im_gray0, cv::cuda::GpuMat(),
+                                     keypoints, d_features, false);
+    */
     
     // Remember keypoints that are in the rectangle as selected keypoints
     std::vector<cv::KeyPoint> selected_keypoints;
     std::vector<cv::KeyPoint> background_keypoints;
-    inout_rect(keypoints, topleft, bottomright, selected_keypoints,
-               background_keypoints);
-    descriptorExtractor->compute(im_gray0,
-                                 selected_keypoints, selectedFeatures);
-
-    cv::cuda::GpuMat d_selectedFeatures;
-    this->orb_gpu_->compute(d_im_gray0,
-                            selected_keypoints,
-                            d_selectedFeatures);
-
-
-    
-    std::cout << "DONE: " << keypoints.size()  << "\t";
-    std::cout << "DONE: " << selected_keypoints.size()  << "\n";
+    std::vector<bool> flag_bit = inout_rect(keypoints, topleft,
+                                            bottomright, selected_keypoints,
+                                            background_keypoints);
     
     if (selected_keypoints.size() == 0) {
         printf("No keypoints found in selection");
         return;
     }
 
-    // Remember keypoints that are not in the rectangle as background keypoints
-    cv::Mat background_features;
-    descriptorExtractor->compute(im_gray0, background_keypoints,
-                                 background_features);
+    // Remember keypoints that are not in the rectangle as background
+    // keypoints
+    // cv::Mat features;
+    // d_features.download(features);
+    selectedFeatures = cv::Mat(static_cast<int>(selected_keypoints.size()),
+                               features.cols, features.type());
+    cv::Mat background_features = cv::Mat(
+       static_cast<int>(background_keypoints.size()), features.cols,
+       features.type());
+    int sf_count = 0;
+    int bf_count = 0;
+    for (int i = 0; i < keypoints.size(); i++) {
+       if (flag_bit[i]) {
+          selectedFeatures.row(sf_count++) = features.row(i);
+       } else if (!flag_bit[i]) {
+          background_features.row(bf_count++) = features.row(i);
+       }
+    }
 
+    std::cout << selectedFeatures.size()  << "\t" << sf_count << "\n";
+    std::cout << background_features.size()  << "\t" << bf_count << "\n";
+
+
+
+    
     // Assign each keypoint a class starting from 1, background is 0
     selectedClasses = std::vector<int>();
     for (unsigned int i = 1; i <= selected_keypoints.size(); i++)
@@ -239,6 +258,8 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft,
     // Remember number of initial keypoints
     nbInitialKeypoints = selected_keypoints.size();
 
+
+    std::cout << "\033[31m DONE....\033[0m"  << "\n";
 }
 
 typedef std::pair<int,int> PairInt;
@@ -570,6 +591,7 @@ void CMT::processFrame(cv::Mat im_gray) {
     
     descriptorExtractor->compute(im_gray, keypoints, features);
 
+    
     // Create list of active keypoints
     activeKeypoints = std::vector<std::pair<cv::KeyPoint, int> >();
 
