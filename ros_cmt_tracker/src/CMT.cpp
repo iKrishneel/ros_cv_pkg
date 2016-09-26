@@ -42,15 +42,16 @@ inout_rect(const std::vector<cv::KeyPoint>& keypoints,
 }
 
 
-void track(cv::Mat im_prev, cv::Mat im_gray, const std::vector<std::pair<cv::KeyPoint, int> >& keypointsIN, std::vector<std::pair<cv::KeyPoint, int> >& keypointsTracked, std::vector<unsigned char>& status, int THR_FB)
-{
-    //Status of tracked keypoint - True means successfully tracked
+void track(cv::Mat im_prev, cv::Mat im_gray,
+           const std::vector<std::pair<cv::KeyPoint, int> >& keypointsIN,
+           std::vector<std::pair<cv::KeyPoint, int> >& keypointsTracked,
+           std::vector<unsigned char>& status, int THR_FB) {
+    // Status of tracked keypoint - True means successfully tracked
     status = std::vector<unsigned char>();
-    //for(int i = 0; i < keypointsIN.size(); i++)
-      //  status.push_back(false);
-    //If at least one keypoint is active
-    if(keypointsIN.size() > 0)
-    {
+    // for(int i = 0; i < keypointsIN.size(); i++)
+    //  status.push_back(false);
+    // If at least one keypoint is active
+    if (keypointsIN.size() > 0) {
         std::vector<cv::Point2f> pts;
         std::vector<cv::Point2f> pts_back;
         std::vector<cv::Point2f> nextPts;
@@ -58,37 +59,52 @@ void track(cv::Mat im_prev, cv::Mat im_gray, const std::vector<std::pair<cv::Key
         std::vector<float> err;
         std::vector<float> err_back;
         std::vector<float> fb_err;
-        for(unsigned int i = 0; i < keypointsIN.size(); i++)
-            pts.push_back(cv::Point2f(keypointsIN[i].first.pt.x,keypointsIN[i].first.pt.y));
+        for (unsigned int i = 0; i < keypointsIN.size(); i++)
+           pts.push_back(cv::Point2f(keypointsIN[i].first.pt.x,
+                                     keypointsIN[i].first.pt.y));
 
-        //Calculate forward optical flow for prev_location
-        cv::calcOpticalFlowPyrLK(im_prev, im_gray, pts, nextPts, status, err);
-        //Calculate backward optical flow for prev_location
-        cv::calcOpticalFlowPyrLK(im_gray, im_prev, nextPts, pts_back, status_back, err_back);
+        // Calculate forward optical flow for prev_location
+        // cv::calcOpticalFlowPyrLK(im_prev, im_gray, pts, nextPts, status, err);
+        
+        cv::cuda::GpuMat d_status;
+        cv::cuda::GpuMat d_nextpts;
+        cv::Ptr<cv::cuda::SparsePyrLKOpticalFlow> d_calc =
+           cv::cuda::SparsePyrLKOpticalFlow::create();
+        d_calc->calc(cv::cuda::GpuMat(im_prev), cv::cuda::GpuMat(im_gray),
+                     cv::cuda::GpuMat(pts), d_nextpts, d_status);
+        d_status.download(status);
+        d_nextpts.download(nextPts);
+        
+        // Calculate backward optical flow for prev_location
+        // cv::calcOpticalFlowPyrLK(im_gray, im_prev, nextPts, pts_back,
+        //                          status_back, err_back);
 
-        //Calculate forward-backward error
-        for(unsigned int i = 0; i < pts.size(); i++)
-        {
+        d_calc->calc(cv::cuda::GpuMat(im_gray), cv::cuda::GpuMat(im_prev),
+                     cv::cuda::GpuMat(nextPts), d_nextpts, d_status);
+        d_status.download(status_back);
+        d_nextpts.download(pts_back);
+
+        
+        // Calculate forward-backward error
+        for (unsigned int i = 0; i < pts.size(); i++) {
             cv::Point2f v = pts_back[i]-pts[i];
             fb_err.push_back(sqrt(v.dot(v)));
         }
 
-        //Set status depending on fb_err and lk error
-        for(unsigned int i = 0; i < status.size(); i++)
-            status[i] = (fb_err[i] <= THR_FB) & status[i];
+        // Set status depending on fb_err and lk error
+        for (unsigned int i = 0; i < status.size(); i++)
+           status[i] = (fb_err[i] <= THR_FB) & status[i];
 
         keypointsTracked = std::vector<std::pair<cv::KeyPoint, int> >();
-        for(unsigned int i = 0; i < pts.size(); i++)
-        {
+        for (unsigned int i = 0; i < pts.size(); i++) {
             std::pair<cv::KeyPoint, int> p = keypointsIN[i];
-            if(status[i])
-            {
-                p.first.pt = nextPts[i];
-                keypointsTracked.push_back(p);
+            if (status[i]) {
+               p.first.pt = nextPts[i];
+               keypointsTracked.push_back(p);
             }
         }
-    }
-    else keypointsTracked = std::vector<std::pair<cv::KeyPoint, int> >();
+    } else
+       keypointsTracked = std::vector<std::pair<cv::KeyPoint, int> >();
 }
 
 cv::Point2f rotate(cv::Point2f p, float rad)
@@ -112,7 +128,7 @@ CMT::CMT() {
     estimateRotation = true;
     nbInitialKeypoints = 0;
 
-    this->orb_gpu_ = cv::cuda::ORB::create(1000, 1.20f, 8, 11, 0, 2,
+    this->orb_gpu_ = cv::cuda::ORB::create(500, 1.20f, 8, 11, 0, 2,
                                            cv::ORB::HARRIS_SCORE, 31, true);
     this->matcher_ =
        cv::cuda::DescriptorMatcher::createBFMatcher(cv::NORM_HAMMING);
@@ -124,20 +140,18 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft,
                      cv::Point2f bottomright) {
 
     // Initialise detector, descriptor, matcher
-    detector = cv::BRISK::create(thrOutlier, 3, 1.0f);
+    // detector = cv::BRISK::create(thrOutlier, 3, 1.0f);
     // detector = cv::ORB::create(1000);
     // descriptorExtractor = cv::ORB::create();
-    descriptorExtractor = cv::BRISK::create();
-
-    descriptorMatcher = cv::DescriptorMatcher::create(matcherType.c_str());
+    // descriptorExtractor = cv::BRISK::create();
+    // descriptorMatcher = cv::DescriptorMatcher::create(matcherType.c_str());
     // descriptorMatcher = new cv::BFMatcher(cv::NORM_HAMMING2);
 
     // Get initial keypoints in whole image
     std::vector<cv::KeyPoint> keypoints;
-    // detector->detect(im_gray0, keypoints);
     cv::Mat features;
+    // detector->detect(im_gray0, keypoints);
     // descriptorExtractor->compute(im_gray0, keypoints, features);
-
 
     cv::cuda::GpuMat d_im_gray0(im_gray0);
     cv::cuda::GpuMat d_features;
@@ -456,6 +470,7 @@ std::vector<int> argSortInt(const std::vector<int>& list)
 }
 
 
+
 void CMT::estimate(
     const std::vector<std::pair<cv::KeyPoint, int> >& keypointsIN,
     cv::Point2f& center, float& scaleEstimate, float& medRot,
@@ -464,35 +479,31 @@ void CMT::estimate(
     scaleEstimate = NAN;
     medRot = NAN;
 
-    //At least 2 keypoints are needed for scale
+    // At least 2 keypoints are needed for scale
     if (keypointsIN.size() > 1) {
-        //sort
+        // sort
         std::vector<PairInt> list;
-        for(unsigned int i = 0; i < keypointsIN.size(); i++)
+        for (unsigned int i = 0; i < keypointsIN.size(); i++)
             list.push_back(std::make_pair(keypointsIN[i].second, i));
         std::sort(&list[0], &list[0]+list.size(), comparatorPair<int>);
-        for(unsigned int i = 0; i < list.size(); i++)
+        for (unsigned int i = 0; i < list.size(); i++)
             keypoints.push_back(keypointsIN[list[i].second]);
 
         std::vector<int> ind1;
         std::vector<int> ind2;
-        for(unsigned int i = 0; i < list.size(); i++)
-            for(unsigned int j = 0; j < list.size(); j++)
-            {
-                if(i != j && keypoints[i].second != keypoints[j].second)
-                {
-                    ind1.push_back(i);
-                    ind2.push_back(j);
-                }
+        for (unsigned int i = 0; i < list.size(); i++)
+            for (unsigned int j = 0; j < list.size(); j++) {
+               if (i != j && keypoints[i].second != keypoints[j].second) {
+                  ind1.push_back(i);
+                  ind2.push_back(j);
+               }
             }
-        if(ind1.size() > 0)
-        {
+        if (ind1.size() > 0) {
             std::vector<int> class_ind1;
             std::vector<int> class_ind2;
             std::vector<cv::KeyPoint> pts_ind1;
             std::vector<cv::KeyPoint> pts_ind2;
-            for(unsigned int i = 0; i < ind1.size(); i++)
-            {
+            for (unsigned int i = 0; i < ind1.size(); i++) {
                 class_ind1.push_back(keypoints[ind1[i]].second-1);
                 class_ind2.push_back(keypoints[ind2[i]].second-1);
                 pts_ind1.push_back(keypoints[ind1[i]].first);
@@ -501,11 +512,12 @@ void CMT::estimate(
 
             std::vector<float> scaleChange;
             std::vector<float> angleDiffs;
-            for(unsigned int i = 0; i < pts_ind1.size(); i++)
-            {
+            for (unsigned int i = 0; i < pts_ind1.size(); i++) {
                 cv::Point2f p = pts_ind2[i].pt - pts_ind1[i].pt;
-                //This distance might be 0 for some combinations,
-                //as it can happen that there is more than one keypoint at a single location
+                // This distance might be 0 for some combinations,
+                // as it can happen that there is more than one
+                // keypoint at a single location
+                
                 float dist = sqrt(p.dot(p));
                 float origDist = squareForm[class_ind1[i]][class_ind2[i]];
                 scaleChange.push_back(dist/origDist);
@@ -561,6 +573,8 @@ void CMT::estimate(
     }
 }
 
+
+
 //todo : n*log(n) by sorting the second array and dichotomic search instead of n^2
 std::vector<bool> in1d(const std::vector<int>& a, const std::vector<int>& b)
 {
@@ -607,13 +621,139 @@ void CMT::processFrame(cv::Mat im_gray) {
                                      keypoints, d_features, false);
     d_features.download(features);
     
-    
     // Create list of active keypoints
     activeKeypoints = std::vector<std::pair<cv::KeyPoint, int> >();
 
     // Get the best two matches for each feature
     std::vector<std::vector<cv::DMatch> > matchesAll, selectedMatchesAll;
-    descriptorMatcher->knnMatch(features, featuresDatabase, matchesAll, 2);
+    //! descriptorMatcher->knnMatch(features, featuresDatabase, matchesAll, 2);
+    this->matcher_->knnMatch(cv::cuda::GpuMat(features),
+                             cv::cuda::GpuMat(featuresDatabase),
+                             matchesAll, 2);
+    
+    // Get all matches for selected features
+    if (!isnan(center.x) && !isnan(center.y)) {
+       //    descriptorMatcher->knnMatch(features, selectedFeatures,
+       //                                selectedMatchesAll,
+       //                                selectedFeatures.rows);
+
+       this->matcher_->knnMatch(cv::cuda::GpuMat(features),
+                                cv::cuda::GpuMat(selectedFeatures),
+                                selectedMatchesAll, selectedFeatures.rows);
+    }
+
+    std::vector<cv::Point2f> transformedSprings(springs.size());
+    for (int i = 0; i < springs.size(); i++) {
+        transformedSprings[i] = scaleEstimate *
+           rotate(springs[i], - rotationEstimate);
+    }
+    
+    // For each keypoint and its descriptor
+    for (unsigned int i = 0; i < keypoints.size(); i++) {
+       cv::KeyPoint keypoint = keypoints[i];
+
+       // First: Match over whole image
+       // Compute distances to all descriptors
+       std::vector<cv::DMatch> matches = matchesAll[i];
+
+       // Convert distances to confidences, do not weight
+       std::vector<float> combined;
+       for (unsigned int j = 0; j < matches.size(); j++) {
+          combined.push_back(1 - matches[j].distance / descriptorLength);
+       }
+        
+       std::vector<int>& classes = classesDatabase;
+
+       // Get best and second best index
+       int bestInd = matches[0].trainIdx;
+       int secondBestInd = matches[1].trainIdx;
+
+       // Compute distance ratio according to Lowe
+       float ratio = (1-combined[0]) / (1-combined[1]);
+
+       // Extract class of best match
+       int keypoint_class = classes[bestInd];
+
+       // If distance ratio is ok and absolute distance is ok and
+       // keypoint class is not background
+       
+       if (ratio < thrRatio && combined[0] > thrConf && keypoint_class != 0) {
+          activeKeypoints.push_back(std::make_pair(keypoint, keypoint_class));
+       }
+
+       // In a second step, try to match difficult keypoints
+       // If structural constraints are applicable
+       if (!(isnan(center.x) | isnan(center.y))) {
+          // Compute distances to initial descriptors
+          std::vector<cv::DMatch> matches = selectedMatchesAll[i];
+          std::vector<float> distances(matches.size()),
+             distancesTmp(matches.size());
+          std::vector<int> trainIndex(matches.size());
+          for (int j = 0; j < matches.size(); j++) {
+             distancesTmp[j] = matches[j].distance;
+             trainIndex[j] = matches[j].trainIdx;
+          }
+          
+          // Re-order the distances based on indexing
+          std::vector<int> idxs = argSortInt(trainIndex);
+          for (int j = 0; j < idxs.size(); j++) {
+             distances[j] = distancesTmp[idxs[j]];
+          }
+          
+          // Convert distances to confidences
+          std::vector<float> confidences(matches.size());
+          for (unsigned int j = 0; j < matches.size(); j++) {
+             confidences[j] = 1 - distances[j] / descriptorLength;
+          }
+          
+          // Compute the keypoint location relative to the object center
+          cv::Point2f relative_location = keypoint.pt - center;
+
+          // Compute the distances to all springs
+          std::vector<float> displacements(springs.size());
+          for (unsigned int j = 0; j < springs.size(); j++) {
+             cv::Point2f p = (transformedSprings[j] - relative_location);
+             displacements[j] = sqrt(p.dot(p));
+          }
+
+          // For each spring, calculate weight
+          std::vector<float> combined(confidences.size());
+          for (unsigned int j = 0; j < confidences.size(); j++) {
+             combined[j] = (displacements[j] < thrOutlier)*confidences[j];
+          }
+          std::vector<int>& classes = selectedClasses;
+          // Sort in descending order
+          std::vector<PairFloat> sorted_conf(combined.size());
+          for (unsigned int j = 0; j < combined.size(); j++)
+             sorted_conf[j] = std::make_pair(combined[j], j);
+          
+          std::sort(&sorted_conf[0], &sorted_conf[0]+sorted_conf.size(),
+                    comparatorPairDesc<float>);
+
+          // Get best and second best index
+          int bestInd = sorted_conf[0].second;
+          int secondBestInd = sorted_conf[1].second;
+          
+          // Compute distance ratio according to Lowe
+          float ratio = (1-combined[bestInd]) / (1-combined[secondBestInd]);
+
+          // Extract class of best match
+          int keypoint_class = classes[bestInd];
+
+          // If distance ratio is ok and absolute distance is ok and
+          // keypoint class is not background
+          if (ratio < thrRatio && combined[bestInd] > thrConf &&
+             keypoint_class != 0) {
+             for (int i = activeKeypoints.size()-1; i >= 0; i--)
+                if (activeKeypoints[i].second == keypoint_class)
+                   activeKeypoints.erase(activeKeypoints.begin()+i);
+             activeKeypoints.push_back(std::make_pair(keypoint,
+                                                      keypoint_class));
+          }
+       }
+    }
+
+
 
 
 
@@ -624,135 +764,28 @@ void CMT::processFrame(cv::Mat im_gray) {
 
 
     
-    // Get all matches for selected features
-    if (!isnan(center.x) && !isnan(center.y))
-       descriptorMatcher->knnMatch(features, selectedFeatures,
-                                   selectedMatchesAll, selectedFeatures.rows);
-
-    std::vector<cv::Point2f> transformedSprings(springs.size());
-    for(int i = 0; i < springs.size(); i++)
-        transformedSprings[i] = scaleEstimate * rotate(springs[i], -rotationEstimate);
-
-    //For each keypoint and its descriptor
-    for(unsigned int i = 0; i < keypoints.size(); i++)
-    {
-        cv::KeyPoint keypoint = keypoints[i];
-
-        //First: Match over whole image
-        //Compute distances to all descriptors
-        std::vector<cv::DMatch> matches = matchesAll[i];
-
-        //Convert distances to confidences, do not weight
-        std::vector<float> combined;
-        for(unsigned int j = 0; j < matches.size(); j++)
-            combined.push_back(1 - matches[j].distance / descriptorLength);
-
-        std::vector<int>& classes = classesDatabase;
-
-        //Get best and second best index
-        int bestInd = matches[0].trainIdx;
-        int secondBestInd = matches[1].trainIdx;
-
-        //Compute distance ratio according to Lowe
-        float ratio = (1-combined[0]) / (1-combined[1]);
-
-        //Extract class of best match
-        int keypoint_class = classes[bestInd];
-
-        //If distance ratio is ok and absolute distance is ok and keypoint class is not background
-        if(ratio < thrRatio && combined[0] > thrConf && keypoint_class != 0)
-            activeKeypoints.push_back(std::make_pair(keypoint, keypoint_class));
-
-        //In a second step, try to match difficult keypoints
-        //If structural constraints are applicable
-        if(!(isnan(center.x) | isnan(center.y)))
-        {
-            //Compute distances to initial descriptors
-            std::vector<cv::DMatch> matches = selectedMatchesAll[i];
-            std::vector<float> distances(matches.size()), distancesTmp(matches.size());
-            std::vector<int> trainIndex(matches.size());
-            for(int j = 0; j < matches.size(); j++)
-            {
-                distancesTmp[j] = matches[j].distance;
-                trainIndex[j] = matches[j].trainIdx;
-            }
-            //Re-order the distances based on indexing
-            std::vector<int> idxs = argSortInt(trainIndex);
-            for(int j = 0; j < idxs.size(); j++)
-                distances[j] = distancesTmp[idxs[j]];
-
-            //Convert distances to confidences
-            std::vector<float> confidences(matches.size());
-            for(unsigned int j = 0; j < matches.size(); j++)
-                confidences[j] = 1 - distances[j] / descriptorLength;
-
-            //Compute the keypoint location relative to the object center
-            cv::Point2f relative_location = keypoint.pt - center;
-
-            //Compute the distances to all springs
-            std::vector<float> displacements(springs.size());
-            for(unsigned int j = 0; j < springs.size(); j++)
-            {
-                cv::Point2f p = (transformedSprings[j] - relative_location);
-                displacements[j] = sqrt(p.dot(p));
-            }
-
-            //For each spring, calculate weight
-            std::vector<float> combined(confidences.size());
-            for(unsigned int j = 0; j < confidences.size(); j++)
-                combined[j] = (displacements[j] < thrOutlier)*confidences[j];
-
-            std::vector<int>& classes = selectedClasses;
-
-            //Sort in descending order
-            std::vector<PairFloat> sorted_conf(combined.size());
-            for(unsigned int j = 0; j < combined.size(); j++)
-                sorted_conf[j] = std::make_pair(combined[j], j);
-            std::sort(&sorted_conf[0], &sorted_conf[0]+sorted_conf.size(), comparatorPairDesc<float>);
-
-            //Get best and second best index
-            int bestInd = sorted_conf[0].second;
-            int secondBestInd = sorted_conf[1].second;
-
-            //Compute distance ratio according to Lowe
-            float ratio = (1-combined[bestInd]) / (1-combined[secondBestInd]);
-
-            //Extract class of best match
-            int keypoint_class = classes[bestInd];
-
-            //If distance ratio is ok and absolute distance is ok and keypoint class is not background
-            if(ratio < thrRatio && combined[bestInd] > thrConf && keypoint_class != 0)
-            {
-                for(int i = activeKeypoints.size()-1; i >= 0; i--)
-                    if(activeKeypoints[i].second == keypoint_class)
-                        activeKeypoints.erase(activeKeypoints.begin()+i);
-                activeKeypoints.push_back(std::make_pair(keypoint, keypoint_class));
-            }
-        }
+    // If some keypoints have been tracked
+    if (trackedKeypoints.size() > 0) {
+       // Extract the keypoint classes
+       std::vector<int> tracked_classes(trackedKeypoints.size());
+       for (unsigned int i = 0; i < trackedKeypoints.size(); i++)
+          tracked_classes[i] = trackedKeypoints[i].second;
+       // If there already are some active keypoints
+       if (activeKeypoints.size() > 0) {
+          // Add all tracked keypoints that have not been matched
+          std::vector<int> associated_classes(activeKeypoints.size());
+          for (unsigned int i = 0; i < activeKeypoints.size(); i++)
+             associated_classes[i] = activeKeypoints[i].second;
+          std::vector<bool> notmissing = in1d(tracked_classes,
+                                              associated_classes);
+          for (unsigned int i = 0; i < trackedKeypoints.size(); i++)
+             if (!notmissing[i])
+                activeKeypoints.push_back(trackedKeypoints[i]);
+       } else
+          activeKeypoints = trackedKeypoints;
     }
 
-    //If some keypoints have been tracked
-    if(trackedKeypoints.size() > 0)
-    {
-        //Extract the keypoint classes
-        std::vector<int> tracked_classes(trackedKeypoints.size());
-        for(unsigned int i = 0; i < trackedKeypoints.size(); i++)
-            tracked_classes[i] = trackedKeypoints[i].second;
-        //If there already are some active keypoints
-        if(activeKeypoints.size() > 0)
-        {
-            //Add all tracked keypoints that have not been matched
-            std::vector<int> associated_classes(activeKeypoints.size());
-            for(unsigned int i = 0; i < activeKeypoints.size(); i++)
-                associated_classes[i] = activeKeypoints[i].second;
-            std::vector<bool> notmissing = in1d(tracked_classes, associated_classes);
-            for(unsigned int i = 0; i < trackedKeypoints.size(); i++)
-                if(!notmissing[i])
-                    activeKeypoints.push_back(trackedKeypoints[i]);
-        }
-        else activeKeypoints = trackedKeypoints;
-    }
-
+    
     //Update object state estimate
     std::vector<std::pair<cv::KeyPoint, int> > activeKeypointsBefore = activeKeypoints;
     im_prev = im_gray;
