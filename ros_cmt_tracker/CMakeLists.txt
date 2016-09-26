@@ -11,13 +11,22 @@ find_package(catkin REQUIRED COMPONENTS
   std_msgs
 )
 
-find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msgs std_srvs geometry_msgs roscpp rospy sensor_msgs visualization_msgs message_filters message_generation jsk_pcl_ros interactive_markers pcl_conversions jsk_topic_tools rviz eigen_conversions dynamic_tf_publisher jsk_interactive_marker jsk_recognition_msgs move_base_msgs rosgraph_msgs topic_tools jsk_topic_tools jsk_ik_server pcl_msgs jsk_footstep_msgs jsk_perception jsk_calibration resized_image_transport smach_msgs pcl_ros nav_msgs tf dynamic_reconfigure roseus)
+# find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msgs std_srvs geometry_msgs roscpp rospy sensor_msgs  message_filters message_generation jsk_pcl_ros pcl_conversions jsk_topic_tools eigen_conversions   jsk_perception jsk_calibration  pcl_ros tf dynamic_reconfigure)
 
+find_package(OpenCV REQUIRED)
 
 find_package(OpenMP)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
+
+find_package(CUDA REQUIRED)
+include(FindCUDA)
+
+set(CUDA_NVCC_FLAGS 
+  --generate-code arch=compute_50,code=sm_50
+  --generate-code arch=compute_52,code=sm_52
+)
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
@@ -89,7 +98,7 @@ set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES ros_cmt_tracker
+  LIBRARIES #ros_cmt_tracker
   CATKIN_DEPENDS #cv_bridge image_transport roscpp rospy
   DEPENDS system_lib
 )
@@ -111,9 +120,10 @@ include_directories(
 # )
 
 ## Declare a cpp executable
-add_executable(ros_cmt_tracker_node
+cuda_add_executable(ros_cmt_tracker_node
   src/ros_cmt_tracker_node.cpp
   src/CMT.cpp
+  src/cuda/cmt_gpu_kernel.cu
   )
 
 ## Add cmake target dependencies of the executable/library
@@ -123,7 +133,7 @@ add_executable(ros_cmt_tracker_node
 
 ## Specify libraries to link a library or executable target against
  target_link_libraries(ros_cmt_tracker_node
-   ${catkin_LIBRARIES}
+   ${catkin_LIBRARIES} ${OpenCV_LIBS}
  )
 
 #############

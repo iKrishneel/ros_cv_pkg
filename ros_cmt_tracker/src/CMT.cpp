@@ -91,8 +91,7 @@ cv::Point2f rotate(cv::Point2f p, float rad)
     return cv::Point2f(c*p.x-s*p.y,s*p.x+c*p.y);
 }
 
-CMT::CMT()
-{
+CMT::CMT() {
     detectorType = "Feature2D.BRISK";
     descriptorType = "Feature2D.BRISK";
     matcherType = "BruteForce-Hamming";
@@ -103,74 +102,105 @@ CMT::CMT()
     estimateScale = true;
     estimateRotation = true;
     nbInitialKeypoints = 0;
+
+    this->orb_gpu_ = cv::cuda::ORB::create(1000, 1.20f, 8, 11, 0, 2,
+                                           cv::ORB::HARRIS_SCORE, 31, true);
+    this->matcher_ =
+       cv::cuda::DescriptorMatcher::createBFMatcher(cv::NORM_HAMMING);
+    
 }
 
-void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft, cv::Point2f bottomright)
-{
+void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft,
+                     cv::Point2f bottomright) {
 
-    //Initialise detector, descriptor, matcher
-#if CV_MAJOR_VERSION < 3
-    detector = cv::Algorithm::create<cv::FeatureDetector>(detectorType.c_str());
-    descriptorExtractor = cv::Algorithm::create<cv::DescriptorExtractor>(descriptorType.c_str());
-    std::vector<std::string> list;
-    cv::Algorithm::getList(list);
-#elif CV_MAJOR_VERSION >= 3
+    // Initialise detector, descriptor, matcher
     detector = cv::BRISK::create(thrOutlier, 3, 1.0f);
+    // detector = cv::ORB::create(1000);
+    // descriptorExtractor = cv::ORB::create();
     descriptorExtractor = cv::BRISK::create();
-#endif
-    descriptorMatcher = cv::DescriptorMatcher::create(matcherType.c_str());
 
-    //Get initial keypoints in whole image
+    descriptorMatcher = cv::DescriptorMatcher::create(matcherType.c_str());
+    // descriptorMatcher = new cv::BFMatcher(cv::NORM_HAMMING2);
+
+    // Get initial keypoints in whole image
     std::vector<cv::KeyPoint> keypoints;
     detector->detect(im_gray0, keypoints);
 
-    //Remember keypoints that are in the rectangle as selected keypoints
+
+    std::vector<cv::KeyPoint> keypoints1;
+    cv::cuda::GpuMat d_im_gray0(im_gray0);
+    this->orb_gpu_->detect(d_im_gray0, keypoints1);
+
+    std::cout << "KEY SIZE: " << keypoints1.size()  << "\n";
+
+
+    
+    // Remember keypoints that are in the rectangle as selected keypoints
     std::vector<cv::KeyPoint> selected_keypoints;
     std::vector<cv::KeyPoint> background_keypoints;
-    inout_rect(keypoints, topleft, bottomright, selected_keypoints, background_keypoints);
-    descriptorExtractor->compute(im_gray0, selected_keypoints, selectedFeatures);
+    inout_rect(keypoints, topleft, bottomright, selected_keypoints,
+               background_keypoints);
+    descriptorExtractor->compute(im_gray0,
+                                 selected_keypoints, selectedFeatures);
 
-    if(selected_keypoints.size() == 0)
-    {
+    cv::cuda::GpuMat d_selectedFeatures;
+    this->orb_gpu_->compute(d_im_gray0,
+                            selected_keypoints,
+                            d_selectedFeatures);
+
+
+    
+    std::cout << "DONE: " << keypoints.size()  << "\t";
+    std::cout << "DONE: " << selected_keypoints.size()  << "\n";
+    
+    if (selected_keypoints.size() == 0) {
         printf("No keypoints found in selection");
         return;
     }
 
-    //Remember keypoints that are not in the rectangle as background keypoints
+    // Remember keypoints that are not in the rectangle as background keypoints
     cv::Mat background_features;
-    descriptorExtractor->compute(im_gray0, background_keypoints, background_features);
+    descriptorExtractor->compute(im_gray0, background_keypoints,
+                                 background_features);
 
-    //Assign each keypoint a class starting from 1, background is 0
+    // Assign each keypoint a class starting from 1, background is 0
     selectedClasses = std::vector<int>();
-    for(unsigned int i = 1; i <= selected_keypoints.size(); i++)
+    for (unsigned int i = 1; i <= selected_keypoints.size(); i++)
         selectedClasses.push_back(i);
     std::vector<int> backgroundClasses;
-    for(unsigned int i = 0; i < background_keypoints.size(); i++)
+    for (unsigned int i = 0; i < background_keypoints.size(); i++)
         backgroundClasses.push_back(0);
 
-    //Stack background features and selected features into database
-    featuresDatabase = cv::Mat(background_features.rows+selectedFeatures.rows, std::max(background_features.cols,selectedFeatures.cols), background_features.type());
-    if(background_features.cols > 0)
-        background_features.copyTo(featuresDatabase(cv::Rect(0,0,background_features.cols, background_features.rows)));
-    if(selectedFeatures.cols > 0)
-        selectedFeatures.copyTo(featuresDatabase(cv::Rect(0,background_features.rows,selectedFeatures.cols, selectedFeatures.rows)));
+    // Stack background features and selected features into database
+    featuresDatabase = cv::Mat(background_features.rows+selectedFeatures.rows,
+                               std::max(background_features.cols,
+                                        selectedFeatures.cols),
+                               background_features.type());
+    if (background_features.cols > 0)
+       background_features.copyTo(featuresDatabase(
+                                     cv::Rect(0, 0, background_features.cols,
+                                              background_features.rows)));
+    if (selectedFeatures.cols > 0)
+       selectedFeatures.copyTo(featuresDatabase(
+                                  cv::Rect(0, background_features.rows,
+                                           selectedFeatures.cols,
+                                           selectedFeatures.rows)));
 
-    //Same for classes
+    // Same for classes
     classesDatabase = std::vector<int>();
-    for(unsigned int i = 0; i < backgroundClasses.size(); i++)
+    for (unsigned int i = 0; i < backgroundClasses.size(); i++)
         classesDatabase.push_back(backgroundClasses[i]);
-    for(unsigned int i = 0; i < selectedClasses.size(); i++)
+    for (unsigned int i = 0; i < selectedClasses.size(); i++)
         classesDatabase.push_back(selectedClasses[i]);
 
-    //Get all distances between selected keypoints in squareform and get all angles between selected keypoints
+    // Get all distances between selected keypoints in squareform and
+    // get all angles between selected keypoints
     squareForm = std::vector<std::vector<float> >();
     angles = std::vector<std::vector<float> >();
-    for(unsigned int i = 0; i < selected_keypoints.size(); i++)
-    {
-        std::vector<float> lineSquare;
-        std::vector<float> lineAngle;
-        for(unsigned int j = 0; j < selected_keypoints.size(); j++)
-        {
+    for (unsigned int i = 0; i < selected_keypoints.size(); i++) {
+       std::vector<float> lineSquare;
+       std::vector<float> lineAngle;
+       for (unsigned int j = 0; j < selected_keypoints.size(); j++) {
             float dx = selected_keypoints[j].pt.x-selected_keypoints[i].pt.x;
             float dy = selected_keypoints[j].pt.y-selected_keypoints[i].pt.y;
             lineSquare.push_back(sqrt(dx*dx+dy*dy));
@@ -180,33 +210,35 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft, cv::Point2f bottomri
         angles.push_back(lineAngle);
     }
 
-    //Find the center of selected keypoints
-    cv::Point2f center(0,0);
-    for(unsigned int i = 0; i < selected_keypoints.size(); i++)
+    // Find the center of selected keypoints
+    cv::Point2f center(0, 0);
+    for (unsigned int i = 0; i < selected_keypoints.size(); i++)
         center += selected_keypoints[i].pt;
     center *= (1.0/selected_keypoints.size());
 
-    //Remember the rectangle coordinates relative to the center
+    // Remember the rectangle coordinates relative to the center
     centerToTopLeft = topleft - center;
     centerToTopRight = cv::Point2f(bottomright.x, topleft.y) - center;
     centerToBottomRight = bottomright - center;
     centerToBottomLeft = cv::Point2f(topleft.x, bottomright.y) - center;
 
-    //Calculate springs of each keypoint
+    // Calculate springs of each keypoint
     springs = std::vector<cv::Point2f>();
-    for(unsigned int i = 0; i < selected_keypoints.size(); i++)
+    for (unsigned int i = 0; i < selected_keypoints.size(); i++)
         springs.push_back(selected_keypoints[i].pt - center);
 
-    //Set start image for tracking
+    // Set start image for tracking
     im_prev = im_gray0.clone();
 
-    //Make keypoints 'active' keypoints
+    // Make keypoints 'active' keypoints
     activeKeypoints = std::vector<std::pair<cv::KeyPoint,int> >();
-    for(unsigned int i = 0; i < selected_keypoints.size(); i++)
-        activeKeypoints.push_back(std::make_pair(selected_keypoints[i], selectedClasses[i]));
+    for (unsigned int i = 0; i < selected_keypoints.size(); i++)
+       activeKeypoints.push_back(
+          std::make_pair(selected_keypoints[i], selectedClasses[i]));
 
-    //Remember number of initial keypoints
+    // Remember number of initial keypoints
     nbInitialKeypoints = selected_keypoints.size();
+
 }
 
 typedef std::pair<int,int> PairInt;
@@ -366,18 +398,17 @@ int argmax(const std::vector<int>& list)
     return id;
 }
 
-std::vector<int> fcluster(const std::vector<Cluster>& clusters, float threshold)
-{
+std::vector<int> fcluster(const std::vector<Cluster>& clusters, float threshold) {
     std::vector<int> data;
-    for(unsigned int i = 0; i < clusters.size()+1; i++)
+    for (unsigned int i = 0; i < clusters.size()+1; i++)
         data.push_back(0);
     int binId = 0;
     fcluster_rec(data, clusters, threshold, clusters[clusters.size()-1], binId);
     return data;
 }
 
-bool comparatorPairSecond( const std::pair<int, int>& l, const std::pair<int, int>& r)
-{
+bool comparatorPairSecond(const std::pair<int, int>& l,
+                          const std::pair<int, int>& r) {
     return l.second < r.second;
 }
 
@@ -394,15 +425,16 @@ std::vector<int> argSortInt(const std::vector<int>& list)
 }
 
 
-void CMT::estimate(const std::vector<std::pair<cv::KeyPoint, int> >& keypointsIN, cv::Point2f& center, float& scaleEstimate, float& medRot, std::vector<std::pair<cv::KeyPoint, int> >& keypoints)
-{
-    center = cv::Point2f(NAN,NAN);
+void CMT::estimate(
+    const std::vector<std::pair<cv::KeyPoint, int> >& keypointsIN,
+    cv::Point2f& center, float& scaleEstimate, float& medRot,
+    std::vector<std::pair<cv::KeyPoint, int> >& keypoints) {
+    center = cv::Point2f(NAN, NAN);
     scaleEstimate = NAN;
     medRot = NAN;
 
     //At least 2 keypoints are needed for scale
-    if(keypointsIN.size() > 1)
-    {
+    if (keypointsIN.size() > 1) {
         //sort
         std::vector<PairInt> list;
         for(unsigned int i = 0; i < keypointsIN.size(); i++)
@@ -516,8 +548,7 @@ std::vector<bool> in1d(const std::vector<int>& a, const std::vector<int>& b)
     return result;
 }
 
-void CMT::processFrame(cv::Mat im_gray)
-{
+void CMT::processFrame(cv::Mat im_gray) {
     trackedKeypoints = std::vector<std::pair<cv::KeyPoint, int> >();
     std::vector<unsigned char> status;
     track(im_prev, im_gray, activeKeypoints, trackedKeypoints, status);
@@ -526,25 +557,30 @@ void CMT::processFrame(cv::Mat im_gray)
     float scaleEstimate;
     float rotationEstimate;
     std::vector<std::pair<cv::KeyPoint, int> > trackedKeypoints2;
-    estimate(trackedKeypoints, center, scaleEstimate, rotationEstimate, trackedKeypoints2);
+    estimate(trackedKeypoints, center, scaleEstimate,
+             rotationEstimate, trackedKeypoints2);
     trackedKeypoints = trackedKeypoints2;
 
-    //Detect keypoints, compute descriptors
+    // Detect keypoints, compute descriptors
     std::vector<cv::KeyPoint> keypoints;
     cv::Mat features;
     detector->detect(im_gray, keypoints);
+
+    std::cout << "\033[34m KEY: \033[0m" << keypoints.size()  << "\n";
+    
     descriptorExtractor->compute(im_gray, keypoints, features);
 
-    //Create list of active keypoints
+    // Create list of active keypoints
     activeKeypoints = std::vector<std::pair<cv::KeyPoint, int> >();
 
-    //Get the best two matches for each feature
+    // Get the best two matches for each feature
     std::vector<std::vector<cv::DMatch> > matchesAll, selectedMatchesAll;
     descriptorMatcher->knnMatch(features, featuresDatabase, matchesAll, 2);
 
-    //Get all matches for selected features
-    if(!isnan(center.x) && !isnan(center.y))
-        descriptorMatcher->knnMatch(features, selectedFeatures, selectedMatchesAll, selectedFeatures.rows);
+    // Get all matches for selected features
+    if (!isnan(center.x) && !isnan(center.y))
+       descriptorMatcher->knnMatch(features, selectedFeatures,
+                                   selectedMatchesAll, selectedFeatures.rows);
 
     std::vector<cv::Point2f> transformedSprings(springs.size());
     for(int i = 0; i < springs.size(); i++)
