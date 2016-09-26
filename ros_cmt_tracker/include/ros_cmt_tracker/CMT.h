@@ -1,6 +1,8 @@
 #ifndef CMT_H
 #define CMT_H
 
+#include <thrust/sort.h>
+
 #include <ros_cmt_tracker/cmt_gpu_kernel.h>
 
 #include <opencv2/cudafeatures2d.hpp>

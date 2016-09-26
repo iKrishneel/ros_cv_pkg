@@ -39,6 +39,11 @@ void ROSCMTTracker::callback(const sensor_msgs::Image::ConstPtr &image_msg) {
        ROS_WARN_ONCE("PLEASE INITIALIZE THE OBJECT");
        return;
     }
+
+    struct timeval timer_start, timer_end;
+    gettimeofday(&timer_start, NULL);
+    
+    
     cv::Mat image = cv_ptr->image;
     cv::resize(image, image, cv::Size(image.cols/down_size_,
                                       image.rows/down_size_));
@@ -90,6 +95,13 @@ void ROSCMTTracker::callback(const sensor_msgs::Image::ConstPtr &image_msg) {
     cv::line(img, this->topRight, this->bottomRight, color, 3);
     cv::line(img, this->bottomRight, this->bottomLeft, color, 3);
     cv::line(img, this->bottomLeft, this->topLeft, color, 3);
+
+
+    gettimeofday(&timer_end, NULL);
+    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
+    ROS_ERROR("TIME: %3.6f", delta);
+    
     
     cv_bridge::CvImagePtr pub_msg(new cv_bridge::CvImage);
     pub_msg->header = image_msg->header;
