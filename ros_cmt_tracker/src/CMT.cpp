@@ -82,7 +82,6 @@ void track(cv::Mat im_prev, cv::Mat im_gray,
         }
         */
         
-        
         // Set status depending on fb_err and lk error
         for (unsigned int i = 0; i < status.size(); i++)
            status[i] = (fb_err[i] <= THR_FB) & status[i];
@@ -454,11 +453,13 @@ void CMT::estimate(
     if (keypointsIN.size() > 1) {
         // sort
         std::vector<PairInt> list;
-        for (unsigned int i = 0; i < keypointsIN.size(); i++)
+        for (unsigned int i = 0; i < keypointsIN.size(); i++) {
             list.push_back(std::make_pair(keypointsIN[i].second, i));
+        }
         std::sort(&list[0], &list[0]+list.size(), comparatorPair<int>);
-        for (unsigned int i = 0; i < list.size(); i++)
+        for (unsigned int i = 0; i < list.size(); i++) {
             keypoints.push_back(keypointsIN[list[i].second]);
+        }
 
         std::vector<int> ind1;
         std::vector<int> ind2;
