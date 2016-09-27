@@ -26,7 +26,7 @@ include(FindCUDA)
 set(CUDA_NVCC_FLAGS 
   --generate-code arch=compute_50,code=sm_50
   --generate-code arch=compute_52,code=sm_52
-)
+  )
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
@@ -126,6 +126,10 @@ cuda_add_executable(ros_cmt_tracker_node
   src/cuda/cmt_gpu_kernel.cu
   )
 
+set_target_properties(ros_cmt_tracker_node PROPERTIES
+  COMPILE_FLAGS "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CUDA"
+ )
+
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
 # add_dependencies(interactive_segmentation_node interactive_segmentation_generate_messages_cpp)
@@ -133,8 +137,8 @@ cuda_add_executable(ros_cmt_tracker_node
 
 ## Specify libraries to link a library or executable target against
  target_link_libraries(ros_cmt_tracker_node
-   ${catkin_LIBRARIES} ${OpenCV_LIBS}
- )
+   ${catkin_LIBRARIES} ${OpenCV_LIBS} 
+   )
 
 #############
 ## Install ##

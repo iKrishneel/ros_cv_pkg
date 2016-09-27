@@ -104,16 +104,16 @@ CMT::CMT() {
     detectorType = "Feature2D.BRISK";
     descriptorType = "Feature2D.BRISK";
     matcherType = "BruteForce-Hamming";
-    thrOutlier = 30;
-    thrConf = 0.75;
-    thrRatio = 0.8;
-    descriptorLength = 512;
+    thrOutlier = 1;
+    thrConf = 0.5;
+    thrRatio = 0.6;
+    descriptorLength = 64;
     estimateScale = true;
     estimateRotation = true;
     nbInitialKeypoints = 0;
 
-    this->orb_gpu_ = cv::cuda::ORB::create(1000, 1.20f, 8, 11, 0, 2,
-                                           cv::ORB::HARRIS_SCORE, 31, true);
+    this->orb_gpu_ = cv::cuda::ORB::create(1000, 1.20f, 8, 31, 0, 2,
+                                           cv::ORB::HARRIS_SCORE);
     this->matcher_ =
        cv::cuda::DescriptorMatcher::createBFMatcher(cv::NORM_HAMMING);
     
@@ -147,7 +147,6 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft,
 
     // Remember keypoints that are not in the rectangle as background
     // keypoints
-    // cv::Mat features;
     selectedFeatures = cv::Mat(static_cast<int>(selected_keypoints.size()),
                                features.cols, features.type());
     cv::Mat background_features = cv::Mat(
@@ -372,51 +371,58 @@ std::vector<Cluster> linkage(const std::vector<cv::Point2f>& list)
     return clusters;
 }
 
-void fcluster_rec(std::vector<int>& data, const std::vector<Cluster>& clusters, float threshold, const Cluster& currentCluster, int& binId)
-{
+void fcluster_rec(std::vector<int>& data,
+                  const std::vector<Cluster>& clusters,
+                  float threshold, const Cluster& currentCluster,
+                  int& binId) {
     int startBin = binId;
-    if(currentCluster.first >= (int)data.size())
-        fcluster_rec(data, clusters, threshold, clusters[currentCluster.first - data.size()], binId);
-    else data[currentCluster.first] = binId;
+    if (currentCluster.first >= static_cast<int>(data.size())) {
+       fcluster_rec(data, clusters, threshold,
+                    clusters[currentCluster.first - data.size()], binId);
+    } else {
+       data[currentCluster.first] = binId;
+    }
 
-    if(startBin == binId && currentCluster.dist >= threshold)
-        binId++;
+    if (startBin == binId && currentCluster.dist >= threshold) {
+       binId++;
+    }
     startBin = binId;
 
-    if(currentCluster.second >= (int)data.size())
-        fcluster_rec(data, clusters, threshold, clusters[currentCluster.second - data.size()], binId);
-    else data[currentCluster.second] = binId;
-
-    if(startBin == binId && currentCluster.dist >= threshold)
+    if (currentCluster.second >= static_cast<int>(data.size())) {
+       fcluster_rec(data, clusters, threshold,
+                    clusters[currentCluster.second - data.size()], binId);
+    } else {
+       data[currentCluster.second] = binId;
+    }
+    if (startBin == binId && currentCluster.dist >= threshold) {
         binId++;
+    }
 }
 
-std::vector<int> binCount(const std::vector<int>& T)
-{
+std::vector<int> binCount(const std::vector<int>& T) {
     std::vector<int> result;
-    for(unsigned int i = 0; i < T.size(); i++)
-    {
-        while(T[i] >= (int)result.size())
-            result.push_back(0);
-        result[T[i]]++;
+    for (unsigned int i = 0; i < T.size(); i++) {
+       while (T[i] >= static_cast<int>(result.size())) {
+          result.push_back(0);
+       }
+       result[T[i]]++;
     }
     return result;
 }
 
-int argmax(const std::vector<int>& list)
-{
+int argmax(const std::vector<int>& list) {
     int max = list[0];
     int id = 0;
-    for(unsigned int i = 1; i < list.size(); i++)
-        if(list[i] > max)
-        {
-            max = list[i];
-            id = i;
-        }
+    for (unsigned int i = 1; i < list.size(); i++)
+       if (list[i] > max) {
+          max = list[i];
+          id = i;
+       }
     return id;
 }
 
-std::vector<int> fcluster(const std::vector<Cluster>& clusters, float threshold) {
+std::vector<int>
+fcluster(const std::vector<Cluster>& clusters, float threshold) {
     std::vector<int> data;
     for (unsigned int i = 0; i < clusters.size()+1; i++)
         data.push_back(0);
@@ -430,15 +436,16 @@ bool comparatorPairSecond(const std::pair<int, int>& l,
     return l.second < r.second;
 }
 
-std::vector<int> argSortInt(const std::vector<int>& list)
-{
+std::vector<int> argSortInt(const std::vector<int>& list) {
     std::vector<int> result(list.size());
     std::vector<std::pair<int, int> > pairList(list.size());
-    for(int i = 0; i < list.size(); i++)
+    for (int i = 0; i < list.size(); i++) {
         pairList[i] = std::make_pair(i, list[i]);
+    }
     std::sort(&pairList[0], &pairList[0]+pairList.size(), comparatorPairSecond);
-    for(int i = 0; i < list.size(); i++)
+    for (int i = 0; i < list.size(); i++) {
         result[i] = pairList[i].first;
+    }
     return result;
 }
 
@@ -494,53 +501,53 @@ void CMT::estimate(
                 float dist = sqrt(p.dot(p));
                 float origDist = squareForm[class_ind1[i]][class_ind2[i]];
                 scaleChange.push_back(dist/origDist);
-                //Compute angle
+                // Compute angle
                 float angle = atan2(p.y, p.x);
                 float origAngle = angles[class_ind1[i]][class_ind2[i]];
                 float angleDiff = angle - origAngle;
-                //Fix long way angles
-                if(fabs(angleDiff) > CV_PI)
+                // Fix long way angles
+                if (fabs(angleDiff) > CV_PI)
                     angleDiff -= sign(angleDiff) * 2 * CV_PI;
                 angleDiffs.push_back(angleDiff);
             }
             scaleEstimate = median(scaleChange);
-            if(!estimateScale)
+            if (!estimateScale)
                 scaleEstimate = 1;
             medRot = median(angleDiffs);
-            if(!estimateRotation)
+            if (!estimateRotation)
                 medRot = 0;
             votes = std::vector<cv::Point2f>();
-            for(unsigned int i = 0; i < keypoints.size(); i++)
-                votes.push_back(keypoints[i].first.pt - scaleEstimate * rotate(springs[keypoints[i].second-1], medRot));
-            //Compute linkage between pairwise distances
+            for (unsigned int i = 0; i < keypoints.size(); i++)
+                votes.push_back(keypoints[i].first.pt - scaleEstimate *
+                                rotate(springs[keypoints[i].second-1], medRot));
+            // Compute linkage between pairwise distances
             std::vector<Cluster> linkageData = linkage(votes);
 
-            //Perform hierarchical distance-based clustering
+            // Perform hierarchical distance-based clustering
             std::vector<int> T = fcluster(linkageData, thrOutlier);
-            //Count votes for each cluster
+            // Count votes for each cluster
             std::vector<int> cnt = binCount(T);
-            //Get largest class
+            // Get largest class
             int Cmax = argmax(cnt);
 
-            //Remember outliers
+            // Remember outliers
             outliers = std::vector<std::pair<cv::KeyPoint, int> >();
             std::vector<std::pair<cv::KeyPoint, int> > newKeypoints;
             std::vector<cv::Point2f> newVotes;
-            for(unsigned int i = 0; i < keypoints.size(); i++)
-            {
-                if(T[i] != Cmax)
-                    outliers.push_back(keypoints[i]);
-                else
-                {
-                    newKeypoints.push_back(keypoints[i]);
-                    newVotes.push_back(votes[i]);
-                }
+            for (unsigned int i = 0; i < keypoints.size(); i++) {
+               if (T[i] != Cmax) {
+                  outliers.push_back(keypoints[i]);
+               } else {
+                  newKeypoints.push_back(keypoints[i]);
+                  newVotes.push_back(votes[i]);
+               }
             }
             keypoints = newKeypoints;
 
-            center = cv::Point2f(0,0);
-            for(unsigned int i = 0; i < newVotes.size(); i++)
+            center = cv::Point2f(0, 0);
+            for (unsigned int i = 0; i < newVotes.size(); i++) {
                 center += newVotes[i];
+            }
             center *= (1.0/newVotes.size());
         }
     }
@@ -549,24 +556,23 @@ void CMT::estimate(
 
 
 //todo : n*log(n) by sorting the second array and dichotomic search instead of n^2
-std::vector<bool> in1d(const std::vector<int>& a, const std::vector<int>& b)
-{
+std::vector<bool>
+in1d(const std::vector<int>& a, const std::vector<int>& b) {
     std::vector<bool> result;
-    for(unsigned int i = 0; i < a.size(); i++)
-    {
+    for (unsigned int i = 0; i < a.size(); i++) {
         bool found = false;
-        for(unsigned int j = 0; j < b.size(); j++)
-            if(a[i] == b[j])
-            {
-                found = true;
-                break;
-            }
+        for (unsigned int j = 0; j < b.size(); j++)
+           if(a[i] == b[j]) {
+              found = true;
+              break;
+           }
         result.push_back(found);
     }
     return result;
 }
 
 void CMT::processFrame(cv::Mat im_gray) {
+   
     trackedKeypoints = std::vector<std::pair<cv::KeyPoint, int> >();
     std::vector<unsigned char> status;
     track(im_prev, im_gray, activeKeypoints, trackedKeypoints, status);
@@ -581,17 +587,11 @@ void CMT::processFrame(cv::Mat im_gray) {
 
     // Detect keypoints, compute descriptors
     std::vector<cv::KeyPoint> keypoints;
-
-    cv::Mat features;
-    /*
-    detector->detect(im_gray, keypoints);
-    descriptorExtractor->compute(im_gray, keypoints, features);
-    */
-
     cv::cuda::GpuMat d_im_gray(im_gray);
     cv::cuda::GpuMat d_features;
     this->orb_gpu_->detectAndCompute(d_im_gray, cv::cuda::GpuMat(),
                                      keypoints, d_features, false);
+    cv::Mat features;
     d_features.download(features);
     
     // Create list of active keypoints
@@ -599,17 +599,12 @@ void CMT::processFrame(cv::Mat im_gray) {
 
     // Get the best two matches for each feature
     std::vector<std::vector<cv::DMatch> > matchesAll, selectedMatchesAll;
-    //! descriptorMatcher->knnMatch(features, featuresDatabase, matchesAll, 2);
     this->matcher_->knnMatch(cv::cuda::GpuMat(features),
                              cv::cuda::GpuMat(featuresDatabase),
                              matchesAll, 2);
     
     // Get all matches for selected features
     if (!isnan(center.x) && !isnan(center.y)) {
-       //    descriptorMatcher->knnMatch(features, selectedFeatures,
-       //                                selectedMatchesAll,
-       //                                selectedFeatures.rows);
-
        this->matcher_->knnMatch(cv::cuda::GpuMat(features),
                                 cv::cuda::GpuMat(selectedFeatures),
                                 selectedMatchesAll, selectedFeatures.rows);
@@ -695,17 +690,26 @@ void CMT::processFrame(cv::Mat im_gray) {
              combined[j] = (displacements[j] < thrOutlier)*confidences[j];
           }
           std::vector<int>& classes = selectedClasses;
+          
           // Sort in descending order
+
+          
           std::vector<PairFloat> sorted_conf(combined.size());
           for (unsigned int j = 0; j < combined.size(); j++)
              sorted_conf[j] = std::make_pair(combined[j], j);
           
           std::sort(&sorted_conf[0], &sorted_conf[0]+sorted_conf.size(),
                     comparatorPairDesc<float>);
-
+          
           // Get best and second best index
           int bestInd = sorted_conf[0].second;
           int secondBestInd = sorted_conf[1].second;
+
+          
+          // int bestInd1;
+          // int secondBestInd1;
+          // sortConfPairs(bestInd1, secondBestInd1, combined);
+          
           
           // Compute distance ratio according to Lowe
           float ratio = (1-combined[bestInd]) / (1-combined[secondBestInd]);
@@ -715,6 +719,7 @@ void CMT::processFrame(cv::Mat im_gray) {
 
           // If distance ratio is ok and absolute distance is ok and
           // keypoint class is not background
+          
           if (ratio < thrRatio && combined[bestInd] > thrConf &&
              keypoint_class != 0) {
              for (int i = activeKeypoints.size()-1; i >= 0; i--)

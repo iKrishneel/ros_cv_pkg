@@ -3,7 +3,7 @@
 
 ROSCMTTracker::ROSCMTTracker():
     block_size_(10), tracker_init_(false), object_init_(false),
-    frame_counter_(0), down_size_(2) {
+    frame_counter_(0), down_size_(1) {
     this->onInit();
 }
 
