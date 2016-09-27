@@ -41,9 +41,6 @@ void track(cv::Mat im_prev, cv::Mat im_gray,
            std::vector<unsigned char>& status, int THR_FB) {
     // Status of tracked keypoint - True means successfully tracked
     status = std::vector<unsigned char>();
-    // for(int i = 0; i < keypointsIN.size(); i++)
-    //  status.push_back(false);
-    // If at least one keypoint is active
     if (keypointsIN.size() > 0) {
         std::vector<cv::Point2f> pts;
         std::vector<cv::Point2f> pts_back;
@@ -51,7 +48,7 @@ void track(cv::Mat im_prev, cv::Mat im_gray,
         std::vector<unsigned char> status_back;
         std::vector<float> err;
         std::vector<float> err_back;
-        std::vector<float> fb_err;
+        // std::vector<float> fb_err;
         for (unsigned int i = 0; i < keypointsIN.size(); i++)
            pts.push_back(cv::Point2f(keypointsIN[i].first.pt.x,
                                      keypointsIN[i].first.pt.y));
@@ -68,13 +65,24 @@ void track(cv::Mat im_prev, cv::Mat im_gray,
                      cv::cuda::GpuMat(nextPts), d_nextpts, d_status);
         d_status.download(status_back);
         d_nextpts.download(pts_back);
-        
+
         // Calculate forward-backward error
+
+        const size_t SIZE = static_cast<int>(pts.size());
+        float fb_err[SIZE];
+        if (!forwardBackwardError(fb_err, pts, pts_back)) {
+           return;
+        }
+        
+        /*
         for (unsigned int i = 0; i < pts.size(); i++) {
             cv::Point2f v = pts_back[i]-pts[i];
             fb_err.push_back(sqrt(v.dot(v)));
+            std::cout << "Err: " << fb_err[i]  << " " << errors[i] << "\n";
         }
-
+        */
+        
+        
         // Set status depending on fb_err and lk error
         for (unsigned int i = 0; i < status.size(); i++)
            status[i] = (fb_err[i] <= THR_FB) & status[i];
@@ -248,16 +256,6 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft,
 }
 
 
-
-
-
-
-
-
-
-
-
-
 typedef std::pair<int,int> PairInt;
 typedef std::pair<float,int> PairFloat;
 
@@ -274,97 +272,90 @@ bool comparatorPairDesc ( const std::pair<T,int>& l, const std::pair<T,int>& r)
 }
 
 template <typename T>
-T sign(T t)
-{
-    if( t == 0 )
+T sign(T t) {
+    if (t == 0)
         return T(0);
     else
         return (t < 0) ? T(-1) : T(1);
 }
 
 template<typename T>
-T median(std::vector<T> list)
-{
+T median(std::vector<T> list) {
     T val;
     std::nth_element(&list[0], &list[0]+list.size()/2, &list[0]+list.size());
     val = list[list.size()/2];
-    if(list.size()%2==0)
-    {
-        std::nth_element(&list[0], &list[0]+list.size()/2-1, &list[0]+list.size());
+    if (list.size()%2 == 0) {
+        std::nth_element(&list[0], &list[0]+list.size()/2-1,
+                         &list[0]+list.size());
         val = (val+list[list.size()/2-1])/2;
     }
     return val;
 }
 
-float findMinSymetric(const std::vector<std::vector<float> >& dist, const std::vector<bool>& used, int limit, int &i, int &j)
-{
+float findMinSymetric(const std::vector<std::vector<float> >& dist,
+                      const std::vector<bool>& used, int limit,
+                      int &i, int &j) {
     float min = dist[0][0];
     i = 0;
     j = 0;
-    for(int x = 0; x < limit; x++)
-    {
-        if(!used[x])
-        {
-            for(int y = x+1; y < limit; y++)
-                if(!used[y] && dist[x][y] <= min)
-                {
-                    min = dist[x][y];
-                    i = x;
-                    j = y;
-                }
-        }
+    for (int x = 0; x < limit; x++) {
+       if (!used[x]) {
+          for (int y = x+1; y < limit; y++)
+             if (!used[y] && dist[x][y] <= min) {
+                min = dist[x][y];
+                i = x;
+                j = y;
+             }
+       }
     }
     return min;
 }
 
-std::vector<Cluster> linkage(const std::vector<cv::Point2f>& list)
-{
+std::vector<Cluster> linkage(const std::vector<cv::Point2f>& list) {
     float inf = 10000000.0;
     std::vector<bool> used;
-    for(unsigned int i = 0; i < 2*list.size(); i++)
-        used.push_back(false);
+    for (unsigned int i = 0; i < 2*list.size(); i++)
+       used.push_back(false);
     std::vector<std::vector<float> > dist;
-    for(unsigned int i = 0; i < list.size(); i++)
-    {
+    for (unsigned int i = 0; i < list.size(); i++) {
         std::vector<float> line;
-        for(unsigned int j = 0; j < list.size(); j++)
-        {
-            if(i == j)
-                line.push_back(inf);
-            else
-            {
-                cv::Point2f p = list[i]-list[j];
-                line.push_back(sqrt(p.dot(p)));
-            }
+        for (unsigned int j = 0; j < list.size(); j++) {
+           if (i == j)
+              line.push_back(inf);
+           else {
+              cv::Point2f p = list[i]-list[j];
+              line.push_back(sqrt(p.dot(p)));
+           }
         }
-        for(unsigned int j = 0; j < list.size(); j++)
-            line.push_back(inf);
+        for (unsigned int j = 0; j < list.size(); j++)
+           line.push_back(inf);
         dist.push_back(line);
     }
-    for(unsigned int i = 0; i < list.size(); i++)
-    {
+    for (unsigned int i = 0; i < list.size(); i++) {
         std::vector<float> line;
-        for(unsigned int j = 0; j < 2*list.size(); j++)
-            line.push_back(inf);
+        for (unsigned int j = 0; j < 2*list.size(); j++)
+           line.push_back(inf);
         dist.push_back(line);
     }
     std::vector<Cluster> clusters;
-    while(clusters.size() < list.size()-1)
-    {
+    while (clusters.size() < list.size()-1) {
         int x, y;
-        float min = findMinSymetric(dist, used, list.size()+clusters.size(), x, y);
+        float min = findMinSymetric(dist, used,
+                                    list.size()+clusters.size(), x, y);
         Cluster cluster;
         cluster.first = x;
         cluster.second = y;
         cluster.dist = min;
-        cluster.num = (x < (int)list.size() ? 1 : clusters[x-list.size()].num) + (y < (int)list.size() ? 1 : clusters[y-list.size()].num);
+        cluster.num = (x < static_cast<int>(list.size()) ? 1 :
+                       clusters[x-list.size()].num) +
+           (y < (int)list.size() ? 1 : clusters[y-list.size()].num);
         used[x] = true;
         used[y] = true;
         int limit = list.size()+clusters.size();
-        for(int i = 0; i < limit; i++)
-        {
-            if(!used[i])
-                dist[i][limit] = dist[limit][i] = std::min(dist[i][x], dist[i][y]);
+        for (int i = 0; i < limit; i++) {
+           if (!used[i])
+              dist[i][limit] = dist[limit][i] = std::min(dist[i][x],
+                                                         dist[i][y]);
         }
         clusters.push_back(cluster);
     }
@@ -553,16 +544,13 @@ void CMT::estimate(
     }
 }
 
-
-
-//todo : n*log(n) by sorting the second array and dichotomic search instead of n^2
 std::vector<bool>
 in1d(const std::vector<int>& a, const std::vector<int>& b) {
     std::vector<bool> result;
     for (unsigned int i = 0; i < a.size(); i++) {
         bool found = false;
         for (unsigned int j = 0; j < b.size(); j++)
-           if(a[i] == b[j]) {
+           if (a[i] == b[j]) {
               found = true;
               break;
            }
@@ -584,7 +572,8 @@ void CMT::processFrame(cv::Mat im_gray) {
     estimate(trackedKeypoints, center, scaleEstimate,
              rotationEstimate, trackedKeypoints2);
     trackedKeypoints = trackedKeypoints2;
-
+    
+    
     // Detect keypoints, compute descriptors
     std::vector<cv::KeyPoint> keypoints;
     cv::cuda::GpuMat d_im_gray(im_gray);
@@ -615,6 +604,9 @@ void CMT::processFrame(cv::Mat im_gray) {
         transformedSprings[i] = scaleEstimate *
            rotate(springs[i], - rotationEstimate);
     }
+
+    struct timeval timer_start, timer_end;
+    gettimeofday(&timer_start, NULL);
     
     // For each keypoint and its descriptor
     for (unsigned int i = 0; i < keypoints.size(); i++) {
@@ -735,12 +727,11 @@ void CMT::processFrame(cv::Mat im_gray) {
 
 
 
-
-
-
-
-
-
+    gettimeofday(&timer_end, NULL);
+    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;    
+    printf("TIME: %3.6f\n", delta);
+    
     
     // If some keypoints have been tracked
     if (trackedKeypoints.size() > 0) {
@@ -764,30 +755,37 @@ void CMT::processFrame(cv::Mat im_gray) {
     }
 
     
-    //Update object state estimate
-    std::vector<std::pair<cv::KeyPoint, int> > activeKeypointsBefore = activeKeypoints;
+    // Update object state estimate
+    std::vector<std::pair<cv::KeyPoint, int> > activeKeypointsBefore =
+       activeKeypoints;
     im_prev = im_gray;
-    topLeft = cv::Point2f(NAN,NAN);
-    topRight = cv::Point2f(NAN,NAN);
-    bottomLeft = cv::Point2f(NAN,NAN);
-    bottomRight = cv::Point2f(NAN,NAN);
+    topLeft = cv::Point2f(NAN, NAN);
+    topRight = cv::Point2f(NAN, NAN);
+    bottomLeft = cv::Point2f(NAN, NAN);
+    bottomRight = cv::Point2f(NAN, NAN);
 
-    boundingbox = cv::Rect_<float>(NAN,NAN,NAN,NAN);
+    boundingbox = cv::Rect_<float>(NAN, NAN, NAN, NAN);
     hasResult = false;
-    if(!(isnan(center.x) | isnan(center.y)) && activeKeypoints.size() > nbInitialKeypoints / 10)
-    {
-        hasResult = true;
+    if (!(isnan(center.x) | isnan(center.y)) &&
+       activeKeypoints.size() > nbInitialKeypoints / 10) {
+       hasResult = true;
+       topLeft = center + scaleEstimate*rotate(centerToTopLeft,
+                                               rotationEstimate);
+       topRight = center + scaleEstimate*rotate(centerToTopRight,
+                                                rotationEstimate);
+       bottomLeft = center + scaleEstimate*rotate(centerToBottomLeft,
+                                                  rotationEstimate);
+        bottomRight = center + scaleEstimate*rotate(centerToBottomRight,
+                                                    rotationEstimate);
 
-        topLeft = center + scaleEstimate*rotate(centerToTopLeft, rotationEstimate);
-        topRight = center + scaleEstimate*rotate(centerToTopRight, rotationEstimate);
-        bottomLeft = center + scaleEstimate*rotate(centerToBottomLeft, rotationEstimate);
-        bottomRight = center + scaleEstimate*rotate(centerToBottomRight, rotationEstimate);
-
-        float minx = std::min(std::min(topLeft.x,topRight.x),std::min(bottomRight.x, bottomLeft.x));
-        float miny = std::min(std::min(topLeft.y,topRight.y),std::min(bottomRight.y, bottomLeft.y));
-        float maxx = std::max(std::max(topLeft.x,topRight.x),std::max(bottomRight.x, bottomLeft.x));
-        float maxy = std::max(std::max(topLeft.y,topRight.y),std::max(bottomRight.y, bottomLeft.y));
-
+        float minx = std::min(std::min(topLeft.x, topRight.x),
+                              std::min(bottomRight.x, bottomLeft.x));
+        float miny = std::min(std::min(topLeft.y, topRight.y),
+                              std::min(bottomRight.y, bottomLeft.y));
+        float maxx = std::max(std::max(topLeft.x, topRight.x),
+                              std::max(bottomRight.x, bottomLeft.x));
+        float maxy = std::max(std::max(topLeft.y, topRight.y),
+                              std::max(bottomRight.y, bottomLeft.y));
         boundingbox = cv::Rect_<float>(minx, miny, maxx-minx, maxy-miny);
     }
 }

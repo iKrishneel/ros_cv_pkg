@@ -2,6 +2,7 @@
 #define CMT_H
 
 #include <ros_cmt_tracker/cmt_gpu_kernel.h>
+#include <sys/time.h>
 
 #include <opencv2/cudafeatures2d.hpp>
 #include <opencv2/cudaimgproc.hpp>
@@ -57,8 +58,8 @@ class CMT {
     std::vector<cv::Point2f> springs;
 
     cv::Mat im_prev;
-    std::vector<std::pair<cv::KeyPoint,int> > activeKeypoints;
-    std::vector<std::pair<cv::KeyPoint,int> > trackedKeypoints;
+    std::vector<std::pair<cv::KeyPoint, int> > activeKeypoints;
+    std::vector<std::pair<cv::KeyPoint, int> > trackedKeypoints;
 
     unsigned int nbInitialKeypoints;
 
