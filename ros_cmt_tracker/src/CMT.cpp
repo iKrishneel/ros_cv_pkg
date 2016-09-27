@@ -5,21 +5,14 @@
 #include <cmath>
 
 #if __cplusplus < 201103L //test if c++11
-
-    #include <limits>
-
-    #ifndef NAN
-    //may not be correct on all compilator, DON'T USE the flag FFAST-MATH
-
-        #define NAN std::numeric_limits<float>::quiet_NaN()
-
-        template <typename T>
-        bool isnan(T d)
-        {
-          return d != d;
-        }
-    #endif
-
+#include <limits>
+#ifndef NAN
+#define NAN std::numeric_limits<float>::quiet_NaN()
+template <typename T>
+bool isnan(T d) {
+   return d != d;
+}
+#endif
 #endif
 
 std::vector<bool>
@@ -62,10 +55,6 @@ void track(cv::Mat im_prev, cv::Mat im_gray,
         for (unsigned int i = 0; i < keypointsIN.size(); i++)
            pts.push_back(cv::Point2f(keypointsIN[i].first.pt.x,
                                      keypointsIN[i].first.pt.y));
-
-        // Calculate forward optical flow for prev_location
-        // cv::calcOpticalFlowPyrLK(im_prev, im_gray, pts, nextPts, status, err);
-        
         cv::cuda::GpuMat d_status;
         cv::cuda::GpuMat d_nextpts;
         cv::Ptr<cv::cuda::SparsePyrLKOpticalFlow> d_calc =
@@ -74,16 +63,11 @@ void track(cv::Mat im_prev, cv::Mat im_gray,
                      cv::cuda::GpuMat(pts), d_nextpts, d_status);
         d_status.download(status);
         d_nextpts.download(nextPts);
-        
-        // Calculate backward optical flow for prev_location
-        // cv::calcOpticalFlowPyrLK(im_gray, im_prev, nextPts, pts_back,
-        //                          status_back, err_back);
 
         d_calc->calc(cv::cuda::GpuMat(im_gray), cv::cuda::GpuMat(im_prev),
                      cv::cuda::GpuMat(nextPts), d_nextpts, d_status);
         d_status.download(status_back);
         d_nextpts.download(pts_back);
-
         
         // Calculate forward-backward error
         for (unsigned int i = 0; i < pts.size(); i++) {
@@ -103,17 +87,17 @@ void track(cv::Mat im_prev, cv::Mat im_gray,
                keypointsTracked.push_back(p);
             }
         }
-    } else
+    } else {
        keypointsTracked = std::vector<std::pair<cv::KeyPoint, int> >();
+    }
 }
 
-cv::Point2f rotate(cv::Point2f p, float rad)
-{
-    if(rad == 0)
+cv::Point2f rotate(cv::Point2f p, float rad) {
+    if (rad == 0)
         return p;
     float s = sin(rad);
     float c = cos(rad);
-    return cv::Point2f(c*p.x-s*p.y,s*p.x+c*p.y);
+    return cv::Point2f(c*p.x-s*p.y, s*p.x+c*p.y);
 }
 
 CMT::CMT() {
@@ -128,7 +112,7 @@ CMT::CMT() {
     estimateRotation = true;
     nbInitialKeypoints = 0;
 
-    this->orb_gpu_ = cv::cuda::ORB::create(500, 1.20f, 8, 11, 0, 2,
+    this->orb_gpu_ = cv::cuda::ORB::create(1000, 1.20f, 8, 11, 0, 2,
                                            cv::ORB::HARRIS_SCORE, 31, true);
     this->matcher_ =
        cv::cuda::DescriptorMatcher::createBFMatcher(cv::NORM_HAMMING);
@@ -140,23 +124,12 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft,
                      cv::Point2f bottomright) {
 
     // Initialise detector, descriptor, matcher
-    // detector = cv::BRISK::create(thrOutlier, 3, 1.0f);
-    // detector = cv::ORB::create(1000);
-    // descriptorExtractor = cv::ORB::create();
-    // descriptorExtractor = cv::BRISK::create();
-    // descriptorMatcher = cv::DescriptorMatcher::create(matcherType.c_str());
-    // descriptorMatcher = new cv::BFMatcher(cv::NORM_HAMMING2);
-
-    // Get initial keypoints in whole image
     std::vector<cv::KeyPoint> keypoints;
-    cv::Mat features;
-    // detector->detect(im_gray0, keypoints);
-    // descriptorExtractor->compute(im_gray0, keypoints, features);
-
     cv::cuda::GpuMat d_im_gray0(im_gray0);
     cv::cuda::GpuMat d_features;
     this->orb_gpu_->detectAndCompute(d_im_gray0, cv::cuda::GpuMat(),
                                      keypoints, d_features, false);
+    cv::Mat features;
     d_features.download(features);
 
     

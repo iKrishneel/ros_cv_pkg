@@ -26,7 +26,7 @@ class CMT {
     bool estimateRotation;
 
 
-   // cv::Ptr<cv::ORB> detector;
+    // cv::Ptr<cv::ORB> detector;
     cv::Ptr<cv::BRISK> detector;
    
     cv::Ptr<cv::DescriptorExtractor> descriptorExtractor;
@@ -71,16 +71,15 @@ class CMT {
     CMT();
     void initialise(cv::Mat im_gray0, cv::Point2f topleft,
                     cv::Point2f bottomright);
-   void estimate(
+    void estimate(
       const std::vector<std::pair<cv::KeyPoint, int> >& keypointsIN,
       cv::Point2f& center, float& scaleEstimate, float& medRot,
       std::vector<std::pair<cv::KeyPoint, int> >& keypoints);
     void processFrame(cv::Mat im_gray);
 };
 
-class Cluster
-{
-public:
+class Cluster{
+ public:
     int first, second;//cluster id
     float dist;
     int num;
