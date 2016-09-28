@@ -11,13 +11,14 @@
 bool forwardBackwardError(float *,
                           const std::vector<cv::Point2f> &,
                           const std::vector<cv::Point2f> &);
-bool forwardBackwardError(float *,
+bool forwardBackwardError(float *, 
                           const std::vector<cv::Point2f> &,
                           cv::cuda::GpuMat);
 
 bool keypointsAngluarDifferenceGPU(float *, float *, float *,
+                                   float *,
                                    std::vector<int>, std::vector<int>,
-                                   const cv::Mat);
+                                   const cv::Mat, const cv::Mat);
 
 
 #endif /* _CMT_GPU_KERNEL_H_ */
