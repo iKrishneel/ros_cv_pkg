@@ -48,21 +48,19 @@ void track(cv::Mat im_prev, cv::Mat im_gray,
         std::vector<unsigned char> status_back;
         std::vector<float> err;
         std::vector<float> err_back;
-
-        struct timeval timer_start, timer_end;
-        gettimeofday(&timer_start, NULL);
         
-        for (unsigned int i = 0; i < keypointsIN.size(); i++)
+        for (unsigned int i = 0; i < keypointsIN.size(); i++) {
            pts.push_back(cv::Point2f(keypointsIN[i].first.pt.x,
                                      keypointsIN[i].first.pt.y));
-
+        }
+        
         cv::cuda::GpuMat d_status;
         cv::cuda::GpuMat d_nextpts;
         cv::cuda::GpuMat d_im_prev(im_prev);
         cv::cuda::GpuMat d_im_gray(im_gray);
         cv::cuda::GpuMat d_pts(pts);
         cv::cuda::GpuMat d_nextpts_back;
-
+        
         cv::Ptr<cv::cuda::SparsePyrLKOpticalFlow> d_calc =
            cv::cuda::SparsePyrLKOpticalFlow::create();
         d_calc->calc(d_im_prev, d_im_gray, d_pts, d_nextpts, d_status);
@@ -87,10 +85,6 @@ void track(cv::Mat im_prev, cv::Mat im_gray,
             fb_err.push_back(sqrt(v.dot(v)));
         }
         */
-        gettimeofday(&timer_end, NULL);
-        double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
-                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
-        printf("\033[34mTIME: %3.6f\033[0m\n", delta);
         
         // Set status depending on fb_err and lk error
         for (unsigned int i = 0; i < status.size(); i++)
@@ -571,20 +565,14 @@ in1d(const std::vector<int>& a, const std::vector<int>& b) {
 }
 
 void CMT::processFrame(cv::Mat im_gray) {
-  
-     struct timeval timer_start, timer_end;
-     gettimeofday(&timer_start, NULL);
     
     trackedKeypoints = std::vector<std::pair<cv::KeyPoint, int> >();
     std::vector<unsigned char> status;
     track(im_prev, im_gray, activeKeypoints, trackedKeypoints, status);
-    
 
-    gettimeofday(&timer_end, NULL);
-    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
-                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;    
-    printf("TIME: %3.6f\n", delta);
 
+    struct timeval timer_start, timer_end;
+    gettimeofday(&timer_start, NULL);
 
     cv::Point2f center;
     float scaleEstimate;
@@ -593,7 +581,14 @@ void CMT::processFrame(cv::Mat im_gray) {
     estimate(trackedKeypoints, center, scaleEstimate,
              rotationEstimate, trackedKeypoints2);
     trackedKeypoints = trackedKeypoints2;
-    
+
+    gettimeofday(&timer_end, NULL);
+    double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;    
+    printf("TIME: %3.6f\n", delta);
+
+
+
     
     // Detect keypoints, compute descriptors
     std::vector<cv::KeyPoint> keypoints;
