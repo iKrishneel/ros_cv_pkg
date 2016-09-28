@@ -5,6 +5,7 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/cudaimgproc.hpp>
 
+#define CUDART_PI_F 3.141592654f
 #define GRID_SIZE 16
 
 bool forwardBackwardError(float *,
@@ -14,8 +15,9 @@ bool forwardBackwardError(float *,
                           const std::vector<cv::Point2f> &,
                           cv::cuda::GpuMat);
 
-void processFrameGPU(cv::Mat);
-
+bool keypointsAngluarDifferenceGPU(float *, float *, float *,
+                                   std::vector<int>, std::vector<int>,
+                                   const cv::Mat);
 
 
 #endif /* _CMT_GPU_KERNEL_H_ */

@@ -39,8 +39,10 @@ class CMT {
     cv::Mat featuresDatabase;
     std::vector<int> classesDatabase;
 
-    std::vector<std::vector<float> > squareForm;
-    std::vector<std::vector<float> > angles;
+    // std::vector<std::vector<float> > squareForm;
+    // std::vector<std::vector<float> > angles;
+    cv::Mat angles_;
+    cv::Mat square_form_;
 
     cv::Point2f topLeft;
     cv::Point2f topRight;

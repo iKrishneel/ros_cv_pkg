@@ -210,21 +210,31 @@ void CMT::initialise(cv::Mat im_gray0, cv::Point2f topleft,
 
     // Get all distances between selected keypoints in squareform and
     // get all angles between selected keypoints
-    squareForm = std::vector<std::vector<float> >();
-    angles = std::vector<std::vector<float> >();
+    // squareForm = std::vector<std::vector<float> >();
+    // angles = std::vector<std::vector<float> >();
+
+    cv::Mat square_form = cv::Mat(selectedFeatures.rows,
+                                  selectedFeatures.rows, CV_32F);
+    cv::Mat keypoint_angles = cv::Mat(selectedFeatures.rows,
+                                      selectedFeatures.rows, CV_32F);
+    
     for (unsigned int i = 0; i < selected_keypoints.size(); i++) {
-       std::vector<float> lineSquare;
-       std::vector<float> lineAngle;
+       // std::vector<float> lineSquare;
+       // std::vector<float> lineAngle;
        for (unsigned int j = 0; j < selected_keypoints.size(); j++) {
             float dx = selected_keypoints[j].pt.x-selected_keypoints[i].pt.x;
             float dy = selected_keypoints[j].pt.y-selected_keypoints[i].pt.y;
-            lineSquare.push_back(sqrt(dx*dx+dy*dy));
-            lineAngle.push_back(atan2(dy, dx));
+            // lineSquare.push_back(sqrt(dx*dx+dy*dy));
+            // lineAngle.push_back(atan2(dy, dx));
+            square_form.at<float>(i, j) = std::sqrt(dx*dx+dy*dy);
+            keypoint_angles.at<float>(i, j) = atan2(dy, dx);
         }
-        squareForm.push_back(lineSquare);
-        angles.push_back(lineAngle);
+       // squareForm.push_back(lineSquare);
+       // angles.push_back(lineAngle);
     }
-
+    this->angles_  = keypoint_angles.clone();
+    this->square_form_ = square_form.clone();
+    
     // Find the center of selected keypoints
     cv::Point2f center(0, 0);
     for (unsigned int i = 0; i < selected_keypoints.size(); i++)
@@ -464,58 +474,97 @@ void CMT::estimate(
         for (unsigned int i = 0; i < list.size(); i++) {
             keypoints.push_back(keypointsIN[list[i].second]);
         }
-
+        
         std::vector<int> ind1;
         std::vector<int> ind2;
-        for (unsigned int i = 0; i < list.size(); i++)
+        for (unsigned int i = 0; i < list.size(); i++) {
             for (unsigned int j = 0; j < list.size(); j++) {
                if (i != j && keypoints[i].second != keypoints[j].second) {
                   ind1.push_back(i);
                   ind2.push_back(j);
                }
             }
+        }
+        
         if (ind1.size() > 0) {
             std::vector<int> class_ind1;
             std::vector<int> class_ind2;
             std::vector<cv::KeyPoint> pts_ind1;
             std::vector<cv::KeyPoint> pts_ind2;
+
+            const int SIZE = static_cast<int>(ind1.size()) * 2;
+            float pts_ind11[SIZE];
+            float pts_ind22[SIZE];
+
+            int icount = 0;
             for (unsigned int i = 0; i < ind1.size(); i++) {
                 class_ind1.push_back(keypoints[ind1[i]].second-1);
                 class_ind2.push_back(keypoints[ind2[i]].second-1);
                 pts_ind1.push_back(keypoints[ind1[i]].first);
                 pts_ind2.push_back(keypoints[ind2[i]].first);
+
+                icount = (i * 2);
+                pts_ind11[icount] = keypoints[ind1[i]].first.pt.x;
+                pts_ind22[icount] = keypoints[ind2[i]].first.pt.x;
+                pts_ind11[icount+1] = keypoints[ind1[i]].first.pt.y;
+                pts_ind22[icount+1] = keypoints[ind2[i]].first.pt.y;
             }
 
+
+
+            
+            float angle_diffs[SIZE/2];
+            keypointsAngluarDifferenceGPU(angle_diffs, pts_ind11,
+                                          pts_ind22, class_ind1,
+                                          class_ind2, angles_);            
+
+            struct timeval timer_start, timer_end;
+            gettimeofday(&timer_start, NULL);
+    
             std::vector<float> scaleChange;
             std::vector<float> angleDiffs;
             for (unsigned int i = 0; i < pts_ind1.size(); i++) {
-                cv::Point2f p = pts_ind2[i].pt - pts_ind1[i].pt;
-                // This distance might be 0 for some combinations,
-                // as it can happen that there is more than one
-                // keypoint at a single location
+               cv::Point2f p = pts_ind2[i].pt - pts_ind1[i].pt;
                 
                 float dist = sqrt(p.dot(p));
-                float origDist = squareForm[class_ind1[i]][class_ind2[i]];
+                float origDist = this->square_form_.at<float>(
+                   class_ind1[i], class_ind2[i]);
                 scaleChange.push_back(dist/origDist);
+                
                 // Compute angle
                 float angle = atan2(p.y, p.x);
-                float origAngle = angles[class_ind1[i]][class_ind2[i]];
+                float origAngle = this->angles_.at<float>(
+                   class_ind1[i], class_ind2[i]);
+                
                 float angleDiff = angle - origAngle;
+                
                 // Fix long way angles
                 if (fabs(angleDiff) > CV_PI)
                     angleDiff -= sign(angleDiff) * 2 * CV_PI;
                 angleDiffs.push_back(angleDiff);
             }
+
+
+            gettimeofday(&timer_end, NULL);
+            double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+                            timer_end.tv_usec - timer_start.tv_usec) / 1.e6;    
+            printf("\033[33mTIME: %3.6f\033[0m\n", delta);
+
+            
+            
             scaleEstimate = median(scaleChange);
-            if (!estimateScale)
+            if (!estimateScale) {
                 scaleEstimate = 1;
+            }
             medRot = median(angleDiffs);
-            if (!estimateRotation)
+            if (!estimateRotation) {
                 medRot = 0;
+            }
             votes = std::vector<cv::Point2f>();
             for (unsigned int i = 0; i < keypoints.size(); i++)
                 votes.push_back(keypoints[i].first.pt - scaleEstimate *
                                 rotate(springs[keypoints[i].second-1], medRot));
+            
             // Compute linkage between pairwise distances
             std::vector<Cluster> linkageData = linkage(votes);
 
@@ -565,7 +614,7 @@ in1d(const std::vector<int>& a, const std::vector<int>& b) {
 }
 
 void CMT::processFrame(cv::Mat im_gray) {
-    
+
     trackedKeypoints = std::vector<std::pair<cv::KeyPoint, int> >();
     std::vector<unsigned char> status;
     track(im_prev, im_gray, activeKeypoints, trackedKeypoints, status);
