@@ -510,36 +510,37 @@ void CMT::estimate(
                 pts_ind22[icount+1] = keypoints[ind2[i]].first.pt.y;
             }
 
-
+            /*
             struct timeval timer_start, timer_end;
             gettimeofday(&timer_start, NULL);
-            
-            float angle_diffs[SIZE/2];
-            float distances_diffs[SIZE/2];
+            */
+            // float angle_diffs[SIZE/2];
+            // float distances_diffs[SIZE/2];
+
+            std::vector<float> angle_diffs(SIZE/2);
+            std::vector<float> distances_diffs(SIZE/2);
             keypointsAngluarDifferenceGPU(angle_diffs, distances_diffs,
                                           pts_ind11,
                                           pts_ind22, class_ind1,
                                           class_ind2, angles_,
                                           square_form_);
-
+            /*
             gettimeofday(&timer_end, NULL);
             double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
                             timer_end.tv_usec - timer_start.tv_usec) / 1.e6;    
             printf("\033[33mTIME: %3.6f\033[0m\n", delta);
-            
-    
-            std::vector<float> scaleChange(SIZE/2);
-            std::vector<float> angleDiffs(SIZE/2);
+            */
 
-            
+            /*
+            std::vector<float> scaleChange;
+            std::vector<float> angleDiffs;
             for (unsigned int i = 0; i < pts_ind1.size(); i++) {
-               
-               cv::Point2f p = pts_ind2[i].pt - pts_ind1[i].pt;
-                
+                cv::Point2f p = pts_ind2[i].pt - pts_ind1[i].pt;
                 float dist = sqrt(p.dot(p));
                 float origDist = this->square_form_.at<float>(
                    class_ind1[i], class_ind2[i]);
                 scaleChange.push_back(dist/origDist);
+                
                 
                 // Compute angle
                 float angle = atan2(p.y, p.x);
@@ -552,21 +553,24 @@ void CMT::estimate(
                 if (fabs(angleDiff) > CV_PI)
                     angleDiff -= sign(angleDiff) * 2 * CV_PI;
                 angleDiffs.push_back(angleDiff);
-               
-                std::cout << angleDiff << " " << angle_diffs[i]  << "\n";
-                // std::cout << origDist << " " << distances_diffs[i] << "\n";
+
+                // std::cout << angleDiff << " " << angle_diffs[i]  << "\t";
+                // std::cout << scaleChange[i] << " " << distances_diffs[i] << "\n";
             }
-
-
-
-
+            */
             
+            // scaleEstimate = median(scaleChange);
+            scaleEstimate = median(distances_diffs);
             
-            scaleEstimate = median(scaleChange);
+            std::cout << "MEDIAN: " << scaleEstimate  << "\t";
+            std::cout << scaleEstimate  << "\n";
+            
             if (!estimateScale) {
                 scaleEstimate = 1;
             }
-            medRot = median(angleDiffs);
+            // medRot = median(angleDiffs);
+            medRot = median(angle_diffs);
+            
             if (!estimateRotation) {
                 medRot = 0;
             }

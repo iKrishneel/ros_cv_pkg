@@ -19,6 +19,11 @@ bool keypointsAngluarDifferenceGPU(float *, float *, float *,
                                    float *,
                                    std::vector<int>, std::vector<int>,
                                    const cv::Mat, const cv::Mat);
+bool keypointsAngluarDifferenceGPU(std::vector<float> &,
+                                   std::vector<float> &,
+                                   float *, float *,
+                                   std::vector<int>, std::vector<int>,
+                                   const cv::Mat, const cv::Mat);
 
 
 #endif /* _CMT_GPU_KERNEL_H_ */

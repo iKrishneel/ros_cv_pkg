@@ -141,8 +141,7 @@ void angleKernel(float *d_angles, float *d_distances,
     int t_idy = threadIdx.y + blockIdx.y * blockDim.y;
     int offset = t_idx + t_idy * blockDim.x * gridDim.x;
 
-    if (offset < SIZE) {
-       
+    if (offset < SIZE) {   
        int index = offset * 2;
        int idx = d_class_ind2[offset] + (d_class_ind1[offset] * LENGHT);
 
@@ -155,9 +154,30 @@ void angleKernel(float *d_angles, float *d_distances,
           ang_diff -= cuSign(ang_diff) * 2.0f * CUDART_PI_F;
        }
        d_angles[offset] = ang_diff;
-       d_distances[offset] = (y * y + x * x) / d_square_form[idx];
+       d_distances[offset] = sqrtf(y * y + x * x) / d_square_form[idx];
     }
 }
+
+__global__ __forceinline__
+void reduce(float *d_data, float *d_out) {
+    __shared__ float sdata[256];
+    int t_id = blockIdx.x * blockDim.x + threadIdx.x;
+    sdata[threadIdx.x] = d_data[t_id];
+    __syncthreads();
+    
+    for (int s = 1; s < blockDim.x; s *= 2) {
+       int index = 2 * s * threadIdx.x;
+       if (index < blockDim.x) {
+          sdata[index] += sdata[index + s];
+       }
+       __syncthreads();
+    }
+    if (threadIdx.x == 0) {
+       atomicAdd(d_out, sdata[0]);
+    }
+}
+
+
 
 bool keypointsAngluarDifferenceGPU(
     float *angle_diffs, float *distances,
@@ -213,17 +233,9 @@ bool keypointsAngluarDifferenceGPU(
                                            d_class_ind1, d_class_ind2,
                                            d_pts_ind1, d_pts_ind2,
                                            MEM_SIZE, angles.cols);
+
     BYTE = MEM_SIZE * sizeof(float);
-    // cudaMemcpy(angle_diffs, d_angles, BYTE,
-    // cudaMemcpyDeviceToHost);
-
-    std::vector<float> angle_data(MEM_SIZE);
-    cudaMemcpy(angle_data.data(), d_angles, BYTE, cudaMemcpyDeviceToHost);
-
-    for (int i = 0; i < MEM_SIZE; i++) {
-       angle_diffs[i] = angle_data[i];
-    }
-    
+    cudaMemcpy(angle_diffs, d_angles, BYTE, cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
     cudaMemcpy(distances, d_distances, BYTE, cudaMemcpyDeviceToHost);
     
@@ -237,3 +249,75 @@ bool keypointsAngluarDifferenceGPU(
     cudaFree(d_distances);
 }
 
+
+bool keypointsAngluarDifferenceGPU(
+    std::vector<float> &angle_diffs,
+    std::vector<float> &distances,
+    float *pts_ind1, float *pts_ind2,
+    std::vector<int> class_ind1,
+    std::vector<int> class_ind2,
+    const cv::Mat angles, const cv::Mat square_form) {
+
+    const int MEM_SIZE = static_cast<int>(class_ind1.size());
+    int *d_class_ind1;
+    int BYTE = MEM_SIZE * sizeof(int);
+    cudaMalloc(reinterpret_cast<void**>(&d_class_ind1), BYTE);
+    cudaMemcpy(d_class_ind1, class_ind1.data(), BYTE, cudaMemcpyHostToDevice);
+
+    int *d_class_ind2;
+    cudaMalloc(reinterpret_cast<void**>(&d_class_ind2), BYTE);
+    cudaMemcpy(d_class_ind2, class_ind2.data(), BYTE, cudaMemcpyHostToDevice);
+    
+    BYTE = MEM_SIZE * sizeof(float);
+    float *d_pts_ind1;
+    cudaMalloc(reinterpret_cast<void**>(&d_pts_ind1), BYTE * 2);
+    cudaMemcpy(d_pts_ind1, pts_ind1, BYTE * 2, cudaMemcpyHostToDevice);
+
+    float *d_pts_ind2;
+    cudaMalloc(reinterpret_cast<void**>(&d_pts_ind2), BYTE * 2);
+    cudaMemcpy(d_pts_ind2, pts_ind2, BYTE * 2, cudaMemcpyHostToDevice);
+
+    float *d_angles;
+    cudaMalloc(reinterpret_cast<void**>(&d_angles), BYTE);
+    cudaMemset(d_angles, 0.0f, BYTE);
+    
+    float *d_distances;
+    cudaMalloc(reinterpret_cast<void**>(&d_distances), BYTE);
+    cudaMemset(d_distances, 0.0f, BYTE);
+    
+    float *d_orig_angles;
+    BYTE = angles.step * angles.rows;
+    cudaMalloc(reinterpret_cast<void**>(&d_orig_angles), BYTE);
+    cudaMemcpy(d_orig_angles, angles.data, BYTE, cudaMemcpyHostToDevice);
+
+    float *d_square_form;
+    BYTE = square_form.step * square_form.rows;
+    cudaMalloc(reinterpret_cast<void**>(&d_square_form), BYTE);
+    cudaMemcpy(d_square_form, square_form.data, BYTE, cudaMemcpyHostToDevice);
+    
+    dim3 block_size(cuDivUp(MEM_SIZE/2 + 1, GRID_SIZE),
+                    cuDivUp(MEM_SIZE/2 + 1, GRID_SIZE));
+    dim3 grid_size(GRID_SIZE, GRID_SIZE);
+    
+    angleKernel<<<block_size, grid_size>>>(d_angles, d_distances,
+                                           d_orig_angles,
+                                           d_square_form,
+                                           d_class_ind1, d_class_ind2,
+                                           d_pts_ind1, d_pts_ind2,
+                                           MEM_SIZE, angles.cols);
+    
+    
+    BYTE = MEM_SIZE * sizeof(float);
+    cudaMemcpy(angle_diffs.data(), d_angles, BYTE, cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
+    cudaMemcpy(distances.data(), d_distances, BYTE, cudaMemcpyDeviceToHost);
+    
+    cudaFree(d_class_ind1);
+    cudaFree(d_class_ind2);
+    cudaFree(d_pts_ind1);
+    cudaFree(d_pts_ind2);
+    cudaFree(d_angles);
+    cudaFree(d_orig_angles);
+    cudaFree(d_square_form);
+    cudaFree(d_distances);
+}
