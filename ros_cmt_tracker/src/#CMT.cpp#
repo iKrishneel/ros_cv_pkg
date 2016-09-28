@@ -80,19 +80,19 @@ void track(cv::Mat im_prev, cv::Mat im_gray,
         d_nextpts.download(pts_back);
 
         // Calculate forward-backward error
-	/*
         const size_t SIZE = static_cast<int>(pts.size());
         float fb_err[SIZE];
         if (!forwardBackwardError(fb_err, pts, pts_back)) {
            return;
-        }
-        */
+	}
+
+	/*
 	std::vector<float> fb_err;
         for (unsigned int i = 0; i < pts.size(); i++) {
             cv::Point2f v = pts_back[i]-pts[i];
             fb_err.push_back(sqrt(v.dot(v)));
         }
-
+	*/
 	gettimeofday(&timer_end, NULL);
 	double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
                     timer_end.tv_usec - timer_start.tv_usec) / 1.e6;    

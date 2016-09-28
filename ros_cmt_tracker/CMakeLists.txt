@@ -26,6 +26,7 @@ include(FindCUDA)
 set(CUDA_NVCC_FLAGS 
   --generate-code arch=compute_50,code=sm_50
   --generate-code arch=compute_52,code=sm_52
+  --generate-code arch=compute_53,code=sm_53
   )
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -126,9 +127,9 @@ cuda_add_executable(ros_cmt_tracker_node
   src/cuda/cmt_gpu_kernel.cu
   )
 
-set_target_properties(ros_cmt_tracker_node PROPERTIES
-  COMPILE_FLAGS "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CUDA"
- )
+#set_target_properties(ros_cmt_tracker_node PROPERTIES
+#  COMPILE_FLAGS "-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CUDA"
+# )
 
 ## Add cmake target dependencies of the executable/library
 ## as an example, message headers may need to be generated before nodes
