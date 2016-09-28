@@ -46,12 +46,17 @@ bool forwardBackwardError(float *errors,
     cudaMalloc(reinterpret_cast<void**>(&d_pt_data), PTS_SIZE);
     cudaMemcpy(d_pt_data, pts.data(), PTS_SIZE, cudaMemcpyHostToDevice);
 
+
+    
     const size_t PTSB_SIZE = sizeof(float) *
        static_cast<int>(pts_back.size()) * 2;
     float *d_ptb_data;
     cudaMalloc(reinterpret_cast<void**>(&d_ptb_data), PTSB_SIZE);
     cudaMemcpy(d_ptb_data, pts_back.data(), PTSB_SIZE, cudaMemcpyHostToDevice);
 
+    
+
+    
     float *d_error;
     cudaMalloc(reinterpret_cast<void**>(&d_error), PTS_SIZE/2);
     cudaMemset(d_error, 0.0f, PTS_SIZE/2);
@@ -59,15 +64,57 @@ bool forwardBackwardError(float *errors,
     const int SIZE = static_cast<int>(pts.size());
     fbErrorKernel<<<SIZE, 1>>>(d_error, d_pt_data, d_ptb_data, SIZE);
 
-    float *error = reinterpret_cast<float*>(std::malloc(PTS_SIZE/2));
-    cudaMemcpy(error, d_error, PTS_SIZE/2, cudaMemcpyDeviceToHost);
-    std::memcpy(errors, error, PTS_SIZE/2);
+    // float *error = reinterpret_cast<float*>(std::malloc(PTS_SIZE/2));
+    cudaMemcpy(errors, d_error, PTS_SIZE/2, cudaMemcpyDeviceToHost);
+    // std::memcpy(errors, error, PTS_SIZE/2);
     
-    free(error);
+
     cudaFree(d_error);
     cudaFree(d_pt_data);
     cudaFree(d_ptb_data);
+    return true;
+}
+
+bool forwardBackwardError(float *errors,
+                          const std::vector<cv::Point2f> &pts,
+                          cv::cuda::GpuMat d_pts_back) {
+    if (pts.empty() || d_pts_back.empty()) {
+       printf("\033[31m ERROR[forwardBackwardError]: EMPTY \033[0m\n");
+       return false;
+    }
     
+    const size_t PTS_SIZE = sizeof(float) * static_cast<int>(pts.size()) * 2;
+    float *d_pt_data;
+    cudaMalloc(reinterpret_cast<void**>(&d_pt_data), PTS_SIZE);
+    cudaMemcpy(d_pt_data, pts.data(), PTS_SIZE, cudaMemcpyHostToDevice);
+
+    const size_t PTSB_SIZE = d_pts_back.step * d_pts_back.rows;
+    float *d_ptb_data;
+    cudaMalloc(reinterpret_cast<void**>(&d_ptb_data), PTSB_SIZE);
+    // cudaMemcpy(d_ptb_data, d_pts_back.data, PTSB_SIZE,
+    //            cudaMemcpyHostToDevice);
+    cudaMemcpy(d_ptb_data, d_pts_back.data, PTSB_SIZE,
+               cudaMemcpyDeviceToDevice);
+    
+    float *d_error;
+    cudaMalloc(reinterpret_cast<void**>(&d_error), PTS_SIZE/2);
+    cudaMemset(d_error, 0.0f, PTS_SIZE/2);
+
+    const int SIZE = static_cast<int>(pts.size());
+    fbErrorKernel<<<SIZE, 1>>>(d_error, d_pt_data, d_ptb_data, SIZE);
+    cudaMemcpy(errors, d_error, PTS_SIZE/2, cudaMemcpyDeviceToHost);
+
+    /*
+      cudaMemcpy(errors, d_ptb_data, PTSB_SIZE, cudaMemcpyDeviceToHost);
+    std::cout << PTSB_SIZE  << "\n";
+    for (int i = 0; i < PTSB_SIZE/sizeof(float); i+=2) {
+       std::cout << errors[i] << " " << errors[i+1] << "\n";
+    }
+    */
+    cudaFree(d_error);
+    cudaFree(d_pt_data);
+    cudaFree(d_ptb_data);
+
     return true;
 }
 

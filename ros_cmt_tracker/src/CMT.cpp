@@ -48,57 +48,49 @@ void track(cv::Mat im_prev, cv::Mat im_gray,
         std::vector<unsigned char> status_back;
         std::vector<float> err;
         std::vector<float> err_back;
-	
-	struct timeval timer_start, timer_end;
-	gettimeofday(&timer_start, NULL);
 
+        struct timeval timer_start, timer_end;
+        gettimeofday(&timer_start, NULL);
+        
         for (unsigned int i = 0; i < keypointsIN.size(); i++)
            pts.push_back(cv::Point2f(keypointsIN[i].first.pt.x,
                                      keypointsIN[i].first.pt.y));
 
         cv::cuda::GpuMat d_status;
         cv::cuda::GpuMat d_nextpts;
-	cv::cuda::GpuMat d_im_prev(im_prev);
-	cv::cuda::GpuMat d_im_gray(im_gray);
-	cv::cuda::GpuMat d_pts(pts);
-	
+        cv::cuda::GpuMat d_im_prev(im_prev);
+        cv::cuda::GpuMat d_im_gray(im_gray);
+        cv::cuda::GpuMat d_pts(pts);
+        cv::cuda::GpuMat d_nextpts_back;
+
         cv::Ptr<cv::cuda::SparsePyrLKOpticalFlow> d_calc =
            cv::cuda::SparsePyrLKOpticalFlow::create();
-        d_calc->calc(d_im_prev, d_im_gray,
-		     // cv::cuda::GpuMat(im_prev), cv::cuda::GpuMat(im_gray),
-                     // cv::cuda::GpuMat(pts), 
-		     d_pts,
-		     d_nextpts, d_status);
+        d_calc->calc(d_im_prev, d_im_gray, d_pts, d_nextpts, d_status);
         d_status.download(status);
         d_nextpts.download(nextPts);
-	
-	cv::cuda::GpuMat d_nextpts_back;
-        d_calc->calc(d_im_gray, d_im_prev,
-		     // cv::cuda::GpuMat(im_gray), cv::cuda::GpuMat(im_prev),
-                     d_nextpts, d_nextpts_back, d_status);
-        d_status.download(status_back);
-        d_nextpts.download(pts_back);
+        
+        d_calc->calc(d_im_gray, d_im_prev, d_nextpts, d_nextpts_back, d_status);
+        // d_status.download(status_back);
+        // d_nextpts_back.download(pts_back);
 
         // Calculate forward-backward error
-	/*
         const size_t SIZE = static_cast<int>(pts.size());
         float fb_err[SIZE];
-        if (!forwardBackwardError(fb_err, pts, pts_back)) {
+        if (!forwardBackwardError(fb_err, pts, d_nextpts_back)) {
            return;
         }
-        */
+
+        /*
 	std::vector<float> fb_err;
         for (unsigned int i = 0; i < pts.size(); i++) {
             cv::Point2f v = pts_back[i]-pts[i];
             fb_err.push_back(sqrt(v.dot(v)));
         }
-
-	gettimeofday(&timer_end, NULL);
-	double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
-                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;    
-	printf("\033[34mTIME: %3.6f\033[0m\n", delta);
-
-
+        */
+        gettimeofday(&timer_end, NULL);
+        double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
+                    timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
+        printf("\033[34mTIME: %3.6f\033[0m\n", delta);
         
         // Set status depending on fb_err and lk error
         for (unsigned int i = 0; i < status.size(); i++)
