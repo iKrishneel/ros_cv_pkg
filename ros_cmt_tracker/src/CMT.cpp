@@ -510,10 +510,10 @@ void CMT::estimate(
                 pts_ind22[icount+1] = keypoints[ind2[i]].first.pt.y;
             }
 
-            /*
+
             struct timeval timer_start, timer_end;
             gettimeofday(&timer_start, NULL);
-            */
+
             // float angle_diffs[SIZE/2];
             // float distances_diffs[SIZE/2];
 
@@ -524,12 +524,12 @@ void CMT::estimate(
                                           pts_ind22, class_ind1,
                                           class_ind2, angles_,
                                           square_form_);
-            /*
+
             gettimeofday(&timer_end, NULL);
             double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
                             timer_end.tv_usec - timer_start.tv_usec) / 1.e6;    
             printf("\033[33mTIME: %3.6f\033[0m\n", delta);
-            */
+
 
             /*
             std::vector<float> scaleChange;
@@ -561,9 +561,7 @@ void CMT::estimate(
             
             // scaleEstimate = median(scaleChange);
             scaleEstimate = median(distances_diffs);
-            
-            std::cout << "MEDIAN: " << scaleEstimate  << "\t";
-            std::cout << scaleEstimate  << "\n";
+
             
             if (!estimateScale) {
                 scaleEstimate = 1;
@@ -649,9 +647,6 @@ void CMT::processFrame(cv::Mat im_gray) {
     double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
                     timer_end.tv_usec - timer_start.tv_usec) / 1.e6;    
     printf("TIME: %3.6f\n", delta);
-
-
-
     
     // Detect keypoints, compute descriptors
     std::vector<cv::KeyPoint> keypoints;
