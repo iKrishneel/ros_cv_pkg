@@ -140,7 +140,7 @@ void HandheldObjectRegistration::cloudCB(
     /**
      * DEBUG
      */
-    /*
+
     //! oversegmented region
     struct timeval timer_start, timer_end;
     gettimeofday(&timer_start, NULL);
@@ -169,6 +169,7 @@ void HandheldObjectRegistration::cloudCB(
     // this->plotPlane(region_cloud, symmetric_planes[0]);
     
     std::cout << "SIZE: " << candidate_obj_points->size()  << "\n";
+    std::cout << symmetric_planes[0]  << "\n";
 
     gettimeofday(&timer_end, NULL);
     double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
@@ -181,9 +182,8 @@ void HandheldObjectRegistration::cloudCB(
     pcl::toROSMsg(*candidate_obj_points, ros_cloud1);
     ros_cloud1.header = cloud_msg->header;
     this->pub_icp_.publish(ros_cloud1);
-    */
     
-    sensor_msgs::PointCloud2 ros_cloud1;
+    // sensor_msgs::PointCloud2 ros_cloud1;
     pcl::toROSMsg(*src_points, ros_cloud1);
     // pcl::toROSMsg(*region_cloud, ros_cloud1);
     ros_cloud1.header = cloud_msg->header;
