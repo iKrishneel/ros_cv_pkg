@@ -5,10 +5,10 @@
 #include <thread>
 
 
-void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox)
-{
-    //check boundary, enforce min size
-    double x1 = bbox.x, x2 = bbox.x + bbox.width, y1 = bbox.y, y2 = bbox.y + bbox.height;
+void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
+    // check boundary, enforce min size
+    double x1 = bbox.x, x2 = bbox.x + bbox.width,
+       y1 = bbox.y, y2 = bbox.y + bbox.height;
     if (x1 < 0) x1 = 0.;
     if (x2 > img.cols-1) x2 = img.cols - 1;
     if (y1 < 0) y1 = 0;
@@ -16,7 +16,7 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox)
 
     if (x2-x1 < 2*p_cell_size) {
         double diff = (2*p_cell_size -x2+x1)/2.;
-        if (x1 - diff >= 0 && x2 + diff < img.cols){
+        if (x1 - diff >= 0 && x2 + diff < img.cols) {
             x1 -= diff;
             x2 += diff;
         } else if (x1 - 2*diff >= 0) {
@@ -27,7 +27,7 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox)
     }
     if (y2-y1 < 2*p_cell_size) {
         double diff = (2*p_cell_size -y2+y1)/2.;
-        if (y1 - diff >= 0 && y2 + diff < img.rows){
+        if (y1 - diff >= 0 && y2 + diff < img.rows) {
             y1 -= diff;
             y2 += diff;
         } else if (y1 - 2*diff >= 0) {
@@ -43,69 +43,91 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox)
     p_pose.cy = y1 + p_pose.h/2.;
 
     cv::Mat input_gray, input_rgb = img.clone();
-    if (img.channels() == 3){
+    if (img.channels() == 3) {
         cv::cvtColor(img, input_gray, CV_BGR2GRAY);
         input_gray.convertTo(input_gray, CV_32FC1);
-    }else
+    } else {
         img.convertTo(input_gray, CV_32FC1);
-
+    }
+    
     // don't need too large image
     if (p_pose.w * p_pose.h > 100.*100.) {
         std::cout << "resizing image by factor of 2" << std::endl;
         p_resize_image = true;
         p_pose.scale(0.5);
-        cv::resize(input_gray, input_gray, cv::Size(0,0), 0.5, 0.5, cv::INTER_AREA);
-        cv::resize(input_rgb, input_rgb, cv::Size(0,0), 0.5, 0.5, cv::INTER_AREA);
+        cv::resize(input_gray, input_gray, cv::Size(0, 0),
+                   0.5, 0.5, cv::INTER_AREA);
+        cv::resize(input_rgb, input_rgb, cv::Size(0, 0),
+                   0.5, 0.5, cv::INTER_AREA);
     }
 
-    //compute win size + fit to fhog cell size
-    p_windows_size[0] = round(p_pose.w * (1. + p_padding) / p_cell_size) * p_cell_size;
-    p_windows_size[1] = round(p_pose.h * (1. + p_padding) / p_cell_size) * p_cell_size;
+    // compute win size + fit to fhog cell size
+    p_windows_size[0] = round(p_pose.w * (1. + p_padding) /
+                              p_cell_size) * p_cell_size;
+    p_windows_size[1] = round(p_pose.h * (1. + p_padding) /
+                              p_cell_size) * p_cell_size;
 
     p_scales.clear();
-    if (m_use_scale)
+    if (m_use_scale) {
         for (int i = -p_num_scales/2; i <= p_num_scales/2; ++i)
             p_scales.push_back(std::pow(p_scale_step, i));
-    else
+    } else {
         p_scales.push_back(1.);
-
+    }
+    
     p_current_scale = 1.;
 
-    double min_size_ratio = std::max(5.*p_cell_size/p_windows_size[0], 5.*p_cell_size/p_windows_size[1]);
-    double max_size_ratio = std::min(floor((img.cols + p_windows_size[0]/3)/p_cell_size)*p_cell_size/p_windows_size[0], floor((img.rows + p_windows_size[1]/3)/p_cell_size)*p_cell_size/p_windows_size[1]);
-    p_min_max_scale[0] = std::pow(p_scale_step, std::ceil(std::log(min_size_ratio) / log(p_scale_step)));
-    p_min_max_scale[1] = std::pow(p_scale_step, std::floor(std::log(max_size_ratio) / log(p_scale_step)));
+    double min_size_ratio = std::max(5.0f * p_cell_size/ p_windows_size[0],
+                                     5.0f * p_cell_size/p_windows_size[1]);
+    double max_size_ratio = std::min(
+       floor((img.cols + p_windows_size[0]/3)/p_cell_size)*
+       p_cell_size/p_windows_size[0],
+       floor((img.rows + p_windows_size[1]/3)/p_cell_size)*
+       p_cell_size/p_windows_size[1]);
+    p_min_max_scale[0] = std::pow(p_scale_step,
+                                  std::ceil(std::log(min_size_ratio) /
+                                            log(p_scale_step)));
+    p_min_max_scale[1] = std::pow(p_scale_step,
+                                  std::floor(std::log(max_size_ratio) /
+                                             log(p_scale_step)));
 
     std::cout << "init: img size " << img.cols << " " << img.rows << std::endl;
-    std::cout << "init: win size. " << p_windows_size[0] << " " << p_windows_size[1] << std::endl;
-    std::cout << "init: min max scales factors: " << p_min_max_scale[0] << " " << p_min_max_scale[1] << std::endl;
+    std::cout << "init: win size. " << p_windows_size[0] << " "
+              << p_windows_size[1] << std::endl;
+    std::cout << "init: min max scales factors: " << p_min_max_scale[0]
+              << " " << p_min_max_scale[1] << std::endl;
 
-    p_output_sigma = std::sqrt(p_pose.w*p_pose.h) * p_output_sigma_factor / static_cast<double>(p_cell_size);
+    p_output_sigma = std::sqrt(p_pose.w*p_pose.h) *
+       p_output_sigma_factor / static_cast<double>(p_cell_size);
 
-    //window weights, i.e. labels
-    p_yf = fft2(gaussian_shaped_labels(p_output_sigma, p_windows_size[0]/p_cell_size, p_windows_size[1]/p_cell_size));
+    // window weights, i.e. labels
+    p_yf = fft2(gaussian_shaped_labels(p_output_sigma,
+                                       p_windows_size[0]/p_cell_size,
+                                       p_windows_size[1]/p_cell_size));
     p_cos_window = cosine_window_function(p_yf.cols, p_yf.rows);
 
-    //obtain a sub-window for training initial model
-    std::vector<cv::Mat> path_feat = get_features(input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0], p_windows_size[1]);
+    // obtain a sub-window for training initial model
+    std::vector<cv::Mat> path_feat = get_features(input_rgb, input_gray,
+                                                  p_pose.cx, p_pose.cy,
+                                                  p_windows_size[0],
+                                                  p_windows_size[1]);
     p_model_xf = fft2(path_feat, p_cos_window);
-    //Kernel Ridge Regression, calculate alphas (in Fourier domain)
-    ComplexMat kf = gaussian_correlation(p_model_xf, p_model_xf, p_kernel_sigma, true);
+    // Kernel Ridge Regression, calculate alphas (in Fourier domain)
+    ComplexMat kf = gaussian_correlation(p_model_xf, p_model_xf,
+                                         p_kernel_sigma, true);
 
-//    p_model_alphaf = p_yf / (kf + p_lambda);   //equation for fast training
+    // p_model_alphaf = p_yf / (kf + p_lambda);   //equation for fast training
 
     p_model_alphaf_num = p_yf * kf;
     p_model_alphaf_den = kf * (kf + p_lambda);
     p_model_alphaf = p_model_alphaf_num / p_model_alphaf_den;
 }
 
-void KCF_Tracker::setTrackerPose(BBox_c &bbox, cv::Mat & img)
-{
+void KCF_Tracker::setTrackerPose(BBox_c &bbox, cv::Mat & img) {
     init(img, bbox.get_rect());
 }
 
-void KCF_Tracker::updateTrackerPosition(BBox_c &bbox)
-{
+void KCF_Tracker::updateTrackerPosition(BBox_c &bbox) {
     if (p_resize_image) {
         BBox_c tmp = bbox;
         tmp.scale(0.5);
@@ -117,8 +139,7 @@ void KCF_Tracker::updateTrackerPosition(BBox_c &bbox)
     }
 }
 
-BBox_c KCF_Tracker::getBBox()
-{
+BBox_c KCF_Tracker::getBBox() {
     BBox_c tmp = p_pose;
     tmp.w *= p_current_scale;
     tmp.h *= p_current_scale;
@@ -129,19 +150,21 @@ BBox_c KCF_Tracker::getBBox()
     return tmp;
 }
 
-void KCF_Tracker::track(cv::Mat &img)
-{
+void KCF_Tracker::track(cv::Mat &img) {
     cv::Mat input_gray, input_rgb = img.clone();
-    if (img.channels() == 3){
+    if (img.channels() == 3) {
         cv::cvtColor(img, input_gray, CV_BGR2GRAY);
         input_gray.convertTo(input_gray, CV_32FC1);
-    }else
+    } else {
         img.convertTo(input_gray, CV_32FC1);
-
+    }
+    
     // don't need too large image
     if (p_resize_image) {
-        cv::resize(input_gray, input_gray, cv::Size(0, 0), 0.5, 0.5, cv::INTER_AREA);
-        cv::resize(input_rgb, input_rgb, cv::Size(0, 0), 0.5, 0.5, cv::INTER_AREA);
+        cv::resize(input_gray, input_gray, cv::Size(0, 0),
+                   0.5, 0.5, cv::INTER_AREA);
+        cv::resize(input_rgb, input_rgb, cv::Size(0, 0),
+                   0.5, 0.5, cv::INTER_AREA);
     }
 
     std::vector<cv::Mat> patch_feat;
@@ -151,18 +174,25 @@ void KCF_Tracker::track(cv::Mat &img)
     int scale_index = 0;
     std::vector<double> scale_responses;
 
-    if (m_use_multithreading){
+    if (!m_use_multithreading) {
         std::vector<std::future<cv::Mat>> async_res(p_scales.size());
         for (size_t i = 0; i < p_scales.size(); ++i) {
-            async_res[i] = std::async(std::launch::async,
-                    [this, &input_gray, &input_rgb, i]() -> cv::Mat
-                    {
-                        std::vector<cv::Mat> patch_feat_async = get_features(input_rgb, input_gray, this->p_pose.cx, this->p_pose.cy, this->p_windows_size[0],
-                                                  this->p_windows_size[1], this->p_current_scale * this->p_scales[i]);
-                        ComplexMat zf = fft2(patch_feat_async, this->p_cos_window);
-                        ComplexMat kzf = gaussian_correlation(zf, this->p_model_xf, this->p_kernel_sigma);
+           async_res[i] = std::async(
+              std::launch::async, [this, &input_gray, &input_rgb,
+                                   i]()->cv::Mat {
+                 std::vector<cv::Mat> patch_feat_async =
+                    get_features(input_rgb, input_gray,
+                                 this->p_pose.cx,
+                                 this->p_pose.cy,
+                                 this->p_windows_size[0],
+                                 this->p_windows_size[1],
+                                 this->p_current_scale * this->p_scales[i]);
+                 ComplexMat zf = fft2(patch_feat_async, this->p_cos_window);
+                 ComplexMat kzf = gaussian_correlation(zf,
+                                                       this->p_model_xf,
+                                                       this->p_kernel_sigma);
                         return ifft2(this->p_model_alphaf * kzf);
-                    });
+              });
         }
 
         for (size_t i = 0; i < p_scales.size(); ++i) {
@@ -185,9 +215,17 @@ void KCF_Tracker::track(cv::Mat &img)
         }
     } else {
         for (size_t i = 0; i < p_scales.size(); ++i) {
-            patch_feat = get_features(input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0], p_windows_size[1], p_current_scale * p_scales[i]);
+           patch_feat = get_features(input_rgb, input_gray, p_pose.cx,
+                                     p_pose.cy, p_windows_size[0],
+                                     p_windows_size[1],
+                                     p_current_scale * p_scales[i]);
+
+           std::cout << "PATCH: " << patch_feat.size() << " "
+                     << patch_feat[0].size()  << "\n";
+           
             ComplexMat zf = fft2(patch_feat, p_cos_window);
-            ComplexMat kzf = gaussian_correlation(zf, p_model_xf, p_kernel_sigma);
+            ComplexMat kzf = gaussian_correlation(zf,
+                                                  p_model_xf, p_kernel_sigma);
             cv::Mat response = ifft2(p_model_alphaf * kzf);
 
             /* target location is at the maximum response. we must take into
@@ -207,9 +245,10 @@ void KCF_Tracker::track(cv::Mat &img)
             }
             scale_responses.push_back(max_val*weight);
         }
+        std::cout  << "\n";
     }
 
-    //sub pixel quadratic interpolation from neighbours
+    // sub pixel quadratic interpolation from neighbours
     if (max_response_pt.y > max_response_map.rows / 2) //wrap around to negative half-space of vertical axis
         max_response_pt.y = max_response_pt.y - max_response_map.rows;
     if (max_response_pt.x > max_response_map.cols / 2) //same for horizontal axis
@@ -227,7 +266,7 @@ void KCF_Tracker::track(cv::Mat &img)
     if (p_pose.cy < 0) p_pose.cy = 0;
     if (p_pose.cy > img.rows-1) p_pose.cy = img.rows-1;
 
-    //sub grid scale interpolation
+    // sub grid scale interpolation
     double new_scale = p_scales[scale_index];
     if (m_use_subgrid_scale)
         new_scale = sub_grid_scale(scale_responses, scale_index);
@@ -239,59 +278,104 @@ void KCF_Tracker::track(cv::Mat &img)
     if (p_current_scale > p_min_max_scale[1])
         p_current_scale = p_min_max_scale[1];
 
-    //obtain a subwindow for training at newly estimated target position
-    patch_feat = get_features(input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0], p_windows_size[1], p_current_scale);
+    // obtain a subwindow for training at newly estimated target position
+    patch_feat = get_features(input_rgb, input_gray,
+                              p_pose.cx, p_pose.cy,
+                              p_windows_size[0], p_windows_size[1],
+                              p_current_scale);
     ComplexMat xf = fft2(patch_feat, p_cos_window);
-    //Kernel Ridge Regression, calculate alphas (in Fourier domain)
+    // Kernel Ridge Regression, calculate alphas (in Fourier domain)
     ComplexMat kf = gaussian_correlation(xf, xf, p_kernel_sigma, true);
 
-    //subsequent frames, interpolate model
+    // subsequent frames, interpolate model
     p_model_xf = p_model_xf * (1. - p_interp_factor) + xf * p_interp_factor;
 //    ComplexMat alphaf = p_yf / (kf + p_lambda); //equation for fast training
-//    p_model_alphaf = p_model_alphaf * (1. - p_interp_factor) + alphaf * p_interp_factor;
+//    p_model_alphaf = p_model_alphaf * (1. - p_interp_factor) +
+//    alphaf * p_interp_factor;
+    
 
     ComplexMat alphaf_num = p_yf * kf;
     ComplexMat alphaf_den = kf * (kf + p_lambda);
-    p_model_alphaf_num = p_model_alphaf_num * (1. - p_interp_factor) + (p_yf * kf) * p_interp_factor;
-    p_model_alphaf_den = p_model_alphaf_den * (1. - p_interp_factor) + kf * (kf + p_lambda) * p_interp_factor;
+    p_model_alphaf_num = p_model_alphaf_num * (1. - p_interp_factor) +
+       (p_yf * kf) * p_interp_factor;
+    p_model_alphaf_den = p_model_alphaf_den * (1. - p_interp_factor) +
+       kf * (kf + p_lambda) * p_interp_factor;
     p_model_alphaf = p_model_alphaf_num / p_model_alphaf_den;
 }
 
 // ****************************************************************************
 
-std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb, cv::Mat & input_gray, int cx, int cy, int size_x, int size_y, double scale)
-{
+std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
+                                               cv::Mat & input_gray,
+                                               int cx, int cy, int size_x,
+                                               int size_y, double scale) {
     int size_x_scaled = floor(size_x*scale);
     int size_y_scaled = floor(size_y*scale);
+    cv::Mat patch_gray = get_subwindow(input_gray, cx, cy,
+                                       size_x_scaled, size_y_scaled);
+    cv::Mat patch_rgb = get_subwindow(input_rgb, cx, cy,
+                                      size_x_scaled, size_y_scaled);
 
-    cv::Mat patch_gray = get_subwindow(input_gray, cx, cy, size_x_scaled, size_y_scaled);
-    cv::Mat patch_rgb = get_subwindow(input_rgb, cx, cy, size_x_scaled, size_y_scaled);
+    // resize to default size
+    if (scale > 1.) {
+       // if we downsample use  INTER_AREA interpolation
+       cv::resize(patch_gray, patch_gray, cv::Size(size_x, size_y),
+                  0., 0., cv::INTER_AREA);
+    } else {
+       cv::resize(patch_gray, patch_gray, cv::Size(size_x, size_y),
+                  0., 0., cv::INTER_LINEAR);
+    }
+    
+    cv::imshow("path", patch_rgb);
+    cv::waitKey(5);
 
-    //resize to default size
-    if (scale > 1.){
-        //if we downsample use  INTER_AREA interpolation
-        cv::resize(patch_gray, patch_gray, cv::Size(size_x, size_y), 0., 0., cv::INTER_AREA);
-    }else {
-        cv::resize(patch_gray, patch_gray, cv::Size(size_x, size_y), 0., 0., cv::INTER_LINEAR);
+    
+    // get hog features
+    std::vector<cv::Mat> hog_feat = FHoG::extract(patch_gray, 2,
+                                                  p_cell_size, 9);
+
+
+    // std::cout << "TYPE: " << patch_gray.type()  << "\n";
+    cv::Mat im_gray;
+    cv::cvtColor(patch_rgb, im_gray, CV_BGR2GRAY);
+    cv::Ptr<cv::cuda::HOG> cuda_hog = cv::cuda::HOG::create(
+       cv::Size(32, 32));
+    cv::cuda::GpuMat d_image(im_gray);
+    cv::cuda::GpuMat d_descriptor;
+    cuda_hog->compute(d_image, d_descriptor);
+
+    cv::Mat desc;
+    d_descriptor.download(desc);
+    
+    hog_feat.clear();
+    for (int i = 0; i < desc.rows; i++) {
+       hog_feat.push_back(desc.row(i));
+
+       std::cout << hog_feat[i].size()  << "\n";
+       
     }
 
-    // get hog features
-    std::vector<cv::Mat> hog_feat = FHoG::extract(patch_gray, 2, p_cell_size, 9);
 
-    //get color rgb features (simple r,g,b channels)
+
+
+    // get color rgb features (simple r,g,b channels)
     std::vector<cv::Mat> color_feat;
     if ((m_use_color || m_use_cnfeat) && input_rgb.channels() == 3) {
-        //resize to default size
-        if (scale > 1.){
-            //if we downsample use  INTER_AREA interpolation
-            cv::resize(patch_rgb, patch_rgb, cv::Size(size_x/p_cell_size, size_y/p_cell_size), 0., 0., cv::INTER_AREA);
-        }else {
-            cv::resize(patch_rgb, patch_rgb, cv::Size(size_x/p_cell_size, size_y/p_cell_size), 0., 0., cv::INTER_LINEAR);
+       // resize to default size
+       if (scale > 1.) {
+          // if we downsample use  INTER_AREA interpolation
+          cv::resize(patch_rgb, patch_rgb,
+                     cv::Size(size_x/p_cell_size, size_y/p_cell_size),
+                     0., 0., cv::INTER_AREA);
+       } else {
+          cv::resize(patch_rgb, patch_rgb,
+                     cv::Size(size_x/p_cell_size, size_y/p_cell_size),
+                     0., 0., cv::INTER_LINEAR);
         }
     }
 
     if (m_use_color && input_rgb.channels() == 3) {
-        //use rgb color space
+        // use rgb color space
         cv::Mat patch_rgb_norm;
         patch_rgb.convertTo(patch_rgb_norm, CV_32F, 1. / 255., -0.5);
         cv::Mat ch1(patch_rgb_norm.size(), CV_32FC1);
@@ -307,6 +391,8 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb, cv::Mat & in
         color_feat.insert(color_feat.end(), cn_feat.begin(), cn_feat.end());
     }
 
+    hog_feat.clear();
+    
     hog_feat.insert(hog_feat.end(), color_feat.begin(), color_feat.end());
     return hog_feat;
 }
@@ -413,21 +499,27 @@ ComplexMat KCF_Tracker::fft2(const cv::Mat &input)
     return ComplexMat(complex_result);
 }
 
-ComplexMat KCF_Tracker::fft2(const std::vector<cv::Mat> &input, const cv::Mat &cos_window)
-{
+ComplexMat KCF_Tracker::fft2(const std::vector<cv::Mat> &input,
+                             const cv::Mat &cos_window) {
     int n_channels = input.size();
     ComplexMat result(input[0].rows, input[0].cols, n_channels);
-    for (int i = 0; i < n_channels; ++i){
+    for (int i = 0; i < n_channels; ++i) {
         cv::Mat complex_result;
-//        cv::Mat padded;                            //expand input image to optimal size
+//        cv::Mat padded;                            //expand input
+//        image to optimal size
 //        int m = cv::getOptimalDFTSize( input[0].rows );
-//        int n = cv::getOptimalDFTSize( input[0].cols ); // on the border add zero pixels
+//        int n = cv::getOptimalDFTSize( input[0].cols ); // on the
+//        border add zero pixels
 
-//        copyMakeBorder(input[i].mul(cos_window), padded, 0, m - input[0].rows, 0, n - input[0].cols, cv::BORDER_CONSTANT, cv::Scalar::all(0));
+//        copyMakeBorder(input[i].mul(cos_window), padded, 0, m -
+//        input[0].rows, 0, n - input[0].cols, cv::BORDER_CONSTANT,
+//        cv::Scalar::all(0));
 //        cv::dft(padded, complex_result, cv::DFT_COMPLEX_OUTPUT);
-//        result.set_channel(i, complex_result(cv::Range(0, input[0].rows), cv::Range(0, input[0].cols)));
+//        result.set_channel(i, complex_result(cv::Range(0,
+//        input[0].rows), cv::Range(0, input[0].cols)));
 
-        cv::dft(input[i].mul(cos_window), complex_result, cv::DFT_COMPLEX_OUTPUT);
+        cv::dft(input[i].mul(cos_window), complex_result,
+                cv::DFT_COMPLEX_OUTPUT);
         result.set_channel(i, complex_result);
     }
     return result;

@@ -152,7 +152,7 @@ add_executable(kernelized_correlation_filters_node src/kernelized_correlation_fi
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(kernelized_correlation_filters_node
-  ${catkin_LIBRARIES} kcf
+  ${catkin_LIBRARIES} kcf ${OpenCV_LIBS}
 )
 
 #############

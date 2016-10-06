@@ -1,11 +1,14 @@
 #ifndef KCF_HEADER_6565467831231
 #define KCF_HEADER_6565467831231
 
-#include <opencv2/opencv.hpp>
+
 #include <vector>
 #include "fhog.hpp"
 #include "complexmat.hpp"
 #include "cnfeat.hpp"
+
+#include <opencv2/cudaobjdetect.hpp>
+#include <opencv2/opencv.hpp>
 
 struct BBox_c
 {

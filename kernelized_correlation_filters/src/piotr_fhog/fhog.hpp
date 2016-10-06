@@ -57,7 +57,7 @@ public:
 
         float *H = new float[hb*wb*n_chns];
         memset(H, 0, hb*wb*n_chns*sizeof(float));
-
+        
         if (use_hog == 0) {
             full = false;   //by default
             gradHist( M, O, H, h, w, bin_size, n_orients, soft_bin, full );
@@ -65,13 +65,17 @@ public:
             full = false;   //by default
             hog( M, O, H, h, w, bin_size, n_orients, soft_bin, full, clip );
         } else {
-            fhog( M, O, H, h, w, bin_size, n_orients, soft_bin, clip );
+           fhog( M, O, H, h, w, bin_size, n_orients, soft_bin, clip );
         }
 
         //convert, assuming row-by-row-by-channel storage
         std::vector<cv::Mat> res;
         int n_res_channels = (use_hog == 2) ? n_chns-1 : n_chns;    //last channel all zeros for fhog
         res.reserve(n_res_channels);
+
+        std::cout << "CHANNEL: " << n_res_channels << " " << hb * wb  * n_chns << " " << img.size()  << "\t";
+        std::cout << hb << " " << wb << " " << n_chns  << "\n";
+        
         for (int i = 0; i < n_res_channels; ++i) {
             //output rows-by-rows
 //            cv::Mat desc(hb, wb, CV_32F, (H+hb*wb*i));
@@ -83,7 +87,6 @@ public:
                     desc.at<float>(y,x) = H[i*hb*wb + x*hb + y];
                 }
             }
-
             res.push_back(desc.clone());
         }
 
