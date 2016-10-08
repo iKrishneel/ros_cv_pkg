@@ -20,6 +20,8 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <boost/thread/mutex.hpp>
 
+#include <caffe/caffe.hpp>
+
 class KernelizedCorrelationFilters {
 
  private:

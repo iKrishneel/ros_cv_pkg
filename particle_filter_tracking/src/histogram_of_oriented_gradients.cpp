@@ -117,11 +117,14 @@ cv::Mat HOGFeatureDescriptor::computeHOG(
     cv::Mat image = img.clone();
     if (image.type() != CV_8U) {
        cv::cvtColor(image, image, CV_BGR2GRAY);
-    }
+    }    
     cv::Mat bins;
     this->imageGradient(image, bins);    
     cv::Mat featureMD;
     getHOG(image, bins, featureMD);
+    
+    std::cout << "FEATURE: " << featureMD.size()  << "\n";
+    
     featureMD = featureMD.reshape(1, 1);
     return featureMD;
 }

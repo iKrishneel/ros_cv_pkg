@@ -17,6 +17,24 @@ find_package(catkin REQUIRED COMPONENTS
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
+set(ENABLE_CUDA ON)
+find_package(CUDA REQUIRED)
+include(FindCUDA)
+
+set(CUDA_NVCC_FLAGS 
+  --generate-code arch=compute_50,code=sm_50
+  --generate-code arch=compute_52,code=sm_52
+  )
+
+set(CAFFE_INCLUDEDIR 
+  $ENV{CAFFE_ROOT}/include 
+  $ENV{CAFFE_ROOT}/distribute/include 
+  $ENV{CAFFE_ROOT}/build/include)
+set(CAFFE_LINK_LIBRARAY 
+  $ENV{CAFFE_ROOT}/build/lib)
+
+
+
 find_package(OpenMP)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
@@ -110,10 +128,10 @@ find_package(OpenCV REQUIRED)
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
- INCLUDE_DIRS include
- #LIBRARIES kernelized_correlation_filters
- #CATKIN_DEPENDS roscpp rospy
- DEPENDS system_lib
+  #INCLUDE_DIRS include
+  #LIBRARIES kernelized_correlation_filters
+  CATKIN_DEPENDS
+  #DEPENDS system_lib
 )
 
 ###########
@@ -122,16 +140,21 @@ catkin_package(
 
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
-# include_directories(include)
+#include_directories(include)
+
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -Wextra -pedantic -O3 -Wno-long-long -fno-omit-frame-pointer")
 
 
 include_directories(
   include ${catkin_INCLUDE_DIRS}
 )
+
+
 INCLUDE_DIRECTORIES( ${CMAKE_BINARY_DIR}/)
 include_directories(${CMAKE_SOURCE_DIR}/src/ ${CMAKE_SOURCE_DIR}/src/piotr_fhog ${CMAKE_SOURCE_DIR}/src/cn)
 add_subdirectory(src)
+
+include_directories(${CAFFE_INCLUDEDIR})
 
 ## Declare a C++ library
 # add_library(kernelized_correlation_filters
@@ -144,7 +167,8 @@ add_subdirectory(src)
 # eadd_dependencies(kernelized_correlation_filters ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
-add_executable(kernelized_correlation_filters_node src/kernelized_correlation_filters_node.cpp)
+link_directories(${CAFFE_LINK_LIBRARAY})
+cuda_add_executable(kernelized_correlation_filters_node src/kernelized_correlation_filters_node.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
@@ -152,8 +176,8 @@ add_executable(kernelized_correlation_filters_node src/kernelized_correlation_fi
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(kernelized_correlation_filters_node
-  ${catkin_LIBRARIES} kcf ${OpenCV_LIBS}
-)
+  ${catkin_LIBRARIES} ${OpenCV_LIBS}  kcf caffe glog
+  )
 
 #############
 ## Install ##

@@ -69,7 +69,17 @@ void KernelizedCorrelationFilters::imageCB(
      }
 
      if (this->screen_rect_.width > this->block_size_) {
+        std::clock_t start;
+        double duration;
+        start = std::clock();
+        
         this->tracker_->track(image);
+
+        duration = (std::clock() - start) /
+           static_cast<double>(CLOCKS_PER_SEC);
+        ROS_INFO("PROCESS: %3.5f", duration);
+        
+        
         BBox_c bb = this->tracker_->getBBox();
         cv::Rect rect = cv::Rect(bb.cx - bb.w/2.0f,
                                  bb.cy - bb.h/2.0f, bb.w, bb.h);

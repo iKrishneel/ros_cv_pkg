@@ -220,9 +220,6 @@ void KCF_Tracker::track(cv::Mat &img) {
                                      p_windows_size[1],
                                      p_current_scale * p_scales[i]);
 
-           std::cout << "PATCH: " << patch_feat.size() << " "
-                     << patch_feat[0].size()  << "\n";
-           
             ComplexMat zf = fft2(patch_feat, p_cos_window);
             ComplexMat kzf = gaussian_correlation(zf,
                                                   p_model_xf, p_kernel_sigma);
@@ -245,20 +242,24 @@ void KCF_Tracker::track(cv::Mat &img) {
             }
             scale_responses.push_back(max_val*weight);
         }
-        std::cout  << "\n";
     }
 
     // sub pixel quadratic interpolation from neighbours
-    if (max_response_pt.y > max_response_map.rows / 2) //wrap around to negative half-space of vertical axis
+    // wrap around to negative half-space of vertical axis
+    if (max_response_pt.y > max_response_map.rows / 2) {
         max_response_pt.y = max_response_pt.y - max_response_map.rows;
-    if (max_response_pt.x > max_response_map.cols / 2) //same for horizontal axis
+    }
+    // same for horizontal axis
+    if (max_response_pt.x > max_response_map.cols / 2) {
         max_response_pt.x = max_response_pt.x - max_response_map.cols;
-
+    }
+    
     cv::Point2f new_location(max_response_pt.x, max_response_pt.y);
 
-    if (m_use_subpixel_localization)
+    if (m_use_subpixel_localization) {
         new_location = sub_pixel_peak(max_response_pt, max_response_map);
-
+    }
+    
     p_pose.cx += p_current_scale*p_cell_size*new_location.x;
     p_pose.cy += p_current_scale*p_cell_size*new_location.y;
     if (p_pose.cx < 0) p_pose.cx = 0;
@@ -309,6 +310,7 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
                                                cv::Mat & input_gray,
                                                int cx, int cy, int size_x,
                                                int size_y, double scale) {
+    // std::cout << "\33[34m GETTING FEATURES \033[0m"  << "\n";
     int size_x_scaled = floor(size_x*scale);
     int size_y_scaled = floor(size_y*scale);
     cv::Mat patch_gray = get_subwindow(input_gray, cx, cy,
@@ -326,37 +328,10 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
                   0., 0., cv::INTER_LINEAR);
     }
     
-    cv::imshow("path", patch_rgb);
-    cv::waitKey(5);
-
     
     // get hog features
-    std::vector<cv::Mat> hog_feat = FHoG::extract(patch_gray, 2,
-                                                  p_cell_size, 9);
-
-
-    // std::cout << "TYPE: " << patch_gray.type()  << "\n";
-    cv::Mat im_gray;
-    cv::cvtColor(patch_rgb, im_gray, CV_BGR2GRAY);
-    cv::Ptr<cv::cuda::HOG> cuda_hog = cv::cuda::HOG::create(
-       cv::Size(32, 32));
-    cv::cuda::GpuMat d_image(im_gray);
-    cv::cuda::GpuMat d_descriptor;
-    cuda_hog->compute(d_image, d_descriptor);
-
-    cv::Mat desc;
-    d_descriptor.download(desc);
-    
-    hog_feat.clear();
-    for (int i = 0; i < desc.rows; i++) {
-       hog_feat.push_back(desc.row(i));
-
-       std::cout << hog_feat[i].size()  << "\n";
-       
-    }
-
-
-
+    std::vector<cv::Mat> hog_feat;
+    hog_feat = FHoG::extract(patch_gray, 2, p_cell_size, 9);
 
     // get color rgb features (simple r,g,b channels)
     std::vector<cv::Mat> color_feat;
@@ -392,109 +367,109 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
     }
 
     hog_feat.clear();
-    
     hog_feat.insert(hog_feat.end(), color_feat.begin(), color_feat.end());
     return hog_feat;
 }
 
-cv::Mat KCF_Tracker::gaussian_shaped_labels(double sigma, int dim1, int dim2)
-{
+cv::Mat KCF_Tracker::gaussian_shaped_labels(
+    double sigma, int dim1, int dim2) {
     cv::Mat labels(dim2, dim1, CV_32FC1);
     int range_y[2] = {-dim2 / 2, dim2 - dim2 / 2};
     int range_x[2] = {-dim1 / 2, dim1 - dim1 / 2};
 
     double sigma_s = sigma*sigma;
-
-    for (int y = range_y[0], j = 0; y < range_y[1]; ++y, ++j){
+    for (int y = range_y[0], j = 0; y < range_y[1]; ++y, ++j) {
         float * row_ptr = labels.ptr<float>(j);
         double y_s = y*y;
-        for (int x = range_x[0], i = 0; x < range_x[1]; ++x, ++i){
+        for (int x = range_x[0], i = 0; x < range_x[1]; ++x, ++i) {
             row_ptr[i] = std::exp(-0.5 * (y_s + x*x) / sigma_s);
         }
     }
 
-    //rotate so that 1 is at top-left corner (see KCF paper for explanation)
+    // rotate so that 1 is at top-left corner (see KCF paper for explanation)
     cv::Mat rot_labels = circshift(labels, range_x[0], range_y[0]);
-    //sanity check, 1 at top left corner
-    assert(rot_labels.at<float>(0,0) >= 1.f - 1e-10f);
-
+    // sanity check, 1 at top left corner
+    assert(rot_labels.at<float>(0, 0) >= 1.f - 1e-10f);
+    
     return rot_labels;
 }
 
-cv::Mat KCF_Tracker::circshift(const cv::Mat &patch, int x_rot, int y_rot)
-{
+cv::Mat KCF_Tracker::circshift(
+    const cv::Mat &patch, int x_rot, int y_rot) {
     cv::Mat rot_patch(patch.size(), CV_32FC1);
     cv::Mat tmp_x_rot(patch.size(), CV_32FC1);
 
-    //circular rotate x-axis
+    // circular rotate x-axis
     if (x_rot < 0) {
-        //move part that does not rotate over the edge
-        cv::Range orig_range(-x_rot, patch.cols);
-        cv::Range rot_range(0, patch.cols - (-x_rot));
-        patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(), rot_range));
+        // move part that does not rotate over the edge
+       cv::Range orig_range(-x_rot, patch.cols);
+       cv::Range rot_range(0, patch.cols - (-x_rot));
+       patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(),
+                                                            rot_range));
 
-        //rotated part
+        // rotated part
         orig_range = cv::Range(0, -x_rot);
         rot_range = cv::Range(patch.cols - (-x_rot), patch.cols);
-        patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(), rot_range));
-    }else if (x_rot > 0){
-        //move part that does not rotate over the edge
-        cv::Range orig_range(0, patch.cols - x_rot);
-        cv::Range rot_range(x_rot, patch.cols);
-        patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(), rot_range));
+        patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(),
+                                                             rot_range));
+    } else if (x_rot > 0) {
+       // move part that does not rotate over the edge
+       cv::Range orig_range(0, patch.cols - x_rot);
+       cv::Range rot_range(x_rot, patch.cols);
+       patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(),
+                                                            rot_range));
 
-        //rotated part
-        orig_range = cv::Range(patch.cols - x_rot, patch.cols);
-        rot_range = cv::Range(0, x_rot);
-        patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(), rot_range));
-    }else {    //zero rotation
-        //move part that does not rotate over the edge
-        cv::Range orig_range(0, patch.cols);
-        cv::Range rot_range(0, patch.cols);
-        patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(), rot_range));
+        // rotated part
+       orig_range = cv::Range(patch.cols - x_rot, patch.cols);
+       rot_range = cv::Range(0, x_rot);
+       patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(),
+                                                            rot_range));
+    } else {  // zero rotation
+        // move part that does not rotate over the edge
+       cv::Range orig_range(0, patch.cols);
+       cv::Range rot_range(0, patch.cols);
+       patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(),
+                                                            rot_range));
     }
 
-    //circular rotate y-axis
+    // circular rotate y-axis
     if (y_rot < 0) {
-        //move part that does not rotate over the edge
-        cv::Range orig_range(-y_rot, patch.rows);
-        cv::Range rot_range(0, patch.rows - (-y_rot));
-        tmp_x_rot(orig_range, cv::Range::all()).copyTo(rot_patch(rot_range, cv::Range::all()));
+       // move part that does not rotate over the edge
+       cv::Range orig_range(-y_rot, patch.rows);
+       cv::Range rot_range(0, patch.rows - (-y_rot));
+       tmp_x_rot(orig_range, cv::Range::all()).copyTo(
+          rot_patch(rot_range, cv::Range::all()));
+       
+       // rotated part
+       orig_range = cv::Range(0, -y_rot);
+       rot_range = cv::Range(patch.rows - (-y_rot), patch.rows);
+       tmp_x_rot(orig_range, cv::Range::all()).copyTo(
+          rot_patch(rot_range, cv::Range::all()));
+    } else if (y_rot > 0) {
+       // move part that does not rotate over the edge
+       cv::Range orig_range(0, patch.rows - y_rot);
+       cv::Range rot_range(y_rot, patch.rows);
+       tmp_x_rot(orig_range, cv::Range::all()).copyTo(
+          rot_patch(rot_range, cv::Range::all()));
 
-        //rotated part
-        orig_range = cv::Range(0, -y_rot);
-        rot_range = cv::Range(patch.rows - (-y_rot), patch.rows);
-        tmp_x_rot(orig_range, cv::Range::all()).copyTo(rot_patch(rot_range, cv::Range::all()));
-    }else if (y_rot > 0){
-        //move part that does not rotate over the edge
-        cv::Range orig_range(0, patch.rows - y_rot);
-        cv::Range rot_range(y_rot, patch.rows);
-        tmp_x_rot(orig_range, cv::Range::all()).copyTo(rot_patch(rot_range, cv::Range::all()));
-
-        //rotated part
-        orig_range = cv::Range(patch.rows - y_rot, patch.rows);
-        rot_range = cv::Range(0, y_rot);
-        tmp_x_rot(orig_range, cv::Range::all()).copyTo(rot_patch(rot_range, cv::Range::all()));
-    }else { //zero rotation
-        //move part that does not rotate over the edge
-        cv::Range orig_range(0, patch.rows);
-        cv::Range rot_range(0, patch.rows);
-        tmp_x_rot(orig_range, cv::Range::all()).copyTo(rot_patch(rot_range, cv::Range::all()));
+        // rotated part
+       orig_range = cv::Range(patch.rows - y_rot, patch.rows);
+       rot_range = cv::Range(0, y_rot);
+       tmp_x_rot(orig_range, cv::Range::all()).copyTo(
+          rot_patch(rot_range, cv::Range::all()));
+    } else {  // zero rotation
+       // move part that does not rotate over the edge
+       cv::Range orig_range(0, patch.rows);
+       cv::Range rot_range(0, patch.rows);
+       tmp_x_rot(orig_range, cv::Range::all()).copyTo(
+          rot_patch(rot_range, cv::Range::all()));
     }
 
     return rot_patch;
 }
 
-ComplexMat KCF_Tracker::fft2(const cv::Mat &input)
-{
+ComplexMat KCF_Tracker::fft2(const cv::Mat &input) {
     cv::Mat complex_result;
-//    cv::Mat padded;                            //expand input image to optimal size
-//    int m = cv::getOptimalDFTSize( input.rows );
-//    int n = cv::getOptimalDFTSize( input.cols ); // on the border add zero pixels
-//    copyMakeBorder(input, padded, 0, m - input.rows, 0, n - input.cols, cv::BORDER_CONSTANT, cv::Scalar::all(0));
-//    cv::dft(padded, complex_result, cv::DFT_COMPLEX_OUTPUT);
-//    return ComplexMat(complex_result(cv::Range(0, input.rows), cv::Range(0, input.cols)));
-
     cv::dft(input, complex_result, cv::DFT_COMPLEX_OUTPUT);
     return ComplexMat(complex_result);
 }
@@ -505,19 +480,6 @@ ComplexMat KCF_Tracker::fft2(const std::vector<cv::Mat> &input,
     ComplexMat result(input[0].rows, input[0].cols, n_channels);
     for (int i = 0; i < n_channels; ++i) {
         cv::Mat complex_result;
-//        cv::Mat padded;                            //expand input
-//        image to optimal size
-//        int m = cv::getOptimalDFTSize( input[0].rows );
-//        int n = cv::getOptimalDFTSize( input[0].cols ); // on the
-//        border add zero pixels
-
-//        copyMakeBorder(input[i].mul(cos_window), padded, 0, m -
-//        input[0].rows, 0, n - input[0].cols, cv::BORDER_CONSTANT,
-//        cv::Scalar::all(0));
-//        cv::dft(padded, complex_result, cv::DFT_COMPLEX_OUTPUT);
-//        result.set_channel(i, complex_result(cv::Range(0,
-//        input[0].rows), cv::Range(0, input[0].cols)));
-
         cv::dft(input[i].mul(cos_window), complex_result,
                 cv::DFT_COMPLEX_OUTPUT);
         result.set_channel(i, complex_result);
@@ -525,33 +487,37 @@ ComplexMat KCF_Tracker::fft2(const std::vector<cv::Mat> &input,
     return result;
 }
 
-cv::Mat KCF_Tracker::ifft2(const ComplexMat &inputf)
-{
+cv::Mat KCF_Tracker::ifft2(const ComplexMat &inputf) {
 
     cv::Mat real_result;
-    if (inputf.n_channels == 1){
-        cv::dft(inputf.to_cv_mat(), real_result, cv::DFT_INVERSE | cv::DFT_REAL_OUTPUT | cv::DFT_SCALE);
+    if (inputf.n_channels == 1) {
+       cv::dft(inputf.to_cv_mat(), real_result,
+               cv::DFT_INVERSE | cv::DFT_REAL_OUTPUT | cv::DFT_SCALE);
     } else {
         std::vector<cv::Mat> mat_channels = inputf.to_cv_mat_vector();
         std::vector<cv::Mat> ifft_mats(inputf.n_channels);
         for (int i = 0; i < inputf.n_channels; ++i) {
-            cv::dft(mat_channels[i], ifft_mats[i], cv::DFT_INVERSE | cv::DFT_REAL_OUTPUT | cv::DFT_SCALE);
+            cv::dft(mat_channels[i], ifft_mats[i],
+                    cv::DFT_INVERSE | cv::DFT_REAL_OUTPUT | cv::DFT_SCALE);
         }
         cv::merge(ifft_mats, real_result);
     }
     return real_result;
 }
 
-//hann window actually (Power-of-cosine windows)
-cv::Mat KCF_Tracker::cosine_window_function(int dim1, int dim2)
-{
+// hann window actually (Power-of-cosine windows)
+cv::Mat KCF_Tracker::cosine_window_function(
+    int dim1, int dim2) {
     cv::Mat m1(1, dim1, CV_32FC1), m2(dim2, 1, CV_32FC1);
     double N_inv = 1./(static_cast<double>(dim1)-1.);
     for (int i = 0; i < dim1; ++i)
-        m1.at<float>(i) = 0.5*(1. - std::cos(2. * CV_PI * static_cast<double>(i) * N_inv));
-    N_inv = 1./(static_cast<double>(dim2)-1.);
-    for (int i = 0; i < dim2; ++i)
-        m2.at<float>(i) = 0.5*(1. - std::cos(2. * CV_PI * static_cast<double>(i) * N_inv));
+       m1.at<float>(i) = 0.5*(1. - std::cos(2. * CV_PI *
+                                            static_cast<double>(i) * N_inv));
+    N_inv = 1./ (static_cast<double>(dim2)-1.);
+    for (int i = 0; i < dim2; ++i) {
+       m2.at<float>(i) = 0.5*(1. - std::cos(
+                                 2. * CV_PI * static_cast<double>(i) * N_inv));
+    }
     cv::Mat ret = m2*m1;
     return ret;
 }
@@ -559,8 +525,8 @@ cv::Mat KCF_Tracker::cosine_window_function(int dim1, int dim2)
 // Returns sub-window of image input centered at [cx, cy] coordinates),
 // with size [width, height]. If any pixels are outside of the image,
 // they will replicate the values at the borders.
-cv::Mat KCF_Tracker::get_subwindow(const cv::Mat &input, int cx, int cy, int width, int height)
-{
+cv::Mat KCF_Tracker::get_subwindow(
+    const cv::Mat &input, int cx, int cy, int width, int height) {
     cv::Mat patch;
 
     int x1 = cx - width/2;
@@ -568,7 +534,7 @@ cv::Mat KCF_Tracker::get_subwindow(const cv::Mat &input, int cx, int cy, int wid
     int x2 = cx + width/2;
     int y2 = cy + height/2;
 
-    //out of image
+    // out of image
     if (x1 >= input.cols || y1 >= input.rows || x2 < 0 || y2 < 0) {
         patch.create(height, width, input.type());
         patch.setTo(0.f);
@@ -577,7 +543,7 @@ cv::Mat KCF_Tracker::get_subwindow(const cv::Mat &input, int cx, int cy, int wid
 
     int top = 0, bottom = 0, left = 0, right = 0;
 
-    //fit to image coordinates, set border extensions;
+    // fit to image coordinates, set border extensions;
     if (x1 < 0) {
         left = -x1;
         x1 = 0;
@@ -589,54 +555,63 @@ cv::Mat KCF_Tracker::get_subwindow(const cv::Mat &input, int cx, int cy, int wid
     if (x2 >= input.cols) {
         right = x2 - input.cols + width % 2;
         x2 = input.cols;
-    } else
+    } else {
         x2 += width % 2;
-
+    }
     if (y2 >= input.rows) {
         bottom = y2 - input.rows + height % 2;
         y2 = input.rows;
-    } else
+    } else {
         y2 += height % 2;
-
-    if (x2 - x1 == 0 || y2 - y1 == 0)
+    }
+    if (x2 - x1 == 0 || y2 - y1 == 0) {
         patch = cv::Mat::zeros(height, width, CV_32FC1);
-    else
-        cv::copyMakeBorder(input(cv::Range(y1, y2), cv::Range(x1, x2)), patch, top, bottom, left, right, cv::BORDER_REPLICATE);
+    } else {
+       cv::copyMakeBorder(input(cv::Range(y1, y2),
+                                cv::Range(x1, x2)), patch,
+                          top, bottom, left, right, cv::BORDER_REPLICATE);
+    }
 
-    //sanity check
+    // sanity check
     assert(patch.cols == width && patch.rows == height);
 
     return patch;
 }
 
-ComplexMat KCF_Tracker::gaussian_correlation(const ComplexMat &xf, const ComplexMat &yf, double sigma, bool auto_correlation)
-{
+ComplexMat KCF_Tracker::gaussian_correlation(
+    const ComplexMat &xf, const ComplexMat &yf, double sigma,
+    bool auto_correlation) {
     float xf_sqr_norm = xf.sqr_norm();
     float yf_sqr_norm = auto_correlation ? xf_sqr_norm : yf.sqr_norm();
 
     ComplexMat xyf = auto_correlation ? xf.sqr_mag() : xf * yf.conj();
 
-    //ifft2 and sum over 3rd dimension, we dont care about individual channels
+    // ifft2 and sum over 3rd dimension, we dont care about individual
+    // channels
     cv::Mat xy_sum(xf.rows, xf.cols, CV_32FC1);
     xy_sum.setTo(0);
     cv::Mat ifft2_res = ifft2(xyf);
     for (int y = 0; y < xf.rows; ++y) {
         float * row_ptr = ifft2_res.ptr<float>(y);
         float * row_ptr_sum = xy_sum.ptr<float>(y);
-        for (int x = 0; x < xf.cols; ++x){
-            row_ptr_sum[x] = std::accumulate((row_ptr + x*ifft2_res.channels()), (row_ptr + x*ifft2_res.channels() + ifft2_res.channels()), 0.f);
+        for (int x = 0; x < xf.cols; ++x) {
+           row_ptr_sum[x] = std::accumulate(
+              (row_ptr + x*ifft2_res.channels()),
+              (row_ptr + x*ifft2_res.channels() + ifft2_res.channels()), 0.f);
         }
     }
 
     float numel_xf_inv = 1.f/(xf.cols * xf.rows * xf.n_channels);
     cv::Mat tmp;
-    cv::exp(- 1.f / (sigma * sigma) * cv::max((xf_sqr_norm + yf_sqr_norm - 2 * xy_sum) * numel_xf_inv, 0), tmp);
+    cv::exp(- 1.f / (sigma * sigma) * cv::max(
+               (xf_sqr_norm + yf_sqr_norm - 2 * xy_sum) * numel_xf_inv, 0),
+            tmp);
 
     return fft2(tmp);
 }
 
-float get_response_circular(cv::Point2i & pt, cv::Mat & response)
-{
+float get_response_circular(cv::Point2i &pt,
+                            cv::Mat & response) {
     int x = pt.x;
     int y = pt.y;
     if (x < 0)
@@ -647,31 +622,35 @@ float get_response_circular(cv::Point2i & pt, cv::Mat & response)
         x = x - response.cols;
     if (y >= response.rows)
         y = y - response.rows;
-
-    return response.at<float>(y,x);
+    return response.at<float>(y, x);
 }
 
-cv::Point2f KCF_Tracker::sub_pixel_peak(cv::Point & max_loc, cv::Mat & response)
-{
-    //find neighbourhood of max_loc (response is circular)
+cv::Point2f KCF_Tracker::sub_pixel_peak(
+    cv::Point & max_loc, cv::Mat & response) {
+    // find neighbourhood of max_loc (response is circular)
     // 1 2 3
     // 4   5
     // 6 7 8
-    cv::Point2i p1(max_loc.x-1, max_loc.y-1), p2(max_loc.x, max_loc.y-1), p3(max_loc.x+1, max_loc.y-1);
-    cv::Point2i p4(max_loc.x-1, max_loc.y), p5(max_loc.x+1, max_loc.y);
-    cv::Point2i p6(max_loc.x-1, max_loc.y+1), p7(max_loc.x, max_loc.y+1), p8(max_loc.x+1, max_loc.y+1);
+    cv::Point2i p1(max_loc.x-1, max_loc.y-1),
+       p2(max_loc.x, max_loc.y-1), p3(max_loc.x+1, max_loc.y-1);
+    cv::Point2i p4(max_loc.x-1, max_loc.y),
+       p5(max_loc.x+1, max_loc.y);
+    cv::Point2i p6(max_loc.x-1, max_loc.y+1),
+       p7(max_loc.x, max_loc.y+1), p8(max_loc.x+1, max_loc.y+1);
 
-    // fit 2d quadratic function f(x, y) = a*x^2 + b*x*y + c*y^2 + d*x + e*y + f
+    // fit 2d quadratic function f(x, y) = a*x^2 + b*x*y + c*y^2 + d*x
+    // + e*y + f
     cv::Mat A = (cv::Mat_<float>(9, 6) <<
-                    p1.x*p1.x, p1.x*p1.y, p1.y*p1.y, p1.x, p1.y, 1.f,
-                    p2.x*p2.x, p2.x*p2.y, p2.y*p2.y, p2.x, p2.y, 1.f,
-                    p3.x*p3.x, p3.x*p3.y, p3.y*p3.y, p3.x, p3.y, 1.f,
-                    p4.x*p4.x, p4.x*p4.y, p4.y*p4.y, p4.x, p4.y, 1.f,
-                    p5.x*p5.x, p5.x*p5.y, p5.y*p5.y, p5.x, p5.y, 1.f,
-                    p6.x*p6.x, p6.x*p6.y, p6.y*p6.y, p6.x, p6.y, 1.f,
-                    p7.x*p7.x, p7.x*p7.y, p7.y*p7.y, p7.x, p7.y, 1.f,
-                    p8.x*p8.x, p8.x*p8.y, p8.y*p8.y, p8.x, p8.y, 1.f,
-                    max_loc.x*max_loc.x, max_loc.x*max_loc.y, max_loc.y*max_loc.y, max_loc.x, max_loc.y, 1.f);
+                 p1.x*p1.x, p1.x*p1.y, p1.y*p1.y, p1.x, p1.y, 1.f,
+                 p2.x*p2.x, p2.x*p2.y, p2.y*p2.y, p2.x, p2.y, 1.f,
+                 p3.x*p3.x, p3.x*p3.y, p3.y*p3.y, p3.x, p3.y, 1.f,
+                 p4.x*p4.x, p4.x*p4.y, p4.y*p4.y, p4.x, p4.y, 1.f,
+                 p5.x*p5.x, p5.x*p5.y, p5.y*p5.y, p5.x, p5.y, 1.f,
+                 p6.x*p6.x, p6.x*p6.y, p6.y*p6.y, p6.x, p6.y, 1.f,
+                 p7.x*p7.x, p7.x*p7.y, p7.y*p7.y, p7.x, p7.y, 1.f,
+                 p8.x*p8.x, p8.x*p8.y, p8.y*p8.y, p8.x, p8.y, 1.f,
+                 max_loc.x*max_loc.x, max_loc.x*max_loc.y,
+                 max_loc.y*max_loc.y, max_loc.x, max_loc.y, 1.f);
     cv::Mat fval = (cv::Mat_<float>(9, 1) <<
                     get_response_circular(p1, response),
                     get_response_circular(p2, response),
@@ -697,10 +676,10 @@ cv::Point2f KCF_Tracker::sub_pixel_peak(cv::Point & max_loc, cv::Mat & response)
     return sub_peak;
 }
 
-double KCF_Tracker::sub_grid_scale(std::vector<double> & responses, int index)
-{
+double KCF_Tracker::sub_grid_scale(
+    std::vector<double> & responses, int index) {
     cv::Mat A, fval;
-    if (index < 0 || index > (int)p_scales.size()-1) {
+    if (index < 0 || index > static_cast<int>(p_scales.size()) - 1) {
         // interpolate from all values
         // fit 1d quadratic function f(x) = a*x^2 + b*x + c
         A.create(p_scales.size(), 3, CV_32FC1);
@@ -712,15 +691,16 @@ double KCF_Tracker::sub_grid_scale(std::vector<double> & responses, int index)
             fval.at<float>(i) = responses[i];
         }
     } else {
-        //only from neighbours
-        if (index == 0 || index == (int)p_scales.size()-1)
+       // only from neighbours
+       if (index == 0 || index == static_cast<int>(p_scales.size()) - 1) {
             return p_scales[index];
-
-        A = (cv::Mat_<float>(3, 3) <<
-                       p_scales[index-1] * p_scales[index-1], p_scales[index-1], 1,
-                       p_scales[index] * p_scales[index], p_scales[index], 1,
-                       p_scales[index+1] * p_scales[index+1], p_scales[index+1], 1);
-        fval = (cv::Mat_<float>(3, 1) << responses[index-1], responses[index], responses[index+1]);
+       }
+       A = (cv::Mat_<float>(3, 3) <<
+            p_scales[index-1] * p_scales[index-1], p_scales[index-1], 1,
+            p_scales[index] * p_scales[index], p_scales[index], 1,
+            p_scales[index+1] * p_scales[index+1], p_scales[index+1], 1);
+       fval = (cv::Mat_<float>(3, 1) << responses[index-1],
+               responses[index], responses[index+1]);
     }
 
     cv::Mat x;
