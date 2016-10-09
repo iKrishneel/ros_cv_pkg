@@ -168,7 +168,9 @@ include_directories(${CAFFE_INCLUDEDIR})
 
 ## Declare a C++ executable
 link_directories(${CAFFE_LINK_LIBRARAY})
-cuda_add_executable(kernelized_correlation_filters_node src/kernelized_correlation_filters_node.cpp)
+cuda_add_executable(kernelized_correlation_filters_node 
+  src/kernelized_correlation_filters_node.cpp
+  src/deep_feature_extraction.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above

@@ -5,7 +5,55 @@
 KernelizedCorrelationFilters::KernelizedCorrelationFilters() :
     block_size_(8), downsize_(1), tracker_init_(false), threads_(8) {
     this->tracker_ = boost::shared_ptr<KCF_Tracker>(new KCF_Tracker);
-    this->onInit();
+
+    std::string pretrained_weights;
+    this->pnh_.getParam("pretrained_weights", pretrained_weights);
+    if (pretrained_weights.empty()) {
+       // ROS_FATAL("PROVIDE PRETRAINED WEIGHTS");
+       // return;
+    }
+    std::string model_prototxt;
+    this->pnh_.getParam("model_prototxt", model_prototxt);
+    if (model_prototxt.empty()) {
+       // ROS_FATAL("PROVIDE NETWORK PROTOTXT");
+       // return;
+    }
+    std::string imagenet_mean;
+    this->pnh_.getParam("imagenet_mean", imagenet_mean);
+    if (imagenet_mean.empty()) {
+       // ROS_ERROR("PROVIDE IMAGENET MEAN VALUE");
+       // return;
+    }
+    int device_id;
+    this->pnh_.param<int>("device_id", device_id, 0);
+    this->pnh_.getParam("device_id", device_id);
+    
+    std::vector<std::string> feat_ext_layers(1);
+    feat_ext_layers[0] = "conv1";
+
+
+    //! test
+    std::string caffe_root = "/home/krishneel/caffe/";
+    pretrained_weights = caffe_root +
+       "models/bvlc_reference_caffenet/bvlc_reference_caffenet.caffemodel";
+    model_prototxt = caffe_root +
+       "models/bvlc_reference_caffenet/deploy.prototxt";
+    imagenet_mean = caffe_root +
+       "python/caffe/imagenet/imagenet_mean.binaryproto";
+
+    ROS_WARN("SETTING CAFFE");
+    FeatureExtractor *feature_extractor =
+       new FeatureExtractor(pretrained_weights, model_prototxt,
+                            imagenet_mean, feat_ext_layers, 0);
+    ROS_WARN("CAFFE SETUP COMPLETED");
+
+    cv::Mat image = cv::imread(caffe_root + "examples/images/cat.jpg");
+    feature_extractor->getFeatures(image);
+    
+    
+    //! end test
+    
+    //! this->onInit();
 }
 
 void KernelizedCorrelationFilters::onInit() {

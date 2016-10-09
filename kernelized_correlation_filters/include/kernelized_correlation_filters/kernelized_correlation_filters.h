@@ -12,15 +12,10 @@
 #include <sensor_msgs/image_encodings.h>
 
 #include<kernelized_correlation_filters/kcf.h>
+#include <kernelized_correlation_filters/deep_feature_extraction.h>
 
 #include <omp.h>
 #include <cmath>
-
-#include <opencv2/opencv.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <boost/thread/mutex.hpp>
-
-#include <caffe/caffe.hpp>
 
 class KernelizedCorrelationFilters {
 
