@@ -31,7 +31,7 @@ KernelizedCorrelationFilters::KernelizedCorrelationFilters() :
     std::vector<std::string> feat_ext_layers(1);
     feat_ext_layers[0] = "conv1";
 
-
+    /*
     //! test
     std::string caffe_root = "/home/krishneel/caffe/";
     pretrained_weights = caffe_root +
@@ -48,12 +48,14 @@ KernelizedCorrelationFilters::KernelizedCorrelationFilters() :
     ROS_WARN("CAFFE SETUP COMPLETED");
 
     cv::Mat image = cv::imread(caffe_root + "examples/images/cat.jpg");
-    feature_extractor->getFeatures(image);
-    
+    std::vector<cv::Mat> filters;
+    feature_extractor->getFeatures(filters, image);
+
+    std::cout << filters.size()  << "\n";
     
     //! end test
-    
-    //! this->onInit();
+    */
+    this->onInit();
 }
 
 void KernelizedCorrelationFilters::onInit() {

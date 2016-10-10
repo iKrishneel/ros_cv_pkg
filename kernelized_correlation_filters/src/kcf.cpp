@@ -4,6 +4,50 @@
 #include <future>
 #include <thread>
 
+KCF_Tracker::KCF_Tracker() {
+    p_resize_image = false;
+    p_padding = 1.5;
+    p_output_sigma_factor = 0.1;
+    p_output_sigma;
+    p_kernel_sigma = 0.5;    // def = 0.5
+    p_lambda = 1e-4;         // regularization in learning step
+    p_interp_factor = 0.02;
+    p_cell_size = 4;
+    p_scale_step = 1.02;
+    p_current_scale = 1.0f;
+    p_num_scales = 7;
+
+    m_use_scale = true;
+    m_use_color = true;
+    m_use_subpixel_localization = true;
+    m_use_subgrid_scale = true;
+    m_use_multithreading = true;
+    m_use_cnfeat = true;
+}
+
+KCF_Tracker::KCF_Tracker(
+    double padding, double kernel_sigma, double lambda,
+    double interp_factor, double output_sigma_factor,
+    int cell_size) :
+    p_padding(padding),
+    p_output_sigma_factor(output_sigma_factor),
+    p_kernel_sigma(kernel_sigma),
+    p_lambda(lambda),
+    p_interp_factor(interp_factor),
+    p_cell_size(cell_size) {
+
+    /*
+      padding      ... extra area surrounding the target           (1.5)
+      kernel_sigma ... gaussian kernel bandwidth                   (0.5)
+      lambda       ... regularization                              (1e-4)
+      interp_factor ... linear interpolation factor for adaptation  (0.02)
+      output_sigma_factor... spatial bandwidth (proportional to target)  (0.1)
+      cell_size       ... hog cell size                               (4)
+    */
+}
+
+
+
 
 void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     // check boundary, enforce min size
@@ -362,11 +406,11 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
     }
 
     if (m_use_cnfeat && input_rgb.channels() == 3) {
-        std::vector<cv::Mat> cn_feat = CNFeat::extract(patch_rgb);
-        color_feat.insert(color_feat.end(), cn_feat.begin(), cn_feat.end());
+       std::vector<cv::Mat> cn_feat = CNFeat::extract(patch_rgb);
+       color_feat.insert(color_feat.end(), cn_feat.begin(), cn_feat.end());
     }
 
-    hog_feat.clear();
+    // hog_feat.clear();
     hog_feat.insert(hog_feat.end(), color_feat.begin(), color_feat.end());
     return hog_feat;
 }
