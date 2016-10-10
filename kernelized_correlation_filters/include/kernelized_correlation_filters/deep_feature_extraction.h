@@ -42,7 +42,7 @@ class FeatureExtractor {
     void setExtractionLayers(std::vector<std::string>,
                              const int);
     void getFeatures(std::vector<cv::Mat> &,
-                     const cv::Mat);
+                     const cv::Mat, const cv::Size = cv::Size(-1, -1));
     bool setImageNetMean(const std::string);
     void wrapInputLayer(std::vector<cv::Mat>*);
     void preProcessImage(const cv::Mat &,

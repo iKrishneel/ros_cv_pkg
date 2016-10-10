@@ -152,11 +152,11 @@ include_directories(
 
 
 ## default KCF setting
-INCLUDE_DIRECTORIES( ${CMAKE_BINARY_DIR}/)
-include_directories(${CMAKE_SOURCE_DIR}/src/ 
-  ${CMAKE_SOURCE_DIR}/src/piotr_fhog 
-  ${CMAKE_SOURCE_DIR}/src/cn)
-add_subdirectory(src)
+# INCLUDE_DIRECTORIES( ${CMAKE_BINARY_DIR}/)
+# include_directories(${CMAKE_SOURCE_DIR}/src/ 
+#   ${CMAKE_SOURCE_DIR}/src/piotr_fhog 
+#   ${CMAKE_SOURCE_DIR}/src/cn)
+# add_subdirectory(src)
 
 include_directories(${CAFFE_INCLUDEDIR})
 
@@ -177,7 +177,7 @@ link_directories(${CAFFE_LINK_LIBRARAY})
 cuda_add_executable(kernelized_correlation_filters_node 
   src/kernelized_correlation_filters_node.cpp
   src/deep_feature_extraction.cpp
-  #src/kcf.cpp
+  src/kcf.cpp
 )
 
 ## Add cmake target dependencies of the executable
@@ -186,7 +186,7 @@ cuda_add_executable(kernelized_correlation_filters_node
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(kernelized_correlation_filters_node
-  ${catkin_LIBRARIES} ${OpenCV_LIBS}  caffe glog kcf
+  ${catkin_LIBRARIES} ${OpenCV_LIBS}  caffe glog
   )
 
 #############

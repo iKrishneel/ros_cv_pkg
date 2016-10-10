@@ -61,7 +61,8 @@ bool FeatureExtractor::loadPreTrainedCaffeModels(
 }
 
 void FeatureExtractor::getFeatures(
-    std::vector<cv::Mat> &filters, const cv::Mat image) {
+    std::vector<cv::Mat> &filters, const cv::Mat image,
+    const cv::Size filter_size) {
     if (image.channels() < 3 || image.empty()) {
        ROS_FATAL("IMAGE CHANNEL IS INCORRECT");
        return;
@@ -110,13 +111,14 @@ void FeatureExtractor::getFeatures(
     */
     
     boost::shared_ptr<caffe::Blob<float> > blob_info =
-       this->feature_extractor_net_->blob_by_name("conv5");
+       this->feature_extractor_net_->blob_by_name("conv3");
 
 #ifdef _DEBUG
     std::cout << "BLOB SIZE: " << blob_info->data()->size()  << "\n";
     std::cout << blob_info->height() << " " << blob_info->width()  << "\n";
     std::cout << blob_info->channels()  << "\n";
 #endif
+
     const float *idata = blob_info->cpu_data();
     filters.clear();
     for (int i = 0; i < blob_info->channels(); i++) {
@@ -128,6 +130,10 @@ void FeatureExtractor::getFeatures(
                 i * blob_info->width() * blob_info->height() +
                 y * blob_info->width() + x];
           }
+       }
+
+       if (filter_size.width != -1) {
+          cv::resize(im, im, filter_size);
        }
        filters.push_back(im);
 #ifdef _DEBUG_FILTERS

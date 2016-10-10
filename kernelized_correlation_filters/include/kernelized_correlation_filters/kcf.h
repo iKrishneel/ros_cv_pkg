@@ -1,11 +1,11 @@
 #ifndef KCF_HEADER_6565467831231
 #define KCF_HEADER_6565467831231
 
-// #include <kernelized_correlation_filters/deep_feature_extraction.h>
+#include <kernelized_correlation_filters/deep_feature_extraction.h>
 #include <kernelized_correlation_filters/complexmat.hpp>
 
-#include "cnfeat.hpp"
-#include "fhog.hpp"
+// #include "cnfeat.hpp"
+// #include "fhog.hpp"
 
 #include <opencv2/cudaobjdetect.hpp>
 #include <opencv2/opencv.hpp>
@@ -75,7 +75,7 @@ class KCF_Tracker {
                           int index = -1);
 
  protected:
-   // FeatureExtractor *feature_extractor_;
+    FeatureExtractor *feature_extractor_;
    
  public:
     bool m_use_scale;
@@ -84,6 +84,7 @@ class KCF_Tracker {
     bool m_use_subgrid_scale;
     bool m_use_multithreading;
     bool m_use_cnfeat;
+    bool is_cnn_set_;
 
     KCF_Tracker(double, double, double, double, double, int cell_size);
     KCF_Tracker();

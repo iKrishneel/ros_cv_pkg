@@ -17,7 +17,8 @@ KCF_Tracker::KCF_Tracker() {
     p_current_scale = 1.0f;
     p_num_scales = 7;
 
-    m_use_scale = true;
+    is_cnn_set_ = false;
+    m_use_scale = !true;
     m_use_color = true;
     m_use_subpixel_localization = true;
     m_use_subgrid_scale = true;
@@ -34,7 +35,8 @@ KCF_Tracker::KCF_Tracker(
     p_kernel_sigma(kernel_sigma),
     p_lambda(lambda),
     p_interp_factor(interp_factor),
-    p_cell_size(cell_size) {
+    p_cell_size(cell_size),
+    is_cnn_set_(false) {
 
     /*
       padding      ... extra area surrounding the target           (1.5)
@@ -46,20 +48,39 @@ KCF_Tracker::KCF_Tracker(
     */
 }
 
-
+void KCF_Tracker::setCaffeInfo(
+    const std::string pretrained_weights, const std::string model_prototxt,
+    const std::string mean_file,
+    std::vector<std::string> &feature_layers, const int device_id) {
+    this->feature_extractor_ = new FeatureExtractor(
+       pretrained_weights, model_prototxt, mean_file,
+       feature_layers, device_id);
+    this->is_cnn_set_ = true;
+}
 
 
 void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     // check boundary, enforce min size
-    double x1 = bbox.x, x2 = bbox.x + bbox.width,
-       y1 = bbox.y, y2 = bbox.y + bbox.height;
-    if (x1 < 0) x1 = 0.;
-    if (x2 > img.cols-1) x2 = img.cols - 1;
-    if (y1 < 0) y1 = 0;
-    if (y2 > img.rows-1) y2 = img.rows - 1;
+    if (!this->is_cnn_set_) {
+       ROS_FATAL("CAFFE CNN INFO NOT SET");
+       return;
+    }
+    double x1 = bbox.x;
+    double x2 = bbox.x + bbox.width;
+    double y1 = bbox.y;
+    double y2 = bbox.y + bbox.height;
+    // if (x1 < 0) x1 = 0.;
+    // if (x2 > img.cols-1) x2 = img.cols - 1;
+    // if (y1 < 0) y1 = 0;
+    // if (y2 > img.rows-1) y2 = img.rows - 1;
 
-    if (x2-x1 < 2*p_cell_size) {
-        double diff = (2*p_cell_size -x2+x1)/2.;
+    x1 = (x1 < 0.0) ? 0.0 : x1;
+    x2 = (x2 > img.cols - 1) ? img.cols - 1 : x2;
+    y1 = (y1 < 0.0) ? 0.0 : y1;
+    y2 = (y2 > img.rows - 1) ? img.rows - 1 : y2;
+    
+    if (x2 - x1 < 2 * p_cell_size) {
+        double diff = (2 * p_cell_size - x2 + x1) / 2.0;
         if (x1 - diff >= 0 && x2 + diff < img.cols) {
             x1 -= diff;
             x2 += diff;
@@ -69,7 +90,7 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
             x2 += 2*diff;
         }
     }
-    if (y2-y1 < 2*p_cell_size) {
+    if (y2 - y1 < 2 * p_cell_size) {
         double diff = (2*p_cell_size -y2+y1)/2.;
         if (y1 - diff >= 0 && y2 + diff < img.rows) {
             y1 -= diff;
@@ -88,14 +109,14 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
 
     cv::Mat input_gray, input_rgb = img.clone();
     if (img.channels() == 3) {
-        cv::cvtColor(img, input_gray, CV_BGR2GRAY);
-        input_gray.convertTo(input_gray, CV_32FC1);
+       cv::cvtColor(img, input_gray, CV_BGR2GRAY);
+       input_gray.convertTo(input_gray, CV_32FC1);
     } else {
-        img.convertTo(input_gray, CV_32FC1);
+       img.convertTo(input_gray, CV_32FC1);
     }
     
     // don't need too large image
-    if (p_pose.w * p_pose.h > 100.*100.) {
+    if (p_pose.w * p_pose.h > 100.* 100.) {
         std::cout << "resizing image by factor of 2" << std::endl;
         p_resize_image = true;
         p_pose.scale(0.5);
@@ -110,7 +131,7 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
                               p_cell_size) * p_cell_size;
     p_windows_size[1] = round(p_pose.h * (1. + p_padding) /
                               p_cell_size) * p_cell_size;
-
+    
     p_scales.clear();
     if (m_use_scale) {
         for (int i = -p_num_scales/2; i <= p_num_scales/2; ++i)
@@ -354,7 +375,7 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
                                                cv::Mat & input_gray,
                                                int cx, int cy, int size_x,
                                                int size_y, double scale) {
-    // std::cout << "\33[34m GETTING FEATURES \033[0m"  << "\n";
+    std::cout << "\33[34m GETTING FEATURES \033[0m"  << "\n";
     int size_x_scaled = floor(size_x*scale);
     int size_y_scaled = floor(size_y*scale);
     cv::Mat patch_gray = get_subwindow(input_gray, cx, cy,
@@ -362,6 +383,21 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
     cv::Mat patch_rgb = get_subwindow(input_rgb, cx, cy,
                                       size_x_scaled, size_y_scaled);
 
+
+    std::cout << patch_gray.size()  << "\t";
+    std::cout << cx << " " << cy  << "\n";
+    
+    std::vector<cv::Mat> cnn_codes;
+    cv::resize(patch_rgb, patch_rgb, cv::Size(p_windows_size[0],
+                                              p_windows_size[1]));
+    cv::Size filter_size = cv::Size(std::floor(patch_rgb.cols/p_cell_size),
+                                    std::floor(patch_rgb.rows/p_cell_size));
+    this->feature_extractor_->getFeatures(cnn_codes, patch_rgb,
+                                          filter_size);
+
+    return cnn_codes;
+    
+    
     // resize to default size
     if (scale > 1.) {
        // if we downsample use  INTER_AREA interpolation
@@ -375,7 +411,7 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
     
     // get hog features
     std::vector<cv::Mat> hog_feat;
-    hog_feat = FHoG::extract(patch_gray, 2, p_cell_size, 9);
+    // hog_feat = FHoG::extract(patch_gray, 2, p_cell_size, 9);
 
     // get color rgb features (simple r,g,b channels)
     std::vector<cv::Mat> color_feat;
@@ -406,8 +442,8 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
     }
 
     if (m_use_cnfeat && input_rgb.channels() == 3) {
-       std::vector<cv::Mat> cn_feat = CNFeat::extract(patch_rgb);
-       color_feat.insert(color_feat.end(), cn_feat.begin(), cn_feat.end());
+       // std::vector<cv::Mat> cn_feat = CNFeat::extract(patch_rgb);
+       // color_feat.insert(color_feat.end(), cn_feat.begin(), cn_feat.end());
     }
 
     // hog_feat.clear();

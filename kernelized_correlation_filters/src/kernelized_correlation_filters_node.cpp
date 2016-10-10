@@ -31,7 +31,7 @@ KernelizedCorrelationFilters::KernelizedCorrelationFilters() :
     std::vector<std::string> feat_ext_layers(1);
     feat_ext_layers[0] = "conv1";
 
-    /*
+
     //! test
     std::string caffe_root = "/home/krishneel/caffe/";
     pretrained_weights = caffe_root +
@@ -41,6 +41,11 @@ KernelizedCorrelationFilters::KernelizedCorrelationFilters() :
     imagenet_mean = caffe_root +
        "python/caffe/imagenet/imagenet_mean.binaryproto";
 
+    this->tracker_->setCaffeInfo(pretrained_weights,
+                                 model_prototxt, imagenet_mean,
+                                 feat_ext_layers, 0);
+    
+    /*
     ROS_WARN("SETTING CAFFE");
     FeatureExtractor *feature_extractor =
        new FeatureExtractor(pretrained_weights, model_prototxt,
@@ -88,6 +93,8 @@ void KernelizedCorrelationFilters::screenPtCB(
      } else {
          ROS_WARN("-- Selected Object Size is too small... Not init tracker");
      }
+
+     std::cout << "INIT SIZE: " << screen_rect_  << "\n";
 }
 
 void KernelizedCorrelationFilters::imageCB(
