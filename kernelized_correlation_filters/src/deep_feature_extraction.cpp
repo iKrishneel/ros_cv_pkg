@@ -56,7 +56,7 @@ bool FeatureExtractor::loadPreTrainedCaffeModels(
                                      data_layer->height());
 
     this->num_channels_ = data_layer->channels();
-    this->setImageNetMean(mean_file);    
+    this->setImageNetMean(mean_file);
     return true;
 }
 
@@ -75,12 +75,19 @@ void FeatureExtractor::getFeatures(const cv::Mat image) {
     data_layer->Reshape(1, this->num_channels_,
                         this->input_geometry_.height,
                         this->input_geometry_.width);
-    
     this->feature_extractor_net_->Reshape();
+
+    
     std::vector<cv::Mat> input_channels;
     this->wrapInputLayer(&input_channels);
-    this->preProcessImage(image, &input_channels);
+
+    /*
+    float* input_data = data_layer->mutable_cpu_data();
+    const int BYTE = sizeof(float) * data_layer->height();
+    std::memcpy(input_data, image.data, BYTE);
+    */
     
+    this->preProcessImage(image, &input_channels);
     this->feature_extractor_net_->Forward();
 
     /*
@@ -100,19 +107,40 @@ void FeatureExtractor::getFeatures(const cv::Mat image) {
     std::cout << imax << " " << index  << "\n";
     return;
     */
+
     
     boost::shared_ptr<caffe::Blob<float> > blob_info =
-       this->feature_extractor_net_->blob_by_name("fc7");
+       this->feature_extractor_net_->blob_by_name("conv5");
 
+    //! debug only
     std::cout << "BLOB SIZE: " << blob_info->data()->size()  << "\n";
     std::cout << blob_info->height() << " " << blob_info->width()  << "\n";
     std::cout << blob_info->channels()  << "\n";
 
     const float *idata = blob_info->cpu_data();
-    for (int i = 0; i < 4096; i++) {
-       std::cout << idata[i]  << "\n";
+    int isize = blob_info->channels() * blob_info->height() *
+       blob_info->width();
+
+    std::vector<cv::Mat> filters;
+    for (int i = 0; i < blob_info->channels(); i++) {
+       cv::Mat im = cv::Mat::zeros(blob_info->height(),
+                                   blob_info->width(), CV_32F);
+       for (int y = 0; y < blob_info->height(); y++) {
+          for (int x = 0; x < blob_info->width(); x++) {
+             im.at<float>(y, x) = idata[
+                i * blob_info->width() * blob_info->height() +
+                y * blob_info->width() + x];
+          }
+       }
+       cv::namedWindow("filter", CV_WINDOW_NORMAL);
+       cv::resize(im, im, cv::Size(256, 256));
+       cv::imshow("filter", im);
+       cv::waitKey(20);
+       
+       filters.push_back(im);
     }
-    std::cout << "\n";
+    
+    return;
 }
 
 void FeatureExtractor::preProcessImage(
@@ -129,6 +157,7 @@ void FeatureExtractor::preProcessImage(
     } else {
        sample = img;
     }
+    
     cv::Mat sample_resized;
     if (sample.size() != this->input_geometry_) {
        cv::resize(sample, sample_resized, this->input_geometry_);
