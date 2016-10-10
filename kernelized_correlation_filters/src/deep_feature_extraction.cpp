@@ -111,7 +111,7 @@ void FeatureExtractor::getFeatures(
     */
     
     boost::shared_ptr<caffe::Blob<float> > blob_info =
-       this->feature_extractor_net_->blob_by_name("conv3");
+       this->feature_extractor_net_->blob_by_name("conv5");
 
 #ifdef _DEBUG
     std::cout << "BLOB SIZE: " << blob_info->data()->size()  << "\n";

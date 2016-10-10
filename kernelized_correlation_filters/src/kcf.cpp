@@ -238,7 +238,7 @@ void KCF_Tracker::track(cv::Mat &img) {
     cv::Point2i max_response_pt;
     int scale_index = 0;
     std::vector<double> scale_responses;
-
+    /*
     if (!m_use_multithreading) {
         std::vector<std::future<cv::Mat>> async_res(p_scales.size());
         for (size_t i = 0; i < p_scales.size(); ++i) {
@@ -278,18 +278,32 @@ void KCF_Tracker::track(cv::Mat &img) {
             }
             scale_responses.push_back(max_val*weight);
         }
-    } else {
+    } else
+       */
+    {
         for (size_t i = 0; i < p_scales.size(); ++i) {
            patch_feat = get_features(input_rgb, input_gray, p_pose.cx,
                                      p_pose.cy, p_windows_size[0],
                                      p_windows_size[1],
                                      p_current_scale * p_scales[i]);
+           
+           ComplexMat zf = fft2(patch_feat, p_cos_window);
 
-            ComplexMat zf = fft2(patch_feat, p_cos_window);
-            ComplexMat kzf = gaussian_correlation(zf,
-                                                  p_model_xf, p_kernel_sigma);
-            cv::Mat response = ifft2(p_model_alphaf * kzf);
 
+           std::clock_t start;
+           double duration;
+           start = std::clock();
+           
+           ComplexMat kzf = gaussian_correlation(zf, p_model_xf,
+                                                 p_kernel_sigma);
+
+           duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
+           std::cout << "printf: " << duration <<'\n';
+           
+
+           
+           cv::Mat response = ifft2(p_model_alphaf * kzf);
+            
             /* target location is at the maximum response. we must take into
             account the fact that, if the target doesn't move, the peak
             will appear at the top-left corner, not at the center (this is
@@ -306,6 +320,8 @@ void KCF_Tracker::track(cv::Mat &img) {
                 scale_index = i;
             }
             scale_responses.push_back(max_val*weight);
+
+
         }
     }
 
@@ -367,6 +383,7 @@ void KCF_Tracker::track(cv::Mat &img) {
     p_model_alphaf_den = p_model_alphaf_den * (1. - p_interp_factor) +
        kf * (kf + p_lambda) * p_interp_factor;
     p_model_alphaf = p_model_alphaf_num / p_model_alphaf_den;
+
 }
 
 // ****************************************************************************
@@ -558,10 +575,12 @@ ComplexMat KCF_Tracker::fft2(const std::vector<cv::Mat> &input,
                              const cv::Mat &cos_window) {
     int n_channels = input.size();
     ComplexMat result(input[0].rows, input[0].cols, n_channels);
+
     for (int i = 0; i < n_channels; ++i) {
         cv::Mat complex_result;
         cv::dft(input[i].mul(cos_window), complex_result,
                 cv::DFT_COMPLEX_OUTPUT);
+        
         result.set_channel(i, complex_result);
     }
     return result;

@@ -7,8 +7,9 @@
 // #include "cnfeat.hpp"
 // #include "fhog.hpp"
 
-#include <opencv2/cudaobjdetect.hpp>
 #include <opencv2/opencv.hpp>
+#include <opencv2/cudaobjdetect.hpp>
+#include <opencv2/cudaarithm.hpp>
 
 struct BBox_c {
     double cx, cy, w, h;
