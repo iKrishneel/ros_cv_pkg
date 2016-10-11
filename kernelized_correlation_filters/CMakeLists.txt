@@ -33,7 +33,7 @@ set(CAFFE_INCLUDEDIR
   $ENV{CAFFE_ROOT}/build/include)
 set(CAFFE_LINK_LIBRARAY 
   $ENV{CAFFE_ROOT}/build/lib)
-
+SET(CUDA_NVCC_FLAGS --ptxas-options=-v --use_fast_math -lcufft)
 
 
 find_package(OpenMP)
@@ -179,6 +179,8 @@ cuda_add_executable(kernelized_correlation_filters_node
   src/deep_feature_extraction.cpp
   src/kcf.cpp
 )
+
+cuda_add_cufft_to_target(kernelized_correlation_filters_node)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above

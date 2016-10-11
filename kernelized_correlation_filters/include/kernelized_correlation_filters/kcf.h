@@ -77,6 +77,9 @@ class KCF_Tracker {
 
  protected:
     FeatureExtractor *feature_extractor_;
+
+    int FILTER_SIZE_;  //! size of cnn codes
+    bool init_cufft_plan_;   
    
  public:
     bool m_use_scale;
@@ -103,6 +106,8 @@ class KCF_Tracker {
                       const std::string,
                       std::vector<std::string> &,
                       const int);
+
+    void cuDFT(const std::vector<cv::Mat> &, const cv::Mat);
 
 };
 

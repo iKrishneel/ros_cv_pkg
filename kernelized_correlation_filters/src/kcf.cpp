@@ -16,6 +16,7 @@ KCF_Tracker::KCF_Tracker() {
     p_scale_step = 1.02;
     p_current_scale = 1.0f;
     p_num_scales = 7;
+    FILTER_SIZE_ = 256;
 
     is_cnn_set_ = false;
     m_use_scale = !true;
@@ -24,6 +25,8 @@ KCF_Tracker::KCF_Tracker() {
     m_use_subgrid_scale = true;
     m_use_multithreading = true;
     m_use_cnfeat = true;
+
+    init_cufft_plan_ = true;
 }
 
 KCF_Tracker::KCF_Tracker(
@@ -290,15 +293,21 @@ void KCF_Tracker::track(cv::Mat &img) {
            ComplexMat zf = fft2(patch_feat, p_cos_window);
 
 
+           ROS_WARN("RUNNING CUDFF");
            std::clock_t start;
            double duration;
            start = std::clock();
            
+           this->cuDFT(patch_feat, p_cos_window);
+           
+           duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
+           std::cout << "printf: " << duration <<'\n';
+
+           
            ComplexMat kzf = gaussian_correlation(zf, p_model_xf,
                                                  p_kernel_sigma);
 
-           duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
-           std::cout << "printf: " << duration <<'\n';
+
            
 
            
@@ -401,8 +410,8 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
                                       size_x_scaled, size_y_scaled);
 
 
-    std::cout << patch_gray.size()  << "\t";
-    std::cout << cx << " " << cy  << "\n";
+    // std::cout << patch_gray.size()  << "\t";
+    // std::cout << cx << " " << cy  << "\n";
     
     std::vector<cv::Mat> cnn_codes;
     cv::resize(patch_rgb, patch_rgb, cv::Size(p_windows_size[0],
@@ -413,59 +422,6 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
                                           filter_size);
 
     return cnn_codes;
-    
-    
-    // resize to default size
-    if (scale > 1.) {
-       // if we downsample use  INTER_AREA interpolation
-       cv::resize(patch_gray, patch_gray, cv::Size(size_x, size_y),
-                  0., 0., cv::INTER_AREA);
-    } else {
-       cv::resize(patch_gray, patch_gray, cv::Size(size_x, size_y),
-                  0., 0., cv::INTER_LINEAR);
-    }
-    
-    
-    // get hog features
-    std::vector<cv::Mat> hog_feat;
-    // hog_feat = FHoG::extract(patch_gray, 2, p_cell_size, 9);
-
-    // get color rgb features (simple r,g,b channels)
-    std::vector<cv::Mat> color_feat;
-    if ((m_use_color || m_use_cnfeat) && input_rgb.channels() == 3) {
-       // resize to default size
-       if (scale > 1.) {
-          // if we downsample use  INTER_AREA interpolation
-          cv::resize(patch_rgb, patch_rgb,
-                     cv::Size(size_x/p_cell_size, size_y/p_cell_size),
-                     0., 0., cv::INTER_AREA);
-       } else {
-          cv::resize(patch_rgb, patch_rgb,
-                     cv::Size(size_x/p_cell_size, size_y/p_cell_size),
-                     0., 0., cv::INTER_LINEAR);
-        }
-    }
-
-    if (m_use_color && input_rgb.channels() == 3) {
-        // use rgb color space
-        cv::Mat patch_rgb_norm;
-        patch_rgb.convertTo(patch_rgb_norm, CV_32F, 1. / 255., -0.5);
-        cv::Mat ch1(patch_rgb_norm.size(), CV_32FC1);
-        cv::Mat ch2(patch_rgb_norm.size(), CV_32FC1);
-        cv::Mat ch3(patch_rgb_norm.size(), CV_32FC1);
-        std::vector<cv::Mat> rgb = {ch1, ch2, ch3};
-        cv::split(patch_rgb_norm, rgb);
-        color_feat.insert(color_feat.end(), rgb.begin(), rgb.end());
-    }
-
-    if (m_use_cnfeat && input_rgb.channels() == 3) {
-       // std::vector<cv::Mat> cn_feat = CNFeat::extract(patch_rgb);
-       // color_feat.insert(color_feat.end(), cn_feat.begin(), cn_feat.end());
-    }
-
-    // hog_feat.clear();
-    hog_feat.insert(hog_feat.end(), color_feat.begin(), color_feat.end());
-    return hog_feat;
 }
 
 cv::Mat KCF_Tracker::gaussian_shaped_labels(
@@ -574,6 +530,7 @@ ComplexMat KCF_Tracker::fft2(const cv::Mat &input) {
 ComplexMat KCF_Tracker::fft2(const std::vector<cv::Mat> &input,
                              const cv::Mat &cos_window) {
     int n_channels = input.size();
+    std::cout << "INPUT: " << input.size()  << "\n";
     ComplexMat result(input[0].rows, input[0].cols, n_channels);
 
     for (int i = 0; i < n_channels; ++i) {
@@ -809,4 +766,82 @@ double KCF_Tracker::sub_grid_scale(
     if (a > 0 || a < 0)
         scale = -b / (2 * a);
     return scale;
+}
+
+
+//! test for cuFFT
+#include <vector>
+#include <cufft.h>
+
+// cufftHandle cufft_plan_handle_;
+cufftHandle handle;
+void cuFFTR2Cprocess(cufftReal *x, cufftComplex *y, size_t SIGNAL_SIZE);
+   
+void KCF_Tracker::cuDFT(
+    const std::vector<cv::Mat> &cnn_codes,
+    const cv::Mat cos_window) {
+
+    if (this->init_cufft_plan_) {
+       
+       FILTER_SIZE_ = cnn_codes[0].rows * cnn_codes[0].cols;
+       cufftResult cufft_status = cufftPlan1d(
+          &handle, FILTER_SIZE_, CUFFT_R2C, 1);
+       if (cufft_status != cudaSuccess) {
+          ROS_ERROR("CUDAFFT PLAN ALLOC FAILED");
+          return;
+       }
+       this->init_cufft_plan_ = false;
+    }
+    
+    cv::Mat filter = cnn_codes[0].mul(cos_window);
+    cufftReal *d_data;
+    cufftReal *h_data = reinterpret_cast<cufftReal*>(filter.data);
+
+    cufftComplex output[FILTER_SIZE_ + 2];
+    cuFFTR2Cprocess(h_data, output, FILTER_SIZE_);
+    
+    ROS_WARN("SUCCESSFULLY COMPLETED");
+}
+
+void cuFFTR2Cprocess(cufftReal *in_data,
+                     cufftComplex *out_data,
+                     size_t SIGNAL_SIZE) {
+
+    cufftReal *d_data;
+    cudaMalloc(reinterpret_cast<void**>(&d_data),
+               (SIGNAL_SIZE / 2 + 1) * 1 * sizeof(cufftComplex));
+
+    cudaMemcpy(d_data, in_data, (SIGNAL_SIZE/2 +1) *
+               sizeof(cufftComplex), cudaMemcpyHostToDevice);
+
+    // cufftComplex *out_data = (cufftComplex*)malloc(
+    //    (SIGNAL_SIZE / 2 + 1) * 1 * sizeof(cufftComplex));
+
+    cufftResult cufftStatus;
+    // cufftHandle handle;
+    // cufftStatus = cufftPlan1d(&handle, SIGNAL_SIZE, CUFFT_R2C, 1);
+    // if (cufftStatus != cudaSuccess) {
+    //    printf("cufftPlan1d failed!");
+    // }
+    
+    cufftStatus = cufftExecR2C(handle,  d_data,
+                               (cufftComplex*)d_data);
+
+    if (cufftStatus != cudaSuccess) {
+       printf("cufftExecR2C failed!");
+    }
+
+    cudaMemcpy(out_data, d_data,
+               (SIGNAL_SIZE / 2 + 1) * sizeof(cufftComplex),
+               cudaMemcpyDeviceToHost);
+    
+    /*
+    for (int j = 0; j < (SIGNAL_SIZE / 2 + 1) * 1; j++)
+       printf("%i %f %f\n", j, out_data[j].x, out_data[j].y);
+    std::cout << "INFO: " << sizeof(cufftComplex)  << "\t";
+    std::cout << sizeof(cufftReal)  << "\n";
+    */
+
+    // cufftDestroy(handle);
+    cudaFree(d_data);
 }
