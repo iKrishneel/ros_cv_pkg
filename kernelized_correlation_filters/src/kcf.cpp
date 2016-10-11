@@ -298,9 +298,9 @@ void KCF_Tracker::track(cv::Mat &img) {
            double duration;
            start = std::clock();
            
-           this->cuDFT(patch_feat, p_cos_window);
+           // this->cuDFT(patch_feat, p_cos_window);
            
-           duration = ( std::clock() - start ) / (double) CLOCKS_PER_SEC;
+           duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
            std::cout << "printf: " << duration <<'\n';
 
            
@@ -537,6 +537,28 @@ ComplexMat KCF_Tracker::fft2(const std::vector<cv::Mat> &input,
         cv::Mat complex_result;
         cv::dft(input[i].mul(cos_window), complex_result,
                 cv::DFT_COMPLEX_OUTPUT);
+
+        if (i == 2) {
+           this->cuDFT(input, cos_window);
+           
+           std::cout << "\n\nOPENCV"  << "\n";
+           std::cout << complex_result  << "\n";
+           // int icount = 0;
+           // for (int y = 0; y < complex_result.rows; y++) {
+           //    for (int x = 0; x < complex_result.cols; x+=2) {
+           //       std::cout << icount++ << " " 
+           //                 << complex_result.at<float>(y, x)  << "\t";
+           //       std::cout << complex_result.at<float>(y, x+1)  << "\n";
+           //    }
+           // }
+           
+           // std::cout << input[i].size()  << "\n";
+           // for (int k = 0; k < complex_result.cols; i++) {
+              
+           // }
+
+           std::exit(-1);
+        }
         
         result.set_channel(i, complex_result);
     }
@@ -783,7 +805,7 @@ void KCF_Tracker::cuDFT(
 
     if (this->init_cufft_plan_) {
        
-       FILTER_SIZE_ = cnn_codes[0].rows * cnn_codes[0].cols;
+       FILTER_SIZE_ = cnn_codes[2].rows * cnn_codes[2].cols;
        cufftResult cufft_status = cufftPlan1d(
           &handle, FILTER_SIZE_, CUFFT_R2C, 1);
        if (cufft_status != cudaSuccess) {
@@ -793,7 +815,7 @@ void KCF_Tracker::cuDFT(
        this->init_cufft_plan_ = false;
     }
     
-    cv::Mat filter = cnn_codes[0].mul(cos_window);
+    cv::Mat filter = cnn_codes[2].mul(cos_window);
     cufftReal *d_data;
     cufftReal *h_data = reinterpret_cast<cufftReal*>(filter.data);
 
@@ -835,12 +857,12 @@ void cuFFTR2Cprocess(cufftReal *in_data,
                (SIGNAL_SIZE / 2 + 1) * sizeof(cufftComplex),
                cudaMemcpyDeviceToHost);
     
-    /*
+
     for (int j = 0; j < (SIGNAL_SIZE / 2 + 1) * 1; j++)
        printf("%i %f %f\n", j, out_data[j].x, out_data[j].y);
     std::cout << "INFO: " << sizeof(cufftComplex)  << "\t";
     std::cout << sizeof(cufftReal)  << "\n";
-    */
+
 
     // cufftDestroy(handle);
     cudaFree(d_data);
