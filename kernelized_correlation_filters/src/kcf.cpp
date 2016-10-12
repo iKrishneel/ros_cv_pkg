@@ -16,7 +16,8 @@ KCF_Tracker::KCF_Tracker() {
     p_scale_step = 1.02;
     p_current_scale = 1.0f;
     p_num_scales = 7;
-    FILTER_SIZE_ = 256;
+    FILTER_SIZE_ = 0;
+    FILTER_BATCH_ = 256;
 
     is_cnn_set_ = false;
     m_use_scale = !true;
@@ -193,12 +194,12 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     
     //! create window of filter size ***
     // TODO(MOVE IT OUT): HERE
-    int NUM_FILTERS = 256;
-    this->BYTE_ = NUM_FILTERS * p_cos_window.rows *
+    this->FILTER_SIZE_ = p_cos_window.rows * p_cos_window.cols;
+    this->BYTE_ = FILTER_BATCH_ * p_cos_window.rows *
        p_cos_window.cols * sizeof(float);
     float *cosine_window_1D = reinterpret_cast<float*>(std::malloc(BYTE_));
     int icounter = 0;
-    for (int i = 0; i < NUM_FILTERS; i++) {
+    for (int i = 0; i < FILTER_BATCH_; i++) {
        for (int j = 0; j < p_cos_window.rows; j++) {
           for (int k = 0; k < p_cos_window.cols; k++) {
              cosine_window_1D[icounter++] = p_cos_window.at<float>(j, k);
@@ -275,15 +276,19 @@ void KCF_Tracker::track(cv::Mat &img) {
           input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0],
           p_windows_size[1], p_current_scale * p_scales[i]);
 
-       
+
        ROS_ERROR("RUNNING GPU");
        get_featuresGPU(
           input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0],
           p_windows_size[1], p_current_scale * p_scales[i]);
+       
 
        
        ComplexMat zf = fft2(patch_feat, p_cos_window);
 
+       // std::cout << "COMPLEX: " << zf.cols << " " << zf.rows
+       //           << " " << zf.n_channels << "\n";
+       
 
        std::clock_t start;
        double duration;
@@ -442,6 +447,9 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
        cnn_codes.push_back(im);
        d_cnn_codes.push_back(cv::cuda::GpuMat(im));
     }
+
+    std::cout << cnn_codes[0]  << "\n\n";
+    std::cout << cnn_codes[0].size()  << "\n\n\n";
     
     return cnn_codes;
 }
@@ -476,21 +484,44 @@ void KCF_Tracker::get_featuresGPU(
 
     //! blob->cpu_data() +   blob->offset(n);
     const float *d_data = blob_info->gpu_data();
+
+
+    //! interpolation check?
+    float *d_resized_data = bilinearInterpolationGPU(
+       d_data, filter_size.width, filter_size.height, blob_info->width(),
+       blob_info->height(), blob_info->count(), FILTER_BATCH_);
+
+
+
+    return;
+    
+    
+    
     float *d_cos_conv = cosineConvolutionGPU(d_data, d_cos_window_,
                                              blob_info->count(), BYTE_);
     
 
-    ROS_WARN("DONE IN GPU");
+    ROS_WARN("CONV IN GPU DONE");
+    float *features;
+    cudaMalloc(reinterpret_cast<void**>(&features),
+               blob_info->count() * sizeof(float));
+    cudaMemcpy(features, d_data, blob_info->count() * sizeof(float),
+               cudaMemcpyDeviceToDevice);
+    // cuDFT(/*d_cos_conv*/ features, this->d_cos_window_);
+    cudaFree(features);
 
+    std::cout << "SIZE: " << FILTER_SIZE_ * FILTER_BATCH_  << "\n";
+    std::cout << "SIZE: " << blob_info->count()  << "\n";
 
+    ROS_WARN("FFT IN GPU DONE");
+
+    /*
     float *pdata = (float*)std::malloc(BYTE_);
     cudaMemcpy(pdata, d_cos_conv, BYTE_, cudaMemcpyDeviceToHost);
-
-
     for (int i = 110; i < 120; i++) {
        std::cout << pdata[i]  << "\n";
     }
-
+    */
 
     
     
@@ -646,19 +677,18 @@ ComplexMat KCF_Tracker::fft2(const std::vector<cv::Mat> &input,
         cv::dft(input[i].mul(cos_window), complex_result,
                 cv::DFT_COMPLEX_OUTPUT);
         /*
-        if (i == 2) {
+        if (i == n_channels - 1) {
            std::ofstream outfile("cv.txt");           
            int icount = 0;
            for (int y = 0; y < complex_result.rows; y++) {
               for (int x = 0; x < complex_result.cols; x++) {
-                           << complex_result.at<cv::Vec2f>(y, x)[0]  << "\t";
+                 outfile << complex_result.at<cv::Vec2f>(y, x)[0]  << "\t";
                  outfile << complex_result.at<cv::Vec2f>(y, x)[1]  << "\n";
               }
            }
            outfile.close();
         }
         */
-        
         result.set_channel(i, complex_result);
     }
     return result;
@@ -894,18 +924,17 @@ double KCF_Tracker::sub_grid_scale(
 // #include <cufft.h>
 
 // cufftHandle cufft_plan_handle_;
-cufftHandle handle;
-void cuFFTR2Cprocess(cufftReal *x, cufftComplex *y, size_t SIGNAL_SIZE);
-   
+cufftHandle handle_;
+cufftComplex* cuFFTR2Cprocess(cufftReal *x,
+                              size_t FILTER_SIZE, const int);
+
 void KCF_Tracker::cuDFT(
-    const std::vector<cv::cuda::GpuMat> &cnn_codes,
-    const cv::cuda::GpuMat d_cos_window) {
+    float *dev_data,  //! = cnn_codes * cos
+    const float *d_cos_window) {
 
     if (this->init_cufft_plan_) {
-       FILTER_SIZE_ = cnn_codes[0].rows * cnn_codes[0].cols;
-       
        cufftResult cufft_status = cufftPlan1d(
-          &handle, FILTER_SIZE_, CUFFT_R2C, 1);
+          &handle_, FILTER_SIZE_, CUFFT_R2C, FILTER_BATCH_);
        if (cufft_status != cudaSuccess) {
           ROS_ERROR("CUDAFFT PLAN ALLOC FAILED");
           return;
@@ -913,69 +942,63 @@ void KCF_Tracker::cuDFT(
        this->init_cufft_plan_ = false;
     }
 
-    const int BATCH_SIZE = static_cast<int>(cnn_codes.size());
+    // cv::cuda::GpuMat d_filter;
+    // for (int i = 0; i < cnn_codes.size(); i++) {
+    //    cv::cuda::multiply(cnn_codes[i], d_cos_window, d_filter);
+    // }
     
-    cv::cuda::GpuMat d_filter;
-    for (int i = 0; i < cnn_codes.size(); i++) {
-       cv::cuda::multiply(cnn_codes[i], d_cos_window, d_filter);
-       
-       
-    }
+
+    cufftReal *d_input = reinterpret_cast<cufftReal*>(dev_data);
+    cufftComplex *d_complex = cuFFTR2Cprocess(d_input, FILTER_SIZE_,
+                                              FILTER_BATCH_);
 
     
-    cufftReal *d_data;
-    cufftReal *h_data = reinterpret_cast<cufftReal*>(d_filter.data);
-
-    cufftComplex output[(FILTER_SIZE_/2) + 1];
-    cuFFTR2Cprocess(h_data, output, FILTER_SIZE_);
-
-
-
+    
+    cudaFree(d_complex);
     
     ROS_WARN("SUCCESSFULLY COMPLETED");
 }
 
-void cuFFTR2Cprocess(cufftReal *in_data,
-                     cufftComplex *out_data,
-                     size_t SIGNAL_SIZE) {
 
-    const int IN_BYTE = SIGNAL_SIZE * 1 * sizeof(cufftReal);
-    cufftReal *d_data;
-    // cudaMalloc(reinterpret_cast<void**>(&d_data),
-    //            (SIGNAL_SIZE / 2 + 1) * 1 * sizeof(cufftComplex));
-    cudaMalloc(reinterpret_cast<void**>(&d_data), IN_BYTE);
-    cudaMemcpy(d_data, in_data, IN_BYTE, cudaMemcpyHostToDevice);
-    // cudaMemcpy(d_data, in_data, (SIGNAL_SIZE/2 +1) *
-    //            sizeof(cufftComplex), cudaMemcpyHostToDevice);
+cufftComplex* cuFFTR2Cprocess(cufftReal *in_data,
+                              size_t FILTER_SIZE,
+                              const int FILTER_BATCH) {
 
+    const int IN_BYTE = FILTER_SIZE * FILTER_BATCH * sizeof(cufftReal);
+    // cufftReal *d_data;
+    // cudaMalloc(reinterpret_cast<void**>(&d_data), IN_BYTE);
+    // cudaMemcpy(d_data, in_data, IN_BYTE, cudaMemcpyHostToDevice);
 
-    cufftResult cufftStatus;
-    // cufftHandle handle;
-    // cufftStatus = cufftPlan1d(&handle, SIGNAL_SIZE, CUFFT_R2C, 1);
-    // if (cufftStatus != cudaSuccess) {
-    //    printf("cufftPlan1d failed!");
-    // }
+    const int OUT_BYTE = (FILTER_SIZE / 2 + 1) *
+       sizeof(cufftComplex) * FILTER_BATCH;
+    cufftComplex *d_complex;
+    cudaMalloc(reinterpret_cast<void**>(&d_complex), OUT_BYTE);
 
+    cufftResult cufft_status;
+    cufft_status = cufftExecR2C(handle_,  in_data, d_complex);
 
-    const int OUT_BYTE = (SIGNAL_SIZE / 2 + 1) * sizeof(cufftComplex);
-    cufftComplex *d_output;
-    cudaMalloc(reinterpret_cast<void**>(&d_output), OUT_BYTE);
-    
-    cufftStatus = cufftExecR2C(handle,  d_data, d_output);
-
-    if (cufftStatus != cudaSuccess) {
+    if (cufft_status != cudaSuccess) {
        printf("cufftExecR2C failed!");
     }
+    
 
-    cudaMemcpy(out_data, d_output, OUT_BYTE, cudaMemcpyDeviceToHost);
+    cufftComplex *out_data = (cufftComplex*)malloc(OUT_BYTE);
+    cudaMemcpy(out_data, d_complex, OUT_BYTE, cudaMemcpyDeviceToHost);
 
-    // std::ofstream outfile("cu.txt");
-    // for (int j = 0; j < OUT_BYTE/sizeof(cufftComplex); j++) {
-    //    outfile << j <<  " " <<  out_data[j].x << " "<< out_data[j].y << "\n";
-    // }
-    // outfile.close();
+    
+    cufftReal *cpu_in = (cufftReal*)malloc(IN_BYTE);
+    cudaMemcpy(cpu_in, in_data, IN_BYTE, cudaMemcpyDeviceToHost);
+    std::ofstream outfile("cu.txt");
+    for (int j = 0; j < OUT_BYTE/sizeof(cufftComplex); j++) {
+       outfile << j <<  " " <<  out_data[j].x << " "<< out_data[j].y << "\t";
+       outfile << cpu_in[j] << "\n";
+       
+    }
+    outfile.close();
 
-    cufftDestroy(handle);
-    cudaFree(d_data);
+    // cufftDestroy(handle_);
+    // cudaFree(d_data);
+
+    return d_complex;
 }
 

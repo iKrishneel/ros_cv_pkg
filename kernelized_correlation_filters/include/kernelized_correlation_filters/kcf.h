@@ -80,10 +80,11 @@ class KCF_Tracker {
     FeatureExtractor *feature_extractor_;
 
     int FILTER_SIZE_;  //! size of cnn codes
+    int FILTER_BATCH_;  //! batch size
     bool init_cufft_plan_;
     float *d_cos_window_;
     int BYTE_;
-
+   
    
  public:
     bool m_use_scale;
@@ -113,8 +114,7 @@ class KCF_Tracker {
 
 
     //! added methods
-    void cuDFT(const std::vector<cv::cuda::GpuMat> &,
-               const cv::cuda::GpuMat);
+    void cuDFT(float *, const float *);
     void get_featuresGPU(cv::Mat &, cv::Mat &,
                             int, int, int, int, double);
 };

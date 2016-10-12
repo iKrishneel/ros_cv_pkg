@@ -8,6 +8,9 @@
 float* cosineConvolutionGPU(const float *, const float *,
                           const int, const int);
 
+float *bilinearInterpolationGPU(const float *, const int, const int,
+                                const int, const int, const int, const int);
+
 
 #endif // _COSINE_CONVOLUTION_KERNEL_H_
 
