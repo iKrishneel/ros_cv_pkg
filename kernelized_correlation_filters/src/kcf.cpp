@@ -832,11 +832,11 @@ cufftHandle handle;
 void cuFFTR2Cprocess(cufftReal *x, cufftComplex *y, size_t SIGNAL_SIZE);
    
 void KCF_Tracker::cuDFT(
-    const std::vector<cv::Mat> &cnn_codes,
-    const cv::Mat cos_window) {
+    const std::vector<cv::cuda::GpuMat> &cnn_codes,
+    const cv::cuda::GpuMat cos_window) {
    
     if (this->init_cufft_plan_) {
-       FILTER_SIZE_ = cnn_codes[2].rows * cnn_codes[2].cols;
+       FILTER_SIZE_ = cnn_codes[0].rows * cnn_codes[0].cols;
 
        cufftResult cufft_status = cufftPlan1d(
           &handle, FILTER_SIZE_, CUFFT_R2C, 1);
@@ -846,8 +846,12 @@ void KCF_Tracker::cuDFT(
        }
        this->init_cufft_plan_ = false;
     }
-    
-    cv::Mat filter = cnn_codes[2].mul(cos_window);
+
+    for (int i = 0; i < cnn_codes.size(); i++) {
+       
+    }
+    cv::cuda::GpuMat filter;
+    cv::cuda::multiply(cnn_codes[0], cos_window, filter);
     
     cufftReal *d_data;
     cufftReal *h_data = reinterpret_cast<cufftReal*>(filter.data);
