@@ -107,7 +107,11 @@ class KCF_Tracker {
                       std::vector<std::string> &,
                       const int);
 
+
+    //! added methods
     void cuDFT(const std::vector<cv::Mat> &, const cv::Mat);
+    std::vector<cv::cuda::GpuMat> get_featuresGPU(cv::Mat &, cv::Mat &,
+                                               int, int, int, int, double);
 
 };
 

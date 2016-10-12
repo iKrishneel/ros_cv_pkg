@@ -242,29 +242,33 @@ void KCF_Tracker::track(cv::Mat &img) {
     int scale_index = 0;
     std::vector<double> scale_responses;
 
+    //! running on gpu
+    std::vector<cv::cuda::GpuMat> patch_feat_gpu;
+    cv::cuda::GpuMat d_cos_window(p_cos_window);
+    
     for (size_t i = 0; i < p_scales.size(); ++i) {
-       patch_feat = get_features(input_rgb, input_gray, p_pose.cx,
-                                 p_pose.cy, p_windows_size[0],
-                                 p_windows_size[1],
-                                 p_current_scale * p_scales[i]);
+       patch_feat = get_features(
+          input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0],
+          p_windows_size[1], p_current_scale * p_scales[i]);
        
        ComplexMat zf = fft2(patch_feat, p_cos_window);
 
-       ROS_WARN("RUNNING CUDFF");
+
        std::clock_t start;
        double duration;
        start = std::clock();
            
        // this->cuDFT(patch_feat, p_cos_window);
            
-       duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
-       std::cout << "printf: " << duration <<'\n';
+
 
            
        ComplexMat kzf = gaussian_correlation(zf, p_model_xf,
                                              p_kernel_sigma);
 
-
+       
+       duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
+       std::cout << "printf: " << duration <<'\n';
            
 
            
@@ -326,30 +330,33 @@ void KCF_Tracker::track(cv::Mat &img) {
     if (p_current_scale > p_min_max_scale[1])
         p_current_scale = p_min_max_scale[1];
 
-    // obtain a subwindow for training at newly estimated target position
-    patch_feat = get_features(input_rgb, input_gray,
-                              p_pose.cx, p_pose.cy,
-                              p_windows_size[0], p_windows_size[1],
-                              p_current_scale);
-    ComplexMat xf = fft2(patch_feat, p_cos_window);
-    // Kernel Ridge Regression, calculate alphas (in Fourier domain)
-    ComplexMat kf = gaussian_correlation(xf, xf, p_kernel_sigma, true);
+    // obtain a subwindow for training at newly estimated target
+    // position
+    bool is_update = false;
+    if (is_update) {
+       patch_feat = get_features(input_rgb, input_gray,
+                                 p_pose.cx, p_pose.cy,
+                                 p_windows_size[0], p_windows_size[1],
+                                 p_current_scale);
+       ComplexMat xf = fft2(patch_feat, p_cos_window);
+       // Kernel Ridge Regression, calculate alphas (in Fourier domain)
+       ComplexMat kf = gaussian_correlation(xf, xf, p_kernel_sigma, true);
 
-    // subsequent frames, interpolate model
-    p_model_xf = p_model_xf * (1. - p_interp_factor) + xf * p_interp_factor;
+       // subsequent frames, interpolate model
+       p_model_xf = p_model_xf * (1. - p_interp_factor) + xf * p_interp_factor;
 //    ComplexMat alphaf = p_yf / (kf + p_lambda); //equation for fast training
 //    p_model_alphaf = p_model_alphaf * (1. - p_interp_factor) +
 //    alphaf * p_interp_factor;
     
 
-    ComplexMat alphaf_num = p_yf * kf;
-    ComplexMat alphaf_den = kf * (kf + p_lambda);
-    p_model_alphaf_num = p_model_alphaf_num * (1. - p_interp_factor) +
-       (p_yf * kf) * p_interp_factor;
-    p_model_alphaf_den = p_model_alphaf_den * (1. - p_interp_factor) +
-       kf * (kf + p_lambda) * p_interp_factor;
-    p_model_alphaf = p_model_alphaf_num / p_model_alphaf_den;
-
+       ComplexMat alphaf_num = p_yf * kf;
+       ComplexMat alphaf_den = kf * (kf + p_lambda);
+       p_model_alphaf_num = p_model_alphaf_num * (1. - p_interp_factor) +
+          (p_yf * kf) * p_interp_factor;
+       p_model_alphaf_den = p_model_alphaf_den * (1. - p_interp_factor) +
+          kf * (kf + p_lambda) * p_interp_factor;
+       p_model_alphaf = p_model_alphaf_num / p_model_alphaf_den;
+    }
 }
 
 // ****************************************************************************
@@ -383,10 +390,12 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
     //! copy to cv type
     // TODO(FIX):  directly copy gpu pointer
     cnn_codes.clear();
+    std::vector<cv::cuda::GpuMat> d_cnn_codes;
     const float *idata = blob_info->cpu_data();
     for (int i = 0; i < blob_info->channels(); i++) {
        cv::Mat im = cv::Mat::zeros(blob_info->height(),
                                    blob_info->width(), CV_32F);
+       
        for (int y = 0; y < blob_info->height(); y++) {
           for (int x = 0; x < blob_info->width(); x++) {
              im.at<float>(y, x) = idata[
@@ -399,17 +408,61 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
           cv::resize(im, im, filter_size);
        }
        cnn_codes.push_back(im);
+       d_cnn_codes.push_back(cv::cuda::GpuMat(im));
     }
     
     
-    std::cout << "DONE: " << cnn_codes.size()<< "\n";
-
-    // std::cout << "BLOB SIZE: " << blob_info->data()->size()  << "\n";
-    // std::cout << blob_info->height() << " " << blob_info->width()  << "\t";
-    // std::cout << blob_info->channels()  << "\n";
     
     
     return cnn_codes;
+}
+
+/**
+ * GPU
+ */
+std::vector<cv::cuda::GpuMat>
+KCF_Tracker::get_featuresGPU(cv::Mat & input_rgb,
+                             cv::Mat & input_gray,
+                             int cx, int cy, int size_x,
+                             int size_y, double scale) {
+    std::cout << "\33[34m GETTING FEATURES \033[0m"  << "\n";
+    int size_x_scaled = floor(size_x*scale);
+    int size_y_scaled = floor(size_y*scale);
+    cv::Mat patch_gray = get_subwindow(input_gray, cx, cy,
+                                       size_x_scaled, size_y_scaled);
+    cv::Mat patch_rgb = get_subwindow(input_rgb, cx, cy,
+                                      size_x_scaled, size_y_scaled);
+    
+    std::vector<cv::Mat> cnn_codes(1);
+    cv::resize(patch_rgb, patch_rgb, cv::Size(p_windows_size[0],
+                                              p_windows_size[1]));
+    cv::Size filter_size = cv::Size(std::floor(patch_rgb.cols/p_cell_size),
+                                    std::floor(patch_rgb.rows/p_cell_size));
+
+    boost::shared_ptr<caffe::Blob<float> > blob_info (new caffe::Blob<float>);
+    this->feature_extractor_->getFeatures(blob_info, cnn_codes, patch_rgb,
+                                          filter_size);
+
+    // TODO(FIX):  directly deep copy gpu pointer
+    std::vector<cv::cuda::GpuMat> d_cnn_codes;
+    const float *idata = blob_info->cpu_data();
+    for (int i = 0; i < blob_info->channels(); i++) {
+       cv::Mat im = cv::Mat::zeros(blob_info->height(),
+                                   blob_info->width(), CV_32F);
+       
+       for (int y = 0; y < blob_info->height(); y++) {
+          for (int x = 0; x < blob_info->width(); x++) {
+             im.at<float>(y, x) = idata[
+                i * blob_info->width() * blob_info->height() +
+                y * blob_info->width() + x];
+          }
+       }
+       if (filter_size.width != -1) {
+          cv::resize(im, im, filter_size);
+       }
+       d_cnn_codes.push_back(cv::cuda::GpuMat(im));
+    }
+    return d_cnn_codes;
 }
 
 cv::Mat KCF_Tracker::gaussian_shaped_labels(
