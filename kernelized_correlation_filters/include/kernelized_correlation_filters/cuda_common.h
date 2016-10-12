@@ -7,15 +7,11 @@
 
 #include <curand.h>
 #include <curand_kernel.h>
-#include <cublas.h>
-#include <cublas_v2.h>
-
-#include <opencv2/opencv.hpp>
-#include <opencv2/cudaarithm.hpp>
+#include <cufft.h>
 
 #define GRID_SIZE 16
 #define CNN_FILTER_SIZE 256
-
+/*
 #define CUDA_ERROR_CHECK(process) {                    \
       cudaAssert((process), __FILE__, __LINE__);       \
    }                                                   \
@@ -35,9 +31,6 @@ __host__ __device__ __align__(16)
     int cuDivUp(int a, int b) {
     return ((a % b) != 0) ? (a / b + 1) : (a / b);
 }
-
-
-
-
+*/
 #endif  // _CUDA_COMMON_H_ 
 

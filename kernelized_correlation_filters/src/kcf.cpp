@@ -189,6 +189,30 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     p_model_alphaf_num = p_yf * kf;
     p_model_alphaf_den = kf * (kf + p_lambda);
     p_model_alphaf = p_model_alphaf_num / p_model_alphaf_den;
+
+    
+    //! create window of filter size ***
+    // TODO(MOVE IT OUT): HERE
+    int NUM_FILTERS = 256;
+    this->BYTE_ = NUM_FILTERS * p_cos_window.rows *
+       p_cos_window.cols * sizeof(float);
+    float *cosine_window_1D = reinterpret_cast<float*>(std::malloc(BYTE_));
+    int icounter = 0;
+    for (int i = 0; i < NUM_FILTERS; i++) {
+       for (int j = 0; j < p_cos_window.rows; j++) {
+          for (int k = 0; k < p_cos_window.cols; k++) {
+             cosine_window_1D[icounter++] = p_cos_window.at<float>(j, k);
+          }
+       }
+    }
+
+    std::cout << "INIT-->: " << cosine_window_1D[0]  << "\n";
+    
+    cudaMalloc(reinterpret_cast<void**>(&d_cos_window_), BYTE_);
+    cudaMemcpy(d_cos_window_, cosine_window_1D, BYTE_, cudaMemcpyHostToDevice);
+
+    free(cosine_window_1D);
+    
 }
 
 void KCF_Tracker::setTrackerPose(BBox_c &bbox, cv::Mat & img) {
@@ -250,6 +274,13 @@ void KCF_Tracker::track(cv::Mat &img) {
        patch_feat = get_features(
           input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0],
           p_windows_size[1], p_current_scale * p_scales[i]);
+
+       
+       ROS_ERROR("RUNNING GPU");
+       get_featuresGPU(
+          input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0],
+          p_windows_size[1], p_current_scale * p_scales[i]);
+
        
        ComplexMat zf = fft2(patch_feat, p_cos_window);
 
@@ -260,7 +291,7 @@ void KCF_Tracker::track(cv::Mat &img) {
            
        // this->cuDFT(patch_feat, p_cos_window);
            
-
+       
 
            
        ComplexMat kzf = gaussian_correlation(zf, p_model_xf,
@@ -387,8 +418,9 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
     this->feature_extractor_->getFeatures(blob_info, cnn_codes, patch_rgb,
                                           filter_size);
 
-    //! copy to cv type
-    // TODO(FIX):  directly copy gpu pointer
+    // std::cout << "INFO: " << blob_info->count()  << "\n";
+    
+    
     cnn_codes.clear();
     std::vector<cv::cuda::GpuMat> d_cnn_codes;
     const float *idata = blob_info->cpu_data();
@@ -411,20 +443,17 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
        d_cnn_codes.push_back(cv::cuda::GpuMat(im));
     }
     
-    
-    
-    
     return cnn_codes;
 }
 
 /**
  * GPU
  */
-std::vector<cv::cuda::GpuMat>
-KCF_Tracker::get_featuresGPU(cv::Mat & input_rgb,
-                             cv::Mat & input_gray,
-                             int cx, int cy, int size_x,
-                             int size_y, double scale) {
+
+void KCF_Tracker::get_featuresGPU(
+    cv::Mat & input_rgb, cv::Mat & input_gray,
+    int cx, int cy, int size_x, int size_y, double scale) {
+   
     std::cout << "\33[34m GETTING FEATURES \033[0m"  << "\n";
     int size_x_scaled = floor(size_x*scale);
     int size_y_scaled = floor(size_y*scale);
@@ -444,7 +473,30 @@ KCF_Tracker::get_featuresGPU(cv::Mat & input_rgb,
                                           filter_size);
 
     // TODO(FIX):  directly deep copy gpu pointer
+
+    //! blob->cpu_data() +   blob->offset(n);
+    const float *d_data = blob_info->gpu_data();
+    float *d_cos_conv = cosineConvolutionGPU(d_data, d_cos_window_,
+                                             blob_info->count(), BYTE_);
+    
+
+    ROS_WARN("DONE IN GPU");
+
+
+    float *pdata = (float*)std::malloc(BYTE_);
+    cudaMemcpy(pdata, d_cos_conv, BYTE_, cudaMemcpyDeviceToHost);
+
+
+    for (int i = 110; i < 120; i++) {
+       std::cout << pdata[i]  << "\n";
+    }
+
+
+    
+    
+    /*
     std::vector<cv::cuda::GpuMat> d_cnn_codes;
+
     const float *idata = blob_info->cpu_data();
     for (int i = 0; i < blob_info->channels(); i++) {
        cv::Mat im = cv::Mat::zeros(blob_info->height(),
@@ -462,8 +514,23 @@ KCF_Tracker::get_featuresGPU(cv::Mat & input_rgb,
        }
        d_cnn_codes.push_back(cv::cuda::GpuMat(im));
     }
-    return d_cnn_codes;
+
+    
+    */
+
+
+    cudaFree(d_cos_conv);
+
 }
+
+
+/**
+ * END GPU
+ */
+
+
+
+
 
 cv::Mat KCF_Tracker::gaussian_shaped_labels(
     double sigma, int dim1, int dim2) {
@@ -822,10 +889,9 @@ double KCF_Tracker::sub_grid_scale(
     return scale;
 }
 
-
 //! test for cuFFT
 #include <vector>
-#include <cufft.h>
+// #include <cufft.h>
 
 // cufftHandle cufft_plan_handle_;
 cufftHandle handle;
@@ -833,11 +899,11 @@ void cuFFTR2Cprocess(cufftReal *x, cufftComplex *y, size_t SIGNAL_SIZE);
    
 void KCF_Tracker::cuDFT(
     const std::vector<cv::cuda::GpuMat> &cnn_codes,
-    const cv::cuda::GpuMat cos_window) {
-   
+    const cv::cuda::GpuMat d_cos_window) {
+
     if (this->init_cufft_plan_) {
        FILTER_SIZE_ = cnn_codes[0].rows * cnn_codes[0].cols;
-
+       
        cufftResult cufft_status = cufftPlan1d(
           &handle, FILTER_SIZE_, CUFFT_R2C, 1);
        if (cufft_status != cudaSuccess) {
@@ -847,14 +913,18 @@ void KCF_Tracker::cuDFT(
        this->init_cufft_plan_ = false;
     }
 
+    const int BATCH_SIZE = static_cast<int>(cnn_codes.size());
+    
+    cv::cuda::GpuMat d_filter;
     for (int i = 0; i < cnn_codes.size(); i++) {
+       cv::cuda::multiply(cnn_codes[i], d_cos_window, d_filter);
+       
        
     }
-    cv::cuda::GpuMat filter;
-    cv::cuda::multiply(cnn_codes[0], cos_window, filter);
+
     
     cufftReal *d_data;
-    cufftReal *h_data = reinterpret_cast<cufftReal*>(filter.data);
+    cufftReal *h_data = reinterpret_cast<cufftReal*>(d_filter.data);
 
     cufftComplex output[(FILTER_SIZE_/2) + 1];
     cuFFTR2Cprocess(h_data, output, FILTER_SIZE_);
@@ -908,3 +978,4 @@ void cuFFTR2Cprocess(cufftReal *in_data,
     cufftDestroy(handle);
     cudaFree(d_data);
 }
+

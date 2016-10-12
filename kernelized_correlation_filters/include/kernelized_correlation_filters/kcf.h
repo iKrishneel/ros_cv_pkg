@@ -2,6 +2,7 @@
 #define KCF_HEADER_6565467831231
 
 #include <kernelized_correlation_filters/deep_feature_extraction.h>
+#include <kernelized_correlation_filters/cosine_convolution_kernel.h>
 #include <kernelized_correlation_filters/complexmat.hpp>
 
 // #include "cnfeat.hpp"
@@ -79,7 +80,10 @@ class KCF_Tracker {
     FeatureExtractor *feature_extractor_;
 
     int FILTER_SIZE_;  //! size of cnn codes
-    bool init_cufft_plan_;   
+    bool init_cufft_plan_;
+    float *d_cos_window_;
+    int BYTE_;
+
    
  public:
     bool m_use_scale;
@@ -111,8 +115,8 @@ class KCF_Tracker {
     //! added methods
     void cuDFT(const std::vector<cv::cuda::GpuMat> &,
                const cv::cuda::GpuMat);
-    std::vector<cv::cuda::GpuMat> get_featuresGPU(cv::Mat &, cv::Mat &,
-                                                  int, int, int, int, double);
+    void get_featuresGPU(cv::Mat &, cv::Mat &,
+                            int, int, int, int, double);
 };
 
 #endif //KCF_HEADER_6565467831231
