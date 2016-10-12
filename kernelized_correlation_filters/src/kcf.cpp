@@ -375,9 +375,40 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
                                               p_windows_size[1]));
     cv::Size filter_size = cv::Size(std::floor(patch_rgb.cols/p_cell_size),
                                     std::floor(patch_rgb.rows/p_cell_size));
-    this->feature_extractor_->getFeatures(cnn_codes, patch_rgb,
+
+    boost::shared_ptr<caffe::Blob<float> > blob_info (new caffe::Blob<float>);
+    this->feature_extractor_->getFeatures(blob_info, cnn_codes, patch_rgb,
                                           filter_size);
 
+    //! copy to cv type
+    // TODO(FIX):  directly copy gpu pointer
+    cnn_codes.clear();
+    const float *idata = blob_info->cpu_data();
+    for (int i = 0; i < blob_info->channels(); i++) {
+       cv::Mat im = cv::Mat::zeros(blob_info->height(),
+                                   blob_info->width(), CV_32F);
+       for (int y = 0; y < blob_info->height(); y++) {
+          for (int x = 0; x < blob_info->width(); x++) {
+             im.at<float>(y, x) = idata[
+                i * blob_info->width() * blob_info->height() +
+                y * blob_info->width() + x];
+          }
+       }
+
+       if (filter_size.width != -1) {
+          cv::resize(im, im, filter_size);
+       }
+       cnn_codes.push_back(im);
+    }
+    
+    
+    std::cout << "DONE: " << cnn_codes.size()<< "\n";
+
+    // std::cout << "BLOB SIZE: " << blob_info->data()->size()  << "\n";
+    // std::cout << blob_info->height() << " " << blob_info->width()  << "\t";
+    // std::cout << blob_info->channels()  << "\n";
+    
+    
     return cnn_codes;
 }
 

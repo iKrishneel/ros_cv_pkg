@@ -61,6 +61,7 @@ bool FeatureExtractor::loadPreTrainedCaffeModels(
 }
 
 void FeatureExtractor::getFeatures(
+    boost::shared_ptr<caffe::Blob<float> > &blob_info1,
     std::vector<cv::Mat> &filters, const cv::Mat image,
     const cv::Size filter_size) {
     if (image.channels() < 3 || image.empty()) {
@@ -112,6 +113,12 @@ void FeatureExtractor::getFeatures(
     
     boost::shared_ptr<caffe::Blob<float> > blob_info =
        this->feature_extractor_net_->blob_by_name("conv5");
+
+    blob_info1.reset(new caffe::Blob<float>);
+    blob_info1 = blob_info;
+    return;
+    
+    
 
 #ifdef _DEBUG
     std::cout << "BLOB SIZE: " << blob_info->data()->size()  << "\n";
