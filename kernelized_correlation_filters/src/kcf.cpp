@@ -241,98 +241,55 @@ void KCF_Tracker::track(cv::Mat &img) {
     cv::Point2i max_response_pt;
     int scale_index = 0;
     std::vector<double> scale_responses;
-    /*
-    if (!m_use_multithreading) {
-        std::vector<std::future<cv::Mat>> async_res(p_scales.size());
-        for (size_t i = 0; i < p_scales.size(); ++i) {
-           async_res[i] = std::async(
-              std::launch::async, [this, &input_gray, &input_rgb,
-                                   i]()->cv::Mat {
-                 std::vector<cv::Mat> patch_feat_async =
-                    get_features(input_rgb, input_gray,
-                                 this->p_pose.cx,
-                                 this->p_pose.cy,
-                                 this->p_windows_size[0],
-                                 this->p_windows_size[1],
-                                 this->p_current_scale * this->p_scales[i]);
-                 ComplexMat zf = fft2(patch_feat_async, this->p_cos_window);
-                 ComplexMat kzf = gaussian_correlation(zf,
-                                                       this->p_model_xf,
-                                                       this->p_kernel_sigma);
-                        return ifft2(this->p_model_alphaf * kzf);
-              });
-        }
 
-        for (size_t i = 0; i < p_scales.size(); ++i) {
-            // wait for result
-            async_res[i].wait();
-            cv::Mat response = async_res[i].get();
+    for (size_t i = 0; i < p_scales.size(); ++i) {
+       patch_feat = get_features(input_rgb, input_gray, p_pose.cx,
+                                 p_pose.cy, p_windows_size[0],
+                                 p_windows_size[1],
+                                 p_current_scale * p_scales[i]);
+       
+       ComplexMat zf = fft2(patch_feat, p_cos_window);
 
-            double min_val, max_val;
-            cv::Point2i min_loc, max_loc;
-            cv::minMaxLoc(response, &min_val, &max_val, &min_loc, &max_loc);
-
-            double weight = p_scales[i] < 1. ? p_scales[i] : 1./p_scales[i];
-            if (max_val*weight > max_response) {
-                max_response = max_val*weight;
-                max_response_map = response;
-                max_response_pt = max_loc;
-                scale_index = i;
-            }
-            scale_responses.push_back(max_val*weight);
-        }
-    } else
-       */
-    {
-        for (size_t i = 0; i < p_scales.size(); ++i) {
-           patch_feat = get_features(input_rgb, input_gray, p_pose.cx,
-                                     p_pose.cy, p_windows_size[0],
-                                     p_windows_size[1],
-                                     p_current_scale * p_scales[i]);
+       ROS_WARN("RUNNING CUDFF");
+       std::clock_t start;
+       double duration;
+       start = std::clock();
            
-           ComplexMat zf = fft2(patch_feat, p_cos_window);
-
-
-           ROS_WARN("RUNNING CUDFF");
-           std::clock_t start;
-           double duration;
-           start = std::clock();
+       // this->cuDFT(patch_feat, p_cos_window);
            
-           // this->cuDFT(patch_feat, p_cos_window);
-           
-           duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
-           std::cout << "printf: " << duration <<'\n';
+       duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
+       std::cout << "printf: " << duration <<'\n';
 
            
-           ComplexMat kzf = gaussian_correlation(zf, p_model_xf,
-                                                 p_kernel_sigma);
+       ComplexMat kzf = gaussian_correlation(zf, p_model_xf,
+                                             p_kernel_sigma);
 
 
            
 
            
-           cv::Mat response = ifft2(p_model_alphaf * kzf);
+       cv::Mat response = ifft2(p_model_alphaf * kzf);
             
-            /* target location is at the maximum response. we must take into
-            account the fact that, if the target doesn't move, the peak
-            will appear at the top-left corner, not at the center (this is
-            discussed in the paper). the responses wrap around cyclically. */
-            double min_val, max_val;
-            cv::Point2i min_loc, max_loc;
-            cv::minMaxLoc(response, &min_val, &max_val, &min_loc, &max_loc);
+       /* target location is at the maximum response. we must take into
+          account the fact that, if the target doesn't move, the peak
+          will appear at the top-left corner, not at the center (this is
+          discussed in the paper). the responses wrap around cyclically. */
+       double min_val, max_val;
+       cv::Point2i min_loc, max_loc;
+       cv::minMaxLoc(response, &min_val, &max_val, &min_loc, &max_loc);
 
-            double weight = p_scales[i] < 1. ? p_scales[i] : 1./p_scales[i];
-            if (max_val*weight > max_response) {
-                max_response = max_val*weight;
-                max_response_map = response;
-                max_response_pt = max_loc;
-                scale_index = i;
-            }
-            scale_responses.push_back(max_val*weight);
+       double weight = p_scales[i] < 1. ? p_scales[i] : 1./p_scales[i];
+       if (max_val*weight > max_response) {
+          max_response = max_val*weight;
+          max_response_map = response;
+          max_response_pt = max_loc;
+          scale_index = i;
+       }
+       scale_responses.push_back(max_val*weight);
 
 
-        }
     }
+
 
     // sub pixel quadratic interpolation from neighbours
     // wrap around to negative half-space of vertical axis
@@ -537,28 +494,19 @@ ComplexMat KCF_Tracker::fft2(const std::vector<cv::Mat> &input,
         cv::Mat complex_result;
         cv::dft(input[i].mul(cos_window), complex_result,
                 cv::DFT_COMPLEX_OUTPUT);
-
+        /*
         if (i == 2) {
-           this->cuDFT(input, cos_window);
-           
-           std::cout << "\n\nOPENCV"  << "\n";
-           std::cout << complex_result  << "\n";
-           // int icount = 0;
-           // for (int y = 0; y < complex_result.rows; y++) {
-           //    for (int x = 0; x < complex_result.cols; x+=2) {
-           //       std::cout << icount++ << " " 
-           //                 << complex_result.at<float>(y, x)  << "\t";
-           //       std::cout << complex_result.at<float>(y, x+1)  << "\n";
-           //    }
-           // }
-           
-           // std::cout << input[i].size()  << "\n";
-           // for (int k = 0; k < complex_result.cols; i++) {
-              
-           // }
-
-           std::exit(-1);
+           std::ofstream outfile("cv.txt");           
+           int icount = 0;
+           for (int y = 0; y < complex_result.rows; y++) {
+              for (int x = 0; x < complex_result.cols; x++) {
+                           << complex_result.at<cv::Vec2f>(y, x)[0]  << "\t";
+                 outfile << complex_result.at<cv::Vec2f>(y, x)[1]  << "\n";
+              }
+           }
+           outfile.close();
         }
+        */
         
         result.set_channel(i, complex_result);
     }
@@ -802,10 +750,10 @@ void cuFFTR2Cprocess(cufftReal *x, cufftComplex *y, size_t SIGNAL_SIZE);
 void KCF_Tracker::cuDFT(
     const std::vector<cv::Mat> &cnn_codes,
     const cv::Mat cos_window) {
-
+   
     if (this->init_cufft_plan_) {
-       
        FILTER_SIZE_ = cnn_codes[2].rows * cnn_codes[2].cols;
+
        cufftResult cufft_status = cufftPlan1d(
           &handle, FILTER_SIZE_, CUFFT_R2C, 1);
        if (cufft_status != cudaSuccess) {
@@ -816,11 +764,15 @@ void KCF_Tracker::cuDFT(
     }
     
     cv::Mat filter = cnn_codes[2].mul(cos_window);
+    
     cufftReal *d_data;
     cufftReal *h_data = reinterpret_cast<cufftReal*>(filter.data);
 
-    cufftComplex output[FILTER_SIZE_ + 2];
+    cufftComplex output[(FILTER_SIZE_/2) + 1];
     cuFFTR2Cprocess(h_data, output, FILTER_SIZE_);
+
+
+
     
     ROS_WARN("SUCCESSFULLY COMPLETED");
 }
@@ -829,15 +781,15 @@ void cuFFTR2Cprocess(cufftReal *in_data,
                      cufftComplex *out_data,
                      size_t SIGNAL_SIZE) {
 
+    const int IN_BYTE = SIGNAL_SIZE * 1 * sizeof(cufftReal);
     cufftReal *d_data;
-    cudaMalloc(reinterpret_cast<void**>(&d_data),
-               (SIGNAL_SIZE / 2 + 1) * 1 * sizeof(cufftComplex));
+    // cudaMalloc(reinterpret_cast<void**>(&d_data),
+    //            (SIGNAL_SIZE / 2 + 1) * 1 * sizeof(cufftComplex));
+    cudaMalloc(reinterpret_cast<void**>(&d_data), IN_BYTE);
+    cudaMemcpy(d_data, in_data, IN_BYTE, cudaMemcpyHostToDevice);
+    // cudaMemcpy(d_data, in_data, (SIGNAL_SIZE/2 +1) *
+    //            sizeof(cufftComplex), cudaMemcpyHostToDevice);
 
-    cudaMemcpy(d_data, in_data, (SIGNAL_SIZE/2 +1) *
-               sizeof(cufftComplex), cudaMemcpyHostToDevice);
-
-    // cufftComplex *out_data = (cufftComplex*)malloc(
-    //    (SIGNAL_SIZE / 2 + 1) * 1 * sizeof(cufftComplex));
 
     cufftResult cufftStatus;
     // cufftHandle handle;
@@ -845,25 +797,26 @@ void cuFFTR2Cprocess(cufftReal *in_data,
     // if (cufftStatus != cudaSuccess) {
     //    printf("cufftPlan1d failed!");
     // }
+
+
+    const int OUT_BYTE = (SIGNAL_SIZE / 2 + 1) * sizeof(cufftComplex);
+    cufftComplex *d_output;
+    cudaMalloc(reinterpret_cast<void**>(&d_output), OUT_BYTE);
     
-    cufftStatus = cufftExecR2C(handle,  d_data,
-                               (cufftComplex*)d_data);
+    cufftStatus = cufftExecR2C(handle,  d_data, d_output);
 
     if (cufftStatus != cudaSuccess) {
        printf("cufftExecR2C failed!");
     }
 
-    cudaMemcpy(out_data, d_data,
-               (SIGNAL_SIZE / 2 + 1) * sizeof(cufftComplex),
-               cudaMemcpyDeviceToHost);
-    
+    cudaMemcpy(out_data, d_output, OUT_BYTE, cudaMemcpyDeviceToHost);
 
-    for (int j = 0; j < (SIGNAL_SIZE / 2 + 1) * 1; j++)
-       printf("%i %f %f\n", j, out_data[j].x, out_data[j].y);
-    std::cout << "INFO: " << sizeof(cufftComplex)  << "\t";
-    std::cout << sizeof(cufftReal)  << "\n";
+    // std::ofstream outfile("cu.txt");
+    // for (int j = 0; j < OUT_BYTE/sizeof(cufftComplex); j++) {
+    //    outfile << j <<  " " <<  out_data[j].x << " "<< out_data[j].y << "\n";
+    // }
+    // outfile.close();
 
-
-    // cufftDestroy(handle);
+    cufftDestroy(handle);
     cudaFree(d_data);
 }

@@ -178,6 +178,7 @@ cuda_add_executable(kernelized_correlation_filters_node
   src/kernelized_correlation_filters_node.cpp
   src/deep_feature_extraction.cpp
   src/kcf.cpp
+  src/cuda/cosine_convolution_kernel.cu
 )
 
 cuda_add_cufft_to_target(kernelized_correlation_filters_node)
