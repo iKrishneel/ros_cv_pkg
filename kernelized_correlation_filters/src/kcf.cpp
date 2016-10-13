@@ -270,6 +270,34 @@ void KCF_Tracker::track(cv::Mat &img) {
     //! running on gpu
     std::vector<cv::cuda::GpuMat> patch_feat_gpu;
     cv::cuda::GpuMat d_cos_window(p_cos_window);
+
+
+    //! test
+    cv::Mat igray;
+    cv::resize(input_rgb, igray, cv::Size(320, 240));
+    cv::cvtColor(igray, igray, CV_BGR2GRAY);
+    igray.convertTo(igray, CV_32FC1);
+    
+    float *iresize = bilinear_test(
+       reinterpret_cast<float*>(igray.data),
+       input_gray.rows * input_gray.step);
+    cv::Mat resize_im = cv::Mat::zeros(480*2, 640*2, CV_8UC1);
+    int icount = 0;
+    
+    for (int i = 0; i < resize_im.rows; i++) {
+       for (int j = 0; j < resize_im.cols; j++) {
+          resize_im.at<uchar>(i, j) = iresize[icount++];
+       }
+    }
+    
+    cv::imshow("rimage", resize_im);
+    
+    // cv::imshow("rimage", igray);
+    cv::waitKey(3);
+    return;
+    
+    
+       
     
     for (size_t i = 0; i < p_scales.size(); ++i) {
        patch_feat = get_features(

@@ -12,10 +12,13 @@ struct caffeFilterInfo {
        width(w), height(h), channels(c), data_lenght(l) {}
 };
 
+/*
 __host__ __device__ __align__(16)
-    int cuDivUp(int a, int b) {
+*/
+int cuDivUp(int a, int b) {
     return ((a % b) != 0) ? (a / b + 1) : (a / b);
 }
+
 
 __global__ __forceinline__
 void cosineConvolutionKernel(float *d_output,
@@ -63,6 +66,18 @@ float* cosineConvolutionGPU(const float *d_cnn_codes,
  * bilinar
  */
 
+
+__device__ __forceinline__
+float lerp(float c1, float c2, float v1, float v2, float x) {
+    if ((v1 == v2)) {
+       return c1;
+    }
+    float inc = ((c2-c1)/(v2 - v1)) * (x - v1);
+    float val = c1 + inc;
+    return val;
+};
+
+
 __global__
 void bilinearInterpolationKernel(float * d_result,
                                  const float *d_data,
@@ -82,34 +97,72 @@ void bilinearInterpolationKernel(float * d_result,
           static_cast<float>(ny);
        
        //! indvidual for loops
-       int index = -1;
-       float src_y = 0.0f;
-       float src_x = 0.0f;
        for (int j = 0; j < ny; j++) {
           for (int i = 0; i < nx; i++) {
-             src_x = i * fx;
-             src_y = j * fy;
+             float src_x = i * fx;
+             float src_y = j * fy;
              
-             int x1 = __float2int_rd(src_x);
-             int y1 = __float2int_rd(src_y);
+             int x1 = static_cast<int>(floorf(src_x));
+             int y1 = static_cast<int>(floorf(src_y));
 
+
+             float p1 = d_data[x1 + (y1 * blob_info.width)];
+             float p2 = d_data[x1 + 1 + (y1 * blob_info.width)];
+             float p3 = d_data[x1 + ((y1 + 1) * blob_info.width)];
+             float p4 = d_data[x1 + 1+ ((y1 + 1)* blob_info.width)];
+
+
+             
              int x2 = x1 + 1;
              int y2 = y1 + 1;
 
+             
+             if (i == 10 && j == 10) {
+                printf("%d ", x1 + (y1 * blob_info.width));
+                printf("%d ", x1 + 1 + (y1 * blob_info.width));
+                printf("%d ", x1 + ((y1 + 1) * blob_info.width));
+                printf("%d \n", x1 + 1 + ((y1 + 1) * blob_info.width));
+                printf("%d \n", blob_info.width);
+             }
+             
+             // const float *d = d_data + x1 + y1 * blob_info.width;
+             // float p1 = d[0 + 0 * blob_info.width];
+             // float p2 = d[1 + 0 * blob_info.width];
+             // float p3 = d[0 + 1 * blob_info.width];
+             // float p4 = d[1 + 1 * blob_info.width];
+
+             if (i == 10 && j == 10)
+                printf("%3.2f %3.2f %3.2f %3.2f\n", p1, p2, p3, p4);
+             
+             float wx = i - x1;
+             float wy = j - y1;
+             float wx1 = 1.0f - wx;
+             float wy1 = 1.0f - wy;
+
+             int w1 = wx1 * wy1 * 255.0f;
+             int w2 = wx * wy1 * 255.0f;
+             int w3 = wx1 * wy * 255.0f;
+             int w4 = wx * wy * 255.0f;
+
+             // float out_value = p1 * w1 + p2 * w2 + p3 * w3 + p4 * w4;
+             float out_value = (p1 + p2 + p3 + p4)/ 4;
+
+             /*
              int x2_read = fminf(x2, blob_info.width - 1);
              int y2_read = fminf(y2, blob_info.height - 1);
-
-             float out_value = 0.0f;
+             
              float src_reg = d_data[(offset + x1 + (y1 * blob_info.width))];
-             out_value += src_reg * ((x2 - src_x) * (y1 - src_y));
+             float out_1 = src_reg * ((x2 - src_x) * (y1 - src_y));
              src_reg = d_data[(offset + x2_read + (y1 * blob_info.width))];
-             out_value += src_reg * ((src_x - x1) * (y2 - src_y));
+             float out_2 = src_reg * ((src_x - x1) * (y2 - src_y));
              src_reg = d_data[(offset + x1 + (y2_read * blob_info.width))];
-             out_value += src_reg * ((x2 - src_x) * (src_y - y1));
+             float out_3 = src_reg * ((x2 - src_x) * (src_y - y1));
              src_reg = d_data[(offset + x2_read + (y2_read * blob_info.width))];
-             out_value += src_reg * ((src_x - x1) * (src_y - y1));
+             float out_4 = src_reg * ((src_x - x1) * (src_y - y1));
+             */
              
              d_result[offset + i + (j * nx)] = out_value;
+
           }
        }
     }
@@ -149,4 +202,31 @@ float *bilinearInterpolationGPU(const float *d_data,
     printf("SIZE: %d  %d\n", new_x, new_y);
     
     return d_output;
+}
+
+
+float *bilinear_test(float *data, const int in_byte) {
+
+    float *d_data;
+    cudaMalloc(reinterpret_cast<void**>(&d_data), in_byte);
+    cudaMemcpy(d_data, data, in_byte, cudaMemcpyHostToDevice);
+
+    int new_x = 640*2;
+    int new_y = 480*2;
+    caffeFilterInfo cfinfo(320, 240, 1, 320 * 240);
+
+    int OUT_BYTE = sizeof(float) * new_y * new_x * 1;
+    float *d_output;
+    cudaMalloc(reinterpret_cast<void**>(&d_output), OUT_BYTE);
+    
+    bilinearInterpolationKernel<<<1, 1>>>(
+       d_output, d_data, new_x, new_y, 1, cfinfo);
+
+    float *cpu_out = (float*)malloc(OUT_BYTE);
+    cudaMemcpy(cpu_out, d_output, OUT_BYTE, cudaMemcpyDeviceToHost);
+
+    cudaFree(d_output);
+    cudaFree(d_data);
+    
+    return cpu_out;
 }

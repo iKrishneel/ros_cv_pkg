@@ -12,5 +12,8 @@ float *bilinearInterpolationGPU(const float *, const int, const int,
                                 const int, const int, const int, const int);
 
 
+float *bilinear_test(float *data, const int in_byte);
+
+
 #endif // _COSINE_CONVOLUTION_KERNEL_H_
 
