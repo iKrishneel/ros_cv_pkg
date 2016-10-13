@@ -12,6 +12,7 @@
 #include <cv_bridge/cv_bridge.h>
 
 #include <geometry_msgs/PolygonStamped.h>
+#include <geometry_msgs/Twist.h>
 #include <jsk_recognition_msgs/Rect.h>
 
 #include <omp.h>
@@ -39,7 +40,7 @@ class ROSCMTTracker: public CMT {
 
     ros::NodeHandle pnh_;
     ros::Publisher pub_image_;
-    ros::Publisher pub_rect_;
+    ros::Publisher pub_position_;
     ros::Subscriber sub_image_;
     ros::Subscriber sub_screen_pt_;
    

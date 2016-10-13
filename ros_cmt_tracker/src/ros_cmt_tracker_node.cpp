@@ -11,8 +11,8 @@ void ROSCMTTracker::onInit() {
     this->subscribe();
     this->pub_image_ = pnh_.advertise<sensor_msgs::Image>(
        "/ros_cmt_tracker/output/tracker", sizeof(char));
-    this->pub_rect_ = pnh_.advertise<jsk_recognition_msgs::Rect>(
-       "/ros_cmt_tracker/output/rect", sizeof(char));
+    this->pub_position_ = pnh_.advertise<geometry_msgs::Twist>(
+       "/ros_cmt_tracker/output/twist", sizeof(char));
 }
 
 void ROSCMTTracker::subscribe() {
@@ -43,10 +43,13 @@ void ROSCMTTracker::callback(const sensor_msgs::Image::ConstPtr &image_msg) {
     struct timeval timer_start, timer_end;
     gettimeofday(&timer_start, NULL);
     
-    
     cv::Mat image = cv_ptr->image;
     cv::resize(image, image, cv::Size(image.cols/down_size_,
                                       image.rows/down_size_));
+
+    //! centroid of the image
+    cv::Point2i centroid = cv::Point2i(image.cols/2, image.rows/2);
+    
     cv::Point2f init_tl = cv::Point2f(this->screen_rect_.x / this->down_size_,
                                       this->screen_rect_.y / this->down_size_);
     cv::Point2f init_br = cv::Point2f(
@@ -67,7 +70,6 @@ void ROSCMTTracker::callback(const sensor_msgs::Image::ConstPtr &image_msg) {
     cv::Scalar color = cv::Scalar(0, 255, 0);
     
     // cv::rectangle(img, this->boundingbox, cv::Scalar(255, 0, 0), 3);
-    //! save the roi
     bool generate_dataset = false;
     std::string s_path = "/home/krishneel/Desktop/mbzirc/track-data/";
     if (this->boundingbox.width > 16 && this->boundingbox.height > 16 &&
@@ -101,7 +103,12 @@ void ROSCMTTracker::callback(const sensor_msgs::Image::ConstPtr &image_msg) {
     double delta = ((timer_end.tv_sec  - timer_start.tv_sec) * 1000000u +
                     timer_end.tv_usec - timer_start.tv_usec) / 1.e6;
     ROS_ERROR("TIME: %3.6f", delta);
+
     
+    geometry_msgs::Twist twist;
+    twist.linear.x = this->topLeft.x - centroid.x;
+    twist.linear.y = this->topLeft.y - centroid.y;
+    this->pub_position_.publish(twist);
     
     cv_bridge::CvImagePtr pub_msg(new cv_bridge::CvImage);
     pub_msg->header = image_msg->header;

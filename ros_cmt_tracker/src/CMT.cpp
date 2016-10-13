@@ -123,7 +123,7 @@ CMT::CMT() {
     estimateRotation = true;
     nbInitialKeypoints = 0;
 
-    this->orb_gpu_ = cv::cuda::ORB::create(1000, 1.20f, 8, 31, 0, 2,
+    this->orb_gpu_ = cv::cuda::ORB::create(100, 1.20f, 8, 31, 0, 2,
                                            cv::ORB::HARRIS_SCORE);
     this->matcher_ =
        cv::cuda::DescriptorMatcher::createBFMatcher(cv::NORM_HAMMING);
