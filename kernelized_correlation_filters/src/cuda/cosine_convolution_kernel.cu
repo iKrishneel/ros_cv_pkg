@@ -1,6 +1,7 @@
 
 #include <kernelized_correlation_filters/cosine_convolution_kernel.h>
 
+/*
 __host__ __device__
 struct caffeFilterInfo {
     int width;
@@ -11,10 +12,22 @@ struct caffeFilterInfo {
                     int c = -1, int  l = 0) :
        width(w), height(h), channels(c), data_lenght(l) {}
 };
-
-/*
-__host__ __device__ __align__(16)
 */
+
+
+__host__ __forceinline__
+void cuAssert(cudaError_t code, char *file, int line, bool abort) {
+    if (code != cudaSuccess) {
+       fprintf(stderr, "GPUassert: %s %s %dn",
+               cudaGetErrorString(code), file, line);
+       if (abort) {
+          exit(code);
+      }
+    }
+}
+
+
+__host__ __device__ __align__(16)
 int cuDivUp(int a, int b) {
     return ((a % b) != 0) ? (a / b + 1) : (a / b);
 }
@@ -65,8 +78,7 @@ float* cosineConvolutionGPU(const float *d_cnn_codes,
 /**
  * bilinar
  */
-
-
+/*
 __device__ __forceinline__
 float lerp(float c1, float c2, float v1, float v2, float x) {
     if ((v1 == v2)) {
@@ -147,19 +159,19 @@ void bilinearInterpolationKernel(float * d_result,
              // float out_value = p1 * w1 + p2 * w2 + p3 * w3 + p4 * w4;
              float out_value = (p1 + p2 + p3 + p4)/ 4;
 
-             /*
-             int x2_read = fminf(x2, blob_info.width - 1);
-             int y2_read = fminf(y2, blob_info.height - 1);
              
-             float src_reg = d_data[(offset + x1 + (y1 * blob_info.width))];
-             float out_1 = src_reg * ((x2 - src_x) * (y1 - src_y));
-             src_reg = d_data[(offset + x2_read + (y1 * blob_info.width))];
-             float out_2 = src_reg * ((src_x - x1) * (y2 - src_y));
-             src_reg = d_data[(offset + x1 + (y2_read * blob_info.width))];
-             float out_3 = src_reg * ((x2 - src_x) * (src_y - y1));
-             src_reg = d_data[(offset + x2_read + (y2_read * blob_info.width))];
-             float out_4 = src_reg * ((src_x - x1) * (src_y - y1));
-             */
+             // int x2_read = fminf(x2, blob_info.width - 1);
+             // int y2_read = fminf(y2, blob_info.height - 1);
+             
+             // float src_reg = d_data[(offset + x1 + (y1 * blob_info.width))];
+             // float out_1 = src_reg * ((x2 - src_x) * (y1 - src_y));
+             // src_reg = d_data[(offset + x2_read + (y1 * blob_info.width))];
+             // float out_2 = src_reg * ((src_x - x1) * (y2 - src_y));
+             // src_reg = d_data[(offset + x1 + (y2_read * blob_info.width))];
+             // float out_3 = src_reg * ((x2 - src_x) * (src_y - y1));
+             // src_reg = d_data[(offset + x2_read + (y2_read * blob_info.width))];
+             // float out_4 = src_reg * ((src_x - x1) * (src_y - y1));
+
              
              d_result[offset + i + (j * nx)] = out_value;
 
@@ -211,8 +223,8 @@ float *bilinear_test(float *data, const int in_byte) {
     cudaMalloc(reinterpret_cast<void**>(&d_data), in_byte);
     cudaMemcpy(d_data, data, in_byte, cudaMemcpyHostToDevice);
 
-    int new_x = 640*2;
-    int new_y = 480*2;
+    int new_x = 640;
+    int new_y = 480;
     caffeFilterInfo cfinfo(320, 240, 1, 320 * 240);
 
     int OUT_BYTE = sizeof(float) * new_y * new_x * 1;
@@ -230,3 +242,5 @@ float *bilinear_test(float *data, const int in_byte) {
     
     return cpu_out;
 }
+
+*/
