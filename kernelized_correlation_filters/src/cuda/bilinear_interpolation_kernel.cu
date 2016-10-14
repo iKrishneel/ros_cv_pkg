@@ -67,43 +67,6 @@ void bilinearInterpolationKernel(float * d_result,
     }
 }
 
-
-
-float *bilinearInterpolationGPU(const float *d_data,
-                                const int new_x, const int new_y,
-                                const int fwidth, const int fheight,
-                                const int flenght,
-                                const int num_filters) {
-    caffeFilterInfo cfinfo(fwidth, fheight, 1, flenght);
-    
-    const int dimension = std::ceil(std::sqrt(num_filters));
-    dim3 grid_size(cuDivUp(dimension, GRID_SIZE),
-                    cuDivUp(dimension, GRID_SIZE));
-    dim3 block_size(GRID_SIZE, GRID_SIZE);
-
-    int OUT_BYTE = sizeof(float) * new_y * new_x * num_filters;
-    float *d_output;
-    cudaMalloc(reinterpret_cast<void**>(&d_output), OUT_BYTE);
-
-    bilinearInterpolationKernel<<<grid_size, block_size>>>(
-       d_output, d_data, new_x, new_y, num_filters, cfinfo);
-
-    float *cpu_out = (float*)malloc(OUT_BYTE);
-    cudaMemcpy(cpu_out, d_output, OUT_BYTE, cudaMemcpyDeviceToHost);
-
-    for (int i = 0; i < new_y; i++) {
-       for (int j = 0; j < new_x; j++) {
-          printf("%3.5f ", cpu_out[j + i * new_x]);
-       }
-       printf("\n");
-
-    }
-
-    printf("SIZE: %d  %d\n", new_x, new_y);
-    
-    return d_output;
-}
-
 /*--------------TEXTURE--------------------------*/
 
 __global__ __forceinline__
@@ -164,6 +127,64 @@ void bilinearInterpolationKernelTexture(float * d_result,
        }
     }
 }
+
+
+float *bilinearInterpolationGPU(float *d_data,
+                                const int new_x, const int new_y,
+                                const int filter_width,
+                                const int filter_height,
+                                const int flenght,  //! data count
+                                const int num_filters) {
+    caffeFilterInfo cfinfo(filter_width, filter_height, 1, flenght);
+    
+    const int dimension = std::ceil(std::sqrt(num_filters));
+    dim3 grid_size(cuDivUp(dimension, GRID_SIZE),
+                    cuDivUp(dimension, GRID_SIZE));
+    dim3 block_size(GRID_SIZE, GRID_SIZE);
+
+    const int OUT_BYTE = sizeof(float) * new_y * new_x * num_filters;
+    float *d_output;
+    cudaMalloc(reinterpret_cast<void**>(&d_output), OUT_BYTE);
+
+    const int IN_BYTE = filter_width * filter_height * sizeof(float);
+    struct cudaResourceDesc res_desc;
+    memset(&res_desc, 0, sizeof(res_desc));
+    res_desc.resType = cudaResourceTypeLinear;
+    res_desc.res.linear.devPtr = d_data;
+    res_desc.res.linear.desc.f = cudaChannelFormatKindFloat;
+    res_desc.res.linear.desc.x = 32;  // bits per channel
+    res_desc.res.linear.sizeInBytes = IN_BYTE;
+    
+    cudaTextureDesc tex_desc;
+    memset(&tex_desc, 0, sizeof(tex_desc));
+    tex_desc.readMode = cudaReadModeElementType;
+    
+    cudaTextureObject_t tex = 0;
+    cudaCreateTextureObject(&tex, &res_desc, &tex_desc, NULL);
+
+    bilinearInterpolationKernelTexture<<<grid_size, block_size>>>(
+       d_output, tex, new_x, new_y, num_filters, cfinfo);
+    /*
+    bilinearInterpolationKernel<<<grid_size, block_size>>>(
+       d_output, d_data, new_x, new_y, num_filters, cfinfo);
+    */
+    
+    float *cpu_out = (float*)malloc(OUT_BYTE);
+    cudaMemcpy(cpu_out, d_output, OUT_BYTE, cudaMemcpyDeviceToHost);
+
+    for (int i = 0; i < new_y; i++) {
+       for (int j = 0; j < new_x; j++) {
+          printf("%3.5f ", cpu_out[j + i * new_x]);
+       }
+       printf("\n");
+
+    }
+
+    printf("SIZE: %d  %d\n", new_x, new_y);
+    
+    return d_output;
+}
+
 
 
 float *bilinear_test(float *data, const int in_byte) {
