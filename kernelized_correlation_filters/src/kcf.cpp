@@ -281,7 +281,7 @@ void KCF_Tracker::track(cv::Mat &img) {
     float *iresize = bilinear_test(
        reinterpret_cast<float*>(igray.data),
        input_gray.rows * input_gray.step);
-    cv::Mat resize_im = cv::Mat::zeros(480, 640, CV_8UC1);
+    cv::Mat resize_im = cv::Mat::zeros(380, 540, CV_8UC1);
     int icount = 0;
     
     for (int i = 0; i < resize_im.rows; i++) {
