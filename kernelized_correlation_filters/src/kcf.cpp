@@ -273,15 +273,15 @@ void KCF_Tracker::track(cv::Mat &img) {
 
 
     //! test
-    cv::Mat igray;
-    cv::resize(input_rgb, igray, cv::Size(320, 240));
+    cv::Mat igray = input_rgb(cv::Rect(50, 50, 13, 13));
+    // cv::resize(input_rgb, igray, cv::Size(13, 13));
     cv::cvtColor(igray, igray, CV_BGR2GRAY);
     igray.convertTo(igray, CV_32FC1);
     
     float *iresize = bilinear_test(
        reinterpret_cast<float*>(igray.data),
        input_gray.rows * input_gray.step);
-    cv::Mat resize_im = cv::Mat::zeros(380, 540, CV_8UC1);
+    cv::Mat resize_im = cv::Mat::zeros(50, 50, CV_8UC1);
     int icount = 0;
     
     for (int i = 0; i < resize_im.rows; i++) {
@@ -289,7 +289,8 @@ void KCF_Tracker::track(cv::Mat &img) {
           resize_im.at<uchar>(i, j) = iresize[icount++];
        }
     }
-    
+
+    cv::namedWindow("rimage", CV_WINDOW_NORMAL);
     cv::imshow("rimage", resize_im);
     
     // cv::imshow("rimage", igray);

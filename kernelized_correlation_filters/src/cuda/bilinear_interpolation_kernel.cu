@@ -40,19 +40,23 @@ void bilinearInterpolationKernel(float * d_result,
 
              index_cols = x1 + 0;
              index_rows = y1 + 0;
-             p1 = (index_cols > blob_info.width - 1) ? 0.0f :
+             p1 = (index_cols > blob_info.width - 1 &&
+                   index_rows > blob_info.height - 1) ? 0.0f :
                 d_data[index_cols + (index_rows * blob_info.width)];
              index_cols = x1 + 1;
              index_rows = y1 + 0;
-             p2 = (index_cols > blob_info.width - 1) ? 0.0f :
+             p2 = (index_cols > blob_info.width - 1 &&
+                   index_rows > blob_info.height - 1) ? 0.0f :
                 d_data[index_cols + (index_rows * blob_info.width)];
              index_cols = x1 + 0;
              index_rows = y1 + 1;
-             p3 = (index_cols > blob_info.width - 1) ? 0.0f :
+             p3 = (index_cols > blob_info.width - 1 &&
+                   index_rows > blob_info.height - 1) ? 0.0f :
                 d_data[index_cols + (index_rows * blob_info.width)];
              index_cols = x1 + 1;
              index_rows = y1 + 1;
-             p4 = (index_cols > blob_info.width - 1) ? 0.0f :
+             p4 = (index_cols > blob_info.width - 1 &&
+                   index_rows > blob_info.height - 1) ? 0.0f :
                 d_data[index_cols + (index_rows * blob_info.width)];
              
              // p1 = d_data[x1 + 0 + ((y1 + 0) * blob_info.width)];
@@ -106,30 +110,39 @@ void bilinearInterpolationKernelTexture(float * d_result,
 
              index_cols = x1 + 0;
              index_rows = y1 + 0;
-             p1 = (index_cols > blob_info.width - 1) ? 0.0f : tex1Dfetch<float>(
-                tex_obj, index_cols + (index_rows * blob_info.width));
+             p1 = (index_cols > blob_info.width - 1 &&
+                   index_rows > blob_info.height - 1) ? 0.0f :
+                tex1Dfetch<float>(tex_obj,
+                                  index_cols + (index_rows * blob_info.width));
              index_cols = x1 + 1;
              index_rows = y1 + 0;
-             p2 = (index_cols > blob_info.width - 1) ? 0.0f : tex1Dfetch<float>(
-                tex_obj, index_cols + (index_rows * blob_info.width));
+             p2 = (index_cols > blob_info.width - 1 &&
+                   index_rows > blob_info.height - 1) ? 0.0f :
+                tex1Dfetch<float>(tex_obj,
+                                  index_cols + (index_rows * blob_info.width));
              index_cols = x1 + 0;
              index_rows = y1 + 1;
-             p3 = (index_cols > blob_info.width - 1) ? 0.0f : tex1Dfetch<float>(
-                tex_obj, index_cols + (index_rows * blob_info.width));
+             p3 = (index_cols > blob_info.width - 1 &&
+                index_rows > blob_info.height - 1) ? 0.0f :
+                tex1Dfetch<float>(tex_obj,
+                                  index_cols + (index_rows * blob_info.width));
              index_cols = x1 + 1;
              index_rows = y1 + 1;
-             p4 = (index_cols > blob_info.width - 1) ? 0.0f : tex1Dfetch<float>(
-                tex_obj, index_cols + (index_rows * blob_info.width));
+             p4 = (index_cols > blob_info.width - 1 &&
+                   index_rows > blob_info.height - 1) ? 0.0f :
+                tex1Dfetch<float>(tex_obj,
+                                  index_cols + (index_rows * blob_info.width));
              
-             float out_value = (p1 + p2 + p3 + p4)/ 4;
+             float out_value = (p1 + p2 + p3 + p4) / 4.0f;
              d_result[offset + i + (j * nx)] = out_value;
+             
           }
        }
     }
 }
 
 
-float *bilinearInterpolationGPU(float *d_data,
+float *bilinearInterpolationGPU(const float *d_data,
                                 const int new_x, const int new_y,
                                 const int filter_width,
                                 const int filter_height,
@@ -150,7 +163,7 @@ float *bilinearInterpolationGPU(float *d_data,
     struct cudaResourceDesc res_desc;
     memset(&res_desc, 0, sizeof(res_desc));
     res_desc.resType = cudaResourceTypeLinear;
-    res_desc.res.linear.devPtr = d_data;
+    res_desc.res.linear.devPtr = const_cast<float*>(d_data);
     res_desc.res.linear.desc.f = cudaChannelFormatKindFloat;
     res_desc.res.linear.desc.x = 32;  // bits per channel
     res_desc.res.linear.sizeInBytes = IN_BYTE;
@@ -159,11 +172,11 @@ float *bilinearInterpolationGPU(float *d_data,
     memset(&tex_desc, 0, sizeof(tex_desc));
     tex_desc.readMode = cudaReadModeElementType;
     
-    cudaTextureObject_t tex = 0;
-    cudaCreateTextureObject(&tex, &res_desc, &tex_desc, NULL);
+    cudaTextureObject_t tex_obj = 0;
+    cudaCreateTextureObject(&tex_obj, &res_desc, &tex_desc, NULL);
 
     bilinearInterpolationKernelTexture<<<grid_size, block_size>>>(
-       d_output, tex, new_x, new_y, num_filters, cfinfo);
+       d_output, tex_obj, new_x, new_y, num_filters, cfinfo);
     /*
     bilinearInterpolationKernel<<<grid_size, block_size>>>(
        d_output, d_data, new_x, new_y, num_filters, cfinfo);
@@ -181,7 +194,9 @@ float *bilinearInterpolationGPU(float *d_data,
     }
 
     printf("SIZE: %d  %d\n", new_x, new_y);
+
     
+    cudaDestroyTextureObject(tex_obj);
     return d_output;
 }
 
@@ -193,9 +208,9 @@ float *bilinear_test(float *data, const int in_byte) {
     cudaMalloc(reinterpret_cast<void**>(&d_data), in_byte);
     cudaMemcpy(d_data, data, in_byte, cudaMemcpyHostToDevice);
     
-    int new_x = 540;
-    int new_y = 380;
-    caffeFilterInfo cfinfo(320, 240, 1, 320 * 240);
+    int new_x = 50;
+    int new_y = 50;
+    caffeFilterInfo cfinfo(13, 13, 1, 13 * 13);
 
     //! texture mem
     struct cudaResourceDesc res_desc;
@@ -210,8 +225,8 @@ float *bilinear_test(float *data, const int in_byte) {
     memset(&tex_desc, 0, sizeof(tex_desc));
     tex_desc.readMode = cudaReadModeElementType;
     
-    cudaTextureObject_t tex = 0;
-    cudaCreateTextureObject(&tex, &res_desc, &tex_desc, NULL);
+    cudaTextureObject_t tex_obj = 0;
+    cudaCreateTextureObject(&tex_obj, &res_desc, &tex_desc, NULL);
 
     //! end texture
     
@@ -221,16 +236,18 @@ float *bilinear_test(float *data, const int in_byte) {
     cudaMalloc(reinterpret_cast<void**>(&d_output), OUT_BYTE);
 
     bilinearInterpolationKernelTexture<<<1, 1>>>(
-       d_output, tex, new_x, new_y, 1, cfinfo);
+       d_output, tex_obj, new_x, new_y, 1, cfinfo);
+
     /*
     bilinearInterpolationKernel<<<1, 1>>>(
        d_output, d_data, new_x, new_y, 1, cfinfo);
     */
     
+    
     float *cpu_out = (float*)malloc(OUT_BYTE);
     cudaMemcpy(cpu_out, d_output, OUT_BYTE, cudaMemcpyDeviceToHost);
 
-    cudaDestroyTextureObject(tex);
+    cudaDestroyTextureObject(tex_obj);
     cudaFree(d_output);
     cudaFree(d_data);
     
