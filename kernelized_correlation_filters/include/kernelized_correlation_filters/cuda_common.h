@@ -1,4 +1,5 @@
 
+#pragma once
 #ifndef _CUDA_COMMON_H_
 #define _CUDA_COMMON_H_
 
@@ -37,5 +38,5 @@ __host__ __device__ __align__(16)
 int cuDivUp(int a, int b);
 
 
-#endif  // _CUDA_COMMON_H_ 
+#endif  /* _CUDA_COMMON_H_ */
 

@@ -1,7 +1,7 @@
 
 #include <kernelized_correlation_filters/bilinear_interpolation_kernel.h>
 
-__global__
+__global__ __forceinline__
 void bilinearInterpolationKernel(float * d_result,
                                  const float *d_data,
                                  const int nx, const int ny,
@@ -20,40 +20,46 @@ void bilinearInterpolationKernel(float * d_result,
           static_cast<float>(ny);
        
        //! indvidual for loops
+       float src_x = 0.0f;
+       float src_y = 0.0f;
+       float p1 = 0.0f;
+       float p2 = 0.0f;
+       float p3 = 0.0f;
+       float p4 = 0.0f;
+       int x1;
+       int y1;
+
+       // float pixel_val[4];
+       // float pixel_sum = 0.0f;
        for (int j = 0; j < ny; j++) {
           for (int i = 0; i < nx; i++) {
-             float src_x = i * fx;
-             float src_y = j * fy;
+             src_x = i * fx;
+             src_y = j * fy;
              
-             int x1 = static_cast<int>(floorf(src_x));
-             int y1 = static_cast<int>(floorf(src_y));
+             x1 = static_cast<int>(floorf(src_x));
+             y1 = static_cast<int>(floorf(src_y));
 
+             p1 = d_data[x1 + 0 + ((y1 + 0) * blob_info.width)];
+             p2 = d_data[x1 + 1 + ((y1 + 0) * blob_info.width)];
+             p3 = d_data[x1 + 0 + ((y1 + 1) * blob_info.width)];
+             p4 = d_data[x1 + 1 + ((y1 + 1) * blob_info.width)];
 
-             float p1 = d_data[x1 + (y1 * blob_info.width)];
-             float p2 = d_data[x1 + 1 + (y1 * blob_info.width)];
-             float p3 = d_data[x1 + ((y1 + 1) * blob_info.width)];
-             float p4 = d_data[x1 + 1+ ((y1 + 1)* blob_info.width)];
-             
-             if (i == 10 && j == 10) {
-                printf("%d ", x1 + (y1 * blob_info.width));
-                printf("%d ", x1 + 1 + (y1 * blob_info.width));
-                printf("%d ", x1 + ((y1 + 1) * blob_info.width));
-                printf("%d \n", x1 + 1 + ((y1 + 1) * blob_info.width));
-                printf("%d \n", blob_info.width);
+             /*
+             int index = -1;
+             for (int y = 0; y < 2; y++) {
+                for (int x = 0; x < 2; x++) {
+                   if ((x1 + x < blob_info.width - 1) &&
+                       (y1 + y < blob_info.height - 1)) {
+                      index = x1 + x + ((y1 + y) * blob_info.width);
+                      pixel_sum += d_data[index];
+                   }
+                }
              }
-             
-             float wx = i - x1;
-             float wy = j - y1;
-             float wx1 = 1.0f - wx;
-             float wy1 = 1.0f - wy;
+             */
 
-             int w1 = wx1 * wy1 * 255.0f;
-             int w2 = wx * wy1 * 255.0f;
-             int w3 = wx1 * wy * 255.0f;
-             int w4 = wx * wy * 255.0f;
-
-             // float out_value = p1 * w1 + p2 * w2 + p3 * w3 + p4 * w4;
              float out_value = (p1 + p2 + p3 + p4)/ 4;
+             // d_result[offset + i + (j * nx)] = pixel_sum/4.0f;
+             // pixel_sum = 0.0f;
              d_result[offset + i + (j * nx)] = out_value;
           }
        }

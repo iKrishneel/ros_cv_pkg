@@ -1,4 +1,5 @@
 
+#pragma once
 #ifndef _BILINEAR_INTERPOLATION_KERNEL_H_
 #define _BILINEAR_INTERPOLATION_KERNEL_H_
 
