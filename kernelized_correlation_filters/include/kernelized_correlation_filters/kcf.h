@@ -85,7 +85,9 @@ class KCF_Tracker {
     bool init_cufft_plan_;
     float *d_cos_window_;
     int BYTE_;
-   
+
+
+   std::vector<cv::Mat> debug_patch_;
    
  public:
     bool m_use_scale;

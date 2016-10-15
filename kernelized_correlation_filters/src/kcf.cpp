@@ -295,39 +295,46 @@ void KCF_Tracker::track(cv::Mat &img) {
     */ 
     
     for (size_t i = 0; i < p_scales.size(); ++i) {
+
+       std::clock_t start;
+       double duration;
+       start = std::clock();
+       
        patch_feat = get_features(
           input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0],
           p_windows_size[1], p_current_scale * p_scales[i]);
 
 
+       ComplexMat zf = fft2(patch_feat, p_cos_window);
+       
+       duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
+       std::cout << " CPU PROCESS: : " << duration <<'\n';
+       /*
+       debug_patch_.clear();
+       debug_patch_ = patch_feat;
+       */
+
+
+       /**
+        * GPU
+        */
+       start = std::clock();
        ROS_ERROR("RUNNING GPU");
        get_featuresGPU(
           input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0],
           p_windows_size[1], p_current_scale * p_scales[i]);
+
+       duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
+       std::cout << " GPU PROCESS: : " << duration <<'\n';
+
+       /**
+        * END GPU
+        */
+       
        
 
-       
-       ComplexMat zf = fft2(patch_feat, p_cos_window);
-
-       // std::cout << "COMPLEX: " << zf.cols << " " << zf.rows
-       //           << " " << zf.n_channels << "\n";
-       
-
-       std::clock_t start;
-       double duration;
-       start = std::clock();
-           
-       // this->cuDFT(patch_feat, p_cos_window);
-           
-       
-
-           
        ComplexMat kzf = gaussian_correlation(zf, p_model_xf,
                                              p_kernel_sigma);
-
-       
-       duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
-       std::cout << "printf: " << duration <<'\n';
            
 
            
@@ -466,18 +473,13 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
        if (filter_size.width != -1) {
           cv::resize(im, im, filter_size);
        }
-
-       cv::namedWindow("filter_cpu", CV_WINDOW_NORMAL);
-       cv::imshow("filter_cpu", im);
-       cv::waitKey(3);
-       
        cnn_codes.push_back(im);
        d_cnn_codes.push_back(cv::cuda::GpuMat(im));
     }
-
+    /*
     std::cout << cnn_codes[0]  << "\n\n";
     std::cout << cnn_codes[0].size()  << "\n\n\n";
-    
+    */
     return cnn_codes;
 }
 
@@ -506,31 +508,22 @@ void KCF_Tracker::get_featuresGPU(
     boost::shared_ptr<caffe::Blob<float> > blob_info (new caffe::Blob<float>);
     this->feature_extractor_->getFeatures(blob_info, cnn_codes, patch_rgb,
                                           filter_size);
-
-    // TODO(FIX):  directly deep copy gpu pointer
-
-    //! blob->cpu_data() +   blob->offset(n);
+    
+    //! caffe ==>>> blob->cpu_data() +   blob->offset(n);
     const float *d_data = blob_info->gpu_data();
 
     
-    //! interpolation check?
+    //! interpolation
     float *d_resized_data = bilinearInterpolationGPU(
        d_data, filter_size.width, filter_size.height, blob_info->width(),
        blob_info->height(), blob_info->count(), FILTER_BATCH_);
     
-    ROS_WARN("GPU RESIZEING DONE");
     
-
-    //! viz resize for debug
-    // int o_byte = filter_size.width * filter_size.height *
-    //    FILTER_BATCH_ * sizeof(float);
-
-    
+    /* // DEBUG FOR INTERPOLATION
     int o_byte = filter_size.width * filter_size.height *
                       FILTER_BATCH_ * sizeof(float);
     float *cpu_data = (float*)malloc(o_byte);
     cudaMemcpy(cpu_data, d_resized_data, o_byte, cudaMemcpyDeviceToHost);
-
     for (int k = 0; k < FILTER_BATCH_; k++) {
        cv::Mat im = cv::Mat::zeros(filter_size.height,
                                    filter_size.width, CV_32F);
@@ -540,37 +533,37 @@ void KCF_Tracker::get_featuresGPU(
                 k * im.cols * im.rows + y * im.cols + x];
           }
        }
-       
-       // cv::resize(im, im, filter_size);
-
        std::cout << "FILTER #: " << k  << "\n";
-       
-       cv::namedWindow("filter_", CV_WINDOW_NORMAL);
-       cv::imshow("filter_", im);
-       cv::waitKey(3);
+       cv::namedWindow("filter_gpu", CV_WINDOW_NORMAL);
+       cv::imshow("filter_gpu", im);
+       cv::namedWindow("filter_cpu", CV_WINDOW_NORMAL);
+       cv::imshow("filter_cpu", debug_patch_[k]);
+       cv::waitKey(0);
     }
-    
-    // cudaFree(d_resized_data);
     return;
+    */
     
     
-    
-    float *d_cos_conv = cosineConvolutionGPU(d_data, d_cos_window_,
+    float *d_cos_conv = cosineConvolutionGPU(d_resized_data, d_cos_window_,
                                              blob_info->count(), BYTE_);
-    
 
     ROS_WARN("CONV IN GPU DONE");
+    
+    cuDFT(d_cos_conv, this->d_cos_window_);
+    
+    
+    /*
     float *features;
     cudaMalloc(reinterpret_cast<void**>(&features),
                blob_info->count() * sizeof(float));
-    cudaMemcpy(features, d_data, blob_info->count() * sizeof(float),
+    cudaMemcpy(features, d_resized_data, blob_info->count() * sizeof(float),
                cudaMemcpyDeviceToDevice);
-    // cuDFT(/*d_cos_conv*/ features, this->d_cos_window_);
+    // cuDFT(features, this->d_cos_window_);
     cudaFree(features);
 
     std::cout << "SIZE: " << FILTER_SIZE_ * FILTER_BATCH_  << "\n";
     std::cout << "SIZE: " << blob_info->count()  << "\n";
-
+    */
     ROS_WARN("FFT IN GPU DONE");
 
     /*
@@ -607,7 +600,7 @@ void KCF_Tracker::get_featuresGPU(
     
     */
 
-
+    cudaFree(d_resized_data);
     cudaFree(d_cos_conv);
 
 }
@@ -1009,8 +1002,6 @@ void KCF_Tracker::cuDFT(
     cufftReal *d_input = reinterpret_cast<cufftReal*>(dev_data);
     cufftComplex *d_complex = cuFFTR2Cprocess(d_input, FILTER_SIZE_,
                                               FILTER_BATCH_);
-
-    
     
     cudaFree(d_complex);
     
@@ -1039,10 +1030,9 @@ cufftComplex* cuFFTR2Cprocess(cufftReal *in_data,
        printf("cufftExecR2C failed!");
     }
     
-
+    /*
     cufftComplex *out_data = (cufftComplex*)malloc(OUT_BYTE);
     cudaMemcpy(out_data, d_complex, OUT_BYTE, cudaMemcpyDeviceToHost);
-
     
     cufftReal *cpu_in = (cufftReal*)malloc(IN_BYTE);
     cudaMemcpy(cpu_in, in_data, IN_BYTE, cudaMemcpyDeviceToHost);
@@ -1056,7 +1046,8 @@ cufftComplex* cuFFTR2Cprocess(cufftReal *in_data,
 
     // cufftDestroy(handle_);
     // cudaFree(d_data);
-
+    */
+    
     return d_complex;
 }
 

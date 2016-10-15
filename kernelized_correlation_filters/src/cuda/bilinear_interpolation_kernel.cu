@@ -72,7 +72,9 @@ void bilinearInterpolationKernel(float * d_result,
 }
 
 /*--------------TEXTURE--------------------------*/
-
+/**
+ * THERE IS BUG ON THE LAST ROW
+ */
 __global__ __forceinline__
 void bilinearInterpolationKernelTexture(float * d_result,
                                         cudaTextureObject_t tex_obj,
@@ -159,15 +161,6 @@ float *bilinearInterpolationGPU(const float *d_data,
                                 const int flenght,  //! data count
                                 const int num_filters) {
     caffeFilterInfo cfinfo(filter_width, filter_height, 1, flenght);
-    
-    const int dimension = std::ceil(std::sqrt(num_filters));
-    dim3 grid_size(cuDivUp(dimension, GRID_SIZE),
-                    cuDivUp(dimension, GRID_SIZE));
-    dim3 block_size(GRID_SIZE, GRID_SIZE);
-
-    const int OUT_BYTE = sizeof(float) * new_y * new_x * num_filters;
-    float *d_output;
-    cudaMalloc(reinterpret_cast<void**>(&d_output), OUT_BYTE);
 
     const int IN_BYTE = num_filters * filter_width *
        filter_height * sizeof(float);
@@ -186,13 +179,23 @@ float *bilinearInterpolationGPU(const float *d_data,
     cudaTextureObject_t tex_obj = 0;
     cudaCreateTextureObject(&tex_obj, &res_desc, &tex_desc, NULL);
 
-    /*
+    const int dimension = std::ceil(std::sqrt(num_filters));
+    dim3 grid_size(cuDivUp(dimension, GRID_SIZE),
+                    cuDivUp(dimension, GRID_SIZE));
+    dim3 block_size(GRID_SIZE, GRID_SIZE);
+
+    const int OUT_BYTE = sizeof(float) * new_y * new_x * num_filters;
+    float *d_output;
+    cudaMalloc(reinterpret_cast<void**>(&d_output), OUT_BYTE);
+    
+
     bilinearInterpolationKernelTexture<<<grid_size, block_size>>>(
        d_output, tex_obj, new_x, new_y, num_filters, cfinfo);
-    */
+    
+    /*
     bilinearInterpolationKernelTexture<<<num_filters, 1>>>(
        d_output, tex_obj, new_x, new_y, num_filters, cfinfo);
-
+    */
 #ifdef _DEBUG
     /*
     bilinearInterpolationKernel<<<grid_size, block_size>>>(
