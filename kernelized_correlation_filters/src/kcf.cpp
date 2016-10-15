@@ -271,34 +271,28 @@ void KCF_Tracker::track(cv::Mat &img) {
     std::vector<cv::cuda::GpuMat> patch_feat_gpu;
     cv::cuda::GpuMat d_cos_window(p_cos_window);
 
-
+    /*
     //! test
     cv::Mat igray = input_rgb(cv::Rect(50, 50, 13, 13));
     // cv::resize(input_rgb, igray, cv::Size(13, 13));
     cv::cvtColor(igray, igray, CV_BGR2GRAY);
     igray.convertTo(igray, CV_32FC1);
-    
     float *iresize = bilinear_test(
        reinterpret_cast<float*>(igray.data),
        input_gray.rows * input_gray.step);
     cv::Mat resize_im = cv::Mat::zeros(50, 50, CV_8UC1);
     int icount = 0;
-    
     for (int i = 0; i < resize_im.rows; i++) {
        for (int j = 0; j < resize_im.cols; j++) {
           resize_im.at<uchar>(i, j) = iresize[icount++];
        }
     }
-
     cv::namedWindow("rimage", CV_WINDOW_NORMAL);
     cv::imshow("rimage", resize_im);
-    
     // cv::imshow("rimage", igray);
     cv::waitKey(3);
     return;
-    
-    
-       
+    */ 
     
     for (size_t i = 0; i < p_scales.size(); ++i) {
        patch_feat = get_features(
@@ -469,10 +463,14 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
                 y * blob_info->width() + x];
           }
        }
-
        if (filter_size.width != -1) {
           cv::resize(im, im, filter_size);
        }
+
+       cv::namedWindow("filter_cpu", CV_WINDOW_NORMAL);
+       cv::imshow("filter_cpu", im);
+       cv::waitKey(3);
+       
        cnn_codes.push_back(im);
        d_cnn_codes.push_back(cv::cuda::GpuMat(im));
     }
@@ -499,7 +497,7 @@ void KCF_Tracker::get_featuresGPU(
     cv::Mat patch_rgb = get_subwindow(input_rgb, cx, cy,
                                       size_x_scaled, size_y_scaled);
     
-    std::vector<cv::Mat> cnn_codes(1);
+    std::vector<cv::Mat> cnn_codes(1);  //! delete this??
     cv::resize(patch_rgb, patch_rgb, cv::Size(p_windows_size[0],
                                               p_windows_size[1]));
     cv::Size filter_size = cv::Size(std::floor(patch_rgb.cols/p_cell_size),
@@ -514,14 +512,45 @@ void KCF_Tracker::get_featuresGPU(
     //! blob->cpu_data() +   blob->offset(n);
     const float *d_data = blob_info->gpu_data();
 
-
+    
     //! interpolation check?
     float *d_resized_data = bilinearInterpolationGPU(
        d_data, filter_size.width, filter_size.height, blob_info->width(),
        blob_info->height(), blob_info->count(), FILTER_BATCH_);
+    
+    ROS_WARN("GPU RESIZEING DONE");
+    
 
+    //! viz resize for debug
+    // int o_byte = filter_size.width * filter_size.height *
+    //    FILTER_BATCH_ * sizeof(float);
 
+    
+    int o_byte = filter_size.width * filter_size.height *
+                      FILTER_BATCH_ * sizeof(float);
+    float *cpu_data = (float*)malloc(o_byte);
+    cudaMemcpy(cpu_data, d_resized_data, o_byte, cudaMemcpyDeviceToHost);
 
+    for (int k = 0; k < FILTER_BATCH_; k++) {
+       cv::Mat im = cv::Mat::zeros(filter_size.height,
+                                   filter_size.width, CV_32F);
+       for (int y = 0; y < im.rows; y++) {
+          for (int x = 0; x < im.cols; x++) {
+             im.at<float>(y, x) = cpu_data[
+                k * im.cols * im.rows + y * im.cols + x];
+          }
+       }
+       
+       // cv::resize(im, im, filter_size);
+
+       std::cout << "FILTER #: " << k  << "\n";
+       
+       cv::namedWindow("filter_", CV_WINDOW_NORMAL);
+       cv::imshow("filter_", im);
+       cv::waitKey(3);
+    }
+    
+    // cudaFree(d_resized_data);
     return;
     
     

@@ -83,8 +83,15 @@ void bilinearInterpolationKernelTexture(float * d_result,
     int t_idx = threadIdx.x + blockIdx.x * blockDim.x;
     int t_idy = threadIdx.y + blockIdx.y * blockDim.y;
     int offset = t_idx + t_idy * blockDim.x * gridDim.x;
-    offset *= num_filters;  // ????
-    if (offset < blob_info.data_lenght) {
+    // offset *= num_filters;  // ????
+    // if (offset < blob_info.data_lenght) {
+    if (offset < num_filters) {
+
+       // offset = offset * blob_info.width * blob_info.height;
+
+       // if (offset < 169 * 3) {
+       //    printf("OFFSET: %d\n", offset);
+       // }
        
        const float fx = static_cast<float>(blob_info.width)/
           static_cast<float>(nx);
@@ -101,6 +108,9 @@ void bilinearInterpolationKernelTexture(float * d_result,
        int y1;
        int index_cols = -1;
        int index_rows = -1;
+
+       int arr_index = offset * nx * ny;
+       
        for (int j = 0; j < ny; j++) {
           for (int i = 0; i < nx; i++) {
              src_x = i * fx;
@@ -134,8 +144,9 @@ void bilinearInterpolationKernelTexture(float * d_result,
                                   index_cols + (index_rows * blob_info.width));
              
              float out_value = (p1 + p2 + p3 + p4) / 4.0f;
-             d_result[offset + i + (j * nx)] = out_value;
-             
+             //! d_result[offset + i + (j * nx)] = out_value;
+             //! d_result[offset * nx * ny + i + (j * nx)] = out_value;
+             d_result[arr_index + i + (j * nx)] = out_value;
           }
        }
     }
@@ -175,13 +186,19 @@ float *bilinearInterpolationGPU(const float *d_data,
     cudaTextureObject_t tex_obj = 0;
     cudaCreateTextureObject(&tex_obj, &res_desc, &tex_desc, NULL);
 
+    /*
     bilinearInterpolationKernelTexture<<<grid_size, block_size>>>(
        d_output, tex_obj, new_x, new_y, num_filters, cfinfo);
+    */
+    bilinearInterpolationKernelTexture<<<num_filters, 1>>>(
+       d_output, tex_obj, new_x, new_y, num_filters, cfinfo);
+
+#ifdef _DEBUG
     /*
     bilinearInterpolationKernel<<<grid_size, block_size>>>(
        d_output, d_data, new_x, new_y, num_filters, cfinfo);
     */
-    
+    /*
     float *cpu_out = (float*)malloc(OUT_BYTE);
     cudaMemcpy(cpu_out, d_output, OUT_BYTE, cudaMemcpyDeviceToHost);
 
@@ -190,11 +207,10 @@ float *bilinearInterpolationGPU(const float *d_data,
           printf("%3.5f ", cpu_out[j + i * new_x]);
        }
        printf("\n");
-
     }
-
     printf("SIZE: %d  %d\n", new_x, new_y);
-
+    */
+#endif
     
     cudaDestroyTextureObject(tex_obj);
     return d_output;
