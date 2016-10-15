@@ -109,7 +109,7 @@ void bilinearInterpolationKernelTexture(float * d_result,
        int index_cols = -1;
        int index_rows = -1;
 
-       int arr_index = offset * nx * ny;
+       int arr_index = offset * blob_info.width * blob_info.height;
        
        for (int j = 0; j < ny; j++) {
           for (int i = 0; i < nx; i++) {
@@ -122,31 +122,30 @@ void bilinearInterpolationKernelTexture(float * d_result,
              index_rows = y1 + 0;
              p1 = (index_cols > blob_info.width - 1 &&
                    index_rows > blob_info.height - 1) ? 0.0f :
-                tex1Dfetch<float>(tex_obj,
+                tex1Dfetch<float>(tex_obj, arr_index +
                                   index_cols + (index_rows * blob_info.width));
              index_cols = x1 + 1;
              index_rows = y1 + 0;
              p2 = (index_cols > blob_info.width - 1 &&
                    index_rows > blob_info.height - 1) ? 0.0f :
-                tex1Dfetch<float>(tex_obj,
+                tex1Dfetch<float>(tex_obj, arr_index +
                                   index_cols + (index_rows * blob_info.width));
              index_cols = x1 + 0;
              index_rows = y1 + 1;
              p3 = (index_cols > blob_info.width - 1 &&
                 index_rows > blob_info.height - 1) ? 0.0f :
-                tex1Dfetch<float>(tex_obj,
+                tex1Dfetch<float>(tex_obj, arr_index +
                                   index_cols + (index_rows * blob_info.width));
              index_cols = x1 + 1;
              index_rows = y1 + 1;
              p4 = (index_cols > blob_info.width - 1 &&
                    index_rows > blob_info.height - 1) ? 0.0f :
-                tex1Dfetch<float>(tex_obj,
+                tex1Dfetch<float>(tex_obj, arr_index +
                                   index_cols + (index_rows * blob_info.width));
              
              float out_value = (p1 + p2 + p3 + p4) / 4.0f;
              //! d_result[offset + i + (j * nx)] = out_value;
-             //! d_result[offset * nx * ny + i + (j * nx)] = out_value;
-             d_result[arr_index + i + (j * nx)] = out_value;
+             d_result[offset * nx * ny + i + (j * nx)] = out_value;
           }
        }
     }
@@ -170,7 +169,8 @@ float *bilinearInterpolationGPU(const float *d_data,
     float *d_output;
     cudaMalloc(reinterpret_cast<void**>(&d_output), OUT_BYTE);
 
-    const int IN_BYTE = filter_width * filter_height * sizeof(float);
+    const int IN_BYTE = num_filters * filter_width *
+       filter_height * sizeof(float);
     struct cudaResourceDesc res_desc;
     memset(&res_desc, 0, sizeof(res_desc));
     res_desc.resType = cudaResourceTypeLinear;
