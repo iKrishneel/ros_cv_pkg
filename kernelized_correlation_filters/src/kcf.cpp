@@ -998,6 +998,9 @@ void KCF_Tracker::cuDFT(
     //    cv::cuda::multiply(cnn_codes[i], d_cos_window, d_filter);
     // }
     
+    ROS_ERROR("FFT INFO: %d", (FILTER_SIZE_/2 + 1) * FILTER_BATCH_);
+    std::cout << FILTER_SIZE_  << "\n";
+    
 
     cufftReal *d_input = reinterpret_cast<cufftReal*>(dev_data);
     cufftComplex *d_complex = cuFFTR2Cprocess(d_input, FILTER_SIZE_,
