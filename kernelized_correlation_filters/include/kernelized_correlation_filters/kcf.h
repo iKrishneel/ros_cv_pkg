@@ -3,6 +3,7 @@
 
 #include <kernelized_correlation_filters/deep_feature_extraction.h>
 #include <kernelized_correlation_filters/cosine_convolution_kernel.h>
+#include <kernelized_correlation_filters/gaussian_correlation_kernel.h>
 #include <kernelized_correlation_filters/bilinear_interpolation_kernel.h>
 #include <kernelized_correlation_filters/discrete_fourier_transform_kernel.h>
 #include <kernelized_correlation_filters/complexmat.hpp>

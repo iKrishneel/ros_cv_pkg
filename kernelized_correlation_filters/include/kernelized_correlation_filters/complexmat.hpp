@@ -36,9 +36,14 @@ public:
     {
         T sum_sqr_norm = 0;
         for (int i = 0; i < n_channels; ++i)
-            for (auto lhs = p_data[i].begin(); lhs != p_data[i].end(); ++lhs)
-                sum_sqr_norm += lhs->real()*lhs->real() + lhs->imag()*lhs->imag();
-            //std::for_each(p_data[i].begin(), p_data[i].end(), [&sum_sqr_norm](const std::complex<T> & c) { sum_sqr_norm += c.real()*c.real() + c.imag()*c.imag(); } );
+           for (auto lhs = p_data[i].begin(); lhs != p_data[i].end(); ++lhs) {
+              sum_sqr_norm += lhs->real()*lhs->real() + lhs->imag()*lhs->imag();
+           }
+            //std::for_each(p_data[i].begin(), p_data[i].end(),
+            //[&sum_sqr_norm](const std::complex<T> & c) {
+            //sum_sqr_norm += c.real()*c.real() + c.imag()*c.imag(); }
+            //);
+        // std::cout << "INFO: " << sum_sqr_norm << " " << cols*rows  << "\n";
         return sum_sqr_norm / static_cast<T>(cols*rows);
     }
 

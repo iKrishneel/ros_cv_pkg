@@ -431,7 +431,7 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
                                                cv::Mat & input_gray,
                                                int cx, int cy, int size_x,
                                                int size_y, double scale) {
-    std::cout << "\33[34m GETTING FEATURES \033[0m"  << "\n";
+
     int size_x_scaled = floor(size_x*scale);
     int size_y_scaled = floor(size_y*scale);
     cv::Mat patch_gray = get_subwindow(input_gray, cx, cy,
@@ -548,13 +548,15 @@ void KCF_Tracker::get_featuresGPU(
        FILTER_BATCH_;
     float *d_cos_conv = cosineConvolutionGPU(d_resized_data, d_cos_window_,
                                              data_lenght, BYTE_);
-
-    
     ROS_WARN("CONV IN GPU DONE");
 
     
     cufftComplex * d_complex = cuDFT(d_cos_conv, this->d_cos_window_);
     ROS_WARN("FFT IN GPU DONE");
+
+    float sq_norm_gpu =  squaredNormGPU(d_complex, FILTER_BATCH_, FILTER_SIZE_);
+
+    std::cout << "GPU_NORM:  " << sq_norm_gpu  << "\n";
     
     /*
     float *features;
@@ -606,7 +608,7 @@ void KCF_Tracker::get_featuresGPU(
 
     cudaFree(d_resized_data);
     cudaFree(d_cos_conv);
-
+    cudaFree(d_complex);
 }
 
 
@@ -843,7 +845,12 @@ cv::Mat KCF_Tracker::get_subwindow(
 ComplexMat KCF_Tracker::gaussian_correlation(
     const ComplexMat &xf, const ComplexMat &yf, double sigma,
     bool auto_correlation) {
+
+   
     float xf_sqr_norm = xf.sqr_norm();
+
+    std::cout << "CPU NORM IS: " << xf_sqr_norm  << "\n";
+    
     float yf_sqr_norm = auto_correlation ? xf_sqr_norm : yf.sqr_norm();
 
     ComplexMat xyf = auto_correlation ? xf.sqr_mag() : xf * yf.conj();
@@ -1029,7 +1036,7 @@ void cuFFTC2Cprocess(cufftComplex *&in_data,
     if (cufft_status != cudaSuccess) {
        printf("cufftExecR2C failed!");
     }
-
+    
     return;
     
     

@@ -130,8 +130,8 @@ find_package(OpenCV REQUIRED)
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  #INCLUDE_DIRS include
-  #LIBRARIES kernelized_correlation_filters
+  INCLUDE_DIRS include
+  LIBRARIES kernelized_correlation_filters
   CATKIN_DEPENDS
   #DEPENDS system_lib
 )
@@ -182,6 +182,8 @@ cuda_add_executable(kernelized_correlation_filters_node
   src/cuda/cosine_convolution_kernel.cu
   src/cuda/bilinear_interpolation_kernel.cu
   src/cuda/discrete_fourier_transform_kernel.cu
+  src/cuda/gaussian_correlation_kernel.cu
+  src/cuda/threadFenceReduction_kernel.cu
 )
 
 cuda_add_cufft_to_target(kernelized_correlation_filters_node)
