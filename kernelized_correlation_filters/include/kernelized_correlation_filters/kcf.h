@@ -15,18 +15,15 @@
 
 struct BBox_c {
     double cx, cy, w, h;
-
     inline void scale(double factor) {
         cx *= factor;
         cy *= factor;
         w  *= factor;
         h  *= factor;
     }
-
     inline cv::Rect get_rect() {
         return cv::Rect(cx-w/2., cy-h/2., w, h);
     }
-
 };
 
 class KCF_Tracker {
