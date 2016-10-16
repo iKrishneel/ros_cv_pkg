@@ -998,8 +998,8 @@ double KCF_Tracker::sub_grid_scale(
 
 // cufftHandle cufft_plan_handle_;
 cufftHandle handle_;
-cufftComplex* cuFFTC2Cprocess(cufftComplex *x,
-                              size_t FILTER_SIZE, const int);
+// cufftComplex*
+void cuFFTC2Cprocess(cufftComplex *&x, size_t FILTER_SIZE, const int);
 
 void KCF_Tracker::cuDFT(
     float *dev_data,  //! = cnn_codes * cos
@@ -1025,11 +1025,21 @@ void KCF_Tracker::cuDFT(
                                                      FILTER_SIZE_);
     
     // cufftReal *d_input = reinterpret_cast<cufftReal*>(dev_data);
-    cufftComplex *d_complex = cuFFTC2Cprocess(d_input, FILTER_SIZE_,
-                                              FILTER_BATCH_);
+    // cufftComplex *d_complex =
+    cuFFTC2Cprocess(d_input, FILTER_SIZE_, FILTER_BATCH_);
+
+
+
+    const int OUT_BYTE = FILTER_SIZE_ * FILTER_BATCH_ * sizeof(cufftComplex);
+    cufftComplex *out_data = (cufftComplex*)malloc(
+       OUT_BYTE);
+    cudaMemcpy(out_data, d_input, OUT_BYTE, cudaMemcpyDeviceToHost);
+    for (int j = 0; j < FILTER_SIZE_ * FILTER_BATCH_; j++) {
+       std::cout << j <<  " " <<  out_data[j].x << " "<< out_data[j].y << "\n";
+    }
     
     
-    cudaFree(d_complex);
+    // cudaFree(d_complex);
     cudaFree(d_input);
     
     
@@ -1037,35 +1047,37 @@ void KCF_Tracker::cuDFT(
 }
 
 
-cufftComplex* cuFFTC2Cprocess(cufftComplex *in_data,
+// cufftComplex*
+void cuFFTC2Cprocess(cufftComplex *&in_data,
                               size_t FILTER_SIZE,
                               const int FILTER_BATCH) {
 
     const int IN_BYTE = FILTER_SIZE * FILTER_BATCH * sizeof(cufftReal);
     const int OUT_BYTE = FILTER_SIZE * FILTER_BATCH * sizeof(cufftComplex);
     
-    cufftComplex *d_complex;
-    cudaMalloc(reinterpret_cast<void**>(&d_complex), OUT_BYTE);
+    // cufftComplex *d_complex;
+    // cudaMalloc(reinterpret_cast<void**>(&d_complex), OUT_BYTE);
 
     cufftResult cufft_status;
-    cufft_status = cufftExecC2C(handle_, in_data, d_complex, CUFFT_FORWARD);
+    // cufft_status = cufftExecC2C(handle_, in_data, d_complex, CUFFT_FORWARD);
+    cufft_status = cufftExecC2C(handle_, in_data, in_data, CUFFT_FORWARD);
     
     if (cufft_status != cudaSuccess) {
        printf("cufftExecR2C failed!");
     }
 
+    return;
     
     //! DEBUG: viz on CPU
 
     std::cout << "OUT BYTE: " << OUT_BYTE  << "\n";
     cufftComplex *out_data = (cufftComplex*)malloc(OUT_BYTE);
-    cudaMemcpy(out_data, d_complex, OUT_BYTE, cudaMemcpyDeviceToHost);
+    cudaMemcpy(out_data, in_data, OUT_BYTE, cudaMemcpyDeviceToHost);
     //! end
 
     
     
-    //! DEBUG: viz on CPU
-    // cufftComplex *cpu_in = (cufftComplex*)malloc(IN_BYTE);
+
     // cudaMemcpy(cpu_in, in_data, IN_BYTE, cudaMemcpyDeviceToHost);
     // std::ofstream outfile("cu.txt");
     for (int j = 0; j < OUT_BYTE/sizeof(cufftComplex); j++) {
@@ -1077,6 +1089,6 @@ cufftComplex* cuFFTC2Cprocess(cufftComplex *in_data,
     //! END DEBUG
 
     
-    return d_complex;
+    // return d_complex;
 }
 
