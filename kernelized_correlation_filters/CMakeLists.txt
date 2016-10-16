@@ -181,6 +181,7 @@ cuda_add_executable(kernelized_correlation_filters_node
   src/kcf.cpp
   src/cuda/cosine_convolution_kernel.cu
   src/cuda/bilinear_interpolation_kernel.cu
+  src/cuda/discrete_fourier_transform_kernel.cu
 )
 
 cuda_add_cufft_to_target(kernelized_correlation_filters_node)

@@ -998,7 +998,7 @@ double KCF_Tracker::sub_grid_scale(
 
 // cufftHandle cufft_plan_handle_;
 cufftHandle handle_;
-cufftComplex* cuFFTR2Cprocess(cufftReal *x,
+cufftComplex* cuFFTC2Cprocess(cufftComplex *x,
                               size_t FILTER_SIZE, const int);
 
 void KCF_Tracker::cuDFT(
@@ -1007,7 +1007,7 @@ void KCF_Tracker::cuDFT(
 
     if (this->init_cufft_plan_) {
        cufftResult cufft_status = cufftPlan1d(
-          &handle_, FILTER_SIZE_, CUFFT_R2C, FILTER_BATCH_);
+          &handle_, FILTER_SIZE_, CUFFT_C2C, FILTER_BATCH_);
        if (cufft_status != cudaSuccess) {
           ROS_ERROR("CUDAFFT PLAN ALLOC FAILED");
           return;
@@ -1019,38 +1019,40 @@ void KCF_Tracker::cuDFT(
     std::cout << FILTER_SIZE_  << "\n\n";
     
 
-    cufftReal *d_input = reinterpret_cast<cufftReal*>(dev_data);
-    cufftComplex *d_complex = cuFFTR2Cprocess(d_input, FILTER_SIZE_,
+    // TODO(GPU): convert real to imginary
+    cufftComplex *d_input = convertFloatToComplexGPU(dev_data,
+                                                     FILTER_BATCH_,
+                                                     FILTER_SIZE_);
+    
+    // cufftReal *d_input = reinterpret_cast<cufftReal*>(dev_data);
+    cufftComplex *d_complex = cuFFTC2Cprocess(d_input, FILTER_SIZE_,
                                               FILTER_BATCH_);
     
     
     cudaFree(d_complex);
+    cudaFree(d_input);
+    
     
     ROS_WARN("SUCCESSFULLY COMPLETED");
 }
 
 
-cufftComplex* cuFFTR2Cprocess(cufftReal *in_data,
+cufftComplex* cuFFTC2Cprocess(cufftComplex *in_data,
                               size_t FILTER_SIZE,
                               const int FILTER_BATCH) {
 
     const int IN_BYTE = FILTER_SIZE * FILTER_BATCH * sizeof(cufftReal);
-
-    //! ALLOCATE JUST HERMITIAN SYMMETRIC UPP. TRIG MAT
-    const int OUT_BYTE = (FILTER_SIZE / 2 + 1) *
-       sizeof(cufftComplex) * FILTER_BATCH;
+    const int OUT_BYTE = FILTER_SIZE * FILTER_BATCH * sizeof(cufftComplex);
     
     cufftComplex *d_complex;
     cudaMalloc(reinterpret_cast<void**>(&d_complex), OUT_BYTE);
 
     cufftResult cufft_status;
-    cufft_status = cufftExecR2C(handle_, in_data, d_complex);
-
+    cufft_status = cufftExecC2C(handle_, in_data, d_complex, CUFFT_FORWARD);
+    
     if (cufft_status != cudaSuccess) {
        printf("cufftExecR2C failed!");
     }
-
-
 
     
     //! DEBUG: viz on CPU
@@ -1059,67 +1061,12 @@ cufftComplex* cuFFTR2Cprocess(cufftReal *in_data,
     cufftComplex *out_data = (cufftComplex*)malloc(OUT_BYTE);
     cudaMemcpy(out_data, d_complex, OUT_BYTE, cudaMemcpyDeviceToHost);
     //! end
-    
 
     
-    cufftComplex full_ft[FILTER_BATCH * FILTER_SIZE];
-    
-    //! complete the matrix
-    int pivot_index = -1;
-    int icount_index = 0;
-    if ((FILTER_SIZE) % 2 == 0) {
-       pivot_index = (FILTER_SIZE) / 2;
-       icount_index = pivot_index -1;
-    } else {
-       pivot_index = std::floor((FILTER_SIZE) / 2);
-       icount_index = pivot_index;
-    }
-
-    for (int k = 0; k < FILTER_BATCH; k++) {  //! invididual threads
-       int icount = icount_index;
-       int pivot = pivot_index;
-
-       //! pack the first element
-       for (int i = 0; i < std::floor(FILTER_SIZE/2 + 1); i++) {
-          full_ft[k * FILTER_SIZE + i] =
-             out_data[(k * (FILTER_SIZE/2 + 1)) + i];
-       }
-
-       for (int i = pivot + 1; i < FILTER_SIZE; i++) {   //! same
-          full_ft[(k * FILTER_SIZE) + i] = out_data[(k * FILTER_SIZE) + icount];
-          full_ft[(k * FILTER_SIZE) + i].y *= -1.0f;
-
-
-          std::cout << "INDEX: "<< (k * FILTER_SIZE) + icount  << "\t";
-          std::cout << (k * FILTER_SIZE) + i  << "\n";
-          
-          if (icount > 1) {
-             icount--;
-          } else {
-             break;
-          }
-       }
-       
-       std::cout << "\n"  << "\n";
-
-    }
-
-    for (int k = 0; k < FILTER_BATCH; k++) {
-       for (int j = 0; j < FILTER_SIZE; j++) {
-          std::cout << j <<  " " <<  full_ft[k*FILTER_SIZE + j].x << " "
-                    << full_ft[k*FILTER_SIZE + j].y << "\n";
-       }
-       std::cout << "\n"  << "\n";
-    }
-
-
-    std::cout << "\n"  << "\nPRINT TRUE\n";
-    
-
     
     //! DEBUG: viz on CPU
-    cufftReal *cpu_in = (cufftReal*)malloc(IN_BYTE);
-    cudaMemcpy(cpu_in, in_data, IN_BYTE, cudaMemcpyDeviceToHost);
+    // cufftComplex *cpu_in = (cufftComplex*)malloc(IN_BYTE);
+    // cudaMemcpy(cpu_in, in_data, IN_BYTE, cudaMemcpyDeviceToHost);
     // std::ofstream outfile("cu.txt");
     for (int j = 0; j < OUT_BYTE/sizeof(cufftComplex); j++) {
        // outfile << j <<  " " <<  out_data[j].x << " "<< out_data[j].y << "\n";
