@@ -552,30 +552,9 @@ void KCF_Tracker::get_featuresGPU(
     
     ROS_WARN("CONV IN GPU DONE");
 
-    /*
-    //! debug
-    float test_data[18] =  {0.84018773, 0.39438292, 0.78309923,
-                            0.79844004, 0.91164738, 0.19755137,
-                            0.33522275, 0.7682296, 0.27777472,
-                            0.84018773, 0.39438292, 0.78309923,
-                            0.79844004, 0.91164738, 0.19755137,
-                            0.33522275, 0.7682296, 0.27777472};
     
-    FILTER_BATCH_ = 2;
-    FILTER_SIZE_ = 9;
-    cufftReal *in_data;
-    cudaMalloc(reinterpret_cast<void**>(&in_data),
-               FILTER_SIZE_ * sizeof(cufftReal)* FILTER_BATCH_);
-    cudaMemcpy(in_data, test_data, FILTER_SIZE_* sizeof(float) * FILTER_BATCH_,
-               cudaMemcpyHostToDevice);
-
-    cuDFT(in_data, this->d_cos_window_);
-    std::exit(-1);
-    //! end debug
-    */
-    cuDFT(d_cos_conv, this->d_cos_window_);
-
-    
+    cufftComplex * d_complex = cuDFT(d_cos_conv, this->d_cos_window_);
+    ROS_WARN("FFT IN GPU DONE");
     
     /*
     float *features;
@@ -589,7 +568,7 @@ void KCF_Tracker::get_featuresGPU(
     std::cout << "SIZE: " << FILTER_SIZE_ * FILTER_BATCH_  << "\n";
     std::cout << "SIZE: " << blob_info->count()  << "\n";
     */
-    ROS_WARN("FFT IN GPU DONE");
+
 
     /*
     float *pdata = (float*)std::malloc(BYTE_);
@@ -1001,10 +980,9 @@ double KCF_Tracker::sub_grid_scale(
 
 // cufftHandle cufft_plan_handle_;
 cufftHandle handle_;
-// cufftComplex*
 void cuFFTC2Cprocess(cufftComplex *&x, size_t FILTER_SIZE, const int);
 
-void KCF_Tracker::cuDFT(
+cufftComplex* KCF_Tracker::cuDFT(
     float *dev_data,  //! = cnn_codes * cos
     const float *d_cos_window) {
 
@@ -1013,7 +991,8 @@ void KCF_Tracker::cuDFT(
           &handle_, FILTER_SIZE_, CUFFT_C2C, FILTER_BATCH_);
        if (cufft_status != cudaSuccess) {
           ROS_ERROR("CUDAFFT PLAN ALLOC FAILED");
-          return;
+          cufftComplex empty[1];
+          return empty;   // TODO(FIX): fix this for error handling
        }
        this->init_cufft_plan_ = false;
     }
@@ -1022,10 +1001,6 @@ void KCF_Tracker::cuDFT(
                                                      FILTER_SIZE_);
 
     cuFFTC2Cprocess(d_input, FILTER_SIZE_, FILTER_BATCH_);
-
-
-    std::cout << "\nFILTER SIZE: "  << FILTER_SIZE_  << "\t"
-              << FILTER_BATCH_ << "\n";
     
     /*
     // DEBUG
@@ -1037,12 +1012,12 @@ void KCF_Tracker::cuDFT(
     }
     // end DEBUG
     */
-    cudaFree(d_input);
+    // cudaFree(d_input);
+
+    return d_input;
     ROS_WARN("SUCCESSFULLY COMPLETED");
 }
 
-
-// cufftComplex*
 void cuFFTC2Cprocess(cufftComplex *&in_data,
                               size_t FILTER_SIZE,
                               const int FILTER_BATCH) {
@@ -1055,7 +1030,8 @@ void cuFFTC2Cprocess(cufftComplex *&in_data,
        printf("cufftExecR2C failed!");
     }
 
-
+    return;
+    
     
     std::cout << "OUT BYTE: " << OUT_BYTE  << "\n";
     cufftComplex *out_data = (cufftComplex*)malloc(OUT_BYTE);
