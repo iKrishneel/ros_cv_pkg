@@ -47,14 +47,14 @@ float* cosineConvolutionGPU(const float *d_cnn_codes,
                             const int data_count,
                             const int BYTE) {
 
-     const int dimension = std::ceil(std::sqrt(CNN_FILTER_SIZE));
-     dim3 block_size(cuDivUp(dimension, GRID_SIZE),
+     const int dimension = std::ceil(std::sqrt(data_count));
+     dim3 grid_size(cuDivUp(dimension, GRID_SIZE),
                      cuDivUp(dimension, GRID_SIZE));
-     dim3 grid_size(GRID_SIZE, GRID_SIZE);
-
+     dim3 block_size(GRID_SIZE, GRID_SIZE);
+     
      float *d_output;
      cudaMalloc(reinterpret_cast<void**>(&d_output), BYTE);
-     cosineConvolutionKernel<<<block_size, grid_size>>>(
+     cosineConvolutionKernel<<<grid_size, block_size>>>(
         d_output, d_cnn_codes, d_cos_window, data_count);
 
      return d_output;
