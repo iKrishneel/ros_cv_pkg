@@ -845,16 +845,40 @@ cv::Mat KCF_Tracker::get_subwindow(
 ComplexMat KCF_Tracker::gaussian_correlation(
     const ComplexMat &xf, const ComplexMat &yf, double sigma,
     bool auto_correlation) {
-
    
     float xf_sqr_norm = xf.sqr_norm();
 
-    std::cout << "CPU NORM IS: " << xf_sqr_norm  << "\n";
+    // std::cout << "CPU NORM IS: " << xf_sqr_norm  << "\n";
     
     float yf_sqr_norm = auto_correlation ? xf_sqr_norm : yf.sqr_norm();
-
     ComplexMat xyf = auto_correlation ? xf.sqr_mag() : xf * yf.conj();
 
+
+    
+    //! DEBUG
+    std::cout << "\033[34m YF CONJ: \033[0m" << yf.conj().n_channels
+              << " " << yf.conj().rows << "\n";
+
+    cv::Mat check_yf = yf.conj().to_cv_mat();
+    cv::Mat orign_yf = xf.to_cv_mat();
+    cv::Mat xyf_cv = xyf.to_cv_mat();
+    
+    for (int j = 0; j < xyf.rows; j++) {
+       for (int i = 0; i < xyf.cols; i++) {
+          std::cout << check_yf.at<cv::Vec2f>(j, i)[0]  << ", ";
+          std::cout << check_yf.at<cv::Vec2f>(j, i)[1]  << "\t";
+          
+          std::cout << orign_yf.at<cv::Vec2f>(j, i)[0]  << " ";
+          std::cout << orign_yf.at<cv::Vec2f>(j, i)[1]  << "\t";
+
+          std::cout << xyf_cv.at<cv::Vec2f>(j, i)[0]  << " ";
+          std::cout << xyf_cv.at<cv::Vec2f>(j, i)[1]  << "\n";
+       }
+    }
+
+    //! END DEBUG
+
+    
     // ifft2 and sum over 3rd dimension, we dont care about individual
     // channels
     cv::Mat xy_sum(xf.rows, xf.cols, CV_32FC1);
@@ -878,6 +902,8 @@ ComplexMat KCF_Tracker::gaussian_correlation(
 
     return fft2(tmp);
 }
+
+
 
 float get_response_circular(cv::Point2i &pt,
                             cv::Mat & response) {

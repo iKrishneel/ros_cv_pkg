@@ -71,3 +71,95 @@ float squaredNormGPU(const cufftComplex *d_complex,
 
     return norm;
 }
+
+
+/**
+ * kernel for computing just the inverse
+ */
+__global__ __forceinline__
+void invComplexConjuateKernel(cufftComplex *d_compl_out,
+                              const cufftComplex *d_complex,
+                              const int LENGHT) {
+
+    int t_idx = threadIdx.x + blockIdx.x * blockDim.x;
+    int t_idy = threadIdx.y + blockIdx.y * blockDim.y;
+    int offset = t_idx + t_idy * blockDim.x * gridDim.x;
+
+    if (offset < LENGHT) {
+       d_compl_out[offset] = d_complex[offset];
+       d_compl_out[offset].y *= -1.0f;
+    }
+   
+}
+
+cufftComplex* invComplexConjuateGPU(const cufftComplex *d_complex,
+                                    const int FILTER_BATCH,
+                                    const int FILTER_SIZE) {
+
+    if (FILTER_BATCH == 0 || FILTER_SIZE == 0) {
+       printf("\033[31m ERROR: [invComplexConjuateGPU] FAILED\n");
+    }
+    
+    int LENGHT = FILTER_BATCH * FILTER_SIZE;
+    const int dimension = std::ceil(std::sqrt(LENGHT));
+    dim3 grid_size(cuDivUp(dimension, GRID_SIZE),
+                   cuDivUp(dimension, GRID_SIZE));
+    dim3 block_size(GRID_SIZE, GRID_SIZE);
+
+    const int BYTE = LENGHT * sizeof(cufftComplex);
+    cufftComplex *d_compl_out;
+    cudaMalloc(reinterpret_cast<void**>(&d_compl_out), BYTE);
+
+    invComplexConjuateKernel<<<grid_size, block_size>>>(d_compl_out,
+                                                        d_complex, LENGHT);
+    
+    return d_compl_out;
+}
+
+
+/**
+ * kernel to inverse and multipy reduced into one
+ */
+
+__global__ __forceinline__
+void invConjuateConvKernel(cufftComplex *d_compl_out,
+                           const cufftComplex *d_complex,
+                           const cufftComplex *d_compl_model,
+                           const int LENGHT) {
+    int t_idx = threadIdx.x + blockIdx.x * blockDim.x;
+    int t_idy = threadIdx.y + blockIdx.y * blockDim.y;
+    int offset = t_idx + t_idy * blockDim.x * gridDim.x;
+
+    if (offset < LENGHT) {
+       d_compl_out[offset].x = (
+          (d_complex[offset].x * d_compl_model[offset].x) -
+          (d_complex[offset].y * (d_compl_model[offset].y * -1.0f)));
+       d_compl_out[offset].y = 0.0f;
+    }
+}
+
+cufftComplex* invConjuateConvGPU(const cufftComplex *d_complex,
+                                 const cufftComplex *d_compl_model,
+                                 const int FILTER_BATCH,
+                                 const int FILTER_SIZE) {
+
+    if (FILTER_BATCH == 0 || FILTER_SIZE == 0) {
+       printf("\033[31m ERROR: [invConjuateConvGPU] FAILED\n");
+    }
+    
+    int LENGHT = FILTER_BATCH * FILTER_SIZE;
+    const int dimension = std::ceil(std::sqrt(LENGHT));
+    dim3 grid_size(cuDivUp(dimension, GRID_SIZE),
+                   cuDivUp(dimension, GRID_SIZE));
+    dim3 block_size(GRID_SIZE, GRID_SIZE);
+
+    const int BYTE = LENGHT * sizeof(cufftComplex);
+    cufftComplex *d_compl_out;
+    cudaMalloc(reinterpret_cast<void**>(&d_compl_out), BYTE);
+    
+    invConjuateConvKernel<<<grid_size, block_size>>>(d_compl_out, d_complex,
+                                                     d_compl_model, LENGHT);
+    
+    return d_compl_out;
+}
+
