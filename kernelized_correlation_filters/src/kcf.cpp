@@ -171,18 +171,113 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     p_output_sigma = std::sqrt(p_pose.w*p_pose.h) *
        p_output_sigma_factor / static_cast<double>(p_cell_size);
 
+    
     // window weights, i.e. labels
-    p_yf = fft2(gaussian_shaped_labels(p_output_sigma,
-                                       p_windows_size[0]/p_cell_size,
-                                       p_windows_size[1]/p_cell_size));
-    p_cos_window = cosine_window_function(p_yf.cols, p_yf.rows);
+    cv::Mat gsl = gaussian_shaped_labels(p_output_sigma,
+                                         p_windows_size[0]/p_cell_size,
+                                         p_windows_size[1]/p_cell_size);
+
+    
+    p_yf = fft2(gsl);  //! GPU
+
+    //! fft on gpu
+    const int BATCH = 1;
+    const int INPUT_SIZE = gsl.rows * gsl.cols;
+    float *dev_data;
+    int IN_BYTE = INPUT_SIZE * sizeof(float);
+    cudaMalloc(reinterpret_cast<void**>(&dev_data), IN_BYTE);
+    cudaMemcpy(dev_data, reinterpret_cast<float*>(gsl.data), IN_BYTE,
+               cudaMemcpyHostToDevice);
+    cufftComplex *dev_p_yf = convertFloatToComplexGPU(dev_data, 1, INPUT_SIZE);
+
+    //! fft on gpu
+    cufftHandle cufft_handle;
+    cufftResult cufft_status;
+    cufft_status = cufftPlan1d(&cufft_handle, INPUT_SIZE,
+                               CUFFT_C2C, BATCH);
+    if (cufft_status != cudaSuccess) {
+       ROS_FATAL("CUDA FFT HANDLE CREATION FAILED");
+       cudaFree(dev_p_yf);
+       cudaFree(dev_data);
+       cufftDestroy(cufft_handle);
+       return;
+    }
+    
+    cufft_status = cufftExecC2C(cufft_handle, dev_p_yf,
+                                dev_p_yf, CUFFT_FORWARD);
+
+    if (cufft_status != cudaSuccess) {
+       ROS_FATAL("CUDA FFT [cufftExecC2C] FAILED");
+       cudaFree(dev_p_yf);
+       cudaFree(dev_data);
+       return;
+    }
+
+    cufftDestroy(cufft_handle);
+    
+    // p_cos_window = cosine_window_function(p_yf.cols, p_yf.rows);
+    p_cos_window = cosine_window_function(gsl.cols, gsl.rows);
+
+
+    
+    /*
+    cufftComplex out_data[INPUT_SIZE];
+    cudaMemcpy(out_data, dev_p_yf, INPUT_SIZE * sizeof(cufftComplex),
+               cudaMemcpyDeviceToHost);
+
+    cv::Mat cpu_fft = p_yf.to_cv_mat();
+    for (int i = 0; i < gsl.rows; i++) {
+       for (int j = 0; j < gsl.cols; j++) {
+          std::cout << cpu_fft.at<cv::Vec2f>(i, j)[0]  << " "
+                    << cpu_fft.at<cv::Vec2f>(i, j)[1]  << "\t"
+                    << out_data[i * gsl.cols + j].x << " "
+                    << out_data[i * gsl.cols + j].y << "\n";
+       }
+    }
+    */
+
+
+
+
+    // obtain a sub-window for training initial model
+
+    const float *d_model_features = get_featuresGPU(input_rgb, input_gray,
+                                                    p_pose.cx, p_pose.cy,
+                                                    p_windows_size[0],
+                                                    p_windows_size[1], 1.0f);
+
+    float *dev_feat = const_cast<float*>(d_model_features);
+    cufftComplex *dev_model_complex = this->cuDFT(dev_feat);
+
+
+
+    /**
+     * start
+     */
+    // cudaFree(dev_p_yf);
+    // cudaFree(dev_data);
+    // std::cout << "info: " << p_yf.rows << " " << p_yf.cols
+    //           << " " << p_yf.n_channels  << "\n";
+    // exit(1);
+    
+    /**
+     * emd
+     */
+
+
+
+
 
     // obtain a sub-window for training initial model
     std::vector<cv::Mat> path_feat = get_features(input_rgb, input_gray,
-                                                  p_pose.cx, p_pose.cy,
-                                                  p_windows_size[0],
-                                                  p_windows_size[1]);
+                                                   p_pose.cx, p_pose.cy,
+                                                   p_windows_size[0],
+                                                   p_windows_size[1]);
     p_model_xf = fft2(path_feat, p_cos_window);
+    
+    
+
+    
     // Kernel Ridge Regression, calculate alphas (in Fourier domain)
     ComplexMat kf = gaussian_correlation(p_model_xf, p_model_xf,
                                          p_kernel_sigma, true);
@@ -489,7 +584,7 @@ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
  * GPU
  */
 
-void KCF_Tracker::get_featuresGPU(
+const float* KCF_Tracker::get_featuresGPU(
     cv::Mat & input_rgb, cv::Mat & input_gray,
     int cx, int cy, int size_x, int size_y, double scale) {
    
@@ -513,7 +608,13 @@ void KCF_Tracker::get_featuresGPU(
     
     //! caffe ==>>> blob->cpu_data() +   blob->offset(n);
     const float *d_data = blob_info->gpu_data();
+    
 
+    return d_data;
+    
+    // TODO: RETURN FROM HERE
+    
+    
     
     //! interpolation
     float *d_resized_data = bilinearInterpolationGPU(
