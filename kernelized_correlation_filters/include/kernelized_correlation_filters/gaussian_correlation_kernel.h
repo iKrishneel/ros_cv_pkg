@@ -7,6 +7,9 @@
 #include <kernelized_correlation_filters/threadFenceReduction_kernel.h>
 
 float squaredNormGPU(const cufftComplex *, const int, const int);
+/* returns both squared norm and mag in single call */
+float* squaredNormAndMagGPU(float &, const cufftComplex *,
+                            const int, const int);
 /* reverse the conjuate*/
 cufftComplex* invComplexConjuateGPU(const cufftComplex *,
                                     const int, const int);

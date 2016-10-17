@@ -8,9 +8,6 @@
 #include <kernelized_correlation_filters/discrete_fourier_transform_kernel.h>
 #include <kernelized_correlation_filters/complexmat.hpp>
 
-// #include "cnfeat.hpp"
-// #include "fhog.hpp"
-
 #include <opencv2/opencv.hpp>
 #include <opencv2/cudaobjdetect.hpp>
 #include <opencv2/cudaarithm.hpp>
@@ -84,7 +81,7 @@ class KCF_Tracker {
     bool init_cufft_plan_;
     float *d_cos_window_;
     int BYTE_;
-
+    cv::Size window_size_;
 
    std::vector<cv::Mat> debug_patch_;
    int debug;

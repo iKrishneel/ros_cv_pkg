@@ -218,6 +218,23 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     // p_cos_window = cosine_window_function(p_yf.cols, p_yf.rows);
     p_cos_window = cosine_window_function(gsl.cols, gsl.rows);
 
+    this->FILTER_SIZE_ = p_cos_window.rows * p_cos_window.cols;
+    this->BYTE_ = FILTER_BATCH_ * p_cos_window.rows *
+       p_cos_window.cols * sizeof(float);
+    float *cosine_window_1D = reinterpret_cast<float*>(std::malloc(BYTE_));
+    int icounter = 0;
+    for (int i = 0; i < FILTER_BATCH_; i++) {
+       for (int j = 0; j < p_cos_window.rows; j++) {
+          for (int k = 0; k < p_cos_window.cols; k++) {
+             cosine_window_1D[icounter++] = p_cos_window.at<float>(j, k);
+          }
+       }
+    }
+
+    std::cout << "INIT-->: " << cosine_window_1D[0]  << "\n";
+    
+    cudaMalloc(reinterpret_cast<void**>(&d_cos_window_), BYTE_);
+    cudaMemcpy(d_cos_window_, cosine_window_1D, BYTE_, cudaMemcpyHostToDevice);
 
     
     /*
@@ -237,50 +254,64 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     */
 
 
-
-
-    // obtain a sub-window for training initial model
-
-    const float *d_model_features = get_featuresGPU(input_rgb, input_gray,
-                                                    p_pose.cx, p_pose.cy,
-                                                    p_windows_size[0],
-                                                    p_windows_size[1], 1.0f);
-
-    float *dev_feat = const_cast<float*>(d_model_features);
-    cufftComplex *dev_model_complex = this->cuDFT(dev_feat);
-
-
-
-    /**
-     * start
-     */
-    // cudaFree(dev_p_yf);
-    // cudaFree(dev_data);
-    // std::cout << "info: " << p_yf.rows << " " << p_yf.cols
-    //           << " " << p_yf.n_channels  << "\n";
-    // exit(1);
-    
-    /**
-     * emd
-     */
-
-
-
-
-
     // obtain a sub-window for training initial model
     std::vector<cv::Mat> path_feat = get_features(input_rgb, input_gray,
                                                    p_pose.cx, p_pose.cy,
                                                    p_windows_size[0],
                                                    p_windows_size[1]);
     p_model_xf = fft2(path_feat, p_cos_window);
+
+    // Kernel Ridge Regression, calculate alphas (in Fourier domain)
+    ComplexMat kf = gaussian_correlation(p_model_xf, p_model_xf,
+                                         p_kernel_sigma, true);
+    
+    
+
+    /**
+     * start
+     */
+    // obtain a sub-window for training initial model
+    const float *d_model_features = get_featuresGPU(input_rgb, input_gray,
+                                                    p_pose.cx, p_pose.cy,
+                                                    p_windows_size[0],
+                                                    p_windows_size[1], 1.0f);
+
+    float *dev_feat = const_cast<float*>(d_model_features);
+
+    const int data_lenght = window_size_.width *
+       window_size_.height * FILTER_BATCH_;
+    float *dev_cos = cosineConvolutionGPU(dev_feat, d_cos_window_,
+                                          data_lenght, BYTE_);
+    cufftComplex *dev_model_complex = this->cuDFT(dev_feat);
+
+    //! gaussian
+    float kf_xf_norm = 0.0f;
+    float *dev_sqr_mag = squaredNormAndMagGPU(kf_xf_norm,
+                                             dev_model_complex,
+                                             FILTER_BATCH_, FILTER_SIZE_);
+    float kf_yf_norm = kf_xf_norm;
+    
+    std::cout << "GPU INFO: " << kf_xf_norm  << "\n";
+
+
+    
+    
+    
+    // cudaFree(dev_p_yf);
+    // cudaFree(dev_data);
+    // std::cout << "info: " << p_yf.rows << " " << p_yf.cols
+    //           << " " << p_yf.n_channels  << "\n";
+    exit(1);
+    
+    /**
+     * emd
+     */
+    
     
     
 
     
-    // Kernel Ridge Regression, calculate alphas (in Fourier domain)
-    ComplexMat kf = gaussian_correlation(p_model_xf, p_model_xf,
-                                         p_kernel_sigma, true);
+
 
     // p_model_alphaf = p_yf / (kf + p_lambda);   //equation for fast training
 
@@ -288,29 +319,12 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     p_model_alphaf_den = kf * (kf + p_lambda);
     p_model_alphaf = p_model_alphaf_num / p_model_alphaf_den;
 
-    
-    //! create window of filter size ***
-    // TODO(MOVE IT OUT): HERE
-    this->FILTER_SIZE_ = p_cos_window.rows * p_cos_window.cols;
-    this->BYTE_ = FILTER_BATCH_ * p_cos_window.rows *
-       p_cos_window.cols * sizeof(float);
-    float *cosine_window_1D = reinterpret_cast<float*>(std::malloc(BYTE_));
-    int icounter = 0;
-    for (int i = 0; i < FILTER_BATCH_; i++) {
-       for (int j = 0; j < p_cos_window.rows; j++) {
-          for (int k = 0; k < p_cos_window.cols; k++) {
-             cosine_window_1D[icounter++] = p_cos_window.at<float>(j, k);
-          }
-       }
-    }
 
-    std::cout << "INIT-->: " << cosine_window_1D[0]  << "\n";
-    
-    cudaMalloc(reinterpret_cast<void**>(&d_cos_window_), BYTE_);
-    cudaMemcpy(d_cos_window_, cosine_window_1D, BYTE_, cudaMemcpyHostToDevice);
-
+    cudaFree(dev_model_complex);
+    cudaFree(dev_cos);
+    cudaFree(dev_feat);
+    cudaFree(dev_sqr_mag);
     free(cosine_window_1D);
-    
 }
 
 void KCF_Tracker::setTrackerPose(BBox_c &bbox, cv::Mat & img) {
@@ -601,7 +615,8 @@ const float* KCF_Tracker::get_featuresGPU(
                                               p_windows_size[1]));
     cv::Size filter_size = cv::Size(std::floor(patch_rgb.cols/p_cell_size),
                                     std::floor(patch_rgb.rows/p_cell_size));
-
+    this->window_size_ = filter_size;
+    
     boost::shared_ptr<caffe::Blob<float> > blob_info (new caffe::Blob<float>);
     this->feature_extractor_->getFeatures(blob_info, cnn_codes, patch_rgb,
                                           filter_size);
@@ -952,12 +967,14 @@ ComplexMat KCF_Tracker::gaussian_correlation(
    
     float xf_sqr_norm = xf.sqr_norm();
     
-    std::cout << "CPU NORM IS: " << xf_sqr_norm  << "\n";
-    
     float yf_sqr_norm = auto_correlation ? xf_sqr_norm : yf.sqr_norm();
     ComplexMat xyf = auto_correlation ? xf.sqr_mag() : xf * yf.conj();
 
+    std::cout << "\033[33mCPU NORM IS: " << xf_sqr_norm
+              << " " << yf_sqr_norm << "\033[0m\n";
 
+    
+    
     
     //! DEBUG
     /*
@@ -1162,6 +1179,12 @@ float *cuFFTC2RProcess(cufftComplex *d_complex, const int,
 
 cufftComplex* KCF_Tracker::cuDFT(float *dev_data) {  //! = cnn_codes * cos
 
+    if (FILTER_BATCH_ == 0 || FILTER_SIZE_ == 0) {
+       ROS_ERROR("[cuDFT]: SIZE UNDEFINED");
+       cufftComplex empty[1];
+       return empty;
+    }
+    
     if (this->init_cufft_plan_) {
        cufftResult cufft_status = cufftPlan1d(
           &handle_, FILTER_SIZE_, CUFFT_C2C, FILTER_BATCH_);
