@@ -28,6 +28,8 @@ KCF_Tracker::KCF_Tracker() {
     m_use_cnfeat = true;
 
     init_cufft_plan_ = true;
+    debug = 0;
+    
 }
 
 KCF_Tracker::KCF_Tracker(
@@ -551,12 +553,13 @@ void KCF_Tracker::get_featuresGPU(
     ROS_WARN("CONV IN GPU DONE");
 
     
-    cufftComplex * d_complex = cuDFT(d_cos_conv, this->d_cos_window_);
+    cufftComplex * d_complex = cuDFT(d_cos_conv);
     ROS_WARN("FFT IN GPU DONE");
 
-    float sq_norm_gpu =  squaredNormGPU(d_complex, FILTER_BATCH_, FILTER_SIZE_);
-
-    std::cout << "GPU_NORM:  " << sq_norm_gpu  << "\n";
+    float xf_norm_gpu =  squaredNormGPU(d_complex, FILTER_BATCH_, FILTER_SIZE_);
+    
+    
+    std::cout << "GPU_NORM:  " << xf_norm_gpu  << "\n";
     
     /*
     float *features;
@@ -847,8 +850,8 @@ ComplexMat KCF_Tracker::gaussian_correlation(
     bool auto_correlation) {
    
     float xf_sqr_norm = xf.sqr_norm();
-
-    // std::cout << "CPU NORM IS: " << xf_sqr_norm  << "\n";
+    
+    std::cout << "CPU NORM IS: " << xf_sqr_norm  << "\n";
     
     float yf_sqr_norm = auto_correlation ? xf_sqr_norm : yf.sqr_norm();
     ComplexMat xyf = auto_correlation ? xf.sqr_mag() : xf * yf.conj();
@@ -885,22 +888,60 @@ ComplexMat KCF_Tracker::gaussian_correlation(
     cv::Mat xy_sum(xf.rows, xf.cols, CV_32FC1);
     xy_sum.setTo(0);
     cv::Mat ifft2_res = ifft2(xyf);
+
+
+    std::cout << "IFFT SIZE: " << ifft2_res.size() << " "
+              << ifft2_res.channels()  << "\n";
+    std::cout << FILTER_SIZE_  << "\t" << xf.n_channels << " " << xf.rows << "\n";
+    
     for (int y = 0; y < xf.rows; ++y) {
         float * row_ptr = ifft2_res.ptr<float>(y);
         float * row_ptr_sum = xy_sum.ptr<float>(y);
+        
         for (int x = 0; x < xf.cols; ++x) {
            row_ptr_sum[x] = std::accumulate(
               (row_ptr + x*ifft2_res.channels()),
               (row_ptr + x*ifft2_res.channels() + ifft2_res.channels()), 0.f);
+
+           //!!!!
+           /*
+           if (debug > 0) {
+              float sum = 0.0;
+              for (int k = x * ifft2_res.channels(); k <
+                      x*ifft2_res.channels() + ifft2_res.channels(); k++) {
+                 // std::cout << row_ptr[k] << "\n";
+                 sum += row_ptr[k];
+              }
+
+              std::cout << ifft2_res.channels()  << "\n";
+              std::cout << row_ptr_sum[x]  << "\t";
+              // std::cout << row_ptr[x*ifft2_res.channels()]  << "\t";
+              // std::cout << row_ptr[x*ifft2_res.channels() +
+              // ifft2_res.channels()]  << "\n";
+              
+
+              std::cout << "SUM: " << sum << "\n";
+              // std::cin.ignore();
+              exit(-1);
+           }
+           //!!!!
+           */
         }
     }
 
     float numel_xf_inv = 1.f/(xf.cols * xf.rows * xf.n_channels);
+    
     cv::Mat tmp;
     cv::exp(- 1.f / (sigma * sigma) * cv::max(
                (xf_sqr_norm + yf_sqr_norm - 2 * xy_sum) * numel_xf_inv, 0),
             tmp);
 
+
+
+    // std::cout << "TEMP: " << tmp.size()  << "\t" << tmp.channels() << "\n";
+    
+    debug++;
+    
     return fft2(tmp);
 }
 
@@ -1015,12 +1056,10 @@ double KCF_Tracker::sub_grid_scale(
 cufftHandle handle_;
 cufftHandle inv_handle_;
 void cuFFTC2Cprocess(cufftComplex *&x, size_t FILTER_SIZE, const int);
-float *cuFFTC2RProcess(cufftComplex *d_complex,
-                       const int, const int);
+float *cuFFTC2RProcess(cufftComplex *d_complex, const int,
+                       const int, bool = true);
 
-cufftComplex* KCF_Tracker::cuDFT(
-    float *dev_data,  //! = cnn_codes * cos
-    const float *d_cos_window) {
+cufftComplex* KCF_Tracker::cuDFT(float *dev_data) {  //! = cnn_codes * cos
 
     if (this->init_cufft_plan_) {
        cufftResult cufft_status = cufftPlan1d(
@@ -1092,10 +1131,13 @@ float* KCF_Tracker::cuInvDFT(cufftComplex *d_complex) {
     float *d_real_data = cuFFTC2RProcess(d_complex,
                                          FILTER_SIZE_,
                                          FILTER_BATCH_);
+
+    return d_real_data;
 }
 
 float *cuFFTC2RProcess(cufftComplex *d_complex,
-                     const int FILTER_SIZE, const int FILTER_BATCH) {
+                       const int FILTER_SIZE,
+                       const int FILTER_BATCH, bool is_normalize) {
 
     if (FILTER_SIZE == 0 || FILTER_BATCH == 0) {
        printf("\033[31m ERROR: [cuFFTC2RProcess]: INPUTS = 0 \033[0m\n");
@@ -1108,6 +1150,9 @@ float *cuFFTC2RProcess(cufftComplex *d_complex,
        inv_handle_, d_complex, (cufftReal*)d_data);
     if (cufft_status != cudaSuccess) {
        printf("cufftExecC2R failed!");
+    }
+    if (is_normalize) {
+       normalizeByFactorGPU(d_data, FILTER_BATCH, FILTER_SIZE);
     }
     return d_data;
 }

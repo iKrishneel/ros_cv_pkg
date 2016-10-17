@@ -87,6 +87,8 @@ class KCF_Tracker {
 
 
    std::vector<cv::Mat> debug_patch_;
+   int debug;
+   
    
  public:
     bool m_use_scale;
@@ -116,7 +118,7 @@ class KCF_Tracker {
 
 
     //! added methods
-    cufftComplex* cuDFT(float *, const float *);
+    cufftComplex* cuDFT(float *);
     float* cuInvDFT(cufftComplex *);
     void get_featuresGPU(cv::Mat &, cv::Mat &,
                             int, int, int, int, double);

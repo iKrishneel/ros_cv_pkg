@@ -163,3 +163,93 @@ cufftComplex* invConjuateConvGPU(const cufftComplex *d_complex,
     return d_compl_out;
 }
 
+
+/**
+ * inv fft over the filters
+ */
+
+__global__ __forceinline__
+void invFFTSumOverFiltersKernel(float *d_xysum,
+                                const float *d_real_data,
+                                const int lenght,
+                                const int stride,
+                                const int batch) {
+    int t_idx = threadIdx.x + blockIdx.x * blockDim.x;
+    int t_idy = threadIdx.y + blockIdx.y * blockDim.y;
+    int offset = t_idx + t_idy * blockDim.x * gridDim.x;
+
+    if (offset < lenght) {
+       float sum = 0.0f;
+       for (int i = 0; i < batch; i++) {
+          sum += d_real_data[(i * stride) + offset];
+       }
+       d_xysum[offset] = sum;
+    }
+}
+
+
+float* invFFTSumOverFiltersGPU(const float *d_real_data,
+                               const int FILTER_BATCH,
+                               const int FILTER_SIZE) {
+
+    if (FILTER_BATCH == 0 || FILTER_SIZE == 0) {
+       printf("\033[31m ERROR: [invFFTSumOverFiltersGPU] FAILED\n");
+       // TODO(FIX): error handling
+    }
+    const int OUT_BYTE = FILTER_SIZE * sizeof(float);
+    
+    const int dimension = std::ceil(std::sqrt(FILTER_SIZE));
+    dim3 grid_size(cuDivUp(dimension, GRID_SIZE),
+                   cuDivUp(dimension, GRID_SIZE));
+    dim3 block_size(GRID_SIZE, GRID_SIZE);
+    
+    float *d_xysum;
+    cudaMalloc(reinterpret_cast<void**>(&d_xysum), OUT_BYTE);
+
+    return d_xysum;
+}
+
+
+/**
+ * gaussian (LATER COMBINE ABOVE WITH SCALAR ADDITIONS)
+ */
+
+__global__ __forceinline__
+void cuGaussianExpKernel(float *d_xysum,
+                         const float xf_sqr_norm,
+                         const float yf_sqr_norm,
+                         const float sigma,
+                         const float normalizer,
+                         const int lenght) {
+    int t_idx = threadIdx.x + blockIdx.x * blockDim.x;
+    int t_idy = threadIdx.y + blockIdx.y * blockDim.y;
+    int offset = t_idx + t_idy * blockDim.x * gridDim.x;
+
+    if (offset < lenght) {
+       float x = fmaxf((xf_sqr_norm + yf_sqr_norm - 2.0f *
+                        d_xysum[offset] * normalizer), 0.0f);
+       d_xysum[offset] = expf((-1.0f / (sigma * sigma)) * x);
+    }
+}
+
+void cuGaussianExpGPU(float *d_xysum,
+                      const float xf_sqr_norm,
+                      const float yf_sqr_norm,
+                      const float sigma,
+                      const float normalizer,
+                      const int FILTER_SIZE) {
+    if (normalizer == 0.0f) {
+       printf("\033[31m ERROR: [cuGaussianExpGPU] FAILED: DEMO = 0\n");
+       return;
+    }
+    
+    const int dimension = std::ceil(std::sqrt(FILTER_SIZE));
+    dim3 grid_size(cuDivUp(dimension, GRID_SIZE),
+                   cuDivUp(dimension, GRID_SIZE));
+    dim3 block_size(GRID_SIZE, GRID_SIZE);
+
+    cuGaussianExpKernel<<<grid_size, block_size>>>(d_xysum, xf_sqr_norm,
+                                                   yf_sqr_norm, sigma,
+                                                   normalizer,
+                                                   FILTER_SIZE);
+}

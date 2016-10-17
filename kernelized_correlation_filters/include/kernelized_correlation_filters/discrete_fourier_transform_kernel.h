@@ -9,4 +9,6 @@ cufftComplex* convertFloatToComplexGPU(const float *dev_data,
                                           const int FILTER_BATCH,
                                           const int FILTER_SIZE);
 
+void normalizeByFactorGPU(float *&, const int, const int);
+
 #endif /* _DISCRETE_FOURIER_TRANSFORM_KERNEL_H_ */
