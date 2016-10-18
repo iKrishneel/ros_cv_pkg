@@ -241,17 +241,13 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     std::vector<cv::Mat> path_feat = get_features(input_rgb, input_gray,
                                                   p_pose.cx, p_pose.cy,
                                                   p_windows_size[0],
-                                                  p_windows_size[1]);
-    debug_patch_.clear();
-    debug_patch_ = path_feat;
-    
+                                                  p_windows_size[1]);    
     p_model_xf = fft2(path_feat, p_cos_window);
-    
     
     // Kernel Ridge Regression, calculate alphas (in Fourier domain)
     ComplexMat kf = gaussian_correlation(p_model_xf, p_model_xf,
                                          p_kernel_sigma, true);
-        
+
 
     //! EXACLTLY SAME DATA
     float c_feat[FILTER_BATCH_ * FILTER_SIZE_ ];
@@ -285,22 +281,18 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
                                                     p_pose.cx, p_pose.cy,
                                                     p_windows_size[0],
                                                     p_windows_size[1], 1.0f);
-    ROS_WARN("FEATURE EXTRACTED");
-    float *dev_feat = const_cast<float*>(d_model_features);
-
-    
+    float *dev_feat = const_cast<float*>(d_model_features);    
     const int data_lenght = window_size_.width *
        window_size_.height * FILTER_BATCH_;
     
     float *dev_cos = cosineConvolutionGPU(dev_feat, d_cos_window_,
                                           FILTER_BATCH_ * FILTER_SIZE_,
                                           BYTE_);
-    ROS_WARN("RUNNING FFT");
-    cufftComplex *dev_model_xf = this->cuDFT(dev_cos);
+    // cufftComplex *dev_model_xf_ = this->cuDFT(dev_cos);
+    dev_model_xf_ = this->cuDFT(dev_cos);
     
-    //! gaussian
     float kf_xf_norm = 0.0f;
-    float *dev_kxyf = squaredNormAndMagGPU(kf_xf_norm, dev_model_xf,
+    float *dev_kxyf = squaredNormAndMagGPU(kf_xf_norm, dev_model_xf_,
                                           FILTER_BATCH_, FILTER_SIZE_);
     float kf_yf_norm = kf_xf_norm;
     cufftComplex *dev_kxyf_complex = convertFloatToComplexGPU(dev_kxyf,
@@ -310,13 +302,15 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     float *dev_xysum = invFFTSumOverFiltersGPU(dev_kifft,
                                                FILTER_BATCH_, FILTER_SIZE_);
     float normalizer = 1.0f / (static_cast<float>(FILTER_SIZE_*FILTER_BATCH_));
-     cuGaussianExpGPU(dev_xysum, kf_xf_norm, kf_yf_norm, p_kernel_sigma,
-                      normalizer, FILTER_SIZE_);
-     cufftComplex *dev_kf = convertFloatToComplexGPU(dev_xysum, 1,
-                                                     FILTER_SIZE_);
-     cufftExecC2C(cufft_handle, dev_kf, dev_kf, CUFFT_FORWARD);
+    cuGaussianExpGPU(dev_xysum, kf_xf_norm, kf_yf_norm, p_kernel_sigma,
+                     normalizer, FILTER_SIZE_);
+    cufftComplex *dev_kf = convertFloatToComplexGPU(dev_xysum, 1,
+                                                    FILTER_SIZE_);
+    cufftExecC2C(cufft_handle, dev_kf, dev_kf, CUFFT_FORWARD);
      
 
+
+     
 
      /**
       * copy to cpu for debuggging
@@ -348,15 +342,15 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
      cudaFree(dev_feat);
      cudaFree(dev_kxyf);
      cudaFree(dev_kxyf_complex);
-     cudaFree(dev_model_xf);
-    
+     // cudaFree(dev_model_xf);
+     
      cufftDestroy(cufft_handle);
      free(cosine_window_1D);
  }
 
- void KCF_Tracker::setTrackerPose(BBox_c &bbox, cv::Mat & img) {
+void KCF_Tracker::setTrackerPose(BBox_c &bbox, cv::Mat & img) {
      init(img, bbox.get_rect());
- }
+}
 
  void KCF_Tracker::updateTrackerPosition(BBox_c &bbox) {
      if (p_resize_image) {
@@ -1024,9 +1018,10 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
      assert(patch.cols == width && patch.rows == height);
 
      return patch;
+
  }
 
- ComplexMat KCF_Tracker::gaussian_correlation(
+ComplexMat KCF_Tracker::gaussian_correlation(
      const ComplexMat &xf, const ComplexMat &yf, double sigma,
      bool auto_correlation) {
 

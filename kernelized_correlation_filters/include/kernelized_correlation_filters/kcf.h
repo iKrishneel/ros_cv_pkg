@@ -54,6 +54,14 @@ class KCF_Tracker {
     ComplexMat p_model_alphaf_den;
     ComplexMat p_model_xf;
 
+    // gpu model
+    // cufftComplex *dev_p_yf_;
+    // cufftComplex *dev_model_alphaf_;
+    // cufftComplex *dev_model_alphaf_num_;
+    // cufftComplex *dev_model_alphaf_den_;
+    cufftComplex *dev_model_xf_;
+
+   
     // helping functions
     cv::Mat get_subwindow(const cv::Mat & input, int cx, int cy,
                           int size_x, int size_y);

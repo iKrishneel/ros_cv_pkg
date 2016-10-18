@@ -184,6 +184,7 @@ cuda_add_executable(kernelized_correlation_filters_node
   src/cuda/discrete_fourier_transform_kernel.cu
   src/cuda/gaussian_correlation_kernel.cu
   src/cuda/threadFenceReduction_kernel.cu
+  src/cuda/fast_maths_kernel.cu
 )
 
 cuda_add_cufft_to_target(kernelized_correlation_filters_node)
