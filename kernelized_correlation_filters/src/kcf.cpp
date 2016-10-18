@@ -271,14 +271,15 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
               << FILTER_BATCH_ * FILTER_SIZE_ << "\n";
     
     
-    float *dev_feat;
-    cudaMalloc(reinterpret_cast<void**>(&dev_feat), BYTE_);
-    cudaMemcpy(dev_feat, c_feat, BYTE_, cudaMemcpyHostToDevice);
+    // float *dev_feat;
+    // cudaMalloc(reinterpret_cast<void**>(&dev_feat), BYTE_);
+    // cudaMemcpy(dev_feat, c_feat, BYTE_, cudaMemcpyHostToDevice);
 
     /**
      * start
      */
-    /*
+
+
     // obtain a sub-window for training initial model
     const float *d_model_features = get_featuresGPU(input_rgb, input_gray,
                                                     p_pose.cx, p_pose.cy,
@@ -286,7 +287,6 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
                                                     p_windows_size[1], 1.0f);
     ROS_WARN("FEATURE EXTRACTED");
     float *dev_feat = const_cast<float*>(d_model_features);
-    */
 
     
     const int data_lenght = window_size_.width *
@@ -295,7 +295,6 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     float *dev_cos = cosineConvolutionGPU(dev_feat, d_cos_window_,
                                           FILTER_BATCH_ * FILTER_SIZE_,
                                           BYTE_);
-
     ROS_WARN("RUNNING FFT");
     cufftComplex *dev_model_xf = this->cuDFT(dev_cos);
     
@@ -304,37 +303,27 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     float *dev_kxyf = squaredNormAndMagGPU(kf_xf_norm, dev_model_xf,
                                           FILTER_BATCH_, FILTER_SIZE_);
     float kf_yf_norm = kf_xf_norm;
-
-    ROS_WARN("SQUARED NORM: %3.5f", kf_xf_norm);
-
-
     cufftComplex *dev_kxyf_complex = convertFloatToComplexGPU(dev_kxyf,
                                                               FILTER_BATCH_,
                                                               FILTER_SIZE_);
     float *dev_kifft = this->cuInvDFT(dev_kxyf_complex);
     float *dev_xysum = invFFTSumOverFiltersGPU(dev_kifft,
                                                FILTER_BATCH_, FILTER_SIZE_);
-
     float normalizer = 1.0f / (static_cast<float>(FILTER_SIZE_*FILTER_BATCH_));
-
-
      cuGaussianExpGPU(dev_xysum, kf_xf_norm, kf_yf_norm, p_kernel_sigma,
                       normalizer, FILTER_SIZE_);
      cufftComplex *dev_kf = convertFloatToComplexGPU(dev_xysum, 1,
                                                      FILTER_SIZE_);
-     
      cufftExecC2C(cufft_handle, dev_kf, dev_kf, CUFFT_FORWARD);
-
-     std::cout << normalizer << " " << kf_xf_norm << " " << kf_yf_norm  << "\n";
-     ROS_WARN("FINAL");
-
+     
 
 
      /**
       * copy to cpu for debuggging
       */
 
-
+     ROS_WARN("GPU NORM: %3.3f", kf_xf_norm);
+     
      ROS_ERROR("PRINTING..");
      cufftComplex exp_data[FILTER_SIZE_];
      cudaMemcpy(exp_data, dev_kf,  // FILTER_BATCH_ *
