@@ -212,8 +212,6 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
        cudaFree(dev_data);
        return;
     }
-
-    cufftDestroy(cufft_handle);
     
     // p_cos_window = cosine_window_function(p_yf.cols, p_yf.rows);
     p_cos_window = cosine_window_function(gsl.cols, gsl.rows);
@@ -238,25 +236,6 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     // cudaFree(d_cos_window_);
     cudaMalloc(reinterpret_cast<void**>(&d_cos_window_), BYTE_);
     cudaMemcpy(d_cos_window_, cosine_window_1D, BYTE_, cudaMemcpyHostToDevice);
-
-    
-    
-    /*
-    cufftComplex out_data[INPUT_SIZE];
-    cudaMemcpy(out_data, dev_p_yf, INPUT_SIZE * sizeof(cufftComplex),
-               cudaMemcpyDeviceToHost);
-
-    cv::Mat cpu_fft = p_yf.to_cv_mat();
-    for (int i = 0; i < gsl.rows; i++) {
-       for (int j = 0; j < gsl.cols; j++) {
-          std::cout << cpu_fft.at<cv::Vec2f>(i, j)[0]  << " "
-                    << cpu_fft.at<cv::Vec2f>(i, j)[1]  << "\t"
-                    << out_data[i * gsl.cols + j].x << " "
-                    << out_data[i * gsl.cols + j].y << "\n";
-       }
-    }
-    */
-
 
     // obtain a sub-window for training initial model
     std::vector<cv::Mat> path_feat = get_features(input_rgb, input_gray,
@@ -318,14 +297,11 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
                                           BYTE_);
 
     ROS_WARN("RUNNING FFT");
-    cufftComplex *dev_model_complex = this->cuDFT(dev_cos);
-    
-
-    
+    cufftComplex *dev_model_xf = this->cuDFT(dev_cos);
     
     //! gaussian
     float kf_xf_norm = 0.0f;
-    float *dev_kxyf = squaredNormAndMagGPU(kf_xf_norm, dev_model_complex,
+    float *dev_kxyf = squaredNormAndMagGPU(kf_xf_norm, dev_model_xf,
                                           FILTER_BATCH_, FILTER_SIZE_);
     float kf_yf_norm = kf_xf_norm;
 
@@ -344,6 +320,10 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
 
      cuGaussianExpGPU(dev_xysum, kf_xf_norm, kf_yf_norm, p_kernel_sigma,
                       normalizer, FILTER_SIZE_);
+     cufftComplex *dev_kf = convertFloatToComplexGPU(dev_xysum, 1,
+                                                     FILTER_SIZE_);
+     
+     cufftExecC2C(cufft_handle, dev_kf, dev_kf, CUFFT_FORWARD);
 
      std::cout << normalizer << " " << kf_xf_norm << " " << kf_yf_norm  << "\n";
      ROS_WARN("FINAL");
@@ -356,45 +336,16 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
 
 
      ROS_ERROR("PRINTING..");
-     float exp_data[FILTER_SIZE_];
-     cudaMemcpy(exp_data, dev_xysum,  // FILTER_BATCH_ *
-                FILTER_SIZE_ * sizeof(float), cudaMemcpyDeviceToHost);
+     cufftComplex exp_data[FILTER_SIZE_];
+     cudaMemcpy(exp_data, dev_kf,  // FILTER_BATCH_ *
+                FILTER_SIZE_ * sizeof(cufftComplex), cudaMemcpyDeviceToHost);
      std::ofstream outfile("exp.txt");
      for (int i = 0; i < FILTER_SIZE_;  i++) {
-        // outfile << i << " " << exp_data[i]
-        outfile  << exp_data[i]
-                << "\t";
+        outfile  << exp_data[i].x << " " << exp_data[i].y << "\n";
      }
      outfile.close();
      ROS_WARN("DONE...");
      exit(1);
-
-
-
- /*
-     cv::Mat temp = cv::Mat(p_cos_window.rows, p_cos_window.cols, CV_32FC1);
-     for (int j = 0; j < temp.rows; j++) {
-        for (int i = 0; i < temp.cols; i++) {
-           temp.at<float>(j, i) = exp_data[i + (j * temp.rows)];
-        }
-     }
-     std::cout << fft2(temp)  << "\n";
-     */
-
-     // cudaFree(dev_p_yf);
-     // cudaFree(dev_data);
-     // std::cout << "info: " << p_yf.rows << " " << p_yf.cols
-     //           << " " << p_yf.n_channels  << "\n";
-     exit(1);
-
-     /**
-      * emd
-      */
-
-
-
-
-
 
 
      // p_model_alphaf = p_yf / (kf + p_lambda);   //equation for fast training
@@ -403,13 +354,14 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
      p_model_alphaf_den = kf * (kf + p_lambda);
      p_model_alphaf = p_model_alphaf_num / p_model_alphaf_den;
 
-     /*
+    
      cudaFree(dev_cos);
      cudaFree(dev_feat);
      cudaFree(dev_kxyf);
      cudaFree(dev_kxyf_complex);
-     cudaFree(dev_model_complex);
-     */
+     cudaFree(dev_model_xf);
+    
+     cufftDestroy(cufft_handle);
      free(cosine_window_1D);
  }
 
@@ -1178,12 +1130,7 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
              tmp);
 
 
-     // std::cout << fft2(tmp)  << "\n\n";
-     
-     std::cout << tmp  << "\n";
-    // std::cout << "TEMP: " << tmp.size()  << "\t" << tmp.channels() << "\n";
-    
-    debug++;
+     std::cout << fft2(tmp)  << "\n\n";
     
     return fft2(tmp);
 }
