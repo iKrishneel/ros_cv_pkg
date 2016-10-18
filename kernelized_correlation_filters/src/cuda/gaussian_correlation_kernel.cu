@@ -23,10 +23,10 @@ void squaredNormKernel(float *d_squared_norm,
 
        // if (isnan(d_squared_norm[offset])) {
        if (offset < 5) {
-          printf("GPU DEBUG: %d  %3.5f  %3.5f\n", offset,
-                 d_complex[offset].x, d_complex[offset].y);
+          printf("GPU DEBUG: %d  %3.5f  %3.5f  %3.5f\n", offset,
+                 d_complex[offset].x, d_complex[offset].y,
+             d_squared_norm[offset]);
        }
-
     }
 }
 
@@ -225,9 +225,21 @@ void invFFTSumOverFiltersKernel(float *d_xysum,
     if (offset < lenght) {
        float sum = 0.0f;
        for (int i = 0; i < batch; i++) {
-          sum += d_real_data[(i * stride) + offset];
+          sum += (d_real_data[(i * stride) + offset]);
+
+          // if (offset == 1) {
+          //    printf(" %d %d %3.3f\n", (i * stride) + offset, stride,
+          //           d_real_data[(i * stride) + offset]);
+          // }
        }
-       d_xysum[offset] = sum;
+       
+       d_xysum[offset] = fabsf(sum);
+       
+       // if (offset < 5) {
+       //    printf("GPU DEBUG1: %d  %3.5f %3.5f\n", offset,
+       //           sum, d_xysum[offset]
+       //       );
+       // }
     }
 }
 
@@ -250,6 +262,9 @@ float* invFFTSumOverFiltersGPU(const float *d_real_data,
     float *d_xysum;
     cudaMalloc(reinterpret_cast<void**>(&d_xysum), OUT_BYTE);
 
+    invFFTSumOverFiltersKernel<<<grid_size, block_size>>>(
+       d_xysum, d_real_data, FILTER_SIZE, FILTER_SIZE, FILTER_BATCH);
+    
     return d_xysum;
 }
 
@@ -271,12 +286,17 @@ void cuGaussianExpKernel(float *d_xysum,
 
     if (offset < lenght) {
        float x = fmaxf((xf_sqr_norm + yf_sqr_norm - 2.0f *
-                        d_xysum[offset] * normalizer), 0.0f);
-       d_xysum[offset] = expf((-1.0f / (sigma * sigma)) * x);
+                        d_xysum[offset]) * normalizer, 0.0f);
+       d_xysum[offset] = expf(-1.0f / (sigma * sigma) * x);
+
+       if (offset < 10) {
+          printf("%3.4f  %3.4f  %3.4f\n", x, d_xysum[offset],
+                 xf_sqr_norm + yf_sqr_norm - 2.0f);
+       }
     }
 }
 
-void cuGaussianExpGPU(float *d_xysum,
+void cuGaussianExpGPU(float *&d_xysum,
                       const float xf_sqr_norm,
                       const float yf_sqr_norm,
                       const float sigma,
@@ -292,6 +312,9 @@ void cuGaussianExpGPU(float *d_xysum,
                    cuDivUp(dimension, GRID_SIZE));
     dim3 block_size(GRID_SIZE, GRID_SIZE);
 
+    // printf("DIM: %d %3.5f %3.5f\n", FILTER_SIZE, normalizer, );
+
+    
     cuGaussianExpKernel<<<grid_size, block_size>>>(d_xysum, xf_sqr_norm,
                                                    yf_sqr_norm, sigma,
                                                    normalizer,

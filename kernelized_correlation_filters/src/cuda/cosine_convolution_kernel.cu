@@ -57,5 +57,7 @@ float* cosineConvolutionGPU(const float *d_cnn_codes,
      cosineConvolutionKernel<<<grid_size, block_size>>>(
         d_output, d_cnn_codes, d_cos_window, data_count);
 
+     printf("GPU : %d %d\n", dimension, data_count);
+     
      return d_output;
 }

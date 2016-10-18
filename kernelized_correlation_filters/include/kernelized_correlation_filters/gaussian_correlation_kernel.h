@@ -20,5 +20,8 @@ cufftComplex* invConjuateConvGPU(const cufftComplex *,
 /* sum over filters */
 float* invFFTSumOverFiltersGPU(const float *,
                                const int, const int);
+/* expoential */
+void cuGaussianExpGPU(float *&, const float, const float,
+                      const float, const float, const int);
 
 #endif /* _GAUSSIAN_CORRELATION_KERNEL_H_ */
