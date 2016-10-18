@@ -233,9 +233,9 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
        }
     }
 
-    std::cout << "\nINIT-->: " << cosine_window_1D[0]  << "\n";
+    std::cout << "\nINIT-->: " << p_cos_window.size()  << "\n";
 
-    cudaFree(d_cos_window_);
+    // cudaFree(d_cos_window_);
     cudaMalloc(reinterpret_cast<void**>(&d_cos_window_), BYTE_);
     cudaMemcpy(d_cos_window_, cosine_window_1D, BYTE_, cudaMemcpyHostToDevice);
 
@@ -267,17 +267,17 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     debug_patch_ = path_feat;
     
     p_model_xf = fft2(path_feat, p_cos_window);
-
+    
+    
     // Kernel Ridge Regression, calculate alphas (in Fourier domain)
     ComplexMat kf = gaussian_correlation(p_model_xf, p_model_xf,
                                          p_kernel_sigma, true);
-
-
-
-
+        
 
     //! EXACLTLY SAME DATA
-    float c_feat[FILTER_BATCH_ * FILTER_SIZE_];
+    float c_feat[FILTER_BATCH_ * FILTER_SIZE_ ];
+    cufftComplex cv_fft[FILTER_BATCH_ * FILTER_SIZE_ ];
+    
     int icount = 0;
     for (int i = 0; i < path_feat.size(); i++) {
        for (int y = 0; y < path_feat[i].rows; y++) {
@@ -290,13 +290,11 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
 
     std::cout << "total: " << icount << " "
               << FILTER_BATCH_ * FILTER_SIZE_ << "\n";
-
+    
+    
     float *dev_feat;
     cudaMalloc(reinterpret_cast<void**>(&dev_feat), BYTE_);
     cudaMemcpy(dev_feat, c_feat, BYTE_, cudaMemcpyHostToDevice);
-
-
-    
 
     /**
      * start
@@ -309,8 +307,8 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
                                                     p_windows_size[1], 1.0f);
     ROS_WARN("FEATURE EXTRACTED");
     float *dev_feat = const_cast<float*>(d_model_features);
-
     */
+
     
     const int data_lenght = window_size_.width *
        window_size_.height * FILTER_BATCH_;
@@ -318,10 +316,12 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     float *dev_cos = cosineConvolutionGPU(dev_feat, d_cos_window_,
                                           FILTER_BATCH_ * FILTER_SIZE_,
                                           BYTE_);
+
+    ROS_WARN("RUNNING FFT");
     cufftComplex *dev_model_complex = this->cuDFT(dev_cos);
     
-    /*
-    ROS_WARN("DFT AND COS");
+
+    
     
     //! gaussian
     float kf_xf_norm = 0.0f;
@@ -331,6 +331,7 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
 
     ROS_WARN("SQUARED NORM: %3.5f", kf_xf_norm);
 
+
     cufftComplex *dev_kxyf_complex = convertFloatToComplexGPU(dev_kxyf,
                                                               FILTER_BATCH_,
                                                               FILTER_SIZE_);
@@ -339,830 +340,847 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
                                                FILTER_BATCH_, FILTER_SIZE_);
 
     float normalizer = 1.0f / (static_cast<float>(FILTER_SIZE_*FILTER_BATCH_));
-    
-    cuGaussianExpGPU(dev_xysum, kf_xf_norm, kf_yf_norm, p_kernel_sigma,
-                     normalizer, FILTER_SIZE_);
 
-    std::cout << normalizer << " " << kf_xf_norm << " " << kf_yf_norm  << "\n";
-    ROS_WARN("FINAL");
-    
-    /**
-     * copy to cpu for debuggging
-     */
-    
-    cufftComplex exp_data[FILTER_SIZE_ * FILTER_BATCH_];
-    cudaMemcpy(exp_data, dev_model_complex, FILTER_BATCH_ *
-               FILTER_SIZE_ * sizeof(cufftComplex), cudaMemcpyDeviceToHost);
-    
-    std::ofstream outfile("exp.txt");
-    for (int i = 0; i < FILTER_SIZE_ * FILTER_BATCH_;  i++) {
-       outfile << i << " " << exp_data[i].x
-               << "  " << exp_data[i].y << "\n";
-       
-    }
-    outfile.close();
 
+     cuGaussianExpGPU(dev_xysum, kf_xf_norm, kf_yf_norm, p_kernel_sigma,
+                      normalizer, FILTER_SIZE_);
 
-    exit(1);
-    /*
-    cv::Mat temp = cv::Mat(p_cos_window.rows, p_cos_window.cols, CV_32FC1);
-    for (int j = 0; j < temp.rows; j++) {
-       for (int i = 0; i < temp.cols; i++) {
-          temp.at<float>(j, i) = exp_data[i + (j * temp.rows)];
-       }
-    }
-    std::cout << fft2(temp)  << "\n";
-    */
-    
-    // cudaFree(dev_p_yf);
-    // cudaFree(dev_data);
-    // std::cout << "info: " << p_yf.rows << " " << p_yf.cols
-    //           << " " << p_yf.n_channels  << "\n";
-    exit(1);
-    
-    /**
-     * emd
-     */
-    
-    
-    
+     std::cout << normalizer << " " << kf_xf_norm << " " << kf_yf_norm  << "\n";
+     ROS_WARN("FINAL");
 
-    
 
 
-    // p_model_alphaf = p_yf / (kf + p_lambda);   //equation for fast training
+     /**
+      * copy to cpu for debuggging
+      */
 
-    p_model_alphaf_num = p_yf * kf;
-    p_model_alphaf_den = kf * (kf + p_lambda);
-    p_model_alphaf = p_model_alphaf_num / p_model_alphaf_den;
 
-    /*
-    cudaFree(dev_cos);
-    cudaFree(dev_feat);
-    cudaFree(dev_kxyf);
-    cudaFree(dev_kxyf_complex);
-    cudaFree(dev_model_complex);
-    */
-    free(cosine_window_1D);
-}
+     ROS_ERROR("PRINTING..");
+     float exp_data[FILTER_SIZE_];
+     cudaMemcpy(exp_data, dev_xysum,  // FILTER_BATCH_ *
+                FILTER_SIZE_ * sizeof(float), cudaMemcpyDeviceToHost);
+     std::ofstream outfile("exp.txt");
+     for (int i = 0; i < FILTER_SIZE_;  i++) {
+        // outfile << i << " " << exp_data[i]
+        outfile  << exp_data[i]
+                << "\t";
+     }
+     outfile.close();
+     ROS_WARN("DONE...");
+     exit(1);
 
-void KCF_Tracker::setTrackerPose(BBox_c &bbox, cv::Mat & img) {
-    init(img, bbox.get_rect());
-}
 
-void KCF_Tracker::updateTrackerPosition(BBox_c &bbox) {
-    if (p_resize_image) {
-        BBox_c tmp = bbox;
-        tmp.scale(0.5);
-        p_pose.cx = tmp.cx;
-        p_pose.cy = tmp.cy;
-    } else {
-        p_pose.cx = bbox.cx;
-        p_pose.cy = bbox.cy;
-    }
-}
 
-BBox_c KCF_Tracker::getBBox() {
-    BBox_c tmp = p_pose;
-    tmp.w *= p_current_scale;
-    tmp.h *= p_current_scale;
-
-    if (p_resize_image)
-        tmp.scale(2);
-
-    return tmp;
-}
-
-void KCF_Tracker::track(cv::Mat &img) {
-    cv::Mat input_gray, input_rgb = img.clone();
-    if (img.channels() == 3) {
-        cv::cvtColor(img, input_gray, CV_BGR2GRAY);
-        input_gray.convertTo(input_gray, CV_32FC1);
-    } else {
-        img.convertTo(input_gray, CV_32FC1);
-    }
-    
-    // don't need too large image
-    if (p_resize_image) {
-        cv::resize(input_gray, input_gray, cv::Size(0, 0),
-                   0.5, 0.5, cv::INTER_AREA);
-        cv::resize(input_rgb, input_rgb, cv::Size(0, 0),
-                   0.5, 0.5, cv::INTER_AREA);
-    }
-
-    std::vector<cv::Mat> patch_feat;
-    double max_response = -1.;
-    cv::Mat max_response_map;
-    cv::Point2i max_response_pt;
-    int scale_index = 0;
-    std::vector<double> scale_responses;
-
-    //! running on gpu
-    std::vector<cv::cuda::GpuMat> patch_feat_gpu;
-    cv::cuda::GpuMat d_cos_window(p_cos_window);
-
-    /*
-    //! test
-    cv::Mat igray = input_rgb(cv::Rect(50, 50, 13, 13));
-    // cv::resize(input_rgb, igray, cv::Size(13, 13));
-    cv::cvtColor(igray, igray, CV_BGR2GRAY);
-    igray.convertTo(igray, CV_32FC1);
-    float *iresize = bilinear_test(
-       reinterpret_cast<float*>(igray.data),
-       input_gray.rows * input_gray.step);
-    cv::Mat resize_im = cv::Mat::zeros(50, 50, CV_8UC1);
-    int icount = 0;
-    for (int i = 0; i < resize_im.rows; i++) {
-       for (int j = 0; j < resize_im.cols; j++) {
-          resize_im.at<uchar>(i, j) = iresize[icount++];
-       }
-    }
-    cv::namedWindow("rimage", CV_WINDOW_NORMAL);
-    cv::imshow("rimage", resize_im);
-    // cv::imshow("rimage", igray);
-    cv::waitKey(3);
-    return;
-    */ 
-    
-    for (size_t i = 0; i < p_scales.size(); ++i) {
-
-       std::clock_t start;
-       double duration;
-       start = std::clock();
-       
-       patch_feat = get_features(
-          input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0],
-          p_windows_size[1], p_current_scale * p_scales[i]);
-
-
-       ComplexMat zf = fft2(patch_feat, p_cos_window);
-       
-       duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
-       std::cout << " CPU PROCESS: : " << duration <<'\n';
-       /*
-       debug_patch_.clear();
-       debug_patch_ = patch_feat;
-       */
-
-
-       /**
-        * GPU
-        */
-       start = std::clock();
-       ROS_ERROR("RUNNING GPU");
-       get_featuresGPU(
-          input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0],
-          p_windows_size[1], p_current_scale * p_scales[i]);
-
-       duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
-       std::cout << " GPU PROCESS: : " << duration <<'\n';
-
-       /**
-        * END GPU
-        */
-       
-       
-
-       ComplexMat kzf = gaussian_correlation(zf, p_model_xf,
-                                             p_kernel_sigma);
-           
-
-           
-       cv::Mat response = ifft2(p_model_alphaf * kzf);
-            
-       /* target location is at the maximum response. we must take into
-          account the fact that, if the target doesn't move, the peak
-          will appear at the top-left corner, not at the center (this is
-          discussed in the paper). the responses wrap around cyclically. */
-       double min_val, max_val;
-       cv::Point2i min_loc, max_loc;
-       cv::minMaxLoc(response, &min_val, &max_val, &min_loc, &max_loc);
-
-       double weight = p_scales[i] < 1. ? p_scales[i] : 1./p_scales[i];
-       if (max_val*weight > max_response) {
-          max_response = max_val*weight;
-          max_response_map = response;
-          max_response_pt = max_loc;
-          scale_index = i;
-       }
-       scale_responses.push_back(max_val*weight);
-
-
-    }
-
-
-    // sub pixel quadratic interpolation from neighbours
-    // wrap around to negative half-space of vertical axis
-    if (max_response_pt.y > max_response_map.rows / 2) {
-        max_response_pt.y = max_response_pt.y - max_response_map.rows;
-    }
-    // same for horizontal axis
-    if (max_response_pt.x > max_response_map.cols / 2) {
-        max_response_pt.x = max_response_pt.x - max_response_map.cols;
-    }
-    
-    cv::Point2f new_location(max_response_pt.x, max_response_pt.y);
-
-    if (m_use_subpixel_localization) {
-        new_location = sub_pixel_peak(max_response_pt, max_response_map);
-    }
-    
-    p_pose.cx += p_current_scale*p_cell_size*new_location.x;
-    p_pose.cy += p_current_scale*p_cell_size*new_location.y;
-    if (p_pose.cx < 0) p_pose.cx = 0;
-    if (p_pose.cx > img.cols-1) p_pose.cx = img.cols-1;
-    if (p_pose.cy < 0) p_pose.cy = 0;
-    if (p_pose.cy > img.rows-1) p_pose.cy = img.rows-1;
-
-    // sub grid scale interpolation
-    double new_scale = p_scales[scale_index];
-    if (m_use_subgrid_scale)
-        new_scale = sub_grid_scale(scale_responses, scale_index);
-
-    p_current_scale *= new_scale;
-
-    if (p_current_scale < p_min_max_scale[0])
-        p_current_scale = p_min_max_scale[0];
-    if (p_current_scale > p_min_max_scale[1])
-        p_current_scale = p_min_max_scale[1];
-
-    // obtain a subwindow for training at newly estimated target
-    // position
-    bool is_update = false;
-    if (is_update) {
-       patch_feat = get_features(input_rgb, input_gray,
-                                 p_pose.cx, p_pose.cy,
-                                 p_windows_size[0], p_windows_size[1],
-                                 p_current_scale);
-       ComplexMat xf = fft2(patch_feat, p_cos_window);
-       // Kernel Ridge Regression, calculate alphas (in Fourier domain)
-       ComplexMat kf = gaussian_correlation(xf, xf, p_kernel_sigma, true);
-
-       // subsequent frames, interpolate model
-       p_model_xf = p_model_xf * (1. - p_interp_factor) + xf * p_interp_factor;
-//    ComplexMat alphaf = p_yf / (kf + p_lambda); //equation for fast training
-//    p_model_alphaf = p_model_alphaf * (1. - p_interp_factor) +
-//    alphaf * p_interp_factor;
-    
-
-       ComplexMat alphaf_num = p_yf * kf;
-       ComplexMat alphaf_den = kf * (kf + p_lambda);
-       p_model_alphaf_num = p_model_alphaf_num * (1. - p_interp_factor) +
-          (p_yf * kf) * p_interp_factor;
-       p_model_alphaf_den = p_model_alphaf_den * (1. - p_interp_factor) +
-          kf * (kf + p_lambda) * p_interp_factor;
-       p_model_alphaf = p_model_alphaf_num / p_model_alphaf_den;
-    }
-}
-
-// ****************************************************************************
-
-std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
-                                               cv::Mat & input_gray,
-                                               int cx, int cy, int size_x,
-                                               int size_y, double scale) {
-
-    int size_x_scaled = floor(size_x*scale);
-    int size_y_scaled = floor(size_y*scale);
-    cv::Mat patch_gray = get_subwindow(input_gray, cx, cy,
-                                       size_x_scaled, size_y_scaled);
-    cv::Mat patch_rgb = get_subwindow(input_rgb, cx, cy,
-                                      size_x_scaled, size_y_scaled);
-
-
-    // std::cout << patch_gray.size()  << "\t";
-    // std::cout << cx << " " << cy  << "\n";
-    
-    std::vector<cv::Mat> cnn_codes;
-    cv::resize(patch_rgb, patch_rgb, cv::Size(p_windows_size[0],
-                                              p_windows_size[1]));
-    cv::Size filter_size = cv::Size(std::floor(patch_rgb.cols/p_cell_size),
-                                    std::floor(patch_rgb.rows/p_cell_size));
-
-    boost::shared_ptr<caffe::Blob<float> > blob_info (new caffe::Blob<float>);
-    this->feature_extractor_->getFeatures(blob_info, cnn_codes, patch_rgb,
-                                          filter_size);
-
-    // std::cout << "INFO: " << blob_info->count()  << "\n";
-    
-    
-    cnn_codes.clear();
-    std::vector<cv::cuda::GpuMat> d_cnn_codes;
-    const float *idata = blob_info->cpu_data();
-    for (int i = 0; i < blob_info->channels(); i++) {
-       cv::Mat im = cv::Mat::zeros(blob_info->height(),
-                                   blob_info->width(), CV_32F);
-       
-       for (int y = 0; y < blob_info->height(); y++) {
-          for (int x = 0; x < blob_info->width(); x++) {
-             im.at<float>(y, x) = idata[
-                i * blob_info->width() * blob_info->height() +
-                y * blob_info->width() + x];
-          }
-       }
-       if (filter_size.width != -1) {
-          cv::resize(im, im, filter_size);
-       }
-       cnn_codes.push_back(im);
-       d_cnn_codes.push_back(cv::cuda::GpuMat(im));
-    }
-    /*
-    std::cout << cnn_codes[0]  << "\n\n";
-    std::cout << cnn_codes[0].size()  << "\n\n\n";
-    */
-    return cnn_codes;
-}
-
-/**
- * GPU
- */
-
-const float* KCF_Tracker::get_featuresGPU(
-    cv::Mat & input_rgb, cv::Mat & input_gray,
-    int cx, int cy, int size_x, int size_y, double scale) {
-   
-    std::cout << "\33[34m GETTING FEATURES \033[0m"  << "\n";
-    int size_x_scaled = floor(size_x*scale);
-    int size_y_scaled = floor(size_y*scale);
-    cv::Mat patch_gray = get_subwindow(input_gray, cx, cy,
-                                       size_x_scaled, size_y_scaled);
-    cv::Mat patch_rgb = get_subwindow(input_rgb, cx, cy,
-                                      size_x_scaled, size_y_scaled);
-    
-    std::vector<cv::Mat> cnn_codes(1);  //! delete this??
-    cv::resize(patch_rgb, patch_rgb, cv::Size(p_windows_size[0],
-                                              p_windows_size[1]));
-    cv::Size filter_size = cv::Size(std::floor(patch_rgb.cols/p_cell_size),
-                                    std::floor(patch_rgb.rows/p_cell_size));
-    this->window_size_ = filter_size;
-    
-    boost::shared_ptr<caffe::Blob<float> > blob_info (new caffe::Blob<float>);
-    this->feature_extractor_->getFeatures(blob_info, cnn_codes, patch_rgb,
-                                          filter_size);
-    
-    //! caffe ==>>> blob->cpu_data() +   blob->offset(n);
-    const float *d_data = blob_info->gpu_data();
-    
-
-    // return d_data;
-    
-    
-    //! interpolation
-    float *d_resized_data = bilinearInterpolationGPU(
-       d_data, filter_size.width, filter_size.height, blob_info->width(),
-       blob_info->height(), blob_info->count(), FILTER_BATCH_);
-
-    return d_resized_data;
-    
-    
-    // TODO: RETURN FROM HERE
-    
-    
-    /* // DEBUG FOR INTERPOLATION
-    int o_byte = filter_size.width * filter_size.height *
-                      FILTER_BATCH_ * sizeof(float);
-    float *cpu_data = (float*)malloc(o_byte);
-    cudaMemcpy(cpu_data, d_resized_data, o_byte, cudaMemcpyDeviceToHost);
-    for (int k = 0; k < FILTER_BATCH_; k++) {
-       cv::Mat im = cv::Mat::zeros(filter_size.height,
-                                   filter_size.width, CV_32F);
-       for (int y = 0; y < im.rows; y++) {
-          for (int x = 0; x < im.cols; x++) {
-             im.at<float>(y, x) = cpu_data[
-                k * im.cols * im.rows + y * im.cols + x];
-          }
-       }
-       std::cout << "FILTER #: " << k  << "\n";
-       cv::namedWindow("filter_gpu", CV_WINDOW_NORMAL);
-       cv::imshow("filter_gpu", im);
-       cv::namedWindow("filter_cpu", CV_WINDOW_NORMAL);
-       cv::imshow("filter_cpu", debug_patch_[k]);
-       cv::waitKey(0);
-    }
-    return;
-    */
-
-    
-    const int data_lenght = filter_size.width * filter_size.height *
-       FILTER_BATCH_;
-    float *d_cos_conv = cosineConvolutionGPU(d_resized_data, d_cos_window_,
-                                             data_lenght, BYTE_);
-    ROS_WARN("CONV IN GPU DONE");
-
-    
-    cufftComplex * d_complex = cuDFT(d_cos_conv);
-    ROS_WARN("FFT IN GPU DONE");
-
-    float xf_norm_gpu =  squaredNormGPU(d_complex, FILTER_BATCH_, FILTER_SIZE_);
-    
-    
-    std::cout << "GPU_NORM:  " << xf_norm_gpu  << "\n";
-    
-    /*
-    float *features;
-    cudaMalloc(reinterpret_cast<void**>(&features),
-               blob_info->count() * sizeof(float));
-    cudaMemcpy(features, d_resized_data, blob_info->count() * sizeof(float),
-               cudaMemcpyDeviceToDevice);
-    // cuDFT(features, this->d_cos_window_);
-    cudaFree(features);
-
-    std::cout << "SIZE: " << FILTER_SIZE_ * FILTER_BATCH_  << "\n";
-    std::cout << "SIZE: " << blob_info->count()  << "\n";
-    */
-
-
-    /*
-    float *pdata = (float*)std::malloc(BYTE_);
-    cudaMemcpy(pdata, d_cos_conv, BYTE_, cudaMemcpyDeviceToHost);
-    for (int i = 110; i < 120; i++) {
-       std::cout << pdata[i]  << "\n";
-    }
-    */
-
-    
-    
-    /*
-    std::vector<cv::cuda::GpuMat> d_cnn_codes;
-
-    const float *idata = blob_info->cpu_data();
-    for (int i = 0; i < blob_info->channels(); i++) {
-       cv::Mat im = cv::Mat::zeros(blob_info->height(),
-                                   blob_info->width(), CV_32F);
-       
-       for (int y = 0; y < blob_info->height(); y++) {
-          for (int x = 0; x < blob_info->width(); x++) {
-             im.at<float>(y, x) = idata[
-                i * blob_info->width() * blob_info->height() +
-                y * blob_info->width() + x];
-          }
-       }
-       if (filter_size.width != -1) {
-          cv::resize(im, im, filter_size);
-       }
-       d_cnn_codes.push_back(cv::cuda::GpuMat(im));
-    }
-
-    
-    */
-
-    cudaFree(d_resized_data);
-    cudaFree(d_cos_conv);
-    cudaFree(d_complex);
-}
-
-
-/**
- * END GPU
- */
-
-
-
-
-
-cv::Mat KCF_Tracker::gaussian_shaped_labels(
-    double sigma, int dim1, int dim2) {
-    cv::Mat labels(dim2, dim1, CV_32FC1);
-    int range_y[2] = {-dim2 / 2, dim2 - dim2 / 2};
-    int range_x[2] = {-dim1 / 2, dim1 - dim1 / 2};
-
-    double sigma_s = sigma*sigma;
-    for (int y = range_y[0], j = 0; y < range_y[1]; ++y, ++j) {
-        float * row_ptr = labels.ptr<float>(j);
-        double y_s = y*y;
-        for (int x = range_x[0], i = 0; x < range_x[1]; ++x, ++i) {
-            row_ptr[i] = std::exp(-0.5 * (y_s + x*x) / sigma_s);
+ /*
+     cv::Mat temp = cv::Mat(p_cos_window.rows, p_cos_window.cols, CV_32FC1);
+     for (int j = 0; j < temp.rows; j++) {
+        for (int i = 0; i < temp.cols; i++) {
+           temp.at<float>(j, i) = exp_data[i + (j * temp.rows)];
         }
-    }
+     }
+     std::cout << fft2(temp)  << "\n";
+     */
 
-    // rotate so that 1 is at top-left corner (see KCF paper for explanation)
-    cv::Mat rot_labels = circshift(labels, range_x[0], range_y[0]);
-    // sanity check, 1 at top left corner
-    assert(rot_labels.at<float>(0, 0) >= 1.f - 1e-10f);
-    
-    return rot_labels;
-}
+     // cudaFree(dev_p_yf);
+     // cudaFree(dev_data);
+     // std::cout << "info: " << p_yf.rows << " " << p_yf.cols
+     //           << " " << p_yf.n_channels  << "\n";
+     exit(1);
 
-cv::Mat KCF_Tracker::circshift(
-    const cv::Mat &patch, int x_rot, int y_rot) {
-    cv::Mat rot_patch(patch.size(), CV_32FC1);
-    cv::Mat tmp_x_rot(patch.size(), CV_32FC1);
+     /**
+      * emd
+      */
 
-    // circular rotate x-axis
-    if (x_rot < 0) {
-        // move part that does not rotate over the edge
-       cv::Range orig_range(-x_rot, patch.cols);
-       cv::Range rot_range(0, patch.cols - (-x_rot));
-       patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(),
-                                                            rot_range));
 
-        // rotated part
-        orig_range = cv::Range(0, -x_rot);
-        rot_range = cv::Range(patch.cols - (-x_rot), patch.cols);
+
+
+
+
+
+     // p_model_alphaf = p_yf / (kf + p_lambda);   //equation for fast training
+
+     p_model_alphaf_num = p_yf * kf;
+     p_model_alphaf_den = kf * (kf + p_lambda);
+     p_model_alphaf = p_model_alphaf_num / p_model_alphaf_den;
+
+     /*
+     cudaFree(dev_cos);
+     cudaFree(dev_feat);
+     cudaFree(dev_kxyf);
+     cudaFree(dev_kxyf_complex);
+     cudaFree(dev_model_complex);
+     */
+     free(cosine_window_1D);
+ }
+
+ void KCF_Tracker::setTrackerPose(BBox_c &bbox, cv::Mat & img) {
+     init(img, bbox.get_rect());
+ }
+
+ void KCF_Tracker::updateTrackerPosition(BBox_c &bbox) {
+     if (p_resize_image) {
+         BBox_c tmp = bbox;
+         tmp.scale(0.5);
+         p_pose.cx = tmp.cx;
+         p_pose.cy = tmp.cy;
+     } else {
+         p_pose.cx = bbox.cx;
+         p_pose.cy = bbox.cy;
+     }
+ }
+
+ BBox_c KCF_Tracker::getBBox() {
+     BBox_c tmp = p_pose;
+     tmp.w *= p_current_scale;
+     tmp.h *= p_current_scale;
+
+     if (p_resize_image)
+         tmp.scale(2);
+
+     return tmp;
+ }
+
+ void KCF_Tracker::track(cv::Mat &img) {
+     cv::Mat input_gray, input_rgb = img.clone();
+     if (img.channels() == 3) {
+         cv::cvtColor(img, input_gray, CV_BGR2GRAY);
+         input_gray.convertTo(input_gray, CV_32FC1);
+     } else {
+         img.convertTo(input_gray, CV_32FC1);
+     }
+
+     // don't need too large image
+     if (p_resize_image) {
+         cv::resize(input_gray, input_gray, cv::Size(0, 0),
+                    0.5, 0.5, cv::INTER_AREA);
+         cv::resize(input_rgb, input_rgb, cv::Size(0, 0),
+                    0.5, 0.5, cv::INTER_AREA);
+     }
+
+     std::vector<cv::Mat> patch_feat;
+     double max_response = -1.;
+     cv::Mat max_response_map;
+     cv::Point2i max_response_pt;
+     int scale_index = 0;
+     std::vector<double> scale_responses;
+
+     //! running on gpu
+     std::vector<cv::cuda::GpuMat> patch_feat_gpu;
+     cv::cuda::GpuMat d_cos_window(p_cos_window);
+
+     /*
+     //! test
+     cv::Mat igray = input_rgb(cv::Rect(50, 50, 13, 13));
+     // cv::resize(input_rgb, igray, cv::Size(13, 13));
+     cv::cvtColor(igray, igray, CV_BGR2GRAY);
+     igray.convertTo(igray, CV_32FC1);
+     float *iresize = bilinear_test(
+        reinterpret_cast<float*>(igray.data),
+        input_gray.rows * input_gray.step);
+     cv::Mat resize_im = cv::Mat::zeros(50, 50, CV_8UC1);
+     int icount = 0;
+     for (int i = 0; i < resize_im.rows; i++) {
+        for (int j = 0; j < resize_im.cols; j++) {
+           resize_im.at<uchar>(i, j) = iresize[icount++];
+        }
+     }
+     cv::namedWindow("rimage", CV_WINDOW_NORMAL);
+     cv::imshow("rimage", resize_im);
+     // cv::imshow("rimage", igray);
+     cv::waitKey(3);
+     return;
+     */ 
+
+     for (size_t i = 0; i < p_scales.size(); ++i) {
+
+        std::clock_t start;
+        double duration;
+        start = std::clock();
+
+        patch_feat = get_features(
+           input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0],
+           p_windows_size[1], p_current_scale * p_scales[i]);
+
+
+        ComplexMat zf = fft2(patch_feat, p_cos_window);
+
+        duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
+        std::cout << " CPU PROCESS: : " << duration <<'\n';
+        /*
+        debug_patch_.clear();
+        debug_patch_ = patch_feat;
+        */
+
+
+        /**
+         * GPU
+         */
+        start = std::clock();
+        ROS_ERROR("RUNNING GPU");
+        get_featuresGPU(
+           input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0],
+           p_windows_size[1], p_current_scale * p_scales[i]);
+
+        duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
+        std::cout << " GPU PROCESS: : " << duration <<'\n';
+
+        /**
+         * END GPU
+         */
+
+
+
+        ComplexMat kzf = gaussian_correlation(zf, p_model_xf,
+                                              p_kernel_sigma);
+
+
+
+        cv::Mat response = ifft2(p_model_alphaf * kzf);
+
+        /* target location is at the maximum response. we must take into
+           account the fact that, if the target doesn't move, the peak
+           will appear at the top-left corner, not at the center (this is
+           discussed in the paper). the responses wrap around cyclically. */
+        double min_val, max_val;
+        cv::Point2i min_loc, max_loc;
+        cv::minMaxLoc(response, &min_val, &max_val, &min_loc, &max_loc);
+
+        double weight = p_scales[i] < 1. ? p_scales[i] : 1./p_scales[i];
+        if (max_val*weight > max_response) {
+           max_response = max_val*weight;
+           max_response_map = response;
+           max_response_pt = max_loc;
+           scale_index = i;
+        }
+        scale_responses.push_back(max_val*weight);
+
+
+     }
+
+
+     // sub pixel quadratic interpolation from neighbours
+     // wrap around to negative half-space of vertical axis
+     if (max_response_pt.y > max_response_map.rows / 2) {
+         max_response_pt.y = max_response_pt.y - max_response_map.rows;
+     }
+     // same for horizontal axis
+     if (max_response_pt.x > max_response_map.cols / 2) {
+         max_response_pt.x = max_response_pt.x - max_response_map.cols;
+     }
+
+     cv::Point2f new_location(max_response_pt.x, max_response_pt.y);
+
+     if (m_use_subpixel_localization) {
+         new_location = sub_pixel_peak(max_response_pt, max_response_map);
+     }
+
+     p_pose.cx += p_current_scale*p_cell_size*new_location.x;
+     p_pose.cy += p_current_scale*p_cell_size*new_location.y;
+     if (p_pose.cx < 0) p_pose.cx = 0;
+     if (p_pose.cx > img.cols-1) p_pose.cx = img.cols-1;
+     if (p_pose.cy < 0) p_pose.cy = 0;
+     if (p_pose.cy > img.rows-1) p_pose.cy = img.rows-1;
+
+     // sub grid scale interpolation
+     double new_scale = p_scales[scale_index];
+     if (m_use_subgrid_scale)
+         new_scale = sub_grid_scale(scale_responses, scale_index);
+
+     p_current_scale *= new_scale;
+
+     if (p_current_scale < p_min_max_scale[0])
+         p_current_scale = p_min_max_scale[0];
+     if (p_current_scale > p_min_max_scale[1])
+         p_current_scale = p_min_max_scale[1];
+
+     // obtain a subwindow for training at newly estimated target
+     // position
+     bool is_update = false;
+     if (is_update) {
+        patch_feat = get_features(input_rgb, input_gray,
+                                  p_pose.cx, p_pose.cy,
+                                  p_windows_size[0], p_windows_size[1],
+                                  p_current_scale);
+        ComplexMat xf = fft2(patch_feat, p_cos_window);
+        // Kernel Ridge Regression, calculate alphas (in Fourier domain)
+        ComplexMat kf = gaussian_correlation(xf, xf, p_kernel_sigma, true);
+
+        // subsequent frames, interpolate model
+        p_model_xf = p_model_xf * (1. - p_interp_factor) + xf * p_interp_factor;
+ //    ComplexMat alphaf = p_yf / (kf + p_lambda); //equation for fast training
+ //    p_model_alphaf = p_model_alphaf * (1. - p_interp_factor) +
+ //    alphaf * p_interp_factor;
+
+
+        ComplexMat alphaf_num = p_yf * kf;
+        ComplexMat alphaf_den = kf * (kf + p_lambda);
+        p_model_alphaf_num = p_model_alphaf_num * (1. - p_interp_factor) +
+           (p_yf * kf) * p_interp_factor;
+        p_model_alphaf_den = p_model_alphaf_den * (1. - p_interp_factor) +
+           kf * (kf + p_lambda) * p_interp_factor;
+        p_model_alphaf = p_model_alphaf_num / p_model_alphaf_den;
+     }
+ }
+
+ // ****************************************************************************
+
+ std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
+                                                cv::Mat & input_gray,
+                                                int cx, int cy, int size_x,
+                                                int size_y, double scale) {
+
+     int size_x_scaled = floor(size_x*scale);
+     int size_y_scaled = floor(size_y*scale);
+     cv::Mat patch_gray = get_subwindow(input_gray, cx, cy,
+                                        size_x_scaled, size_y_scaled);
+     cv::Mat patch_rgb = get_subwindow(input_rgb, cx, cy,
+                                       size_x_scaled, size_y_scaled);
+
+
+     // std::cout << patch_gray.size()  << "\t";
+     // std::cout << cx << " " << cy  << "\n";
+
+     std::vector<cv::Mat> cnn_codes;
+     cv::resize(patch_rgb, patch_rgb, cv::Size(p_windows_size[0],
+                                               p_windows_size[1]));
+     cv::Size filter_size = cv::Size(std::floor(patch_rgb.cols/p_cell_size),
+                                     std::floor(patch_rgb.rows/p_cell_size));
+
+     boost::shared_ptr<caffe::Blob<float> > blob_info (new caffe::Blob<float>);
+     this->feature_extractor_->getFeatures(blob_info, cnn_codes, patch_rgb,
+                                           filter_size);
+
+     // std::cout << "INFO: " << blob_info->count()  << "\n";
+
+
+     cnn_codes.clear();
+     std::vector<cv::cuda::GpuMat> d_cnn_codes;
+     const float *idata = blob_info->cpu_data();
+     for (int i = 0; i < blob_info->channels(); i++) {
+        cv::Mat im = cv::Mat::zeros(blob_info->height(),
+                                    blob_info->width(), CV_32F);
+
+        for (int y = 0; y < blob_info->height(); y++) {
+           for (int x = 0; x < blob_info->width(); x++) {
+              im.at<float>(y, x) = idata[
+                 i * blob_info->width() * blob_info->height() +
+                 y * blob_info->width() + x];
+           }
+        }
+        if (filter_size.width != -1) {
+           cv::resize(im, im, filter_size);
+        }
+        cnn_codes.push_back(im);
+        d_cnn_codes.push_back(cv::cuda::GpuMat(im));
+     }
+     /*
+     std::cout << cnn_codes[0]  << "\n\n";
+     std::cout << cnn_codes[0].size()  << "\n\n\n";
+     */
+     return cnn_codes;
+ }
+
+ /**
+  * GPU
+  */
+
+ const float* KCF_Tracker::get_featuresGPU(
+     cv::Mat & input_rgb, cv::Mat & input_gray,
+     int cx, int cy, int size_x, int size_y, double scale) {
+
+     std::cout << "\33[34m GETTING FEATURES \033[0m"  << "\n";
+     int size_x_scaled = floor(size_x*scale);
+     int size_y_scaled = floor(size_y*scale);
+     cv::Mat patch_gray = get_subwindow(input_gray, cx, cy,
+                                        size_x_scaled, size_y_scaled);
+     cv::Mat patch_rgb = get_subwindow(input_rgb, cx, cy,
+                                       size_x_scaled, size_y_scaled);
+
+     std::vector<cv::Mat> cnn_codes(1);  //! delete this??
+     cv::resize(patch_rgb, patch_rgb, cv::Size(p_windows_size[0],
+                                               p_windows_size[1]));
+     cv::Size filter_size = cv::Size(std::floor(patch_rgb.cols/p_cell_size),
+                                     std::floor(patch_rgb.rows/p_cell_size));
+     this->window_size_ = filter_size;
+
+     boost::shared_ptr<caffe::Blob<float> > blob_info (new caffe::Blob<float>);
+     this->feature_extractor_->getFeatures(blob_info, cnn_codes, patch_rgb,
+                                           filter_size);
+
+     //! caffe ==>>> blob->cpu_data() +   blob->offset(n);
+     const float *d_data = blob_info->gpu_data();
+
+
+     // return d_data;
+
+
+     //! interpolation
+     float *d_resized_data = bilinearInterpolationGPU(
+        d_data, filter_size.width, filter_size.height, blob_info->width(),
+        blob_info->height(), blob_info->count(), FILTER_BATCH_);
+
+     return d_resized_data;
+
+
+     // TODO: RETURN FROM HERE
+
+
+     /* // DEBUG FOR INTERPOLATION
+     int o_byte = filter_size.width * filter_size.height *
+                       FILTER_BATCH_ * sizeof(float);
+     float *cpu_data = (float*)malloc(o_byte);
+     cudaMemcpy(cpu_data, d_resized_data, o_byte, cudaMemcpyDeviceToHost);
+     for (int k = 0; k < FILTER_BATCH_; k++) {
+        cv::Mat im = cv::Mat::zeros(filter_size.height,
+                                    filter_size.width, CV_32F);
+        for (int y = 0; y < im.rows; y++) {
+           for (int x = 0; x < im.cols; x++) {
+              im.at<float>(y, x) = cpu_data[
+                 k * im.cols * im.rows + y * im.cols + x];
+           }
+        }
+        std::cout << "FILTER #: " << k  << "\n";
+        cv::namedWindow("filter_gpu", CV_WINDOW_NORMAL);
+        cv::imshow("filter_gpu", im);
+        cv::namedWindow("filter_cpu", CV_WINDOW_NORMAL);
+        cv::imshow("filter_cpu", debug_patch_[k]);
+        cv::waitKey(0);
+     }
+     return;
+     */
+
+
+     const int data_lenght = filter_size.width * filter_size.height *
+        FILTER_BATCH_;
+     float *d_cos_conv = cosineConvolutionGPU(d_resized_data, d_cos_window_,
+                                              data_lenght, BYTE_);
+     ROS_WARN("CONV IN GPU DONE");
+
+
+     cufftComplex * d_complex = cuDFT(d_cos_conv);
+     ROS_WARN("FFT IN GPU DONE");
+
+     float xf_norm_gpu =  squaredNormGPU(d_complex, FILTER_BATCH_, FILTER_SIZE_);
+
+
+     std::cout << "GPU_NORM:  " << xf_norm_gpu  << "\n";
+
+     /*
+     float *features;
+     cudaMalloc(reinterpret_cast<void**>(&features),
+                blob_info->count() * sizeof(float));
+     cudaMemcpy(features, d_resized_data, blob_info->count() * sizeof(float),
+                cudaMemcpyDeviceToDevice);
+     // cuDFT(features, this->d_cos_window_);
+     cudaFree(features);
+
+     std::cout << "SIZE: " << FILTER_SIZE_ * FILTER_BATCH_  << "\n";
+     std::cout << "SIZE: " << blob_info->count()  << "\n";
+     */
+
+
+     /*
+     float *pdata = (float*)std::malloc(BYTE_);
+     cudaMemcpy(pdata, d_cos_conv, BYTE_, cudaMemcpyDeviceToHost);
+     for (int i = 110; i < 120; i++) {
+        std::cout << pdata[i]  << "\n";
+     }
+     */
+
+
+
+     /*
+     std::vector<cv::cuda::GpuMat> d_cnn_codes;
+
+     const float *idata = blob_info->cpu_data();
+     for (int i = 0; i < blob_info->channels(); i++) {
+        cv::Mat im = cv::Mat::zeros(blob_info->height(),
+                                    blob_info->width(), CV_32F);
+
+        for (int y = 0; y < blob_info->height(); y++) {
+           for (int x = 0; x < blob_info->width(); x++) {
+              im.at<float>(y, x) = idata[
+                 i * blob_info->width() * blob_info->height() +
+                 y * blob_info->width() + x];
+           }
+        }
+        if (filter_size.width != -1) {
+           cv::resize(im, im, filter_size);
+        }
+        d_cnn_codes.push_back(cv::cuda::GpuMat(im));
+     }
+
+
+     */
+
+     cudaFree(d_resized_data);
+     cudaFree(d_cos_conv);
+     cudaFree(d_complex);
+ }
+
+
+ /**
+  * END GPU
+  */
+
+
+
+
+
+ cv::Mat KCF_Tracker::gaussian_shaped_labels(
+     double sigma, int dim1, int dim2) {
+     cv::Mat labels(dim2, dim1, CV_32FC1);
+     int range_y[2] = {-dim2 / 2, dim2 - dim2 / 2};
+     int range_x[2] = {-dim1 / 2, dim1 - dim1 / 2};
+
+     double sigma_s = sigma*sigma;
+     for (int y = range_y[0], j = 0; y < range_y[1]; ++y, ++j) {
+         float * row_ptr = labels.ptr<float>(j);
+         double y_s = y*y;
+         for (int x = range_x[0], i = 0; x < range_x[1]; ++x, ++i) {
+             row_ptr[i] = std::exp(-0.5 * (y_s + x*x) / sigma_s);
+         }
+     }
+
+     // rotate so that 1 is at top-left corner (see KCF paper for explanation)
+     cv::Mat rot_labels = circshift(labels, range_x[0], range_y[0]);
+     // sanity check, 1 at top left corner
+     assert(rot_labels.at<float>(0, 0) >= 1.f - 1e-10f);
+
+     return rot_labels;
+ }
+
+ cv::Mat KCF_Tracker::circshift(
+     const cv::Mat &patch, int x_rot, int y_rot) {
+     cv::Mat rot_patch(patch.size(), CV_32FC1);
+     cv::Mat tmp_x_rot(patch.size(), CV_32FC1);
+
+     // circular rotate x-axis
+     if (x_rot < 0) {
+         // move part that does not rotate over the edge
+        cv::Range orig_range(-x_rot, patch.cols);
+        cv::Range rot_range(0, patch.cols - (-x_rot));
         patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(),
                                                              rot_range));
-    } else if (x_rot > 0) {
-       // move part that does not rotate over the edge
-       cv::Range orig_range(0, patch.cols - x_rot);
-       cv::Range rot_range(x_rot, patch.cols);
-       patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(),
-                                                            rot_range));
 
-        // rotated part
-       orig_range = cv::Range(patch.cols - x_rot, patch.cols);
-       rot_range = cv::Range(0, x_rot);
-       patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(),
-                                                            rot_range));
-    } else {  // zero rotation
+         // rotated part
+         orig_range = cv::Range(0, -x_rot);
+         rot_range = cv::Range(patch.cols - (-x_rot), patch.cols);
+         patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(),
+                                                              rot_range));
+     } else if (x_rot > 0) {
         // move part that does not rotate over the edge
-       cv::Range orig_range(0, patch.cols);
-       cv::Range rot_range(0, patch.cols);
-       patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(),
-                                                            rot_range));
-    }
+        cv::Range orig_range(0, patch.cols - x_rot);
+        cv::Range rot_range(x_rot, patch.cols);
+        patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(),
+                                                             rot_range));
 
-    // circular rotate y-axis
-    if (y_rot < 0) {
-       // move part that does not rotate over the edge
-       cv::Range orig_range(-y_rot, patch.rows);
-       cv::Range rot_range(0, patch.rows - (-y_rot));
-       tmp_x_rot(orig_range, cv::Range::all()).copyTo(
-          rot_patch(rot_range, cv::Range::all()));
-       
-       // rotated part
-       orig_range = cv::Range(0, -y_rot);
-       rot_range = cv::Range(patch.rows - (-y_rot), patch.rows);
-       tmp_x_rot(orig_range, cv::Range::all()).copyTo(
-          rot_patch(rot_range, cv::Range::all()));
-    } else if (y_rot > 0) {
-       // move part that does not rotate over the edge
-       cv::Range orig_range(0, patch.rows - y_rot);
-       cv::Range rot_range(y_rot, patch.rows);
-       tmp_x_rot(orig_range, cv::Range::all()).copyTo(
-          rot_patch(rot_range, cv::Range::all()));
+         // rotated part
+        orig_range = cv::Range(patch.cols - x_rot, patch.cols);
+        rot_range = cv::Range(0, x_rot);
+        patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(),
+                                                             rot_range));
+     } else {  // zero rotation
+         // move part that does not rotate over the edge
+        cv::Range orig_range(0, patch.cols);
+        cv::Range rot_range(0, patch.cols);
+        patch(cv::Range::all(), orig_range).copyTo(tmp_x_rot(cv::Range::all(),
+                                                             rot_range));
+     }
+
+     // circular rotate y-axis
+     if (y_rot < 0) {
+        // move part that does not rotate over the edge
+        cv::Range orig_range(-y_rot, patch.rows);
+        cv::Range rot_range(0, patch.rows - (-y_rot));
+        tmp_x_rot(orig_range, cv::Range::all()).copyTo(
+           rot_patch(rot_range, cv::Range::all()));
 
         // rotated part
-       orig_range = cv::Range(patch.rows - y_rot, patch.rows);
-       rot_range = cv::Range(0, y_rot);
-       tmp_x_rot(orig_range, cv::Range::all()).copyTo(
-          rot_patch(rot_range, cv::Range::all()));
-    } else {  // zero rotation
-       // move part that does not rotate over the edge
-       cv::Range orig_range(0, patch.rows);
-       cv::Range rot_range(0, patch.rows);
-       tmp_x_rot(orig_range, cv::Range::all()).copyTo(
-          rot_patch(rot_range, cv::Range::all()));
-    }
+        orig_range = cv::Range(0, -y_rot);
+        rot_range = cv::Range(patch.rows - (-y_rot), patch.rows);
+        tmp_x_rot(orig_range, cv::Range::all()).copyTo(
+           rot_patch(rot_range, cv::Range::all()));
+     } else if (y_rot > 0) {
+        // move part that does not rotate over the edge
+        cv::Range orig_range(0, patch.rows - y_rot);
+        cv::Range rot_range(y_rot, patch.rows);
+        tmp_x_rot(orig_range, cv::Range::all()).copyTo(
+           rot_patch(rot_range, cv::Range::all()));
 
-    return rot_patch;
-}
+         // rotated part
+        orig_range = cv::Range(patch.rows - y_rot, patch.rows);
+        rot_range = cv::Range(0, y_rot);
+        tmp_x_rot(orig_range, cv::Range::all()).copyTo(
+           rot_patch(rot_range, cv::Range::all()));
+     } else {  // zero rotation
+        // move part that does not rotate over the edge
+        cv::Range orig_range(0, patch.rows);
+        cv::Range rot_range(0, patch.rows);
+        tmp_x_rot(orig_range, cv::Range::all()).copyTo(
+           rot_patch(rot_range, cv::Range::all()));
+     }
 
-ComplexMat KCF_Tracker::fft2(const cv::Mat &input) {
-    cv::Mat complex_result;
-    cv::dft(input, complex_result, cv::DFT_COMPLEX_OUTPUT);
-    return ComplexMat(complex_result);
-}
+     return rot_patch;
+ }
 
-ComplexMat KCF_Tracker::fft2(const std::vector<cv::Mat> &input,
-                             const cv::Mat &cos_window) {
-    int n_channels = input.size();
-    std::cout << "INPUT: " << input.size()  << "\n";
-    ComplexMat result(input[0].rows, input[0].cols, n_channels);
+ ComplexMat KCF_Tracker::fft2(const cv::Mat &input) {
+     cv::Mat complex_result;
+     cv::dft(input, complex_result, cv::DFT_COMPLEX_OUTPUT);
+     return ComplexMat(complex_result);
+ }
 
-    std::ofstream outfile("cv.txt");
-    int icount = 0;
-    
-    for (int i = 0; i < n_channels; ++i) {
-        cv::Mat complex_result;
-        // cv::dft(input[i].mul(cos_window), complex_result,
-        //         cv::DFT_COMPLEX_OUTPUT);
+ ComplexMat KCF_Tracker::fft2(const std::vector<cv::Mat> &input,
+                              const cv::Mat &cos_window) {
+     int n_channels = input.size();
+     // std::cout << "INPUT: " << input.size()  << "\n";
+     ComplexMat result(input[0].rows, input[0].cols, n_channels);
+
+     // std::ofstream outfile("cv.txt");
+     // int icount = 0;
+     // temp_cv_fft2_ = (cufftComplex*)malloc(FILTER_BATCH_ * FILTER_SIZE_ *
+     //                                       sizeof(cufftComplex));
+
+     for (int i = 0; i < n_channels; ++i) {
+         cv::Mat complex_result;
+         cv::dft(input[i].mul(cos_window), complex_result,
+                 cv::DFT_COMPLEX_OUTPUT);
+         /*
+         for (int k = 0; k < complex_result.rows; k++) {
+            for (int j = 0; j < complex_result.cols; j++) {
+               temp_cv_fft2_[icount].x = complex_result.at<cv::Vec2f>(k, j)[0];
+               temp_cv_fft2_[icount].y = complex_result.at<cv::Vec2f>(k, j)[1];
+               icount++;
+            }
+         }
+         */
+
+         /*
+         //!!!
+         cv::Mat I = input[i].mul(cos_window);
+         int m = cv::getOptimalDFTSize(I.rows);
+         int n = cv::getOptimalDFTSize(I.cols);
+         cv::Mat padded;
+         cv::copyMakeBorder(I, padded, 0, m - I.rows, 0, n - I.cols,
+                            cv::BORDER_CONSTANT, cv::Scalar::all(0));
+         cv::Mat planes[] = {
+            cv::Mat_<float>(padded), cv::Mat::zeros(padded.size(), CV_32F) };
+
+         cv::Mat complexI;
+         cv::merge(planes, 2, complexI);
+         cv::dft(complexI, complexI,
+                 cv::DFT_COMPLEX_OUTPUT);
+
+         complex_result = complexI.clone();
+
+         // if (i == n_channels - 1) {
+
+            for (int y = 0; y < complex_result.rows; y++) {
+               for (int x = 0; x < complex_result.cols; x++) {
+                  outfile << icount++ << " ";
+                  outfile << complex_result.at<cv::Vec2f>(y, x)[0]  << "\t";
+                  outfile << complex_result.at<cv::Vec2f>(y, x)[1]
+                  << "\n";
+               }
+            }
+
+            // }
+            */
+         result.set_channel(i, complex_result);
+     }
+
+     // outfile.close();
+
+     return result;
+ }
+
+ cv::Mat KCF_Tracker::ifft2(const ComplexMat &inputf) {
+
+     cv::Mat real_result;
+     if (inputf.n_channels == 1) {
+        cv::dft(inputf.to_cv_mat(), real_result,
+                cv::DFT_INVERSE | cv::DFT_REAL_OUTPUT | cv::DFT_SCALE);
+     } else {
+         std::vector<cv::Mat> mat_channels = inputf.to_cv_mat_vector();
+         std::vector<cv::Mat> ifft_mats(inputf.n_channels);
+         for (int i = 0; i < inputf.n_channels; ++i) {
+             cv::dft(mat_channels[i], ifft_mats[i],
+                     cv::DFT_INVERSE | cv::DFT_REAL_OUTPUT | cv::DFT_SCALE);
+         }
+         cv::merge(ifft_mats, real_result);
+     }
+     return real_result;
+ }
+
+ // hann window actually (Power-of-cosine windows)
+ cv::Mat KCF_Tracker::cosine_window_function(
+     int dim1, int dim2) {
+     cv::Mat m1(1, dim1, CV_32FC1), m2(dim2, 1, CV_32FC1);
+     double N_inv = 1./(static_cast<double>(dim1)-1.);
+     for (int i = 0; i < dim1; ++i)
+        m1.at<float>(i) = 0.5*(1. - std::cos(2. * CV_PI *
+                                             static_cast<double>(i) * N_inv));
+     N_inv = 1./ (static_cast<double>(dim2)-1.);
+     for (int i = 0; i < dim2; ++i) {
+        m2.at<float>(i) = 0.5*(1. - std::cos(
+                                  2. * CV_PI * static_cast<double>(i) * N_inv));
+     }
+     cv::Mat ret = m2*m1;
+     return ret;
+ }
+
+ // Returns sub-window of image input centered at [cx, cy] coordinates),
+ // with size [width, height]. If any pixels are outside of the image,
+ // they will replicate the values at the borders.
+ cv::Mat KCF_Tracker::get_subwindow(
+     const cv::Mat &input, int cx, int cy, int width, int height) {
+     cv::Mat patch;
+
+     int x1 = cx - width/2;
+     int y1 = cy - height/2;
+     int x2 = cx + width/2;
+     int y2 = cy + height/2;
+
+     // out of image
+     if (x1 >= input.cols || y1 >= input.rows || x2 < 0 || y2 < 0) {
+         patch.create(height, width, input.type());
+         patch.setTo(0.f);
+         return patch;
+     }
+
+     int top = 0, bottom = 0, left = 0, right = 0;
+
+     // fit to image coordinates, set border extensions;
+     if (x1 < 0) {
+         left = -x1;
+         x1 = 0;
+     }
+     if (y1 < 0) {
+         top = -y1;
+         y1 = 0;
+     }
+     if (x2 >= input.cols) {
+         right = x2 - input.cols + width % 2;
+         x2 = input.cols;
+     } else {
+         x2 += width % 2;
+     }
+     if (y2 >= input.rows) {
+         bottom = y2 - input.rows + height % 2;
+         y2 = input.rows;
+     } else {
+         y2 += height % 2;
+     }
+     if (x2 - x1 == 0 || y2 - y1 == 0) {
+         patch = cv::Mat::zeros(height, width, CV_32FC1);
+     } else {
+        cv::copyMakeBorder(input(cv::Range(y1, y2),
+                                 cv::Range(x1, x2)), patch,
+                           top, bottom, left, right, cv::BORDER_REPLICATE);
+     }
+
+     // sanity check
+     assert(patch.cols == width && patch.rows == height);
+
+     return patch;
+ }
+
+ ComplexMat KCF_Tracker::gaussian_correlation(
+     const ComplexMat &xf, const ComplexMat &yf, double sigma,
+     bool auto_correlation) {
+
+     float xf_sqr_norm = xf.sqr_norm();
+
+     float yf_sqr_norm = auto_correlation ? xf_sqr_norm : yf.sqr_norm();
+     ComplexMat xyf = auto_correlation ? xf.sqr_mag() : xf * yf.conj();
+
+     std::cout << "\033[33mCPU NORM IS: " << xf_sqr_norm
+               << " " << yf_sqr_norm << "\033[0m\n";
 
 
-        //!!!
-        cv::Mat I = input[i].mul(cos_window);
-        int m = cv::getOptimalDFTSize(I.rows);
-        int n = cv::getOptimalDFTSize(I.cols);
-        cv::Mat padded;
-        cv::copyMakeBorder(I, padded, 0, m - I.rows, 0, n - I.cols,
-                           cv::BORDER_CONSTANT, cv::Scalar::all(0));
-        cv::Mat planes[] = {
-           cv::Mat_<float>(padded), cv::Mat::zeros(padded.size(), CV_32F) };
-        
-        cv::Mat complexI;
-        cv::merge(planes, 2, complexI);
-        cv::dft(complexI, complexI,
-                cv::DFT_COMPLEX_OUTPUT);
+     //! DEBUG
+     /*
+     std::cout << "\033[34m YF CONJ: \033[0m" << yf.conj().n_channels
+               << " " << yf.conj().rows << "\n";
 
-        complex_result = complexI.clone();
-        
-        // if (i == n_channels - 1) {
+     cv::Mat check_yf = yf.conj().to_cv_mat();
+     cv::Mat orign_yf = xf.to_cv_mat();
+     cv::Mat xyf_cv = xyf.to_cv_mat();
 
-           for (int y = 0; y < complex_result.rows; y++) {
-              for (int x = 0; x < complex_result.cols; x++) {
-                 outfile << icount++ << " ";
-                 outfile << complex_result.at<cv::Vec2f>(y, x)[0]  << "\t";
-                 outfile << complex_result.at<cv::Vec2f>(y, x)[1]
-                 << "\n";
-              }
-           }
+     for (int j = 0; j < xyf.rows; j++) {
+        for (int i = 0; i < xyf.cols; i++) {
+           std::cout << check_yf.at<cv::Vec2f>(j, i)[0]  << ", ";
+           std::cout << check_yf.at<cv::Vec2f>(j, i)[1]  << "\t";
 
-           // }
+           std::cout << orign_yf.at<cv::Vec2f>(j, i)[0]  << " ";
+           std::cout << orign_yf.at<cv::Vec2f>(j, i)[1]  << "\t";
 
-        result.set_channel(i, complex_result);
-    }
-
-    outfile.close();
-    
-    return result;
-}
-
-cv::Mat KCF_Tracker::ifft2(const ComplexMat &inputf) {
-
-    cv::Mat real_result;
-    if (inputf.n_channels == 1) {
-       cv::dft(inputf.to_cv_mat(), real_result,
-               cv::DFT_INVERSE | cv::DFT_REAL_OUTPUT | cv::DFT_SCALE);
-    } else {
-        std::vector<cv::Mat> mat_channels = inputf.to_cv_mat_vector();
-        std::vector<cv::Mat> ifft_mats(inputf.n_channels);
-        for (int i = 0; i < inputf.n_channels; ++i) {
-            cv::dft(mat_channels[i], ifft_mats[i],
-                    cv::DFT_INVERSE | cv::DFT_REAL_OUTPUT | cv::DFT_SCALE);
+           std::cout << xyf_cv.at<cv::Vec2f>(j, i)[0]  << " ";
+           std::cout << xyf_cv.at<cv::Vec2f>(j, i)[1]  << "\n";
         }
-        cv::merge(ifft_mats, real_result);
-    }
-    return real_result;
-}
+     }
 
-// hann window actually (Power-of-cosine windows)
-cv::Mat KCF_Tracker::cosine_window_function(
-    int dim1, int dim2) {
-    cv::Mat m1(1, dim1, CV_32FC1), m2(dim2, 1, CV_32FC1);
-    double N_inv = 1./(static_cast<double>(dim1)-1.);
-    for (int i = 0; i < dim1; ++i)
-       m1.at<float>(i) = 0.5*(1. - std::cos(2. * CV_PI *
-                                            static_cast<double>(i) * N_inv));
-    N_inv = 1./ (static_cast<double>(dim2)-1.);
-    for (int i = 0; i < dim2; ++i) {
-       m2.at<float>(i) = 0.5*(1. - std::cos(
-                                 2. * CV_PI * static_cast<double>(i) * N_inv));
-    }
-    cv::Mat ret = m2*m1;
-    return ret;
-}
-
-// Returns sub-window of image input centered at [cx, cy] coordinates),
-// with size [width, height]. If any pixels are outside of the image,
-// they will replicate the values at the borders.
-cv::Mat KCF_Tracker::get_subwindow(
-    const cv::Mat &input, int cx, int cy, int width, int height) {
-    cv::Mat patch;
-
-    int x1 = cx - width/2;
-    int y1 = cy - height/2;
-    int x2 = cx + width/2;
-    int y2 = cy + height/2;
-
-    // out of image
-    if (x1 >= input.cols || y1 >= input.rows || x2 < 0 || y2 < 0) {
-        patch.create(height, width, input.type());
-        patch.setTo(0.f);
-        return patch;
-    }
-
-    int top = 0, bottom = 0, left = 0, right = 0;
-
-    // fit to image coordinates, set border extensions;
-    if (x1 < 0) {
-        left = -x1;
-        x1 = 0;
-    }
-    if (y1 < 0) {
-        top = -y1;
-        y1 = 0;
-    }
-    if (x2 >= input.cols) {
-        right = x2 - input.cols + width % 2;
-        x2 = input.cols;
-    } else {
-        x2 += width % 2;
-    }
-    if (y2 >= input.rows) {
-        bottom = y2 - input.rows + height % 2;
-        y2 = input.rows;
-    } else {
-        y2 += height % 2;
-    }
-    if (x2 - x1 == 0 || y2 - y1 == 0) {
-        patch = cv::Mat::zeros(height, width, CV_32FC1);
-    } else {
-       cv::copyMakeBorder(input(cv::Range(y1, y2),
-                                cv::Range(x1, x2)), patch,
-                          top, bottom, left, right, cv::BORDER_REPLICATE);
-    }
-
-    // sanity check
-    assert(patch.cols == width && patch.rows == height);
-
-    return patch;
-}
-
-ComplexMat KCF_Tracker::gaussian_correlation(
-    const ComplexMat &xf, const ComplexMat &yf, double sigma,
-    bool auto_correlation) {
-   
-    float xf_sqr_norm = xf.sqr_norm();
-    
-    float yf_sqr_norm = auto_correlation ? xf_sqr_norm : yf.sqr_norm();
-    ComplexMat xyf = auto_correlation ? xf.sqr_mag() : xf * yf.conj();
-
-    std::cout << "\033[33mCPU NORM IS: " << xf_sqr_norm
-              << " " << yf_sqr_norm << "\033[0m\n";
-    
-    
-    //! DEBUG
-    /*
-    std::cout << "\033[34m YF CONJ: \033[0m" << yf.conj().n_channels
-              << " " << yf.conj().rows << "\n";
-
-    cv::Mat check_yf = yf.conj().to_cv_mat();
-    cv::Mat orign_yf = xf.to_cv_mat();
-    cv::Mat xyf_cv = xyf.to_cv_mat();
-    
-    for (int j = 0; j < xyf.rows; j++) {
-       for (int i = 0; i < xyf.cols; i++) {
-          std::cout << check_yf.at<cv::Vec2f>(j, i)[0]  << ", ";
-          std::cout << check_yf.at<cv::Vec2f>(j, i)[1]  << "\t";
-          
-          std::cout << orign_yf.at<cv::Vec2f>(j, i)[0]  << " ";
-          std::cout << orign_yf.at<cv::Vec2f>(j, i)[1]  << "\t";
-
-          std::cout << xyf_cv.at<cv::Vec2f>(j, i)[0]  << " ";
-          std::cout << xyf_cv.at<cv::Vec2f>(j, i)[1]  << "\n";
-       }
-    }
-
-    */
-    //! END DEBUG
-
-    
-    // ifft2 and sum over 3rd dimension, we dont care about individual
-    // channels
-    cv::Mat xy_sum(xf.rows, xf.cols, CV_32FC1);
-    xy_sum.setTo(0);
-    cv::Mat ifft2_res = ifft2(xyf);
+     */
+     //! END DEBUG
 
 
-    std::cout << "IFFT SIZE: " << ifft2_res.size() << " "
-              << ifft2_res.channels()  << "\n";
-    std::cout << FILTER_SIZE_  << "\t" << xf.n_channels << " " << xf.rows << "\n";
-    
-    for (int y = 0; y < xf.rows; ++y) {
-        float * row_ptr = ifft2_res.ptr<float>(y);
-        float * row_ptr_sum = xy_sum.ptr<float>(y);
-        
-        for (int x = 0; x < xf.cols; ++x) {
-           row_ptr_sum[x] = std::accumulate(
-              (row_ptr + x*ifft2_res.channels()),
-              (row_ptr + x*ifft2_res.channels() + ifft2_res.channels()), 0.f);
-
-           //!!!!
-           /*
-           if (debug > 0) {
-              float sum = 0.0;
-              for (int k = x * ifft2_res.channels(); k <
-                      x*ifft2_res.channels() + ifft2_res.channels(); k++) {
-                 // std::cout << row_ptr[k] << "\n";
-                 sum += row_ptr[k];
-              }
-
-              std::cout << ifft2_res.channels()  << "\n";
-              std::cout << row_ptr_sum[x]  << "\t";
-              // std::cout << row_ptr[x*ifft2_res.channels()]  << "\t";
-              // std::cout << row_ptr[x*ifft2_res.channels() +
-              // ifft2_res.channels()]  << "\n";
-              
-
-              std::cout << "SUM: " << sum << "\n";
-              // std::cin.ignore();
-              exit(-1);
-           }
-           //!!!!
-           */
-        }
-    }
-
-    float numel_xf_inv = 1.f/(xf.cols * xf.rows * xf.n_channels);
-    
-    cv::Mat tmp;
-    cv::exp(- 1.f / (sigma * sigma) * cv::max(
-               (xf_sqr_norm + yf_sqr_norm - 2 * xy_sum) * numel_xf_inv, 0),
-            tmp);
+     // ifft2 and sum over 3rd dimension, we dont care about individual
+     // channels
+     cv::Mat xy_sum(xf.rows, xf.cols, CV_32FC1);
+     xy_sum.setTo(0);
+     cv::Mat ifft2_res = ifft2(xyf);
 
 
-    // std::cout << fft2(tmp)  << "\n\n";
-    
-    // std::cout << xy_sum  << "\n";
+     std::cout << "IFFT SIZE: " << ifft2_res.size() << " "
+               << ifft2_res.channels()  << "\n";
+     std::cout << FILTER_SIZE_  << "\t" << xf.n_channels << " " << xf.rows << "\n";
+
+     for (int y = 0; y < xf.rows; ++y) {
+         float * row_ptr = ifft2_res.ptr<float>(y);
+         float * row_ptr_sum = xy_sum.ptr<float>(y);
+
+         for (int x = 0; x < xf.cols; ++x) {
+            row_ptr_sum[x] = std::accumulate(
+               (row_ptr + x*ifft2_res.channels()),
+               (row_ptr + x*ifft2_res.channels() + ifft2_res.channels()), 0.f);
+
+            //!!!!
+            /*
+            if (debug > 0) {
+               float sum = 0.0;
+               for (int k = x * ifft2_res.channels(); k <
+                       x*ifft2_res.channels() + ifft2_res.channels(); k++) {
+                  // std::cout << row_ptr[k] << "\n";
+                  sum += row_ptr[k];
+               }
+
+               std::cout << ifft2_res.channels()  << "\n";
+               std::cout << row_ptr_sum[x]  << "\t";
+               // std::cout << row_ptr[x*ifft2_res.channels()]  << "\t";
+               // std::cout << row_ptr[x*ifft2_res.channels() +
+               // ifft2_res.channels()]  << "\n";
+
+
+               std::cout << "SUM: " << sum << "\n";
+               // std::cin.ignore();
+               exit(-1);
+            }
+            //!!!!
+            */
+         }
+     }
+
+     float numel_xf_inv = 1.f/(xf.cols * xf.rows * xf.n_channels);
+
+     cv::Mat tmp;
+     cv::exp(- 1.f / (sigma * sigma) * cv::max(
+                (xf_sqr_norm + yf_sqr_norm - 2 * xy_sum) * numel_xf_inv, 0),
+             tmp);
+
+
+     // std::cout << fft2(tmp)  << "\n\n";
+     
+     std::cout << tmp  << "\n";
     // std::cout << "TEMP: " << tmp.size()  << "\t" << tmp.channels() << "\n";
     
     debug++;
@@ -1280,7 +1298,8 @@ double KCF_Tracker::sub_grid_scale(
 // TODO(MOVE): to init
 cufftHandle handle_;
 cufftHandle inv_handle_;
-void cuFFTC2Cprocess(cufftComplex *&x, size_t FILTER_SIZE, const int);
+
+cufftComplex* cuFFTC2Cprocess(cufftComplex *&x, size_t FILTER_SIZE, const int);
 float *cuFFTC2RProcess(cufftComplex *d_complex, const int,
                        const int, bool = true);
 
@@ -1318,13 +1337,17 @@ cufftComplex* KCF_Tracker::cuDFT(float *dev_data) {  //! = cnn_codes * cos
     cufftComplex *d_input = convertFloatToComplexGPU(dev_data,
                                                      FILTER_BATCH_,
                                                      FILTER_SIZE_);
+    
+    cufftComplex *d_output = cuFFTC2Cprocess(d_input,
+                                            FILTER_SIZE_, FILTER_BATCH_);
 
-    cuFFTC2Cprocess(d_input, FILTER_SIZE_, FILTER_BATCH_);
-
-    return d_input;
+    // return d_input;
+    cudaFree(d_input);
+    
+    return d_output;
 }
 
-void cuFFTC2Cprocess(cufftComplex *&in_data,
+cufftComplex* cuFFTC2Cprocess(cufftComplex *&in_data,
                      size_t FILTER_SIZE,
                      const int FILTER_BATCH) {
    
@@ -1355,6 +1378,8 @@ void cuFFTC2Cprocess(cufftComplex *&in_data,
     outfile.close();
     // cufftDestroy(handle_);
     //! END DEBUG
+
+    return d_output;
 }
 
 

@@ -85,7 +85,7 @@ class KCF_Tracker {
 
    std::vector<cv::Mat> debug_patch_;
    int debug;
-   
+
    
  public:
     bool m_use_scale;
