@@ -133,6 +133,10 @@ class KCF_Tracker {
     float* get_featuresGPU(cv::Mat &, cv::Mat &,
                            int, int, int, int, double);
     cv::Mat trackingProcessOnGPU(float *);
+
+    // DEGUB 
+    cv::Mat cudaFFT(const cv::Mat &input);
+    cv::Mat cudaIFFT(const cv::Mat input);
 };
 
 #endif //KCF_HEADER_6565467831231

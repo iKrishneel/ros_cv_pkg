@@ -233,7 +233,8 @@ void invFFTSumOverFiltersKernel(float *d_xysum,
           // }
        }
        
-       d_xysum[offset] = fabsf(sum);
+       // d_xysum[offset] = fabsf(sum);
+       d_xysum[offset] = sum;
        
        // if (offset < 5) {
        //    printf("GPU DEBUG1: %d  %3.5f %3.5f\n", offset,
