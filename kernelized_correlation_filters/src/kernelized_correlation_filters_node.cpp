@@ -99,6 +99,11 @@ void KernelizedCorrelationFilters::screenPtCB(
 
 void KernelizedCorrelationFilters::imageCB(
      const sensor_msgs::Image::ConstPtr &image_msg) {
+
+    std::clock_t start;
+    double duration;
+    start = std::clock();
+   
      cv_bridge::CvImagePtr cv_ptr;
      try {
          cv_ptr = cv_bridge::toCvCopy(
@@ -116,32 +121,29 @@ void KernelizedCorrelationFilters::imageCB(
          cv::resize(image, image, cv::Size(image.cols/this->downsize_,
                                            image.rows/this->downsize_));
      }
-
+     
      if (this->tracker_init_) {
         ROS_INFO("Initializing Tracker");
         this->tracker_->init(image, this->screen_rect_);
         this->tracker_init_ = false;
         this->prev_frame_ = image(screen_rect_).clone();
         ROS_INFO("Tracker Initialization Complete");
-     }
-
-     if (this->screen_rect_.width > this->block_size_) {
-        std::clock_t start;
-        double duration;
-        start = std::clock();
-        
-        this->tracker_->track(image);
 
         duration = (std::clock() - start) /
            static_cast<double>(CLOCKS_PER_SEC);
-        ROS_INFO("PROCESS: %3.5f", duration);
-        
-        
+        ROS_INFO("INITIALIZATION TIME: %3.5f", duration);
+     }
+
+     if (this->screen_rect_.width > this->block_size_) {
+        this->tracker_->track(image);
         BBox_c bb = this->tracker_->getBBox();
         cv::Rect rect = cv::Rect(bb.cx - bb.w/2.0f,
                                  bb.cy - bb.h/2.0f, bb.w, bb.h);
         cv::rectangle(image, rect, cv::Scalar(0, 255, 0), 2);
-        
+
+        duration = (std::clock() - start) /
+           static_cast<double>(CLOCKS_PER_SEC);
+        ROS_INFO("PROCESS: %3.5f", duration);
         
      } else {
         ROS_ERROR_ONCE("THE TRACKER IS NOT INITALIZED");
@@ -152,7 +154,7 @@ void KernelizedCorrelationFilters::imageCB(
      pub_msg->encoding = sensor_msgs::image_encodings::BGR8;
      pub_msg->image = image.clone();
      this->pub_image_.publish(pub_msg);
-
+     
      cv::namedWindow("Tracking", cv::WINDOW_NORMAL);
      cv::imshow("image", image);
      cv::waitKey(3);

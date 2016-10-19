@@ -22,11 +22,11 @@ void squaredNormKernel(float *d_squared_norm,
 
 
        // if (isnan(d_squared_norm[offset])) {
-       if (offset < 5) {
-          printf("GPU DEBUG: %d  %3.5f  %3.5f  %3.5f\n", offset,
-                 d_complex[offset].x, d_complex[offset].y,
-             d_squared_norm[offset]);
-       }
+       // if (offset < 5) {
+       //    printf("GPU DEBUG: %d  %3.5f  %3.5f  %3.5f\n", offset,
+       //           d_complex[offset].x, d_complex[offset].y,
+       //       d_squared_norm[offset]);
+       // }
     }
 }
 
@@ -289,10 +289,10 @@ void cuGaussianExpKernel(float *d_xysum,
                         d_xysum[offset]) * normalizer, 0.0f);
        d_xysum[offset] = expf(-1.0f / (sigma * sigma) * x);
 
-       if (offset < 10) {
-          printf("%3.4f  %3.4f  %3.4f\n", x, d_xysum[offset],
-                 xf_sqr_norm + yf_sqr_norm - 2.0f);
-       }
+       // if (offset < 10) {
+       //    printf("%3.4f  %3.4f  %3.4f\n", x, d_xysum[offset],
+       //           xf_sqr_norm + yf_sqr_norm - 2.0f);
+       // }
     }
 }
 
