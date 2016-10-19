@@ -305,26 +305,6 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     cufftComplex *dev_kf = convertFloatToComplexGPU(dev_xysum, 1,
                                                     FILTER_SIZE_);
     cufftExecC2C(cufft_handle, dev_kf, dev_kf, CUFFT_FORWARD);
-     
-
-     /**
-      * copy to cpu for debuggging
-      */
-
-     ROS_WARN("GPU NORM: %3.3f", kf_xf_norm);
-     
-     ROS_ERROR("PRINTING..");
-     cufftComplex exp_data[FILTER_SIZE_];
-     cudaMemcpy(exp_data, dev_kf,  // FILTER_BATCH_ *
-                FILTER_SIZE_ * sizeof(cufftComplex), cudaMemcpyDeviceToHost);
-     std::ofstream outfile("exp.txt");
-     for (int i = 0; i < FILTER_SIZE_;  i++) {
-        outfile  << exp_data[i].x << " " << exp_data[i].y << "\n";
-     }
-     outfile.close();
-     ROS_WARN("DONE...");
-     exit(1);
-
 
      // p_model_alphaf = p_yf / (kf + p_lambda);   //equation for fast training
 
@@ -333,7 +313,7 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
      p_model_alphaf = p_model_alphaf_num / p_model_alphaf_den;
 
      //! training on device
-     const int dimension = FILTER_SIZE_ * FILTER_BATCH_;
+     const int dimension = FILTER_SIZE_;
      this->dev_model_alphaf_num_ = multiplyComplexGPU(
         dev_p_yf, dev_kf, dimension);
      cufftComplex *dev_temp = addComplexByScalarGPU(
@@ -342,7 +322,26 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
         dev_kf, dev_temp, dimension);
      this->dev_model_alphaf_ = divisionComplexGPU(
         this->dev_model_alphaf_num_, this->dev_model_alphaf_den_, dimension);
-     
+
+
+
+     /**
+      * copy to cpu for debuggging
+      */
+     /*
+     ROS_WARN("GPU NORM: %3.3f", kf_xf_norm);
+     ROS_ERROR("PRINTING..");
+     cufftComplex exp_data[FILTER_SIZE_];
+     cudaMemcpy(exp_data, dev_model_alphaf_,  // FILTER_BATCH_ *
+                FILTER_SIZE_ * sizeof(cufftComplex), cudaMemcpyDeviceToHost);
+     std::ofstream outfile("exp.txt");
+     for (int i = 0; i < FILTER_SIZE_;  i++) {
+        outfile  << exp_data[i].x << " " << exp_data[i].y << "\n";
+     }
+     outfile.close();
+     ROS_WARN("DONE...");
+     std::cout << p_model_alphaf  << "\n";
+     */
      
      //! clean up
      cudaFree(dev_cos);
@@ -356,7 +355,7 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
      
      cufftDestroy(cufft_handle);
      free(cosine_window_1D);
- }
+}
 
 void KCF_Tracker::setTrackerPose(BBox_c &bbox, cv::Mat & img) {
      init(img, bbox.get_rect());
