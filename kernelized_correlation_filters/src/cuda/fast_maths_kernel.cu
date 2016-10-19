@@ -139,6 +139,45 @@ cufftComplex* addComplexGPU(const cufftComplex *d_complex1,
     return d_results;
 }
 
+/**
+ * add by scalar
+ */
+
+__global__ __forceinline__
+void addComplexByScalarKernel(cufftComplex *d_results,
+                              const cufftComplex *d_complex,
+                              const float scalar,
+                              const int dimension) {
+    int t_idx = threadIdx.x + blockIdx.x * blockDim.x;
+    int t_idy = threadIdx.y + blockIdx.y * blockDim.y;
+    int offset = t_idx + t_idy * blockDim.x * gridDim.x;
+
+    if (offset < dimension) {
+       d_results[offset] = d_complex[offset];
+       d_results[offset].x = d_complex[offset].x + scalar;
+    }
+}
+
+cufftComplex* addComplexByScalarGPU(const cufftComplex *d_complex,
+                                    const float scalar,
+                                    const int dimension) {
+    if (dimension == 0) {
+       printf("ERROR: [addComplexByScalarGPU] DATA DIMENSION = 0\n");
+       cufftComplex empty[1];
+       return empty;
+    }
+    const int csize = std::ceil(std::sqrt(dimension));
+    dim3 grid_size(cuDivUp(csize, GRID_SIZE),
+                   cuDivUp(csize, GRID_SIZE));
+    dim3 block_size(GRID_SIZE, GRID_SIZE);
+    
+    int BYTE = dimension * sizeof(cufftComplex);
+    cufftComplex *d_results;
+    cudaMalloc(reinterpret_cast<void**>(&d_results), BYTE);
+    addComplexByScalarKernel<<<grid_size, block_size>>>(d_results, d_complex,
+                                                        scalar, dimension);
+    return d_results;
+}
 
 /**
  * division

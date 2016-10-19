@@ -22,4 +22,8 @@ cufftComplex* divisionComplexGPU(const cufftComplex *,
                                  const cufftComplex *,
                                  const int);
 
+cufftComplex* addComplexByScalarGPU(const cufftComplex *,
+                                    const float,
+                                    const int);
+
 #endif /* _FAST_MATHS_KERNEL_H_ */

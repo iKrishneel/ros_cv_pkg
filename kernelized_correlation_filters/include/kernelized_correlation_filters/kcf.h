@@ -2,6 +2,7 @@
 #define KCF_HEADER_6565467831231
 
 #include <kernelized_correlation_filters/deep_feature_extraction.h>
+#include <kernelized_correlation_filters/fast_maths_kernel.h>
 #include <kernelized_correlation_filters/cosine_convolution_kernel.h>
 #include <kernelized_correlation_filters/gaussian_correlation_kernel.h>
 #include <kernelized_correlation_filters/bilinear_interpolation_kernel.h>
@@ -54,11 +55,11 @@ class KCF_Tracker {
     ComplexMat p_model_alphaf_den;
     ComplexMat p_model_xf;
 
-    // gpu model
-    // cufftComplex *dev_p_yf_;
-    // cufftComplex *dev_model_alphaf_;
-    // cufftComplex *dev_model_alphaf_num_;
-    // cufftComplex *dev_model_alphaf_den_;
+    //! gpu model
+    cufftComplex *dev_p_yf_;
+    cufftComplex *dev_model_alphaf_;
+    cufftComplex *dev_model_alphaf_num_;
+    cufftComplex *dev_model_alphaf_den_;
     cufftComplex *dev_model_xf_;
 
    

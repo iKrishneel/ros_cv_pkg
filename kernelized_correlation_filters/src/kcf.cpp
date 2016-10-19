@@ -241,14 +241,14 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     std::vector<cv::Mat> path_feat = get_features(input_rgb, input_gray,
                                                   p_pose.cx, p_pose.cy,
                                                   p_windows_size[0],
-                                                  p_windows_size[1]);    
+                                                  p_windows_size[1]);
     p_model_xf = fft2(path_feat, p_cos_window);
-    
+
     // Kernel Ridge Regression, calculate alphas (in Fourier domain)
     ComplexMat kf = gaussian_correlation(p_model_xf, p_model_xf,
                                          p_kernel_sigma, true);
 
-
+    /*
     //! EXACLTLY SAME DATA
     float c_feat[FILTER_BATCH_ * FILTER_SIZE_ ];
     cufftComplex cv_fft[FILTER_BATCH_ * FILTER_SIZE_ ];
@@ -262,10 +262,8 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
           }
        }
     }
-
     std::cout << "total: " << icount << " "
               << FILTER_BATCH_ * FILTER_SIZE_ << "\n";
-    
     
     // float *dev_feat;
     // cudaMalloc(reinterpret_cast<void**>(&dev_feat), BYTE_);
@@ -281,7 +279,7 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
                                                     p_pose.cx, p_pose.cy,
                                                     p_windows_size[0],
                                                     p_windows_size[1], 1.0f);
-    float *dev_feat = const_cast<float*>(d_model_features);    
+    float *dev_feat = const_cast<float*>(d_model_features);
     const int data_lenght = window_size_.width *
        window_size_.height * FILTER_BATCH_;
     
@@ -309,9 +307,6 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     cufftExecC2C(cufft_handle, dev_kf, dev_kf, CUFFT_FORWARD);
      
 
-
-     
-
      /**
       * copy to cpu for debuggging
       */
@@ -337,11 +332,26 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
      p_model_alphaf_den = kf * (kf + p_lambda);
      p_model_alphaf = p_model_alphaf_num / p_model_alphaf_den;
 
-    
+     //! training on device
+     const int dimension = FILTER_SIZE_ * FILTER_BATCH_;
+     this->dev_model_alphaf_num_ = multiplyComplexGPU(
+        dev_p_yf, dev_kf, dimension);
+     cufftComplex *dev_temp = addComplexByScalarGPU(
+        dev_kf, static_cast<float>(p_lambda), dimension);
+     this->dev_model_alphaf_den_ = multiplyComplexGPU(
+        dev_kf, dev_temp, dimension);
+     this->dev_model_alphaf_ = divisionComplexGPU(
+        this->dev_model_alphaf_num_, this->dev_model_alphaf_den_, dimension);
+     
+     
+     //! clean up
      cudaFree(dev_cos);
      cudaFree(dev_feat);
      cudaFree(dev_kxyf);
+     cudaFree(dev_temp);
      cudaFree(dev_kxyf_complex);
+     cudaFree(dev_kf);
+     
      // cudaFree(dev_model_xf);
      
      cufftDestroy(cufft_handle);
