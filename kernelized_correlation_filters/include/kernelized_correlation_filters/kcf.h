@@ -93,6 +93,7 @@ class KCF_Tracker {
     cv::Size window_size_;
 
     cufftHandle cufft_handle_;
+    cufftHandle inv_handle_1D_;
    
    std::vector<cv::Mat> debug_patch_;
    int debug;
@@ -131,7 +132,7 @@ class KCF_Tracker {
    // const
     float* get_featuresGPU(cv::Mat &, cv::Mat &,
                            int, int, int, int, double);
-    bool trackingProcessOnGPU(const float *);
+    cv::Mat trackingProcessOnGPU(float *);
 };
 
 #endif //KCF_HEADER_6565467831231
