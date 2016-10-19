@@ -128,8 +128,9 @@ class KCF_Tracker {
     //! added methods
     cufftComplex* cuDFT(float *);
     float* cuInvDFT(cufftComplex *);
-    const float* get_featuresGPU(cv::Mat &, cv::Mat &,
-                                 int, int, int, int, double);
+   // const
+    float* get_featuresGPU(cv::Mat &, cv::Mat &,
+                           int, int, int, int, double);
     bool trackingProcessOnGPU(const float *);
 };
 

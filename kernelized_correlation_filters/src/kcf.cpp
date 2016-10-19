@@ -275,12 +275,13 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
      */
 
 
-    // obtain a sub-window for training initial model
-    const float *d_model_features = get_featuresGPU(input_rgb, input_gray,
-                                                    p_pose.cx, p_pose.cy,
-                                                    p_windows_size[0],
-                                                    p_windows_size[1], 1.0f);
-    float *dev_feat = const_cast<float*>(d_model_features);
+    //! obtain a sub-window for training initial model
+    // const float *d_model_features
+    float *dev_feat = get_featuresGPU(input_rgb, input_gray,
+                                      p_pose.cx, p_pose.cy,
+                                      p_windows_size[0],
+                                      p_windows_size[1], 1.0f);
+    // float *dev_feat = const_cast<float*>(d_model_features);
     const int data_lenght = window_size_.width *
        window_size_.height * FILTER_BATCH_;
     
@@ -328,7 +329,7 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
       * copy to cpu for debuggging
       */
 
-     /*
+
      ROS_WARN("GPU NORM: %3.3f", kf_xf_norm);
      ROS_ERROR("PRINTING..");
      cufftComplex exp_data[FILTER_SIZE_];
@@ -342,7 +343,7 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
      ROS_WARN("DONE...");
      std::cout << p_model_alphaf  << "\n";
      exit(1);
-     */
+
      
      //! clean up
      cudaFree(dev_cos);
@@ -351,6 +352,7 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
      cudaFree(dev_temp);
      cudaFree(dev_kxyf_complex);
      cudaFree(dev_kf);
+     // cudaFree(d_model_features);
      
      // cudaFree(dev_model_xf);
      // cufftDestroy(cufft_handle_);
@@ -629,45 +631,41 @@ void KCF_Tracker::setTrackerPose(BBox_c &bbox, cv::Mat & img) {
   * GPU
   */
 
- const float* KCF_Tracker::get_featuresGPU(
-     cv::Mat & input_rgb, cv::Mat & input_gray,
-     int cx, int cy, int size_x, int size_y, double scale) {
+// const
+float* KCF_Tracker::get_featuresGPU(
+    cv::Mat & input_rgb, cv::Mat & input_gray,
+    int cx, int cy, int size_x, int size_y, double scale) {
 
-     std::cout << "\33[34m GETTING FEATURES \033[0m"  << "\n";
-     int size_x_scaled = floor(size_x*scale);
-     int size_y_scaled = floor(size_y*scale);
-     cv::Mat patch_gray = get_subwindow(input_gray, cx, cy,
-                                        size_x_scaled, size_y_scaled);
-     cv::Mat patch_rgb = get_subwindow(input_rgb, cx, cy,
+    std::cout << "\33[34m GETTING FEATURES \033[0m"  << "\n";
+    int size_x_scaled = floor(size_x*scale);
+    int size_y_scaled = floor(size_y*scale);
+    cv::Mat patch_gray = get_subwindow(input_gray, cx, cy,
                                        size_x_scaled, size_y_scaled);
+    cv::Mat patch_rgb = get_subwindow(input_rgb, cx, cy,
+                                      size_x_scaled, size_y_scaled);
 
-     std::vector<cv::Mat> cnn_codes(1);  //! delete this??
-     cv::resize(patch_rgb, patch_rgb, cv::Size(p_windows_size[0],
-                                               p_windows_size[1]));
-     cv::Size filter_size = cv::Size(std::floor(patch_rgb.cols/p_cell_size),
-                                     std::floor(patch_rgb.rows/p_cell_size));
-     this->window_size_ = filter_size;
+    std::vector<cv::Mat> cnn_codes(1);  //! delete this??
+    cv::resize(patch_rgb, patch_rgb, cv::Size(p_windows_size[0],
+                                              p_windows_size[1]));
+    cv::Size filter_size = cv::Size(std::floor(patch_rgb.cols/p_cell_size),
+                                    std::floor(patch_rgb.rows/p_cell_size));
+    this->window_size_ = filter_size;
 
-     boost::shared_ptr<caffe::Blob<float> > blob_info (new caffe::Blob<float>);
-     this->feature_extractor_->getFeatures(blob_info, cnn_codes, patch_rgb,
-                                           filter_size);
+    boost::shared_ptr<caffe::Blob<float> > blob_info (new caffe::Blob<float>);
+    this->feature_extractor_->getFeatures(blob_info, cnn_codes, patch_rgb,
+                                          filter_size);
 
-     //! caffe ==>>> blob->cpu_data() +   blob->offset(n);
-     const float *d_data = blob_info->gpu_data();
+    //! caffe ==>>> blob->cpu_data() +   blob->offset(n);
+    const float *d_data = blob_info->gpu_data();
 
+    //! interpolation
+    float *d_resized_data = bilinearInterpolationGPU(
+       d_data, filter_size.width, filter_size.height, blob_info->width(),
+       blob_info->height(), blob_info->count(), FILTER_BATCH_);
 
-     // return d_data;
+    return d_resized_data;
 
-
-     //! interpolation
-     float *d_resized_data = bilinearInterpolationGPU(
-        d_data, filter_size.width, filter_size.height, blob_info->width(),
-        blob_info->height(), blob_info->count(), FILTER_BATCH_);
-
-     return d_resized_data;
-
-
-     // TODO: RETURN FROM HERE
+    // TODO: RETURN FROM HERE
 
 
      /* // DEBUG FOR INTERPOLATION
@@ -692,9 +690,8 @@ void KCF_Tracker::setTrackerPose(BBox_c &bbox, cv::Mat & img) {
         cv::waitKey(0);
      }
      return;
-     */
-
- }
+     */ 
+}
 
 
 bool KCF_Tracker::trackingProcessOnGPU(
