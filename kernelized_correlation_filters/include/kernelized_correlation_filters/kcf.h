@@ -99,9 +99,6 @@ class KCF_Tracker {
     //! main handle
     cufftHandle handle_;
     cufftHandle inv_handle_;
-   
-   // std::vector<cv::Mat> debug_patch_;
-   // int debug;
 
    
  public:
@@ -143,7 +140,7 @@ class KCF_Tracker {
 
     // DEGUB
     cv::Mat cudaFFT(const cv::Mat &input);
-    cv::Mat cudaFFT2(float *, const cv::Size);
+    ComplexMat cudaFFT2(float *, const cv::Size, const int);
     cv::Mat cudaIFFT(const cv::Mat input);
 };
 

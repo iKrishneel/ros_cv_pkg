@@ -31,9 +31,8 @@ void cosineConvolutionKernel(float *d_output,
 
     if (offset < data_count) {
        d_output[offset] = d_cnn_codes[offset] * d_cos_window[offset];
-
        /*
-       if (offset > 109 && offset < 120) {
+       if (isnan(d_output[offset])) {
           printf("%3.4f  %3.4f   %3.4f \n", d_output[offset],
                  d_cnn_codes[offset], d_cos_window[offset]);
        }
