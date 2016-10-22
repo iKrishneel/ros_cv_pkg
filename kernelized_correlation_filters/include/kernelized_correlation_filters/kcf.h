@@ -93,11 +93,12 @@ class KCF_Tracker {
     cv::Size window_size_;
 
     //! handle with batch = 1
-    cufftHandle cufft_handle_;
-    cufftHandle inv_handle_1D_;
+    cufftHandle cufft_handle1_;
+    cufftHandle inv_cufft_handle1_;
 
     //! main handle
     cufftHandle handle_;
+    cufftHandle inv_handle_;
    
    // std::vector<cv::Mat> debug_patch_;
    // int debug;
@@ -131,9 +132,11 @@ class KCF_Tracker {
 
 
     //! added methods
-    cufftComplex* cuDFT(float *);
-    float* cuInvDFT(cufftComplex *);
-   // const
+    cufftComplex* cuDFT(float *, const cufftHandle,
+                        const int, const int);
+    float* cuInvDFT(cufftComplex *, const cufftHandle,
+                    const int, const int);
+
     float* get_featuresGPU(cv::Mat &, cv::Mat &,
                            int, int, int, int, double);
     cv::Mat trackingProcessOnGPU(float *);

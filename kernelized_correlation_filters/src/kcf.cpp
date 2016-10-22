@@ -176,33 +176,53 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
                                          p_windows_size[0]/p_cell_size,
                                          p_windows_size[1]/p_cell_size);
 
+    this->FILTER_SIZE_ = gsl.rows * gsl.cols;
+    
+    //! setup cuffthandles
+    cufftResult cufft_status;
+    cufft_status = cufftPlan1d(&cufft_handle1_, FILTER_SIZE_,
+                               CUFFT_C2C, 1);
+    if (cufft_status != cudaSuccess) {
+       ROS_FATAL("CUDA FFT HANDLE CREATION FAILED");
+       std::exit(1);
+    }
+
+    cufft_status = cufftPlan1d(
+       &handle_, FILTER_SIZE_, CUFFT_C2C, FILTER_BATCH_);
+    if (cufft_status != cudaSuccess) {
+       ROS_ERROR("CUDAFFT PLAN [C2C] ALLOC FAILED");
+       std::exit(-1);  //! change to shutdown
+    }
+    cufft_status = cufftPlan1d(
+       &inv_handle_, FILTER_SIZE_, CUFFT_C2R, FILTER_BATCH_);
+    if (cufft_status != cudaSuccess) {
+       ROS_ERROR("CUDAFFT PLAN [C2R] ALLOC FAILED");
+       std::exit(-1);  //! change to shutdown
+    }
+
+    cufft_status = cufftPlan1d(
+       &inv_cufft_handle1_, FILTER_SIZE_, CUFFT_C2R, 1);
+     if (cufft_status != cudaSuccess) {
+        ROS_ERROR("CUDAFFT PLAN [C2R] ALLOC FAILED FOR BATCH = 1");
+        exit(1);
+     }
+
+     ROS_INFO("\n\033[35m ALL CUFFT PLAN SETUP DONE \033[0m\n");
+    
     
     p_yf = fft2(gsl);  //! GPU
 
     //! fft on gpu
-    const int BATCH = 1;
-    const int INPUT_SIZE = gsl.rows * gsl.cols;
+
     float *dev_data;
-    int IN_BYTE = INPUT_SIZE * sizeof(float);
+    int IN_BYTE = FILTER_SIZE_ * sizeof(float);
     cudaMalloc(reinterpret_cast<void**>(&dev_data), IN_BYTE);
     cudaMemcpy(dev_data, reinterpret_cast<float*>(gsl.data), IN_BYTE,
                cudaMemcpyHostToDevice);
-    cufftComplex *dev_p_yf = convertFloatToComplexGPU(dev_data, 1, INPUT_SIZE);
-
-    //! fft on gpu
-    // cufftHandle cufft_handle_;
-    cufftResult cufft_status;
-    cufft_status = cufftPlan1d(&cufft_handle_, INPUT_SIZE,
-                               CUFFT_C2C, BATCH);
-    if (cufft_status != cudaSuccess) {
-       ROS_FATAL("CUDA FFT HANDLE CREATION FAILED");
-       cudaFree(dev_p_yf);
-       cudaFree(dev_data);
-       cufftDestroy(cufft_handle_);
-       return;
-    }
+    cufftComplex *dev_p_yf = convertFloatToComplexGPU(
+       dev_data, 1, FILTER_SIZE_);
     
-    cufft_status = cufftExecC2C(cufft_handle_, dev_p_yf,
+    cufft_status = cufftExecC2C(cufft_handle1_, dev_p_yf,
                                 dev_p_yf, CUFFT_FORWARD);
 
     if (cufft_status != cudaSuccess) {
@@ -215,7 +235,7 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     // p_cos_window = cosine_window_function(p_yf.cols, p_yf.rows);
     p_cos_window = cosine_window_function(gsl.cols, gsl.rows);
     
-    this->FILTER_SIZE_ = p_cos_window.rows * p_cos_window.cols;
+    // this->FILTER_SIZE_ = p_cos_window.rows * p_cos_window.cols;
     this->BYTE_ = FILTER_BATCH_ * p_cos_window.rows *
        p_cos_window.cols * sizeof(float);
     float *cosine_window_1D = reinterpret_cast<float*>(std::malloc(BYTE_));
@@ -229,13 +249,9 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
           }
        }
     }
-
-    std::cout << "\nINIT-->: " << p_cos_window.size()  << "\n";
-
-    // cudaFree(d_cos_window_);
     cudaMalloc(reinterpret_cast<void**>(&d_cos_window_), BYTE_);
     cudaMemcpy(d_cos_window_, cosine_window_1D, BYTE_, cudaMemcpyHostToDevice);
-
+     
     // obtain a sub-window for training initial model
     std::vector<cv::Mat> path_feat = get_features(input_rgb, input_gray,
                                                   p_pose.cx, p_pose.cy,
@@ -309,7 +325,7 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
                      normalizer, FILTER_SIZE_);
     cufftComplex *dev_kf = convertFloatToComplexGPU(dev_xysum, 1,
                                                     FILTER_SIZE_);
-    cufftExecC2C(cufft_handle_, dev_kf, dev_kf, CUFFT_FORWARD);
+    cufftExecC2C(cufft_handle1_, dev_kf, dev_kf, CUFFT_FORWARD);
 
     */
      // p_model_alphaf = p_yf / (kf + p_lambda);   //equation for fast training
@@ -350,14 +366,7 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
      std::cout << p_model_alphaf  << "\n";
      exit(1);
      */
-
-
-     cufft_status = cufftPlan1d(
-        &inv_handle_1D_, FILTER_SIZE_, CUFFT_C2R, 1);
-     if (cufft_status != cudaSuccess) {
-        ROS_ERROR("CUDAFFT PLAN [C2R] ALLOC FAILED FOR BATCH = 1");
-        exit(1);
-     }
+     
      
      //! clean up
      /*
@@ -371,7 +380,7 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
      // cudaFree(d_model_features);
      
      // cudaFree(dev_model_xf);
-     // cufftDestroy(cufft_handle_);
+     // cufftDestroy(cufft_handle1_);
      
      free(cosine_window_1D);
 }
@@ -727,7 +736,9 @@ cv::Mat KCF_Tracker::trackingProcessOnGPU(float *d_features) {
                                              data_lenght,
                                              BYTE_);
     
-    cufftComplex * d_complex = cuDFT(d_cos_conv);
+    cufftComplex * d_complex = cuDFT(d_cos_conv,
+                                     handle_,
+                                     FILTER_BATCH_, FILTER_SIZE_);
 
     float xf_norm_gpu =  squaredNormGPU(d_complex,
                                         FILTER_BATCH_,
@@ -743,7 +754,7 @@ cv::Mat KCF_Tracker::trackingProcessOnGPU(float *d_features) {
                                              d_inv_mxf,
                                              FILTER_BATCH_ * FILTER_SIZE_);
 
-    float *d_ifft = cuInvDFT(d_xyf);
+    float *d_ifft = cuInvDFT(d_xyf, inv_handle_, FILTER_BATCH_, FILTER_SIZE_);
     float *d_xysum = invFFTSumOverFiltersGPU(d_ifft,
                                              FILTER_BATCH_,
                                              FILTER_SIZE_);
@@ -754,7 +765,7 @@ cv::Mat KCF_Tracker::trackingProcessOnGPU(float *d_features) {
 
     cufftComplex *d_kf = convertFloatToComplexGPU(d_xysum, 1,
                                                     FILTER_SIZE_);
-    cufftExecC2C(this->cufft_handle_, d_kf, d_kf, CUFFT_FORWARD);
+    cufftExecC2C(this->cufft_handle1_, d_kf, d_kf, CUFFT_FORWARD);
 
 
     cufftComplex *d_kzf = multiplyComplexGPU(this->dev_model_alphaf_,
@@ -766,7 +777,7 @@ cv::Mat KCF_Tracker::trackingProcessOnGPU(float *d_features) {
     float *d_data;
     cudaMalloc(reinterpret_cast<void**>(&d_data), OUT_BYTE);
     cufftResult cufft_status = cufftExecC2R(
-       this->inv_handle_1D_, d_kzf, d_data);
+       this->inv_cufft_handle1_, d_kzf, d_data);
     if (cufft_status != cudaSuccess) {
        printf("cufftExecC2R failed in trackig!\n");
        exit(1);
@@ -908,6 +919,9 @@ cv::Mat KCF_Tracker::circshift(
  * DFT on cuda
  */
 cv::Mat KCF_Tracker::cudaFFT(const cv::Mat &input) {
+   
+    ROS_WARN("RUNNING: cudaFFT");
+   
     FILTER_BATCH_ = 1;
     FILTER_SIZE_ = input.rows * input.cols;
     int byte = input.rows * input.step;
@@ -915,7 +929,8 @@ cv::Mat KCF_Tracker::cudaFFT(const cv::Mat &input) {
     cudaMalloc(reinterpret_cast<void**>(&d_input), byte);
     cudaMemcpy(d_input, reinterpret_cast<float*>(input.data),
                byte, cudaMemcpyHostToDevice);
-    cufftComplex *d_output = this->cuDFT(d_input);
+    cufftComplex *d_output = this->cuDFT(d_input, cufft_handle1_, 1,
+                                         FILTER_SIZE_);
 
     cufftComplex cpu_data[FILTER_SIZE_];
     cudaMemcpy(cpu_data, d_output, FILTER_SIZE_ *
@@ -940,10 +955,14 @@ cv::Mat KCF_Tracker::cudaFFT(const cv::Mat &input) {
 cv::Mat KCF_Tracker::cudaFFT2(
     float *d_input, const cv::Size in_size) {
 
+    ROS_WARN("RUNNING: cudaFFT2");
+      
+   
     FILTER_BATCH_ = 1;
     FILTER_SIZE_ = in_size.width * in_size.height;
     int byte = FILTER_SIZE_ * sizeof(float);
-    cufftComplex *d_output = this->cuDFT(d_input);
+    cufftComplex *d_output = this->cuDFT(d_input, cufft_handle1_,
+                                         FILTER_BATCH_, FILTER_SIZE_);
 
     cufftComplex cpu_data[FILTER_SIZE_];
     cudaMemcpy(cpu_data, d_output, FILTER_SIZE_ *
@@ -1036,7 +1055,8 @@ cv::Mat KCF_Tracker::cudaIFFT(const cv::Mat input) {
     }
     cudaMemcpy(d_input, cpu_data, byte, cudaMemcpyHostToDevice);
     
-    float *d_output = this->cuInvDFT(d_input);
+    float *d_output = this->cuInvDFT(d_input, inv_cufft_handle1_,
+                                     FILTER_BATCH_, FILTER_SIZE_);
 
     float out_data[FILTER_SIZE_];
     cudaMemcpy(out_data, d_output, FILTER_SIZE_ * sizeof(float),
@@ -1357,53 +1377,62 @@ double KCF_Tracker::sub_grid_scale(
 
 // TODO(MOVE): to init
 // cufftHandle handle_;
-cufftHandle inv_handle_;
+// cufftHandle inv_handle_;
 cufftComplex* cuFFTC2Cprocess(cufftComplex *,
                               const cufftHandle,
                               const int,
                               const int);
-float *cuFFTC2RProcess(cufftComplex *d_complex, const int,
-                       const int, bool = true);
+float *cuFFTC2RProcess(cufftComplex *d_complex,
+                       const cufftHandle,
+                       const int,
+                       const int,
+                       bool = true);
 
-cufftComplex* KCF_Tracker::cuDFT(float *dev_data) {  //! = cnn_codes * cos
+cufftComplex* KCF_Tracker::cuDFT(
+    float *dev_data, const cufftHandle handle,
+    const int FILTER_BATCH, const int FILTER_SIZE) {
 
-    if (FILTER_BATCH_ == 0 || FILTER_SIZE_ == 0) {
+    if (FILTER_BATCH == 0 || FILTER_SIZE == 0) {
        ROS_ERROR("[cuDFT]: SIZE UNDEFINED");
        cufftComplex empty[1];
        return empty;
     }
-    
+    /*
     if (this->init_cufft_plan_) {
        cufftResult cufft_status = cufftPlan1d(
           &handle_, FILTER_SIZE_, CUFFT_C2C, FILTER_BATCH_);
        if (cufft_status != cudaSuccess) {
           ROS_ERROR("CUDAFFT PLAN [C2C] ALLOC FAILED");
-          cufftComplex empty[1];
-          return empty;   // TODO(FIX): fix this for error handling
        }
-       
-       //! setup plan for iff
        cufft_status = cufftPlan1d(
           &inv_handle_, FILTER_SIZE_, CUFFT_C2R, FILTER_BATCH_);
        if (cufft_status != cudaSuccess) {
           ROS_ERROR("CUDAFFT PLAN [C2R] ALLOC FAILED");
-          cufftComplex empty[1];
-          return empty;   // TODO(FIX): fix this for error handling
        }
        ROS_WARN("SETUP CUFFT: %d %d", FILTER_BATCH_, FILTER_SIZE_);
        this->init_cufft_plan_ = false;
     }
-    cufftComplex *d_input = convertFloatToComplexGPU(dev_data,
-                                                     FILTER_BATCH_,
-                                                     FILTER_SIZE_);
-    
-    cufftComplex *d_output = cuFFTC2Cprocess(d_input, handle_,
-                                            FILTER_SIZE_, FILTER_BATCH_);
+    */
 
-    // return d_input;
+    cufftComplex *d_input = convertFloatToComplexGPU(
+       dev_data, FILTER_BATCH, FILTER_SIZE);
+    cufftComplex *d_output = cuFFTC2Cprocess(
+       d_input, handle, FILTER_SIZE, FILTER_BATCH);
     cudaFree(d_input);
-    
     return d_output;
+}
+
+float* KCF_Tracker::cuInvDFT(
+    cufftComplex *d_complex, const cufftHandle handle,
+    const int FILTER_BATCH, const int FILTER_SIZE) {
+    // if (this->init_cufft_plan_) {
+    //    ROS_FATAL("THE CUFFT PLAN IS NOT INTIALIZED");
+    //    float empty[1];
+    //    return empty;
+    // }
+    float *d_real_data = cuFFTC2RProcess(d_complex, handle,
+                                         FILTER_SIZE, FILTER_BATCH, true);
+    return d_real_data;
 }
 
 cufftComplex* cuFFTC2Cprocess(cufftComplex *in_data,
@@ -1416,17 +1445,18 @@ cufftComplex* cuFFTC2Cprocess(cufftComplex *in_data,
     cufftComplex *d_output;
     cudaMalloc(reinterpret_cast<void**>(&d_output), OUT_BYTE);
     cufft_status = cufftExecC2C(handle, in_data, d_output, CUFFT_FORWARD);
-    // cufft_status = cufftExecC2C(handle_, in_data, in_data, CUFFT_FORWARD);
+    // cufft_status = cufftExecC2C(handle, in_data, in_data, CUFFT_FORWARD);
     
     if (cufft_status != cudaSuccess) {
-       printf("cufftExecC2C failed!");
+       ROS_FATAL("[cuFFTC2Cprocess]: cufftExecC2C failed!");
+       std::exit(-1);  //! change to shutdown
     }
     
     return d_output;
     
-    
+
     //! DEBUG
-    ROS_WARN("\nWRITING TO .txt IS ENABLED");    
+    ROS_WARN("\nWRITING TO .txt IS ENABLED");
     cufftComplex *out_data = (cufftComplex*)malloc(OUT_BYTE);
     cudaMemcpy(out_data, d_output, OUT_BYTE, cudaMemcpyDeviceToHost);
     std::ofstream outfile("cu.txt");
@@ -1434,29 +1464,10 @@ cufftComplex* cuFFTC2Cprocess(cufftComplex *in_data,
        outfile << j <<  " " <<  out_data[j].x << " "<< out_data[j].y << "\n";
     }
     outfile.close();
-    //! END DEBUG
-
-    // return d_output;
-}
-
-
-float* KCF_Tracker::cuInvDFT(cufftComplex *d_complex) {
-    if (this->init_cufft_plan_) {
-       ROS_FATAL("THE CUFFT PLAN IS NOT INTIALIZED");
-       float empty[1];
-       exit(1);
-       
-       return empty;
-    }
-
-    float *d_real_data = cuFFTC2RProcess(d_complex,
-                                         FILTER_SIZE_,
-                                         FILTER_BATCH_, true);
-
-    return d_real_data;
 }
 
 float *cuFFTC2RProcess(cufftComplex *d_complex,
+                       const cufftHandle handle,
                        const int FILTER_SIZE,
                        const int FILTER_BATCH, bool is_normalize) {
 
@@ -1475,8 +1486,7 @@ float *cuFFTC2RProcess(cufftComplex *d_complex,
     
     // cufftResult cufft_status = cufftExecC2R(
     //    inv_handle_, d_complex, (cufftReal*)d_data);
-    cufftResult cufft_status = cufftExecC2R(
-       inv_handle_, d_complex, d_data);
+    cufftResult cufft_status = cufftExecC2R(handle, d_complex, d_data);
 
     
     if (cufft_status != cudaSuccess) {
