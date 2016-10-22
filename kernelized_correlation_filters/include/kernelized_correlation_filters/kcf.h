@@ -92,11 +92,15 @@ class KCF_Tracker {
     int BYTE_;
     cv::Size window_size_;
 
+    //! handle with batch = 1
     cufftHandle cufft_handle_;
     cufftHandle inv_handle_1D_;
+
+    //! main handle
+    cufftHandle handle_;
    
-   std::vector<cv::Mat> debug_patch_;
-   int debug;
+   // std::vector<cv::Mat> debug_patch_;
+   // int debug;
 
    
  public:
@@ -134,8 +138,9 @@ class KCF_Tracker {
                            int, int, int, int, double);
     cv::Mat trackingProcessOnGPU(float *);
 
-    // DEGUB 
+    // DEGUB
     cv::Mat cudaFFT(const cv::Mat &input);
+    cv::Mat cudaFFT2(float *, const cv::Size);
     cv::Mat cudaIFFT(const cv::Mat input);
 };
 
