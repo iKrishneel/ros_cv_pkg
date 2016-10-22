@@ -474,16 +474,16 @@ void KCF_Tracker::track(cv::Mat &img) {
          * GPU --------------------------------------
          */
         ROS_INFO("---------RUNNING GPU---------");
-        /*
+
         float *d_features = get_featuresGPU(
            input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0],
            p_windows_size[1], p_current_scale * p_scales[i]);
 
-        cv::Mat response = this->trackingProcessOnGPU(d_features);
+        cv::Mat response1 = this->trackingProcessOnGPU(d_features);
         
         duration = (std::clock() - start) / static_cast<double>(CLOCKS_PER_SEC);
         std::cout << " GPU PROCESS: : " << duration <<'\n';
-        */
+
         /**
          * END GPU ----------------------------------
          */
@@ -494,29 +494,16 @@ void KCF_Tracker::track(cv::Mat &img) {
          */
         
 
-
+        /*
         patch_feat = get_features(
            input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0],
            p_windows_size[1], p_current_scale * p_scales[i]);
+           
+           ComplexMat zf = fft2(patch_feat, p_cos_window);
+        */
 
 
-        // float c_feat[FILTER_BATCH_ * FILTER_SIZE_];
-        // int icount = 0;
-        // for (int i = 0; i < patch_feat.size(); i++) {
-        //    for (int y = 0; y < patch_feat[i].rows; y++) {
-        //       for (int x = 0; x < patch_feat[i].cols; x++) {
-        //          c_feat[icount] = patch_feat[i].at<float>(y,  x);
-        //          icount++;
-        //       }
-        //    }
-        // }
-        // float *d_features;
-        // cudaMalloc(reinterpret_cast<void**>(&d_features), BYTE_);
-        // cudaMemcpy(d_features, c_feat, BYTE_, cudaMemcpyHostToDevice);
-        
-        
-
-        ComplexMat zf = fft2(patch_feat, p_cos_window);
+        ComplexMat zf = result_;
         ComplexMat kzf = gaussian_correlation(zf, p_model_xf,
                                               p_kernel_sigma);
         
@@ -601,9 +588,6 @@ void KCF_Tracker::track(cv::Mat &img) {
 
         // subsequent frames, interpolate model
         p_model_xf = p_model_xf * (1. - p_interp_factor) + xf * p_interp_factor;
- //    ComplexMat alphaf = p_yf / (kf + p_lambda); //equation for fast training
- //    p_model_alphaf = p_model_alphaf * (1. - p_interp_factor) +
- //    alphaf * p_interp_factor;
 
 
         ComplexMat alphaf_num = p_yf * kf;
@@ -616,7 +600,7 @@ void KCF_Tracker::track(cv::Mat &img) {
      }
 }
 
- // ****************************************************************************
+// ****************************************************************************
 
 std::vector<cv::Mat> KCF_Tracker::get_features(
     cv::Mat & input_rgb, cv::Mat & input_gray,
@@ -741,6 +725,28 @@ cv::Mat KCF_Tracker::trackingProcessOnGPU(float *d_features) {
                                      handle_,
                                      FILTER_BATCH_, FILTER_SIZE_);
 
+    //----
+    int in_byte = FILTER_SIZE_ * FILTER_BATCH_ * sizeof(cufftComplex);
+    cufftComplex *cpu_data = reinterpret_cast<cufftComplex*>(
+       std::malloc(in_byte));
+    cudaMemcpy(cpu_data, d_complex, in_byte, cudaMemcpyDeviceToHost);
+    result_ = ComplexMat(window_size_.height, window_size_.width,
+                         FILTER_BATCH_);
+    for (int k = 0; k < FILTER_BATCH_; k++) {
+       cv::Mat output = cv::Mat(window_size_, CV_32FC2);
+       for (int i = 0; i < output.rows; i++) {
+          for (int j = 0; j < output.cols; j++) {
+             int index = j + (i * output.cols) + (k * FILTER_SIZE_);
+             output.at<cv::Vec2f>(i, j)[0] = cpu_data[index].x;
+             output.at<cv::Vec2f>(i, j)[1] = cpu_data[index].y;
+          }
+       }
+       result_.set_channel(k, output);
+    }
+    return cv::Mat();
+    //! DEBUG-------
+
+    
     float xf_norm_gpu =  squaredNormGPU(d_complex,
                                         FILTER_BATCH_,
                                         FILTER_SIZE_);
@@ -973,12 +979,6 @@ ComplexMat KCF_Tracker::cudaFFT2(
              int index = j + (i * output.cols) + (k * FILTER_SIZE_);
              output.at<cv::Vec2f>(i, j)[0] = cpu_data[index].x;
              output.at<cv::Vec2f>(i, j)[1] = cpu_data[index].y;
-             /*
-             if (isnan(cpu_data[index].x) || isnan(cpu_data[index].y)) {
-                std::cout << k << " " << cpu_data[index].x <<" "
-                          << cpu_data[index].y  << "\n";
-             }
-             */
           }
        }
        result.set_channel(k, output);
@@ -1199,33 +1199,6 @@ ComplexMat KCF_Tracker::gaussian_correlation(
      std::cout << "\033[33mCPU NORM IS: " << xf_sqr_norm
                << " " << yf_sqr_norm << "\033[0m\n";
 
-
-     //! DEBUG
-     /*
-     std::cout << "\033[34m YF CONJ: \033[0m" << yf.conj().n_channels
-               << " " << yf.conj().rows << "\n";
-
-     cv::Mat check_yf = yf.conj().to_cv_mat();
-     cv::Mat orign_yf = xf.to_cv_mat();
-     cv::Mat xyf_cv = xyf.to_cv_mat();
-
-     for (int j = 0; j < xyf.rows; j++) {
-        for (int i = 0; i < xyf.cols; i++) {
-           std::cout << check_yf.at<cv::Vec2f>(j, i)[0]  << ", ";
-           std::cout << check_yf.at<cv::Vec2f>(j, i)[1]  << "\t";
-
-           std::cout << orign_yf.at<cv::Vec2f>(j, i)[0]  << " ";
-           std::cout << orign_yf.at<cv::Vec2f>(j, i)[1]  << "\t";
-
-           std::cout << xyf_cv.at<cv::Vec2f>(j, i)[0]  << " ";
-           std::cout << xyf_cv.at<cv::Vec2f>(j, i)[1]  << "\n";
-        }
-     }
-
-     */
-     //! END DEBUG
-
-
      // ifft2 and sum over 3rd dimension, we dont care about individual
      // channels
      cv::Mat xy_sum(xf.rows, xf.cols, CV_32FC1);
@@ -1233,9 +1206,13 @@ ComplexMat KCF_Tracker::gaussian_correlation(
      cv::Mat ifft2_res = ifft2(xyf);
 
 
+     
      std::cout << "IFFT SIZE: " << ifft2_res.size() << " "
                << ifft2_res.channels()  << "\n";
-     std::cout << FILTER_SIZE_  << "\t" << xf.n_channels << " " << xf.rows << "\n";
+     std::cout << FILTER_SIZE_  << "\t" << xf.n_channels << " "
+               << xf.rows << "\n";
+
+     
 
      for (int y = 0; y < xf.rows; ++y) {
          float * row_ptr = ifft2_res.ptr<float>(y);
@@ -1278,9 +1255,6 @@ ComplexMat KCF_Tracker::gaussian_correlation(
      cv::exp(- 1.f / (sigma * sigma) * cv::max(
                 (xf_sqr_norm + yf_sqr_norm - 2 * xy_sum) * numel_xf_inv, 0),
              tmp);
-
-
-     // std::cout << fft2(tmp)  << "\n\n";
     
     return fft2(tmp);
 }

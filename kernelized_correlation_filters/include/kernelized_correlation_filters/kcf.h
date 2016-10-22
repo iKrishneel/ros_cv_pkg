@@ -100,6 +100,9 @@ class KCF_Tracker {
     cufftHandle handle_;
     cufftHandle inv_handle_;
 
+
+    //! DEGUB
+    ComplexMat result_;
    
  public:
     bool m_use_scale;
