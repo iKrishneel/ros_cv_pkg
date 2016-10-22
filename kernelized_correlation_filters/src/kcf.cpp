@@ -1,8 +1,8 @@
 
 #include <kernelized_correlation_filters/kcf.h>
 #include <numeric>
-#include <future>
-#include <thread>
+// #include <future>
+// #include <thread>
 
 KCF_Tracker::KCF_Tracker() {
     p_resize_image = false;
@@ -381,30 +381,30 @@ void KCF_Tracker::setTrackerPose(BBox_c &bbox, cv::Mat & img) {
      init(img, bbox.get_rect());
 }
 
- void KCF_Tracker::updateTrackerPosition(BBox_c &bbox) {
-     if (p_resize_image) {
-         BBox_c tmp = bbox;
-         tmp.scale(0.5);
-         p_pose.cx = tmp.cx;
-         p_pose.cy = tmp.cy;
-     } else {
-         p_pose.cx = bbox.cx;
-         p_pose.cy = bbox.cy;
-     }
- }
+void KCF_Tracker::updateTrackerPosition(BBox_c &bbox) {
+    if (p_resize_image) {
+       BBox_c tmp = bbox;
+       tmp.scale(0.5);
+       p_pose.cx = tmp.cx;
+       p_pose.cy = tmp.cy;
+    } else {
+       p_pose.cx = bbox.cx;
+       p_pose.cy = bbox.cy;
+    }
+}
 
- BBox_c KCF_Tracker::getBBox() {
-     BBox_c tmp = p_pose;
-     tmp.w *= p_current_scale;
-     tmp.h *= p_current_scale;
+BBox_c KCF_Tracker::getBBox() {
+    BBox_c tmp = p_pose;
+    tmp.w *= p_current_scale;
+    tmp.h *= p_current_scale;
 
-     if (p_resize_image)
-         tmp.scale(2);
+    if (p_resize_image)
+       tmp.scale(2);
+    
+    return tmp;
+}
 
-     return tmp;
- }
-
- void KCF_Tracker::track(cv::Mat &img) {
+void KCF_Tracker::track(cv::Mat &img) {
      cv::Mat input_gray, input_rgb = img.clone();
      if (img.channels() == 3) {
          cv::cvtColor(img, input_gray, CV_BGR2GRAY);
@@ -605,65 +605,54 @@ void KCF_Tracker::setTrackerPose(BBox_c &bbox, cv::Mat & img) {
            kf * (kf + p_lambda) * p_interp_factor;
         p_model_alphaf = p_model_alphaf_num / p_model_alphaf_den;
      }
- }
+}
 
  // ****************************************************************************
 
- std::vector<cv::Mat> KCF_Tracker::get_features(cv::Mat & input_rgb,
-                                                cv::Mat & input_gray,
-                                                int cx, int cy, int size_x,
-                                                int size_y, double scale) {
-
-     int size_x_scaled = floor(size_x*scale);
-     int size_y_scaled = floor(size_y*scale);
-     cv::Mat patch_gray = get_subwindow(input_gray, cx, cy,
-                                        size_x_scaled, size_y_scaled);
-     cv::Mat patch_rgb = get_subwindow(input_rgb, cx, cy,
+std::vector<cv::Mat> KCF_Tracker::get_features(
+    cv::Mat & input_rgb, cv::Mat & input_gray,
+    int cx, int cy, int size_x, int size_y, double scale) {
+    int size_x_scaled = floor(size_x*scale);
+    int size_y_scaled = floor(size_y*scale);
+    cv::Mat patch_gray = get_subwindow(input_gray, cx, cy,
                                        size_x_scaled, size_y_scaled);
+    cv::Mat patch_rgb = get_subwindow(input_rgb, cx, cy,
+                                      size_x_scaled, size_y_scaled);
+    std::vector<cv::Mat> cnn_codes;
+    cv::resize(patch_rgb, patch_rgb, cv::Size(p_windows_size[0],
+                                              p_windows_size[1]));
+    cv::Size filter_size = cv::Size(std::floor(patch_rgb.cols/p_cell_size),
+                                    std::floor(patch_rgb.rows/p_cell_size));
 
+    boost::shared_ptr<caffe::Blob<float> > blob_info (new caffe::Blob<float>);
+    this->feature_extractor_->getFeatures(blob_info, cnn_codes, patch_rgb,
+                                          filter_size);
+    cnn_codes.clear();
+    std::vector<cv::cuda::GpuMat> d_cnn_codes;
+    const float *idata = blob_info->cpu_data();
+    for (int i = 0; i < blob_info->channels(); i++) {
+       cv::Mat im = cv::Mat::zeros(blob_info->height(),
+                                   blob_info->width(), CV_32F);
 
-     // std::cout << patch_gray.size()  << "\t";
-     // std::cout << cx << " " << cy  << "\n";
-
-     std::vector<cv::Mat> cnn_codes;
-     cv::resize(patch_rgb, patch_rgb, cv::Size(p_windows_size[0],
-                                               p_windows_size[1]));
-     cv::Size filter_size = cv::Size(std::floor(patch_rgb.cols/p_cell_size),
-                                     std::floor(patch_rgb.rows/p_cell_size));
-
-     boost::shared_ptr<caffe::Blob<float> > blob_info (new caffe::Blob<float>);
-     this->feature_extractor_->getFeatures(blob_info, cnn_codes, patch_rgb,
-                                           filter_size);
-
-     // std::cout << "INFO: " << blob_info->count()  << "\n";
-
-
-     cnn_codes.clear();
-     std::vector<cv::cuda::GpuMat> d_cnn_codes;
-     const float *idata = blob_info->cpu_data();
-     for (int i = 0; i < blob_info->channels(); i++) {
-        cv::Mat im = cv::Mat::zeros(blob_info->height(),
-                                    blob_info->width(), CV_32F);
-
-        for (int y = 0; y < blob_info->height(); y++) {
-           for (int x = 0; x < blob_info->width(); x++) {
-              im.at<float>(y, x) = idata[
-                 i * blob_info->width() * blob_info->height() +
-                 y * blob_info->width() + x];
-           }
-        }
-        if (filter_size.width != -1) {
-           cv::resize(im, im, filter_size);
-        }
-        cnn_codes.push_back(im);
-        d_cnn_codes.push_back(cv::cuda::GpuMat(im));
-     }
+       for (int y = 0; y < blob_info->height(); y++) {
+          for (int x = 0; x < blob_info->width(); x++) {
+             im.at<float>(y, x) = idata[
+                i * blob_info->width() * blob_info->height() +
+                y * blob_info->width() + x];
+          }
+       }
+       if (filter_size.width != -1) {
+          cv::resize(im, im, filter_size);
+       }
+       cnn_codes.push_back(im);
+       d_cnn_codes.push_back(cv::cuda::GpuMat(im));
+    }
      /*
-     std::cout << cnn_codes[0]  << "\n\n";
-     std::cout << cnn_codes[0].size()  << "\n\n\n";
+       std::cout << cnn_codes[0]  << "\n\n";
+       std::cout << cnn_codes[0].size()  << "\n\n\n";
      */
-     return cnn_codes;
- }
+    return cnn_codes;
+}
 
  /**
   * GPU
@@ -817,28 +806,28 @@ cv::Mat KCF_Tracker::trackingProcessOnGPU(float *d_features) {
 
 
 
- cv::Mat KCF_Tracker::gaussian_shaped_labels(
-     double sigma, int dim1, int dim2) {
-     cv::Mat labels(dim2, dim1, CV_32FC1);
-     int range_y[2] = {-dim2 / 2, dim2 - dim2 / 2};
-     int range_x[2] = {-dim1 / 2, dim1 - dim1 / 2};
+cv::Mat KCF_Tracker::gaussian_shaped_labels(
+   double sigma, int dim1, int dim2) {
+    cv::Mat labels(dim2, dim1, CV_32FC1);
+    int range_y[2] = {-dim2 / 2, dim2 - dim2 / 2};
+    int range_x[2] = {-dim1 / 2, dim1 - dim1 / 2};
 
-     double sigma_s = sigma*sigma;
-     for (int y = range_y[0], j = 0; y < range_y[1]; ++y, ++j) {
-         float * row_ptr = labels.ptr<float>(j);
-         double y_s = y*y;
-         for (int x = range_x[0], i = 0; x < range_x[1]; ++x, ++i) {
-             row_ptr[i] = std::exp(-0.5 * (y_s + x*x) / sigma_s);
-         }
-     }
+    double sigma_s = sigma*sigma;
+    for (int y = range_y[0], j = 0; y < range_y[1]; ++y, ++j) {
+       float * row_ptr = labels.ptr<float>(j);
+       double y_s = y*y;
+       for (int x = range_x[0], i = 0; x < range_x[1]; ++x, ++i) {
+          row_ptr[i] = std::exp(-0.5 * (y_s + x*x) / sigma_s);
+       }
+    }
 
-     // rotate so that 1 is at top-left corner (see KCF paper for explanation)
-     cv::Mat rot_labels = circshift(labels, range_x[0], range_y[0]);
-     // sanity check, 1 at top left corner
-     assert(rot_labels.at<float>(0, 0) >= 1.f - 1e-10f);
+    // rotate so that 1 is at top-left corner (see KCF paper for explanation)
+    cv::Mat rot_labels = circshift(labels, range_x[0], range_y[0]);
+    // sanity check, 1 at top left corner
+    assert(rot_labels.at<float>(0, 0) >= 1.f - 1e-10f);
 
-     return rot_labels;
- }
+    return rot_labels;
+}
 
 cv::Mat KCF_Tracker::circshift(
      const cv::Mat &patch, int x_rot, int y_rot) {
