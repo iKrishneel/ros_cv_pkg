@@ -1136,8 +1136,8 @@ cv::Mat KCF_Tracker::ifft2(const ComplexMat &inputf) {
              //         cv::DFT_INVERSE | cv::DFT_REAL_OUTPUT |
              //         cv::DFT_SCALE);
             
-            ifft_mats[i] = cudaIFFT(mat_channels[i]);
-            /*
+            //! ifft_mats[i] = cudaIFFT(mat_channels[i]);
+
             for (int y = 0; y < mat_channels[i].rows; y++) {
                for (int x = 0; x < mat_channels[i].cols; x++) {
                   cpu_compl[icount].x = mat_channels[i].at<cv::Vec2f>(y, x)[0];
@@ -1145,10 +1145,10 @@ cv::Mat KCF_Tracker::ifft2(const ComplexMat &inputf) {
                   icount++;
                }
             }
-            */
+
          }
-         cv::merge(ifft_mats, real_result);
-         /*
+         //! cv::merge(ifft_mats, real_result);
+
          int in_byte = FILTER_BATCH_ * FILTER_SIZE_ * sizeof(cufftComplex);
          cufftComplex *d_complex;
          cudaMalloc(reinterpret_cast<void**>(&d_complex), in_byte);
@@ -1159,7 +1159,7 @@ cv::Mat KCF_Tracker::ifft2(const ComplexMat &inputf) {
          std::cout << "done ifft2"  << "\n";
 
          cudaFree(d_complex);
-         */
+
      }
      return real_result;
 }
