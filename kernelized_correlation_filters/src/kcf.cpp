@@ -502,13 +502,11 @@ void KCF_Tracker::track(cv::Mat &img) {
            p_windows_size[1], p_current_scale * p_scales[i]);
         
         cv::Mat response = this->trackingProcessOnGPU(d_features);
-        double min_val1, max_val1;
-        cv::Point2i min_loc1, max_loc1;
-        cv::minMaxLoc(response, &min_val1, &max_val1, &min_loc1, &max_loc1);
-        
+        // double min_val1, max_val1;
+        // cv::Point2i min_loc1, max_loc1;
+        // cv::minMaxLoc(response, &min_val1, &max_val1, &min_loc1, &max_loc1);
         
         // ComplexMat zf = result_;
-
         
         duration = (std::clock() - start) / static_cast<double>(CLOCKS_PER_SEC);
         std::cout << " GPU PROCESS: : " << duration <<'\n';
@@ -535,18 +533,20 @@ void KCF_Tracker::track(cv::Mat &img) {
         //    will appear at the top-left corner, not at the center (this is
         //    discussed in the paper). the responses wrap around
         //    cyclically.
+
+        start = std::clock();
         
         double min_val, max_val;
         cv::Point2i min_loc, max_loc;
         cv::minMaxLoc(response, &min_val, &max_val, &min_loc, &max_loc);
 
 
-        std::cout << "--------------------"  << "\n";
-        std::cout << min_val << " " << min_val1  << "\n";
-        std::cout << max_val << " " << max_val1  << "\n";
-        std::cout << min_loc << " " << min_loc1  << "\n";
-        std::cout << max_loc << " " << max_loc1  << "\n";
-        std::cout << "--------------------"  << "\n\n";
+        // std::cout << "--------------------"  << "\n";
+        // std::cout << min_val << " " << min_val1  << "\n";
+        // std::cout << max_val << " " << max_val1  << "\n";
+        // std::cout << min_loc << " " << min_loc1  << "\n";
+        // std::cout << max_loc << " " << max_loc1  << "\n";
+        // std::cout << "--------------------"  << "\n\n";
         
         
         duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
@@ -780,8 +780,7 @@ cv::Mat KCF_Tracker::trackingProcessOnGPU(float *d_features) {
     */
     //! DEBUG-------
 
-    ROS_INFO("PROCESSING");
-    
+    // ROS_INFO("PROCESSING");
     
     float xf_norm_gpu =  squaredNormGPU(d_complex,
                                         FILTER_BATCH_,
@@ -793,7 +792,7 @@ cv::Mat KCF_Tracker::trackingProcessOnGPU(float *d_features) {
                                         FILTER_SIZE_);
     cudaDeviceSynchronize();
     
-    std::cout << "GPU_NORM:  " << xf_norm_gpu << " " << yf_norm_gpu  << "\n";
+    // std::cout << "GPU_NORM:  " << xf_norm_gpu << " " << yf_norm_gpu  << "\n";
     
     cufftComplex *d_conj_mxf =  complexConjuateGPU(this->dev_model_xf_,
                                                    FILTER_BATCH_,
@@ -818,7 +817,7 @@ cv::Mat KCF_Tracker::trackingProcessOnGPU(float *d_features) {
     // outfile.close();
 
     
-    ROS_INFO("1. RUNNING INVERSE IFFT: %d", FILTER_BATCH_);
+    // ROS_INFO("1. RUNNING INVERSE IFFT: %d", FILTER_BATCH_);
     
     float *d_ifft = cuInvDFT(d_xyf, handle_, FILTER_BATCH_, FILTER_SIZE_);
     cudaDeviceSynchronize();
@@ -836,7 +835,7 @@ cv::Mat KCF_Tracker::trackingProcessOnGPU(float *d_features) {
     cudaDeviceSynchronize();
     
     
-    ROS_INFO("2. RUNNING 1BATCH FFT");
+    // ROS_INFO("2. RUNNING 1BATCH FFT");
     cufftComplex *d_kf = cuDFT(d_xysum, cufft_handle1_, 1, FILTER_SIZE_);
     cudaDeviceSynchronize();
     
@@ -845,7 +844,7 @@ cv::Mat KCF_Tracker::trackingProcessOnGPU(float *d_features) {
                                              d_kf, FILTER_SIZE_);
     cudaDeviceSynchronize();
     
-    std::cout << "running inverse on single batch"  << "\n";
+    // std::cout << "running inverse on single batch"  << "\n";
     
     float *d_real_out = cuInvDFT(d_kzf, cufft_handle1_,
                                  1, FILTER_SIZE_);
@@ -865,7 +864,6 @@ cv::Mat KCF_Tracker::trackingProcessOnGPU(float *d_features) {
           results.at<float>(i, j) = odata[j + (i * window_size_.width)];
        }
     }
-
 
     // std::cout << results  << "\n";
     
