@@ -457,9 +457,13 @@ void KCF_Tracker::track(cv::Mat &img) {
         float *d_features = get_featuresGPU(
            input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0],
            p_windows_size[1], p_current_scale * p_scales[i]);
-
         
         cv::Mat response1 = this->trackingProcessOnGPU(d_features);
+        double min_val1, max_val1;
+        cv::Point2i min_loc1, max_loc1;
+        cv::minMaxLoc(response1, &min_val1, &max_val1, &min_loc1, &max_loc1);
+        
+        
         ComplexMat zf = result_;
 
         
@@ -498,6 +502,12 @@ void KCF_Tracker::track(cv::Mat &img) {
         cv::Point2i min_loc, max_loc;
         cv::minMaxLoc(response, &min_val, &max_val, &min_loc, &max_loc);
 
+
+        std::cout << "--------------------"  << "\n";
+        std::cout << min_val << " " << min_val1  << "\n";
+        std::cout << max_val << " " << max_val1  << "\n";
+        std::cout << "--------------------"  << "\n\n";
+        
         
         duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
         std::cout << " CPU PROCESS: : " << duration <<'\n';
@@ -765,12 +775,6 @@ cv::Mat KCF_Tracker::trackingProcessOnGPU(float *d_features) {
     cufftComplex *d_kf = cuDFT(d_xysum, cufft_handle1_, 1, FILTER_SIZE_);
     
 
-    /*
-    cufftComplex *d_kf = convertFloatToComplexGPU(d_xysum, 1,
-                                                  FILTER_SIZE_);
-    cufftExecC2C(this->cufft_handle1_, d_kf, d_kf, CUFFT_FORWARD);
-    */    
-
     cufftComplex *d_kzf = multiplyComplexGPU(this->dev_model_alphaf_,
                                              d_kf, FILTER_SIZE_);
 
@@ -779,18 +783,6 @@ cv::Mat KCF_Tracker::trackingProcessOnGPU(float *d_features) {
     float *d_real_out = cuInvDFT(d_kzf, cufft_handle1_,
                                  1, FILTER_SIZE_);
 
-    /*
-    float *d_data;
-    cudaMalloc(reinterpret_cast<void**>(&d_data), OUT_BYTE);
-    cufftResult cufft_status = cufftExecC2R(
-       this->inv_cufft_handle1_, d_kzf, d_data);
-    if (cufft_status != cudaSuccess) {
-       printf("cufftExecC2R failed in trackig!\n");
-       exit(1);
-    }    
-    float factor = static_cast<float>(FILTER_SIZE_);
-    normalizeByFactorGPU(d_data, factor, 1, FILTER_SIZE_);
-    */
 
     float odata[FILTER_SIZE_];
     int OUT_BYTE = FILTER_SIZE_ * sizeof(float);
