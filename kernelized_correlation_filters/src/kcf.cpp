@@ -436,6 +436,8 @@ BBox_c KCF_Tracker::getBBox() {
 }
 
 void KCF_Tracker::track(cv::Mat &img) {
+    std::clock_t start = std::clock();
+    
      cv::Mat input_gray, input_rgb = img.clone();
      if (img.channels() == 3) {
          cv::cvtColor(img, input_gray, CV_BGR2GRAY);
@@ -458,36 +460,12 @@ void KCF_Tracker::track(cv::Mat &img) {
      cv::Point2i max_response_pt;
      int scale_index = 0;
      std::vector<double> scale_responses;
-
-     //! running on gpu
-     std::vector<cv::cuda::GpuMat> patch_feat_gpu;
-     cv::cuda::GpuMat d_cos_window(p_cos_window);
-
-     /*
-     //! test
-     cv::Mat igray = input_rgb(cv::Rect(50, 50, 13, 13));
-     // cv::resize(input_rgb, igray, cv::Size(13, 13));
-     cv::cvtColor(igray, igray, CV_BGR2GRAY);
-     igray.convertTo(igray, CV_32FC1);
-     float *iresize = bilinear_test(
-        reinterpret_cast<float*>(igray.data),
-        input_gray.rows * input_gray.step);
-     cv::Mat resize_im = cv::Mat::zeros(50, 50, CV_8UC1);
-     int icount = 0;
-     for (int i = 0; i < resize_im.rows; i++) {
-        for (int j = 0; j < resize_im.cols; j++) {
-           resize_im.at<uchar>(i, j) = iresize[icount++];
-        }
-     }
-     cv::namedWindow("rimage", CV_WINDOW_NORMAL);
-     cv::imshow("rimage", resize_im);
-     // cv::imshow("rimage", igray);
-     cv::waitKey(3);
-     return;
-     */ 
+     
+     double duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
+     std::cout << "\033[31mCPU PROCESS: : " << duration <<"\033[0m\n";
+     
 
      for (size_t i = 0; i < p_scales.size(); ++i) {
-
         
         std::clock_t start;
         double duration;
@@ -534,7 +512,7 @@ void KCF_Tracker::track(cv::Mat &img) {
         //    discussed in the paper). the responses wrap around
         //    cyclically.
 
-        start = std::clock();
+
         
         double min_val, max_val;
         cv::Point2i min_loc, max_loc;
@@ -547,12 +525,6 @@ void KCF_Tracker::track(cv::Mat &img) {
         // std::cout << min_loc << " " << min_loc1  << "\n";
         // std::cout << max_loc << " " << max_loc1  << "\n";
         // std::cout << "--------------------"  << "\n\n";
-        
-        
-        duration = (std::clock() - start) / (double) CLOCKS_PER_SEC;
-        std::cout << " CPU PROCESS: : " << duration <<'\n';
-        
-
 
 
         double weight = p_scales[i] < 1. ? p_scales[i] : 1./p_scales[i];
@@ -566,7 +538,6 @@ void KCF_Tracker::track(cv::Mat &img) {
 
 
      }
-
 
      // sub pixel quadratic interpolation from neighbours
      // wrap around to negative half-space of vertical axis
@@ -584,6 +555,7 @@ void KCF_Tracker::track(cv::Mat &img) {
          new_location = sub_pixel_peak(max_response_pt, max_response_map);
      }
 
+     
      p_pose.cx += p_current_scale*p_cell_size*new_location.x;
      p_pose.cy += p_current_scale*p_cell_size*new_location.y;
      if (p_pose.cx < 0) p_pose.cx = 0;
@@ -603,6 +575,7 @@ void KCF_Tracker::track(cv::Mat &img) {
      if (p_current_scale > p_min_max_scale[1])
          p_current_scale = p_min_max_scale[1];
 
+     
      // obtain a subwindow for training at newly estimated target
      // position
      bool is_update = false;
@@ -685,11 +658,12 @@ float* KCF_Tracker::get_featuresGPU(
     cv::Mat & input_rgb, cv::Mat & input_gray,
     int cx, int cy, int size_x, int size_y, double scale) {
 
-    std::cout << "\33[34m GETTING FEATURES \033[0m"  << "\n";
+    // std::cout << "\33[34m GETTING FEATURES \033[0m"  << "\n";
+    
     int size_x_scaled = floor(size_x*scale);
     int size_y_scaled = floor(size_y*scale);
-    cv::Mat patch_gray = get_subwindow(input_gray, cx, cy,
-                                       size_x_scaled, size_y_scaled);
+    // cv::Mat patch_gray = get_subwindow(input_gray, cx, cy,
+    //                                    size_x_scaled, size_y_scaled);
     cv::Mat patch_rgb = get_subwindow(input_rgb, cx, cy,
                                       size_x_scaled, size_y_scaled);
 
