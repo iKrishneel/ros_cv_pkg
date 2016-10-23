@@ -142,9 +142,11 @@ class KCF_Tracker {
     cv::Mat trackingProcessOnGPU(float *);
 
     // DEGUB
-    cv::Mat cudaFFT(const cv::Mat &input);
+    cv::Mat cudaFFT(const cv::Mat &);
     ComplexMat cudaFFT2(float *, const cv::Size, const int);
-    cv::Mat cudaIFFT(const cv::Mat input);
+    cv::Mat cudaIFFT(const cv::Mat);
+    cv::Mat cudaIFFT2(cufftComplex*, const cv::Size);
+   
 };
 
 #endif //KCF_HEADER_6565467831231

@@ -2,7 +2,7 @@
 #include <kernelized_correlation_filters/discrete_fourier_transform_kernel.h>
 
 __global__
-void cuFloatToComplex(cufftComplex *d_complex,
+void cuFloatToComplexKernel(cufftComplex *d_complex,
                       const float *dev_data, const int lenght) {
     int t_idx = threadIdx.x + blockIdx.x * blockDim.x;
     int t_idy = threadIdx.y + blockIdx.y * blockDim.y;
@@ -30,8 +30,45 @@ cufftComplex* convertFloatToComplexGPU(const float *dev_data,
                     cuDivUp(dimension, GRID_SIZE));
     dim3 block_size(GRID_SIZE, GRID_SIZE);
 
-    cuFloatToComplex<<<grid_size, block_size>>>(d_complex, dev_data, LENGHT);
+    cuFloatToComplexKernel<<<grid_size, block_size>>>(
+       d_complex, dev_data, LENGHT);
     return d_complex;
+}
+
+__global__
+void copyComplexRealToFloatKernel(float *d_output,
+                                  const cufftComplex *d_complex,
+                                  const int lenght) {
+    int t_idx = threadIdx.x + blockIdx.x * blockDim.x;
+    int t_idy = threadIdx.y + blockIdx.y * blockDim.y;
+    int offset = t_idx + t_idy * blockDim.x * gridDim.x;
+
+    if (offset < lenght) {
+       d_output[offset] = d_complex[offset].x;
+    }
+}
+
+float* copyComplexRealToFloatGPU(const cufftComplex* d_complex,
+                                const int FILTER_BATCH,
+                                const int FILTER_SIZE) {
+    if (FILTER_BATCH == 0 || FILTER_SIZE == 0) {
+       printf("\033[31m ERROR: [copyComplexRealToFloatGPU] FAILED\n");
+    }
+    int LENGHT = FILTER_SIZE * FILTER_BATCH;
+    int BYTE = LENGHT * sizeof(float);
+
+    float *d_output;
+    cudaMalloc(reinterpret_cast<void**>(&d_output), BYTE);
+
+    const int dimension = std::ceil(std::sqrt(LENGHT));
+    dim3 grid_size(cuDivUp(dimension, GRID_SIZE),
+                    cuDivUp(dimension, GRID_SIZE));
+    dim3 block_size(GRID_SIZE, GRID_SIZE);
+    
+    copyComplexRealToFloatKernel<<<grid_size, block_size>>>(
+       d_output, d_complex, LENGHT);
+
+    return d_output;
 }
 
 
@@ -49,6 +86,7 @@ void normalizeByFactorKernel(float *d_data,
 }
 
 void normalizeByFactorGPU(float *&d_data,
+                          const float factor,
                           const int FILTER_BATCH,
                           const int FILTER_SIZE) {
     if (FILTER_BATCH == 0 || FILTER_SIZE == 0) {
@@ -63,5 +101,5 @@ void normalizeByFactorGPU(float *&d_data,
     dim3 block_size(GRID_SIZE, GRID_SIZE);
 
     normalizeByFactorKernel<<<grid_size, block_size>>>(
-       d_data, static_cast<float>(FILTER_SIZE), LENGHT);
+       d_data, factor, LENGHT);
 }

@@ -474,7 +474,7 @@ void KCF_Tracker::track(cv::Mat &img) {
          * GPU --------------------------------------
          */
         ROS_INFO("---------RUNNING GPU---------");
-
+        /*
         float *d_features = get_featuresGPU(
            input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0],
            p_windows_size[1], p_current_scale * p_scales[i]);
@@ -494,16 +494,14 @@ void KCF_Tracker::track(cv::Mat &img) {
          */
         
 
-        /*
+
         patch_feat = get_features(
            input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0],
            p_windows_size[1], p_current_scale * p_scales[i]);
            
            ComplexMat zf = fft2(patch_feat, p_cos_window);
-        */
 
-
-        ComplexMat zf = result_;
+        // ComplexMat zf = result_;
         ComplexMat kzf = gaussian_correlation(zf, p_model_xf,
                                               p_kernel_sigma);
         
@@ -789,7 +787,8 @@ cv::Mat KCF_Tracker::trackingProcessOnGPU(float *d_features) {
        printf("cufftExecC2R failed in trackig!\n");
        exit(1);
     }
-    normalizeByFactorGPU(d_data, 1, FILTER_SIZE_);
+    float factor = static_cast<float>(FILTER_SIZE_);
+    normalizeByFactorGPU(d_data, factor, 1, FILTER_SIZE_);
     
     // std::cout << "GPU_NORM:  " << xf_norm_gpu << " " << yf_norm_gpu  << "\n";
 
@@ -1052,10 +1051,7 @@ ComplexMat KCF_Tracker::fft2(const std::vector<cv::Mat> &input,
  */
 
 cv::Mat KCF_Tracker::cudaIFFT(const cv::Mat input) {
-   
-    FILTER_SIZE_ = input.rows * input.cols;
-     int byte = FILTER_SIZE_ * sizeof(cufftComplex);
-
+    int byte = FILTER_SIZE_ * sizeof(cufftComplex);
     cufftComplex *d_input;
     cudaMalloc(reinterpret_cast<void**>(&d_input), byte);
 
@@ -1068,14 +1064,11 @@ cv::Mat KCF_Tracker::cudaIFFT(const cv::Mat input) {
        }
     }
     cudaMemcpy(d_input, cpu_data, byte, cudaMemcpyHostToDevice);
-    
-    float *d_output = this->cuInvDFT(d_input, inv_cufft_handle1_,
+    float *d_output = this->cuInvDFT(d_input, cufft_handle1_,
                                      1, FILTER_SIZE_);
-
     float out_data[FILTER_SIZE_];
     cudaMemcpy(out_data, d_output, FILTER_SIZE_ * sizeof(float),
                cudaMemcpyDeviceToHost);
-
     cv::Mat output = cv::Mat(input.size(), CV_32FC1);
     for (int i = 0; i < input.rows; i++) {
        for (int j = 0; j < input.cols; j++) {
@@ -1090,6 +1083,39 @@ cv::Mat KCF_Tracker::cudaIFFT(const cv::Mat input) {
     return output;
 }
 
+
+cv::Mat KCF_Tracker::cudaIFFT2(
+    cufftComplex* d_complex, const cv::Size in_size) {
+    float *d_output = this->cuInvDFT(d_complex, handle_,
+                                     FILTER_BATCH_, FILTER_SIZE_);
+
+    int out_byte = FILTER_BATCH_ * FILTER_SIZE_ * sizeof(float);
+    float *out_data = reinterpret_cast<float*>(malloc(out_byte));
+    cudaMemcpy(out_data, d_output, out_byte, cudaMemcpyDeviceToHost);
+    
+    std::vector<cv::Mat> ifft_mats(FILTER_BATCH_);
+    for (int k = 0; k < FILTER_BATCH_; k++) {
+       cv::Mat output = cv::Mat(in_size, CV_32FC1);
+       for (int i = 0; i < output.rows; i++) {
+          for (int j = 0; j < output.cols; j++) {
+             int index = j + (i * output.cols) + (k * FILTER_SIZE_);
+             output.at<float>(i, j) = out_data[index];
+          }
+       }
+       
+       ifft_mats[k] = output;
+    }
+    cv::Mat real_result;
+    cv::merge(ifft_mats, real_result);
+    cudaFree(d_output);
+    
+    return real_result;
+}
+
+/**
+ * end inverse ifft
+ */
+
 cv::Mat KCF_Tracker::ifft2(const ComplexMat &inputf) {
 
      cv::Mat real_result;
@@ -1102,90 +1128,115 @@ cv::Mat KCF_Tracker::ifft2(const ComplexMat &inputf) {
      } else {
          std::vector<cv::Mat> mat_channels = inputf.to_cv_mat_vector();
          std::vector<cv::Mat> ifft_mats(inputf.n_channels);
+
+         cufftComplex cpu_compl[FILTER_BATCH_ * FILTER_SIZE_];
+         int icount = 0;
          for (int i = 0; i < inputf.n_channels; ++i) {
              // cv::dft(mat_channels[i], ifft_mats[i],
              //         cv::DFT_INVERSE | cv::DFT_REAL_OUTPUT |
              //         cv::DFT_SCALE);
+            
             ifft_mats[i] = cudaIFFT(mat_channels[i]);
+            /*
+            for (int y = 0; y < mat_channels[i].rows; y++) {
+               for (int x = 0; x < mat_channels[i].cols; x++) {
+                  cpu_compl[icount].x = mat_channels[i].at<cv::Vec2f>(y, x)[0];
+                  cpu_compl[icount].y = mat_channels[i].at<cv::Vec2f>(y, x)[1];
+                  icount++;
+               }
+            }
+            */
          }
          cv::merge(ifft_mats, real_result);
+         /*
+         int in_byte = FILTER_BATCH_ * FILTER_SIZE_ * sizeof(cufftComplex);
+         cufftComplex *d_complex;
+         cudaMalloc(reinterpret_cast<void**>(&d_complex), in_byte);
+         cudaMemcpy(d_complex, cpu_compl, in_byte, cudaMemcpyHostToDevice);
+
+         std::cout << "\n running ifft2: " << inputf.n_channels  << "\n";
+         real_result = cudaIFFT2(d_complex, mat_channels[0].size());
+         std::cout << "done ifft2"  << "\n";
+
+         cudaFree(d_complex);
+         */
      }
      return real_result;
 }
 
- // hann window actually (Power-of-cosine windows)
- cv::Mat KCF_Tracker::cosine_window_function(
-     int dim1, int dim2) {
-     cv::Mat m1(1, dim1, CV_32FC1), m2(dim2, 1, CV_32FC1);
-     double N_inv = 1./(static_cast<double>(dim1)-1.);
-     for (int i = 0; i < dim1; ++i)
-        m1.at<float>(i) = 0.5*(1. - std::cos(2. * CV_PI *
-                                             static_cast<double>(i) * N_inv));
-     N_inv = 1./ (static_cast<double>(dim2)-1.);
-     for (int i = 0; i < dim2; ++i) {
-        m2.at<float>(i) = 0.5*(1. - std::cos(
-                                  2. * CV_PI * static_cast<double>(i) * N_inv));
-     }
-     cv::Mat ret = m2*m1;
-     return ret;
- }
+/* hann window actually (Power-of-cosine windows)
+ */
+cv::Mat KCF_Tracker::cosine_window_function(
+    int dim1, int dim2) {
+    cv::Mat m1(1, dim1, CV_32FC1), m2(dim2, 1, CV_32FC1);
+    double n_inv = 1.0f / (static_cast<double>(dim1)-1.);
+    for (int i = 0; i < dim1; ++i) {
+       m1.at<float>(i) = 0.5f * (
+          1.0f - std::cos(2.0f * CV_PI * static_cast<double>(i) * n_inv));
+    }
+    n_inv = 1./ (static_cast<double>(dim2)-1.);
+    for (int i = 0; i < dim2; ++i) {
+       m2.at<float>(i) = 0.5f * (
+          1.0f - std::cos(2.0f * CV_PI * static_cast<double>(i) * n_inv));
+    }
+    cv::Mat ret = m2*m1;
+    return ret;
+}
 
- // Returns sub-window of image input centered at [cx, cy] coordinates),
- // with size [width, height]. If any pixels are outside of the image,
- // they will replicate the values at the borders.
- cv::Mat KCF_Tracker::get_subwindow(
-     const cv::Mat &input, int cx, int cy, int width, int height) {
-     cv::Mat patch;
+/* Returns sub-window of image input centered at [cx, cy] coordinates),
+ * with size [width, height]. If any pixels are outside of the image,
+ * they will replicate the values at the borders.
+ */
+cv::Mat KCF_Tracker::get_subwindow(
+    const cv::Mat &input, int cx, int cy, int width, int height) {
+    cv::Mat patch;
+    int x1 = cx - width/2;
+    int y1 = cy - height/2;
+    int x2 = cx + width/2;
+    int y2 = cy + height/2;
 
-     int x1 = cx - width/2;
-     int y1 = cy - height/2;
-     int x2 = cx + width/2;
-     int y2 = cy + height/2;
+    // out of image
+    if (x1 >= input.cols || y1 >= input.rows || x2 < 0 || y2 < 0) {
+       patch.create(height, width, input.type());
+       patch.setTo(0.f);
+       return patch;
+    }
 
-     // out of image
-     if (x1 >= input.cols || y1 >= input.rows || x2 < 0 || y2 < 0) {
-         patch.create(height, width, input.type());
-         patch.setTo(0.f);
-         return patch;
-     }
+    int top = 0, bottom = 0, left = 0, right = 0;
 
-     int top = 0, bottom = 0, left = 0, right = 0;
+    // fit to image coordinates, set border extensions;
+    if (x1 < 0) {
+       left = -x1;
+       x1 = 0;
+    }
+    if (y1 < 0) {
+       top = -y1;
+       y1 = 0;
+    }
+    if (x2 >= input.cols) {
+       right = x2 - input.cols + width % 2;
+       x2 = input.cols;
+    } else {
+       x2 += width % 2;
+    }
+    if (y2 >= input.rows) {
+       bottom = y2 - input.rows + height % 2;
+       y2 = input.rows;
+    } else {
+       y2 += height % 2;
+    }
+    if (x2 - x1 == 0 || y2 - y1 == 0) {
+       patch = cv::Mat::zeros(height, width, CV_32FC1);
+    } else {
+       cv::copyMakeBorder(input(cv::Range(y1, y2),
+                                cv::Range(x1, x2)), patch,
+                          top, bottom, left, right, cv::BORDER_REPLICATE);
+    }
 
-     // fit to image coordinates, set border extensions;
-     if (x1 < 0) {
-         left = -x1;
-         x1 = 0;
-     }
-     if (y1 < 0) {
-         top = -y1;
-         y1 = 0;
-     }
-     if (x2 >= input.cols) {
-         right = x2 - input.cols + width % 2;
-         x2 = input.cols;
-     } else {
-         x2 += width % 2;
-     }
-     if (y2 >= input.rows) {
-         bottom = y2 - input.rows + height % 2;
-         y2 = input.rows;
-     } else {
-         y2 += height % 2;
-     }
-     if (x2 - x1 == 0 || y2 - y1 == 0) {
-         patch = cv::Mat::zeros(height, width, CV_32FC1);
-     } else {
-        cv::copyMakeBorder(input(cv::Range(y1, y2),
-                                 cv::Range(x1, x2)), patch,
-                           top, bottom, left, right, cv::BORDER_REPLICATE);
-     }
-
-     // sanity check
-     assert(patch.cols == width && patch.rows == height);
-
-     return patch;
-
- }
+    // sanity check
+    assert(patch.cols == width && patch.rows == height);
+    return patch;
+}
 
 ComplexMat KCF_Tracker::gaussian_correlation(
      const ComplexMat &xf, const ComplexMat &yf, double sigma,
@@ -1204,15 +1255,11 @@ ComplexMat KCF_Tracker::gaussian_correlation(
      cv::Mat xy_sum(xf.rows, xf.cols, CV_32FC1);
      xy_sum.setTo(0);
      cv::Mat ifft2_res = ifft2(xyf);
-
-
      
      std::cout << "IFFT SIZE: " << ifft2_res.size() << " "
                << ifft2_res.channels()  << "\n";
      std::cout << FILTER_SIZE_  << "\t" << xf.n_channels << " "
                << xf.rows << "\n";
-
-     
 
      for (int y = 0; y < xf.rows; ++y) {
          float * row_ptr = ifft2_res.ptr<float>(y);
@@ -1222,35 +1269,9 @@ ComplexMat KCF_Tracker::gaussian_correlation(
             row_ptr_sum[x] = std::accumulate(
                (row_ptr + x*ifft2_res.channels()),
                (row_ptr + x*ifft2_res.channels() + ifft2_res.channels()), 0.f);
-
-            //!!!!
-            /*
-            if (debug > 0) {
-               float sum = 0.0;
-               for (int k = x * ifft2_res.channels(); k <
-                       x*ifft2_res.channels() + ifft2_res.channels(); k++) {
-                  // std::cout << row_ptr[k] << "\n";
-                  sum += row_ptr[k];
-               }
-
-               std::cout << ifft2_res.channels()  << "\n";
-               std::cout << row_ptr_sum[x]  << "\t";
-               // std::cout << row_ptr[x*ifft2_res.channels()]  << "\t";
-               // std::cout << row_ptr[x*ifft2_res.channels() +
-               // ifft2_res.channels()]  << "\n";
-
-
-               std::cout << "SUM: " << sum << "\n";
-               // std::cin.ignore();
-               exit(-1);
-            }
-            //!!!!
-            */
          }
      }
-
      float numel_xf_inv = 1.f/(xf.cols * xf.rows * xf.n_channels);
-
      cv::Mat tmp;
      cv::exp(- 1.f / (sigma * sigma) * cv::max(
                 (xf_sqr_norm + yf_sqr_norm - 2 * xy_sum) * numel_xf_inv, 0),
@@ -1432,24 +1453,23 @@ float *cuFFTC2RProcess(cufftComplex *d_complex,
        return empty;
     }
 
-    // cufftPlan1d(
-    //    &inv_handle_, FILTER_SIZE, CUFFT_C2R, FILTER_BATCH);
-
-    int OUT_BYTE = FILTER_SIZE * FILTER_BATCH * sizeof(float);
-    float *d_data;
-    cudaMalloc(reinterpret_cast<void**>(&d_data), OUT_BYTE);
-    
-    // cufftResult cufft_status = cufftExecC2R(
-    //    inv_handle_, d_complex, (cufftReal*)d_data);
-    cufftResult cufft_status = cufftExecC2R(handle, d_complex, d_data);
-
-    
+    // int OUT_BYTE = FILTER_SIZE * FILTER_BATCH * sizeof(float);
+    // float *d_data;
+    // cudaMalloc(reinterpret_cast<void**>(&d_data), OUT_BYTE);
+    // cufftExecC2R(handle, d_complex, d_data);
+    cufftResult cufft_status = cufftExecC2C(handle, d_complex,
+                                            d_complex, CUFFT_INVERSE);
     if (cufft_status != cudaSuccess) {
        printf("cufftExecC2R failed!\n");
     }
+
+    float *d_real = copyComplexRealToFloatGPU(d_complex,
+                                              FILTER_BATCH,
+                                              FILTER_SIZE);
     if (is_normalize) {
-       normalizeByFactorGPU(d_data, FILTER_BATCH, FILTER_SIZE);
+       float factor = FILTER_SIZE;
+       normalizeByFactorGPU(d_real, factor, FILTER_BATCH, FILTER_SIZE);
     }
-    return d_data;
+    return d_real;
 }
 
