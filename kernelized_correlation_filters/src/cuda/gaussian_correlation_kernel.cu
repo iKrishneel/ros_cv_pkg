@@ -121,9 +121,9 @@ float* squaredNormAndMagGPU(float &norm,
  * kernel for computing just the inverse
  */
 __global__ __forceinline__
-void invComplexConjuateKernel(cufftComplex *d_compl_out,
-                              const cufftComplex *d_complex,
-                              const int LENGHT) {
+void complexConjuateKernel(cufftComplex *d_compl_out,
+                           const cufftComplex *d_complex,
+                           const int LENGHT) {
 
     int t_idx = threadIdx.x + blockIdx.x * blockDim.x;
     int t_idy = threadIdx.y + blockIdx.y * blockDim.y;
@@ -136,9 +136,9 @@ void invComplexConjuateKernel(cufftComplex *d_compl_out,
    
 }
 
-cufftComplex* invComplexConjuateGPU(const cufftComplex *d_complex,
-                                    const int FILTER_BATCH,
-                                    const int FILTER_SIZE) {
+cufftComplex* complexConjuateGPU(const cufftComplex *d_complex,
+                                 const int FILTER_BATCH,
+                                 const int FILTER_SIZE) {
 
     if (FILTER_BATCH == 0 || FILTER_SIZE == 0) {
        printf("\033[31m ERROR: [invComplexConjuateGPU] FAILED\n");
@@ -154,7 +154,7 @@ cufftComplex* invComplexConjuateGPU(const cufftComplex *d_complex,
     cufftComplex *d_compl_out;
     cudaMalloc(reinterpret_cast<void**>(&d_compl_out), BYTE);
 
-    invComplexConjuateKernel<<<grid_size, block_size>>>(d_compl_out,
+    complexConjuateKernel<<<grid_size, block_size>>>(d_compl_out,
                                                         d_complex, LENGHT);
     
     return d_compl_out;

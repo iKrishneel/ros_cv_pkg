@@ -254,11 +254,54 @@ void KCF_Tracker::init(cv::Mat &img, const cv::Rect & bbox) {
     cudaMemcpy(d_cos_window_, cosine_window_1D, BYTE_, cudaMemcpyHostToDevice);
      
     // obtain a sub-window for training initial model
+    /*
     std::vector<cv::Mat> path_feat = get_features(input_rgb, input_gray,
                                                   p_pose.cx, p_pose.cy,
                                                   p_windows_size[0],
                                                   p_windows_size[1]);
     p_model_xf = fft2(path_feat, p_cos_window);
+    */
+
+
+    float *dev_feat1 = get_featuresGPU(input_rgb, input_gray,
+                                      p_pose.cx, p_pose.cy,
+                                       p_windows_size[0],
+                                      p_windows_size[1], 1.0f);
+    
+
+    float *d_cos_conv = cosineConvolutionGPU(dev_feat1,
+                                             this->d_cos_window_,
+                                             FILTER_SIZE_ * FILTER_BATCH_,
+                                             BYTE_);
+    cufftComplex * d_complex = cuDFT(d_cos_conv,
+                                     handle_,
+                                     FILTER_BATCH_, FILTER_SIZE_);
+    
+    //----
+    int in_byte = FILTER_SIZE_ * FILTER_BATCH_ * sizeof(cufftComplex);
+    cufftComplex *cpu_data = reinterpret_cast<cufftComplex*>(
+       std::malloc(in_byte));
+    cudaMemcpy(cpu_data, d_complex, in_byte, cudaMemcpyDeviceToHost);
+    ComplexMat result = ComplexMat(window_size_.height, window_size_.width,
+                                   FILTER_BATCH_);
+    for (int k = 0; k < FILTER_BATCH_; k++) {
+       cv::Mat output = cv::Mat(window_size_, CV_32FC2);
+       for (int i = 0; i < output.rows; i++) {
+          for (int j = 0; j < output.cols; j++) {
+             int index = j + (i * output.cols) + (k * FILTER_SIZE_);
+             output.at<cv::Vec2f>(i, j)[0] = cpu_data[index].x;
+             output.at<cv::Vec2f>(i, j)[1] = cpu_data[index].y;
+          }
+       }
+       result.set_channel(k, output);
+    }
+
+
+    free(cpu_data);
+    cudaFree(d_cos_conv);
+    cudaFree(d_complex);
+    p_model_xf = result;
+
     
     // Kernel Ridge Regression, calculate alphas (in Fourier domain)
     ComplexMat kf = gaussian_correlation(p_model_xf, p_model_xf,
@@ -458,13 +501,13 @@ void KCF_Tracker::track(cv::Mat &img) {
            input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0],
            p_windows_size[1], p_current_scale * p_scales[i]);
         
-        cv::Mat response1 = this->trackingProcessOnGPU(d_features);
+        cv::Mat response = this->trackingProcessOnGPU(d_features);
         double min_val1, max_val1;
         cv::Point2i min_loc1, max_loc1;
-        cv::minMaxLoc(response1, &min_val1, &max_val1, &min_loc1, &max_loc1);
+        cv::minMaxLoc(response, &min_val1, &max_val1, &min_loc1, &max_loc1);
         
         
-        ComplexMat zf = result_;
+        // ComplexMat zf = result_;
 
         
         duration = (std::clock() - start) / static_cast<double>(CLOCKS_PER_SEC);
@@ -473,25 +516,20 @@ void KCF_Tracker::track(cv::Mat &img) {
         /**
          * END GPU ----------------------------------
          */
-
-
-        /**
-         * debug cuda functions
-         */
-        
-
         /*
+
         patch_feat = get_features(
            input_rgb, input_gray, p_pose.cx, p_pose.cy, p_windows_size[0],
-           p_windows_size[1], p_current_scale * p_scales[i]); 
+           p_windows_size[1], p_current_scale * p_scales[i]);
         ComplexMat zf = fft2(patch_feat, p_cos_window);
-        */
+
         
         ComplexMat kzf = gaussian_correlation(zf, p_model_xf,
                                               p_kernel_sigma);
 
         cv::Mat response = ifft2(p_model_alphaf * kzf);
-
+        */
+        
         // target location is at the maximum response. we must take into
         //    account the fact that, if the target doesn't move, the peaka
         //    will appear at the top-left corner, not at the center (this is
@@ -506,6 +544,8 @@ void KCF_Tracker::track(cv::Mat &img) {
         std::cout << "--------------------"  << "\n";
         std::cout << min_val << " " << min_val1  << "\n";
         std::cout << max_val << " " << max_val1  << "\n";
+        std::cout << min_loc << " " << min_loc1  << "\n";
+        std::cout << max_loc << " " << max_loc1  << "\n";
         std::cout << "--------------------"  << "\n\n";
         
         
@@ -712,6 +752,7 @@ cv::Mat KCF_Tracker::trackingProcessOnGPU(float *d_features) {
     cufftComplex * d_complex = cuDFT(d_cos_conv,
                                      handle_,
                                      FILTER_BATCH_, FILTER_SIZE_);
+    /*
     //----
     int in_byte = FILTER_SIZE_ * FILTER_BATCH_ * sizeof(cufftComplex);
     cufftComplex *cpu_data = reinterpret_cast<cufftComplex*>(
@@ -730,7 +771,7 @@ cv::Mat KCF_Tracker::trackingProcessOnGPU(float *d_features) {
        }
        result_.set_channel(k, output);
     }
-
+    */
     /*
     free(cpu_data);
     cudaFree(d_cos_conv);
@@ -745,59 +786,93 @@ cv::Mat KCF_Tracker::trackingProcessOnGPU(float *d_features) {
     float xf_norm_gpu =  squaredNormGPU(d_complex,
                                         FILTER_BATCH_,
                                         FILTER_SIZE_);
+    cudaDeviceSynchronize();
+    
     float yf_norm_gpu =  squaredNormGPU(dev_model_xf_,
                                         FILTER_BATCH_,
                                         FILTER_SIZE_);
-
+    cudaDeviceSynchronize();
+    
     std::cout << "GPU_NORM:  " << xf_norm_gpu << " " << yf_norm_gpu  << "\n";
     
+    cufftComplex *d_conj_mxf =  complexConjuateGPU(this->dev_model_xf_,
+                                                   FILTER_BATCH_,
+                                                   FILTER_SIZE_);
+    cudaDeviceSynchronize();
     
-    cufftComplex *d_inv_mxf =  invComplexConjuateGPU(this->dev_model_xf_,
-                                                     FILTER_BATCH_,
-                                                     FILTER_SIZE_);
+    
     cufftComplex *d_xyf = multiplyComplexGPU(d_complex,
-                                             d_inv_mxf,
+                                             d_conj_mxf,
                                              FILTER_BATCH_ * FILTER_SIZE_);
 
+    cudaDeviceSynchronize();
+    
+    
+    // cufftComplex xyf[FILTER_BATCH_ * FILTER_SIZE_];
+    // cudaMemcpy(xyf, d_xyf, FILTER_BATCH_ * FILTER_SIZE_ * sizeof(cufftComplex),
+    //            cudaMemcpyDeviceToHost);
+    // std::ofstream outfile("cu.txt");
+    // for (int i = 0; i < FILTER_SIZE_; i++) {
+    //    outfile << xyf[i].x << " " << xyf[i].y << "\n";
+    // }
+    // outfile.close();
+
+    
     ROS_INFO("1. RUNNING INVERSE IFFT: %d", FILTER_BATCH_);
     
     float *d_ifft = cuInvDFT(d_xyf, handle_, FILTER_BATCH_, FILTER_SIZE_);
+    cudaDeviceSynchronize();
+    
+       
     float *d_xysum = invFFTSumOverFiltersGPU(d_ifft,
                                              FILTER_BATCH_,
                                              FILTER_SIZE_);
+    cudaDeviceSynchronize();
+    
 
     float normalizer = 1.0f / (static_cast<float>(data_lenght));
     cuGaussianExpGPU(d_xysum, xf_norm_gpu, yf_norm_gpu,
                      p_kernel_sigma, normalizer, FILTER_SIZE_);
-
+    cudaDeviceSynchronize();
+    
     
     ROS_INFO("2. RUNNING 1BATCH FFT");
     cufftComplex *d_kf = cuDFT(d_xysum, cufft_handle1_, 1, FILTER_SIZE_);
+    cudaDeviceSynchronize();
     
 
     cufftComplex *d_kzf = multiplyComplexGPU(this->dev_model_alphaf_,
                                              d_kf, FILTER_SIZE_);
-
+    cudaDeviceSynchronize();
+    
     std::cout << "running inverse on single batch"  << "\n";
     
     float *d_real_out = cuInvDFT(d_kzf, cufft_handle1_,
                                  1, FILTER_SIZE_);
-
+    cudaDeviceSynchronize();
 
     float odata[FILTER_SIZE_];
     int OUT_BYTE = FILTER_SIZE_ * sizeof(float);
     cudaMemcpy(odata, d_real_out, OUT_BYTE, cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
+    
+    
+    cv::Mat results = cv::Mat(window_size_.height, window_size_.width,
+                              CV_32F);
+    
+    for (int i = 0; i < window_size_.height; i++) {
+       for (int j = 0; j < window_size_.width; j++) {
+          results.at<float>(i, j) = odata[j + (i * window_size_.width)];
+       }
+    }
 
-    cv::Mat results = cv::Mat(window_size_.height,
-                              window_size_.width,
-                              CV_32F, odata);
 
     // std::cout << results  << "\n";
     
     cudaFree(d_cos_conv);
     cudaFree(d_complex);
     cudaFree(d_features);
-    cudaFree(d_inv_mxf);
+    cudaFree(d_conj_mxf);
     cudaFree(d_xyf);
     cudaFree(d_ifft);
     cudaFree(d_xysum);
@@ -1236,23 +1311,27 @@ ComplexMat KCF_Tracker::gaussian_correlation(
      bool auto_correlation) {
 
      float xf_sqr_norm = xf.sqr_norm();
-
      float yf_sqr_norm = auto_correlation ? xf_sqr_norm : yf.sqr_norm();
      ComplexMat xyf = auto_correlation ? xf.sqr_mag() : xf * yf.conj();
 
      std::cout << "\033[33mCPU NORM IS: " << xf_sqr_norm
                << " " << yf_sqr_norm << "\033[0m\n";
 
+
+
+     std::cout << "writing"  << "\n";
+     std::vector<cv::Mat> temp = xyf.to_cv_mat_vector();
+     std::ofstream outfile("cv.txt");
+     outfile << temp[0] << "\n";
+     outfile.close();
+     std::cout << "done writing"  << "\n";
+
+     
      // ifft2 and sum over 3rd dimension, we dont care about individual
      // channels
      cv::Mat xy_sum(xf.rows, xf.cols, CV_32FC1);
      xy_sum.setTo(0);
      cv::Mat ifft2_res = ifft2(xyf);
-     
-     std::cout << "IFFT SIZE: " << ifft2_res.size() << " "
-               << ifft2_res.channels()  << "\n";
-     std::cout << FILTER_SIZE_  << "\t" << xf.n_channels << " "
-               << xf.rows << "\n";
 
      for (int y = 0; y < xf.rows; ++y) {
          float * row_ptr = ifft2_res.ptr<float>(y);

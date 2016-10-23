@@ -11,7 +11,7 @@ float squaredNormGPU(const cufftComplex *, const int, const int);
 float* squaredNormAndMagGPU(float &, const cufftComplex *,
                             const int, const int);
 /* reverse the conjuate*/
-cufftComplex* invComplexConjuateGPU(const cufftComplex *,
+cufftComplex* complexConjuateGPU(const cufftComplex *,
                                     const int, const int);
 /* sums the in complex with reverse conjuate in single call*/
 cufftComplex* invConjuateConvGPU(const cufftComplex *,
