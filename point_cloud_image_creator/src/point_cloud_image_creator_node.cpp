@@ -81,9 +81,11 @@ void PointCloudImageCreator::callback(
     cv::Mat img_out = this->projectPointCloudToImagePlane(
        cloud, indices_msg, this->camera_info_, mask);
 
-    cv::imshow("mask", img_out);
-    cv::waitKey(3);
-
+    cv_bridge::CvImagePtr image_msg(new cv_bridge::CvImage);
+    image_msg->header = cloud_msg->header;
+    image_msg->encoding = sensor_msgs::image_encodings::BGR8;
+    image_msg->image = img_out.clone();
+    pub_image_.publish(image_msg->toImageMsg());
 }
 
 void PointCloudImageCreator::cloudCallback(
@@ -174,13 +176,6 @@ cv::Mat PointCloudImageCreator::projectPointCloudToImagePlane(
        return cv::Mat();
     }
     cv::Mat objectPoints = cv::Mat(static_cast<int>(cloud->size()), 3, CV_32F);
-    /*
-    for (int i = 0; i < cloud->size(); i++) {
-       objectPoints.at<float>(i, 0) = cloud->points[i].x;
-       objectPoints.at<float>(i, 1) = cloud->points[i].y;
-       objectPoints.at<float>(i, 2) = cloud->points[i].z;
-    }
-    */
 
     cv::RNG rng(12345);
     std::vector<cv::Vec3b> colors;
@@ -235,14 +230,10 @@ cv::Mat PointCloudImageCreator::projectPointCloudToImagePlane(
        int y = imagePoints[i].y;
        if (!std::isnan(x) && !std::isnan(y) && (x >= 0 && x <= image.cols) &&
            (y >= 0 && y <= image.rows)) {
-          
-          /*
-          image.at<cv::Vec3b>(y, x)[2] = cloud->points[i].r;
-          image.at<cv::Vec3b>(y, x)[1] = cloud->points[i].g;
-          image.at<cv::Vec3b>(y, x)[0] = cloud->points[i].b;
-          */
-          
-          image.at<cv::Vec3b>(y, x) = colors[labels[i]];
+
+          image.at<cv::Vec3b>(y, x)[2] = labels[i] + 1;
+          image.at<cv::Vec3b>(y, x)[1] = labels[i] + 1;
+          image.at<cv::Vec3b>(y, x)[0] = labels[i] + 1;
           
           mask.at<float>(y, x) = 255.0f;
        }
