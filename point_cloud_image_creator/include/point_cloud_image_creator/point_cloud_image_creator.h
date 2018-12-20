@@ -2,9 +2,9 @@
 #include <ros/ros.h>
 #include <ros/console.h>
 
-#include <opencv2/opencv.hpp>
-
-#include <boost/thread/mutex.hpp>
+#include <message_filters/subscriber.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
 
 #include <image_geometry/pinhole_camera_model.h>
 #include <sensor_msgs/Image.h>
@@ -16,12 +16,30 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <std_msgs/Header.h>
+#include <jsk_recognition_msgs/ClusterPointIndices.h>
+
+#include <opencv2/opencv.hpp>
+#include <boost/thread/mutex.hpp>
 
 class PointCloudImageCreator {
 
  public:
     typedef pcl::PointXYZRGB PointT;
 
+    typedef message_filters::sync_policies::ApproximateTime<
+       sensor_msgs::PointCloud2,
+       jsk_recognition_msgs::ClusterPointIndices> SyncPolicy;
+    message_filters::Subscriber<sensor_msgs::PointCloud2> msub_points_;
+    message_filters::Subscriber<
+       jsk_recognition_msgs::ClusterPointIndices> msub_indices_;
+
+    boost::shared_ptr<message_filters::Synchronizer<SyncPolicy> >sync_;
+
+    void callback(const sensor_msgs::PointCloud2::ConstPtr &,
+                  const jsk_recognition_msgs::ClusterPointIndices::ConstPtr &);
+
+   
+   
     PointCloudImageCreator();
     virtual void cloudCallback(
        const sensor_msgs::PointCloud2::ConstPtr &);
@@ -31,7 +49,12 @@ class PointCloudImageCreator {
        const sensor_msgs::CameraInfo::ConstPtr &);
     cv::Mat projectPointCloudToImagePlane(
        const pcl::PointCloud<PointT>::Ptr,
+       const jsk_recognition_msgs::ClusterPointIndices::ConstPtr,
        const sensor_msgs::CameraInfo::ConstPtr &, cv::Mat &);
+   cv::Mat projectPointCloudToImagePlane(
+       const pcl::PointCloud<PointT>::Ptr,
+       const sensor_msgs::CameraInfo::ConstPtr &, cv::Mat &);
+   
     cv::Mat interpolateImage(const cv::Mat &, const cv::Mat &);
     void cvMorphologicalOperations(const cv::Mat &, cv::Mat &, bool);
     cv::Rect createMaskImages(const cv::Mat &, cv::Mat &, cv::Mat &);

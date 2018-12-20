@@ -1,14 +1,14 @@
 
 #include <point_cloud_image_creator/point_cloud_image_creator.h>
-#include <iostream>
-#include <string>
-#include <vector>
 
 PointCloudImageCreator::PointCloudImageCreator() {
     pnh_.getParam("mask_image", this->is_mask_image_);
     pnh_.getParam("roi_image", this->is_roi_);
     is_mask_image_ = false;
     is_info_ = false;
+
+    this->pnh_ = ros::NodeHandle("~");
+    
     this->subsribe();
     this->onInit();
 }
@@ -33,17 +33,57 @@ void PointCloudImageCreator::onInit() {
 }
 
 void PointCloudImageCreator::subsribe() {
+
    
     this->sub_cam_info_ = this->pnh_.subscribe(
-       "input_info", 1, &PointCloudImageCreator::cameraInfoCallback, this);
-   
-    this->sub_cloud_ = this->pnh_.subscribe(
-       "input", 1, &PointCloudImageCreator::cloudCallback, this);
+      "info", 1, &PointCloudImageCreator::cameraInfoCallback, this);
+    
+    /*
+      this->sub_cloud_ = this->pnh_.subscribe(
+      "input", 1, &PointCloudImageCreator::cloudCallback, this);
 
-    if (is_mask_image_) {
+      if (is_mask_image_) {
       this->sub_image_ = this->pnh_.subscribe(
-          "in_image", 1, &PointCloudImageCreator::imageCallback, this);
+      "in_image", 1, &PointCloudImageCreator::imageCallback, this);
+      }
+    */
+
+    ROS_INFO("SUBSCRIBING");
+   
+    this->msub_points_.subscribe(this->pnh_, "points", 10);
+    this->msub_indices_.subscribe(this->pnh_, "indices", 10);
+    this->sync_ = boost::make_shared<message_filters::Synchronizer<
+       SyncPolicy> >(100);
+    this->sync_->connectInput(this->msub_points_, this->msub_indices_);
+    this->sync_->registerCallback(
+       boost::bind(&PointCloudImageCreator::callback, this, _1, _2));
+}
+
+void PointCloudImageCreator::callback(
+    const sensor_msgs::PointCloud2::ConstPtr &cloud_msg,
+    const jsk_recognition_msgs::ClusterPointIndices::ConstPtr &indices_msg) {
+
+    if (!is_info_) {
+       ROS_WARN("CAMERA INFO NOT SET");
+       return;
     }
+    ROS_INFO("PROCESSING");
+   
+    boost::mutex::scoped_lock lock(this->lock_);
+    pcl::PointCloud<PointT>::Ptr cloud (new pcl::PointCloud<PointT>);
+    pcl::fromROSMsg(*cloud_msg, *cloud);
+    if (cloud->empty()) {
+       ROS_WARN("EMPTY CLOUD POINT");
+       return;
+    }
+
+    cv::Mat mask;
+    cv::Mat img_out = this->projectPointCloudToImagePlane(
+       cloud, indices_msg, this->camera_info_, mask);
+
+    cv::imshow("mask", img_out);
+    cv::waitKey(3);
+
 }
 
 void PointCloudImageCreator::cloudCallback(
@@ -115,17 +155,6 @@ void PointCloudImageCreator::imageCallback(
        image_msg, sensor_msgs::image_encodings::BGR8)->image;
     boost::mutex::scoped_lock lock(mutex_);
     if (is_mask_image_ && !this->foreground_mask_.empty()) {
-       /*
-       for (int j = 0; j < in_image.rows; j++) {
-          for (int i = 0; i < in_image.cols; i++) {
-             if (foreground_mask_.at<uchar>(j, i) == 0) {
-                in_image.at<cv::Vec3b>(j, i)[0] = 0;
-                in_image.at<cv::Vec3b>(j, i)[1] = 0;
-                in_image.at<cv::Vec3b>(j, i)[2] = 0;
-             }
-          }
-       }
-       */
        in_image = in_image(this->rect_);
     }
     cv_bridge::CvImagePtr out_msg(new cv_bridge::CvImage);
@@ -134,6 +163,93 @@ void PointCloudImageCreator::imageCallback(
     out_msg->image = in_image.clone();
     pub_image_.publish(out_msg->toImageMsg());
 }
+
+cv::Mat PointCloudImageCreator::projectPointCloudToImagePlane(
+    const pcl::PointCloud<PointT>::Ptr cloud,
+    const jsk_recognition_msgs::ClusterPointIndices::ConstPtr indices,
+    const sensor_msgs::CameraInfo::ConstPtr &camera_info,
+    cv::Mat &mask) {
+    if (cloud->empty()) {
+       ROS_ERROR("INPUT CLOUD EMPTY");
+       return cv::Mat();
+    }
+    cv::Mat objectPoints = cv::Mat(static_cast<int>(cloud->size()), 3, CV_32F);
+    /*
+    for (int i = 0; i < cloud->size(); i++) {
+       objectPoints.at<float>(i, 0) = cloud->points[i].x;
+       objectPoints.at<float>(i, 1) = cloud->points[i].y;
+       objectPoints.at<float>(i, 2) = cloud->points[i].z;
+    }
+    */
+
+    cv::RNG rng(12345);
+    std::vector<cv::Vec3b> colors;
+    std::vector<int> labels(cloud->size());
+    for (int j = 0; j < indices->cluster_indices.size(); j++) {
+       std::vector<int> point_indices = indices->cluster_indices[j].indices;
+       for (auto it = point_indices.begin(); it != point_indices.end(); it++) {
+          int i = *it;
+          objectPoints.at<float>(i, 0) = cloud->points[i].x;
+          objectPoints.at<float>(i, 1) = cloud->points[i].y;
+          objectPoints.at<float>(i, 2) = cloud->points[i].z;
+          labels[i] = j;
+       }
+       colors.push_back(cv::Vec3b(rng.uniform(0, 255),
+                                  rng.uniform(0, 255),
+                                  rng.uniform(0, 255)));
+    }
+
+    float K[9];
+    float R[9];
+    for (int i = 0; i < 9; i++) {
+       K[i] = camera_info->K[i];
+       R[i] = camera_info->R[i];
+    }
+    cv::Mat cameraMatrix = cv::Mat(3, 3, CV_32F, K);
+    cv::Mat rotationMatrix = cv::Mat(3, 3, CV_32F, R);
+    float tvec[3];
+    tvec[0] = camera_info->P[3];
+    tvec[1] = camera_info->P[7];
+    tvec[2] = camera_info->P[11];
+    cv::Mat translationMatrix = cv::Mat(3, 1, CV_32F, tvec);
+
+    float D[5];
+    for (int i = 0; i < 5; i++) {
+       D[i] = camera_info->D[i];
+    }
+    cv::Mat distortionModel = cv::Mat(5, 1, CV_32F, D);
+    cv::Mat rvec;
+    cv::Rodrigues(rotationMatrix, rvec);
+    
+    std::vector<cv::Point2f> imagePoints;
+    cv::projectPoints(objectPoints, rvec, translationMatrix,
+                      cameraMatrix, distortionModel, imagePoints);
+    cv::Scalar color = cv::Scalar(0, 0, 0);
+    cv::Mat image = cv::Mat(
+       camera_info->height, camera_info->width, CV_8UC3, color);
+    mask = cv::Mat::zeros(
+       camera_info->height, camera_info->width, CV_32F);
+
+    for (int i = 0; i < imagePoints.size(); i++) {
+       int x = imagePoints[i].x;
+       int y = imagePoints[i].y;
+       if (!std::isnan(x) && !std::isnan(y) && (x >= 0 && x <= image.cols) &&
+           (y >= 0 && y <= image.rows)) {
+          
+          /*
+          image.at<cv::Vec3b>(y, x)[2] = cloud->points[i].r;
+          image.at<cv::Vec3b>(y, x)[1] = cloud->points[i].g;
+          image.at<cv::Vec3b>(y, x)[0] = cloud->points[i].b;
+          */
+          
+          image.at<cv::Vec3b>(y, x) = colors[labels[i]];
+          
+          mask.at<float>(y, x) = 255.0f;
+       }
+    }
+    return image;
+}
+
 
 cv::Mat PointCloudImageCreator::projectPointCloudToImagePlane(
     const pcl::PointCloud<PointT>::Ptr cloud,
@@ -179,10 +295,11 @@ cv::Mat PointCloudImageCreator::projectPointCloudToImagePlane(
        camera_info->height, camera_info->width, CV_8UC3, color);
     mask = cv::Mat::zeros(
        camera_info->height, camera_info->width, CV_32F);
+    
     for (int i = 0; i < imagePoints.size(); i++) {
        int x = imagePoints[i].x;
        int y = imagePoints[i].y;
-       if (!isnan(x) && !isnan(y) && (x >= 0 && x <= image.cols) &&
+       if (!std::isnan(x) && !std::isnan(y) && (x >= 0 && x <= image.cols) &&
            (y >= 0 && y <= image.rows)) {
           image.at<cv::Vec3b>(y, x)[2] = cloud->points[i].r;
           image.at<cv::Vec3b>(y, x)[1] = cloud->points[i].g;

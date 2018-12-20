@@ -11,12 +11,17 @@ find_package(catkin REQUIRED COMPONENTS
   rospy
   sensor_msgs
   std_msgs
-  message_generation
   jsk_recognition_msgs
+  pcl_conversions
 )
 
-find_package(catkin REQUIRED COMPONENTS cmake_modules message_generation std_msgs std_srvs geometry_msgs roscpp rospy sensor_msgs visualization_msgs message_filters message_generation jsk_pcl_ros interactive_markers pcl_conversions jsk_topic_tools rviz eigen_conversions dynamic_tf_publisher jsk_interactive_marker jsk_recognition_msgs move_base_msgs rosgraph_msgs topic_tools jsk_topic_tools jsk_ik_server pcl_msgs jsk_footstep_msgs jsk_perception jsk_calibration resized_image_transport smach_msgs pcl_ros nav_msgs tf dynamic_reconfigure roseus)
+find_package(OpenCV REQUIRED)
 
+find_package(PCL REQUIRED)
+include_directories(${PCL_INCLUDE_DIRS})
+link_directories(${PCL_LIBRARY_DIRS})
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11 -Wextra -pedantic -O3 -Wno-long-long -fno-omit-frame-pointer -ftree-vectorize")
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -119,7 +124,7 @@ add_executable(point_cloud_image_creator_node src/point_cloud_image_creator_node
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(point_cloud_image_creator_node
-   ${catkin_LIBRARIES}
+   ${catkin_LIBRARIES}  ${PCL_LIBRARIES} ${OpenCV_LIBS}
  )
 
 #############
